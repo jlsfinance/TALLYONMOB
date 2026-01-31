@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>LiveKeeping Sync Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4A90D9;
+            --bg: #F3F4F6;
+            --surface: #FFFFFF;
+            --text: #1F2937;
+            --text-secondary: #6B7280;
+            --success: #10B981;
+            --error: #EF4444;
+            --warning: #F59E0B;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: var(--surface);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #E5E7EB;
+            -webkit-app-region: drag;
+        }
+
+        .container {
+            padding: 20px;
+            height: calc(100vh - 65px);
+            overflow-y: auto;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .status-title {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge.connected {
+            background: #D1FAE5;
+            color: var(--success);
+        }
+
+        .status-badge.disconnected {
+            background: #FEE2E2;
+            color: var(--error);
+        }
+
+        .company-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 5px 0;
+            color: #111827;
+        }
+
+        .last-sync {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: var(--surface);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #E5E7EB;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+            padding: 12px;
+            border-radius: 8px;
+            width: 100%;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .logs-container {
+            background: #1F2937;
+            border-radius: 10px;
+            padding: 12px;
+            height: 160px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 11px;
+            color: #E5E7EB;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4A90D9" stroke-width="2.5">
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            <path d="M4 10h16"></path>
+            <path d="M4 14h16"></path>
+            <path d="M4 18h16"></path>
+        </svg>
+        <h1 style="font-size: 18px; margin-left: 10px;">LiveKeeping Sync Pro</h1>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <div class="status-header">
+                <span class="status-title">TALLY STATUS</span>
+                <span id="tallyStatus" class="status-badge disconnected">● Check Tally</span>
+            </div>
+            <h2 id="companyName" class="company-name">--</h2>
+            <p id="lastSync" class="last-sync">Last sync: Never</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-label">Vouchers</div>
+                <div id="voucherCount" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Ledgers</div>
+                <div id="ledgerCount" class="stat-value">0</div>
+            </div>
+        </div>
+
+        <button id="syncBtn" class="btn" disabled>Sync Now (Incremental)</button>
+        <button id="viewDashboardBtn" class="btn-outline">Open Web Dashboard</button>
+
+        <div id="logs" class="logs-container"></div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const tallyStatusEl = document.getElementById('tallyStatus');
+        const companyNameEl = document.getElementById('companyName');
+        const lastSyncEl = document.getElementById('lastSync');
+        const logsEl = document.getElementById('logs');
+        const syncBtn = document.getElementById('syncBtn');
+        const viewDashboardBtn = document.getElementById('viewDashboardBtn');
+
+        ipcRenderer.on('status-update', (event, data) => {
+            if (data.status === 'connected') {
+                tallyStatusEl.className = 'status-badge connected';
+                tallyStatusEl.innerHTML = '● Connected';
+                companyNameEl.innerText = data.company;
+                syncBtn.disabled = false;
+                if (data.lastSync) lastSyncEl.innerText = 'Last sync: ' + data.lastSync;
+            } else {
+                tallyStatusEl.className = 'status-badge disconnected';
+                tallyStatusEl.innerHTML = '● Disconnected';
+                companyNameEl.innerText = '--';
+                syncBtn.disabled = true;
+            }
+        });
+
+        ipcRenderer.on('update-counts', (event, stats) => {
+            document.getElementById('voucherCount').innerText = stats.vouchers;
+            document.getElementById('ledgerCount').innerText = stats.ledgers;
+        });
+
+        ipcRenderer.on('sync-complete', (event, data) => {
+            lastSyncEl.innerText = 'Last sync: ' + data.time;
+        });
+
+        ipcRenderer.on('log', (event, log) => {
+            const div = document.createElement('div');
+            div.style.color = log.level === 'error' ? '#F87171' : (log.level === 'success' ? '#34D399' : '#E5E7EB');
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${log.message}`;
+            logsEl.prepend(div);
+        });
+
+        syncBtn.addEventListener('click', () => ipcRenderer.send('start-sync'));
+        viewDashboardBtn.addEventListener('click', () => ipcRenderer.send('open-dashboard'));
+    </script>
+</body>
+
+</html>

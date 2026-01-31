@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>LiveKeepingSync</AssemblyName>
+    <RootNamespace>TallySyncApp</RootNamespace>
+    <Version>1.0.1</Version>
+    <Authors>LiveKeeping</Authors>
+    <Company>LiveKeeping</Company>
+    <Product>LiveKeeping Tally Sync</Product>
+    <Description>Sync Tally ERP data to cloud for mobile access</Description>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Exclude TallySyncApp subfolder to avoid conflicts -->
+  <ItemGroup>
+    <Compile Remove="TallySyncApp\**" />
+    <Page Remove="TallySyncApp\**" />
+    <EmbeddedResource Remove="TallySyncApp\**" />
+    <None Remove="TallySyncApp\**" />
+  </ItemGroup>
+
+</Project>
