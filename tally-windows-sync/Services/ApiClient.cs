@@ -127,6 +127,51 @@ namespace TallySyncApp.Services
                 if (dict != null)
                 {
                     dict["company_id"] = companyId;
+                    
+                    // Handle Vouchers, Sales, and Purchases specifically to match Supabase schema
+                    if (tableName == "vouchers" || tableName == "sales" || tableName == "purchases")
+                    {
+                        // Map C# properties to SQL columns if they differ
+                        if (dict.ContainsKey("voucher_date")) 
+                        {
+                            dict["vch_date"] = dict["voucher_date"];
+                            if (tableName == "sales" || tableName == "purchases") dict["invoice_date"] = dict["voucher_date"];
+                        }
+                        
+                        if (dict.ContainsKey("total_amount")) 
+                        {
+                            dict["amount"] = dict["total_amount"];
+                            if (tableName == "sales" || tableName == "purchases") dict["net_amount"] = dict["total_amount"];
+                        }
+                        
+                        if (dict.ContainsKey("party_name")) 
+                        {
+                            dict["party_ledger_name"] = dict["party_name"];
+                        }
+                        
+                        if (dict.ContainsKey("voucher_number"))
+                        {
+                            if (tableName == "sales" || tableName == "purchases") dict["invoice_number"] = dict["voucher_number"];
+                        }
+                        
+                        // Move extra fields to raw_data to avoid PostgREST errors
+                        var rawData = new Dictionary<string, object>();
+                        if (dict.ContainsKey("ledger_entries")) rawData["ledger_entries"] = dict["ledger_entries"];
+                        if (dict.ContainsKey("inventory_entries")) rawData["inventory_entries"] = dict["inventory_entries"];
+                        
+                        dict["raw_data"] = rawData;
+                        
+                        // Remove fields that are not in the SQL schema
+                        dict.Remove("ledger_entries");
+                        dict.Remove("inventory_entries");
+                        dict.Remove("voucher_date");
+                        dict.Remove("total_amount");
+                        dict.Remove("party_name");
+                        
+                        // Ensure ID is set correctly for on_conflict
+                        if (dict.ContainsKey("voucher_id")) dict["id"] = dict["voucher_id"];
+                    }
+                    
                     itemsWithCompanyId.Add(dict);
                 }
             }

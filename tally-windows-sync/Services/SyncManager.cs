@@ -355,7 +355,14 @@ namespace TallySyncApp.Services
                                     // Upload to Supabase using UPSERT on 'voucher_id'
                                     await UploadListAsync("vouchers", vouchers, "voucher_id");
                                     
-                                    AddLog($"✅ {rangeDisplay}: {vouchers.Count} vouchers synced");
+                                    // Also sync Sales and Purchases specifically for the Invoices feature
+                                    var sales = vouchers.Where(v => v.VoucherType.Equals("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (sales.Count > 0) await UploadListAsync("sales", sales, "id");
+
+                                    var purchases = vouchers.Where(v => v.VoucherType.Equals("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (purchases.Count > 0) await UploadListAsync("purchases", purchases, "id");
+
+                                    AddLog($"✅ {rangeDisplay}: {vouchers.Count} vouchers synced (Sales: {sales.Count}, Purchases: {purchases.Count})");
                                 }
                                 else
                                 {
