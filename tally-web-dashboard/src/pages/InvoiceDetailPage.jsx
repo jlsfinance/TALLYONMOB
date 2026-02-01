@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { salesApi } from '../lib/supabase';
+import { supabase, salesApi } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function InvoiceDetailPage() {
@@ -17,8 +17,61 @@ export default function InvoiceDetailPage() {
     }, [id]);
 
     const loadInvoice = async () => {
-        const { data } = await salesApi.getById(id);
-        setInvoice(data);
+        try {
+            // The ID from URL is in format: COMPANYNAME*SALES*VOUCHERNUMBER_DATE
+            // We need to find the sale by matching this pattern
+
+            // First try: Search by voucher_id (the URL id IS the voucher_id)
+            const { data: salesData, error } = await supabase
+                .from('sales')
+                .select('*')
+                .eq('voucher_id', id)
+                .single();
+
+            if (salesData) {
+                // Fetch sales_items separately  
+                const { data: itemsData } = await supabase
+                    .from('sales_items')
+                    .select('*')
+                    .eq('sale_id', salesData.id);
+
+                // Get stock items to enrich HSN and unit data
+                const { data: stockItems } = await supabase
+                    .from('stock_items')
+                    .select('name, hsn_code, base_unit')
+                    .eq('company_id', salesData.company_id);
+
+                // Create lookup map
+                const stockLookup = {};
+                stockItems?.forEach(item => {
+                    stockLookup[item.name] = item;
+                });
+
+                // Enrich items with HSN and unit from stock master
+                const enrichedItems = (itemsData || []).map(item => ({
+                    ...item,
+                    hsn_code: item.hsn_code || stockLookup[item.stock_item_name]?.hsn_code || '-',
+                    unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
+                }));
+
+                salesData.sales_items = enrichedItems;
+
+                // DEBUG: Log what we got
+                console.log('🔍 INVOICE DEBUG - Sales Data:', salesData);
+                console.log('🔍 INVOICE DEBUG - Items:', salesData.sales_items);
+                if (salesData.sales_items.length > 0) {
+                    console.log('🔍 INVOICE DEBUG - First item:', JSON.stringify(salesData.sales_items[0], null, 2));
+                }
+
+                setInvoice(salesData);
+            } else {
+                // Fallback: try the old way (by id)
+                const { data } = await salesApi.getById(id);
+                setInvoice(data);
+            }
+        } catch (err) {
+            console.error('Error loading invoice:', err);
+        }
         setLoading(false);
     };
 
@@ -99,6 +152,12 @@ export default function InvoiceDetailPage() {
 
             {/* Action Buttons */}
             <div className="flex gap-3 print:hidden">
+                <Link
+                    to={`/invoice/${invoice.voucher_id || id}`}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700"
+                >
+                    📄 View PDF Invoice
+                </Link>
                 <button
                     onClick={handlePrint}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
@@ -179,11 +238,15 @@ export default function InvoiceDetailPage() {
                                                 <p className="font-medium text-gray-800">{item.stock_item_name}</p>
                                             </td>
                                             <td className="px-4 py-3 text-center text-sm text-gray-600">{item.hsn_code || '-'}</td>
-                                            <td className="px-4 py-3 text-right text-sm">
-                                                {item.quantity} {item.unit}
+                                            <td className="px-4 py-3 text-right text-sm" style={{ backgroundColor: '#fef3c7' }}>
+                                                <strong style={{ color: 'red' }}>{String(item.quantity)}</strong> {item.unit || ''}
                                             </td>
-                                            <td className="px-4 py-3 text-right text-sm">{formatCurrency(item.rate)}</td>
-                                            <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.amount)}</td>
+                                            <td className="px-4 py-3 text-right text-sm" style={{ backgroundColor: '#fef3c7' }}>
+                                                <strong style={{ color: 'red' }}>{String(item.rate)}</strong>
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-medium" style={{ backgroundColor: '#d1fae5' }}>
+                                                <strong style={{ color: 'green' }}>{String(item.amount)}</strong>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

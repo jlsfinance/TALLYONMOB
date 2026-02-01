@@ -9,7 +9,7 @@
 
     <AssemblyName>TallySyncApp</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Authors>LiveKeeping</Authors>
     <Description>Tally ERP to Cloud Sync Application</Description>
     <Copyright>Copyright © 2026 LiveKeeping</Copyright>

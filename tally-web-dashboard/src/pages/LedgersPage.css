@@ -1,0 +1,89 @@
+/* LedgersPage 3D Styles */
+
+.ledgers-3d__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+}
+
+.ledgers-3d__header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Stats Row */
+.ledgers-3d__stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.ledgers-3d__stat-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.ledgers-3d__stat-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.ledgers-3d__stat-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ledgers-3d__stat-btn.active.green {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.ledgers-3d__stat-btn.active.red {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ledgers-3d__stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.ledgers-3d__stat-value.green {
+    color: #10b981;
+}
+
+.ledgers-3d__stat-value.red {
+    color: #ef4444;
+}
+
+.ledgers-3d__stat-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Avatar color variants */
+.page-3d__list-avatar.green {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.4) 0%, rgba(5, 150, 105, 0.3) 100%);
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.page-3d__list-avatar.red {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.3) 100%);
+    border-color: rgba(239, 68, 68, 0.5);
+}

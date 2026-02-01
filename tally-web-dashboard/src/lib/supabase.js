@@ -81,6 +81,118 @@ export const companyApi = {
             totalSales: sales.data?.reduce((sum, s) => sum + (s.net_amount || 0), 0) || 0,
             totalPurchases: purchases.data?.reduce((sum, p) => sum + (p.net_amount || 0), 0) || 0
         };
+    },
+
+    // DELETE ALL COMPANY DATA - Clears everything for fresh re-sync
+    deleteCompanyData: async (companyId) => {
+        try {
+            // Delete in order (children first, then parents)
+            const tables = [
+                'sales_items',
+                'purchase_items',
+                'sales',
+                'purchases',
+                'vouchers',
+                'ledgers',
+                'stock',
+                'sync_metadata',
+                'pending_transactions',
+                'companies'
+            ];
+
+            for (const table of tables) {
+                const { error } = await supabase
+                    .from(table)
+                    .delete()
+                    .eq('company_id', companyId);
+
+                if (error) {
+                    console.warn(`Warning deleting from ${table}:`, error.message);
+                }
+            }
+
+            return { success: true, error: null };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+};
+
+// ============================================
+// PENDING TRANSACTIONS API (Two-Way Sync)
+// Create transactions on Web/App -> Push to Tally
+// ============================================
+export const pendingTransactionApi = {
+    // Create a new pending transaction
+    create: async (companyId, transactionType, voucherData, createdBy = null) => {
+        const { data, error } = await supabase
+            .from('pending_transactions')
+            .insert({
+                company_id: companyId,
+                transaction_type: transactionType,
+                voucher_data: voucherData,
+                status: 'pending',
+                created_by: createdBy
+            })
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    // List pending transactions for a company
+    list: async (companyId, status = null) => {
+        let query = supabase
+            .from('pending_transactions')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
+
+        if (status) {
+            query = query.eq('status', status);
+        }
+
+        const { data, error } = await query;
+        return { data, error };
+    },
+
+    // Get pending count (for badge/notification)
+    getPendingCount: async (companyId) => {
+        const { count, error } = await supabase
+            .from('pending_transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('company_id', companyId)
+            .eq('status', 'pending');
+        return { count: count || 0, error };
+    },
+
+    // Update transaction status (called by Windows app after sync)
+    updateStatus: async (id, status, tallyVoucherNumber = null, errorMessage = null) => {
+        const updates = {
+            status,
+            error_message: errorMessage
+        };
+
+        if (tallyVoucherNumber) {
+            updates.tally_voucher_number = tallyVoucherNumber;
+            updates.synced_at = new Date().toISOString();
+        }
+
+        const { data, error } = await supabase
+            .from('pending_transactions')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    // Delete a pending transaction
+    delete: async (id) => {
+        const { error } = await supabase
+            .from('pending_transactions')
+            .delete()
+            .eq('id', id);
+        return { error };
     }
 };
 
@@ -97,7 +209,7 @@ export const ledgerApi = {
             query = query.eq('parent_group', parentGroup);
         }
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(5000);
         return { data, error };
     },
 
@@ -147,7 +259,7 @@ export const voucherApi = {
         if (type) query = query.eq('voucher_type', type);
         if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(5000);
         return { data, error };
     },
 
@@ -155,7 +267,7 @@ export const voucherApi = {
         const { data, error } = await supabase
             .from('vouchers')
             .select('*, voucher_entries(*)')
-            .eq('id', id)
+            .eq('voucher_id', id)
             .single();
         return { data, error };
     },
@@ -168,6 +280,29 @@ export const voucherApi = {
 
         const uniqueTypes = [...new Set(data?.map(v => v.voucher_type) || [])];
         return { data: uniqueTypes, error };
+    }
+};
+
+// Master Data API (Ledgers, Stock)
+export const masterApi = {
+    getLedgers: async (companyId) => {
+        const { data, error } = await supabase
+            .from('ledgers')
+            .select('id, name, parent_group, closing_balance')
+            .eq('company_id', companyId)
+            .order('name')
+            .limit(10000);
+        return { data, error };
+    },
+
+    getStockItems: async (companyId) => {
+        const { data, error } = await supabase
+            .from('stock')
+            .select('*') // Get all fields
+            .eq('company_id', companyId)
+            .order('name')
+            .limit(10000);
+        return { data, error };
     }
 };
 
@@ -184,16 +319,27 @@ export const salesApi = {
         if (toDate) query = query.lte('invoice_date', toDate);
         if (party) query = query.ilike('party_ledger_name', `%${party}%`);
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(5000);
         return { data, error };
     },
 
     getById: async (id) => {
+        // Fetch sales record
         const { data, error } = await supabase
             .from('sales')
-            .select('*, sales_items(*)')
+            .select('*')
             .eq('id', id)
             .single();
+
+        if (data) {
+            // Fetch sales_items separately (FK join was failing with 400)
+            const { data: itemsData } = await supabase
+                .from('sales_items')
+                .select('*')
+                .eq('sale_id', id);
+            data.sales_items = itemsData || [];
+        }
+
         return { data, error };
     }
 };
@@ -211,16 +357,27 @@ export const purchasesApi = {
         if (toDate) query = query.lte('invoice_date', toDate);
         if (party) query = query.ilike('party_ledger_name', `%${party}%`);
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(5000);
         return { data, error };
     },
 
     getById: async (id) => {
+        // Fetch purchase record
         const { data, error } = await supabase
             .from('purchases')
-            .select('*, purchase_items(*)')
+            .select('*')
             .eq('id', id)
             .single();
+
+        if (data) {
+            // Fetch purchase_items separately (FK join was failing with 400)
+            const { data: itemsData } = await supabase
+                .from('purchase_items')
+                .select('*')
+                .eq('purchase_id', id);
+            data.purchase_items = itemsData || [];
+        }
+
         return { data, error };
     }
 };
@@ -238,7 +395,7 @@ export const stockApi = {
             query = query.eq('stock_group', stockGroup);
         }
 
-        const { data, error } = await query;
+        const { data, error } = await query.limit(5000);
         return { data, error };
     },
 
@@ -307,4 +464,113 @@ export const reportsApi = {
     }
 };
 
+// ============================================
+// SYNC HISTORY API
+// Track and manage sync operations
+// ============================================
+export const syncHistoryApi = {
+    // Get sync history for a company
+    list: async (companyId, limit = 20) => {
+        const { data, error } = await supabase
+            .from('sync_history')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('started_at', { ascending: false })
+            .limit(limit);
+        return { data, error };
+    },
+
+    // Get single sync details
+    getById: async (syncId) => {
+        const { data, error } = await supabase
+            .from('sync_history')
+            .select('*')
+            .eq('id', syncId)
+            .single();
+        return { data, error };
+    },
+
+    // Delete a specific sync and its data
+    deleteSync: async (syncId, companyId) => {
+        try {
+            // Get the sync record first
+            const { data: sync, error: fetchError } = await supabase
+                .from('sync_history')
+                .select('voucher_ids')
+                .eq('id', syncId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            // Delete vouchers from this sync batch
+            if (sync?.voucher_ids && sync.voucher_ids.length > 0) {
+                // Delete related sales_items first
+                await supabase
+                    .from('sales_items')
+                    .delete()
+                    .in('voucher_id', sync.voucher_ids);
+
+                // Delete related purchase_items
+                await supabase
+                    .from('purchase_items')
+                    .delete()
+                    .in('voucher_id', sync.voucher_ids);
+
+                // Delete sales
+                await supabase
+                    .from('sales')
+                    .delete()
+                    .in('voucher_id', sync.voucher_ids);
+
+                // Delete purchases
+                await supabase
+                    .from('purchases')
+                    .delete()
+                    .in('voucher_id', sync.voucher_ids);
+
+                // Delete vouchers
+                await supabase
+                    .from('vouchers')
+                    .delete()
+                    .in('voucher_id', sync.voucher_ids);
+            }
+
+            // Delete the sync history record
+            const { error: deleteError } = await supabase
+                .from('sync_history')
+                .delete()
+                .eq('id', syncId);
+
+            if (deleteError) throw deleteError;
+
+            return { success: true, deletedVouchers: sync?.voucher_ids?.length || 0 };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Get sync statistics
+    getStats: async (companyId) => {
+        const { data, error } = await supabase
+            .from('sync_history')
+            .select('sync_type, status, total_records, started_at')
+            .eq('company_id', companyId)
+            .order('started_at', { ascending: false })
+            .limit(10);
+
+        if (error) return { data: null, error };
+
+        const stats = {
+            totalSyncs: data.length,
+            lastSync: data[0] || null,
+            successCount: data.filter(s => s.status === 'completed').length,
+            failedCount: data.filter(s => s.status === 'failed').length,
+            totalRecordsSynced: data.reduce((sum, s) => sum + (s.total_records || 0), 0)
+        };
+
+        return { data: stats, error: null };
+    }
+};
+
 export default supabase;
+

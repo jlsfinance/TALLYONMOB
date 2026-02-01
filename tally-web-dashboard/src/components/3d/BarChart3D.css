@@ -1,0 +1,106 @@
+/* BarChart3D Component Styles */
+
+.bar-chart-3d {
+    width: 100%;
+}
+
+.bar-chart-3d__container {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 16px 8px 8px;
+}
+
+.bar-chart-3d__bar-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 24px;
+}
+
+.bar-chart-3d__bar-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.bar-chart-3d__value {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 4px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.bar-chart-3d__bar-wrapper:hover .bar-chart-3d__value {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.bar-chart-3d__bar {
+    position: relative;
+    width: 80%;
+    max-width: 40px;
+    min-height: 4px;
+    border-radius: 6px 6px 2px 2px;
+    box-shadow:
+        0 0 10px rgba(var(--glow-color), 0.3),
+        0 4px 16px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s, box-shadow 0.3s;
+    overflow: hidden;
+}
+
+.bar-chart-3d__bar:hover {
+    transform: scaleY(1.02) translateY(-2px);
+    box-shadow:
+        0 0 20px var(--glow-color),
+        0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.bar-chart-3d__bar-shine {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 50%;
+    bottom: 0;
+    background: linear-gradient(90deg,
+            rgba(255, 255, 255, 0.3),
+            rgba(255, 255, 255, 0.1));
+    border-radius: inherit;
+}
+
+.bar-chart-3d__label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 8px;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Animation */
+.bar-chart-3d--animated .bar-chart-3d__bar {
+    animation: bar-grow 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    transform-origin: bottom;
+}
+
+@keyframes bar-grow {
+    from {
+        transform: scaleY(0);
+        opacity: 0;
+    }
+
+    to {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}

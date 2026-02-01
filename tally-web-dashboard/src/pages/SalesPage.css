@@ -1,0 +1,109 @@
+/* SalesPage 3D Styles */
+
+.sales-3d__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+}
+
+.sales-3d__header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Stats Row */
+.sales-3d__stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.sales-3d__stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+}
+
+.sales-3d__stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.sales-3d__stat-value.green {
+    color: #10b981;
+}
+
+.sales-3d__stat-value.blue {
+    color: #00d4ff;
+}
+
+.sales-3d__stat-value.purple {
+    color: #8b5cf6;
+}
+
+.sales-3d__stat-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Date Filter */
+.sales-3d__date-filter {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+.sales-3d__date-filter span {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}
+
+.sales-3d__date-filter input {
+    flex: 1;
+}
+
+/* Tax Info */
+.sales-3d__tax-info {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* Date Input specific styles */
+.page-3d__date-input {
+    padding: 10px 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    transition: all 0.3s;
+}
+
+.page-3d__date-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}

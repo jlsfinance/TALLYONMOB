@@ -1,52 +1,61 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { ledgerApi, reportsApi } from '../lib/supabase';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 export default function LedgerDetailPage() {
     const { id } = useParams();
+    const navigate = useNavigate();
     const { selectedCompany } = useAuth();
     const [ledger, setLedger] = useState(null);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [fromDate, setFromDate] = useState(format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'));
-    const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+    const [activeTab, setActiveTab] = useState('transactions');
 
     useEffect(() => {
-        if (id) {
-            loadLedger();
+        if (id && selectedCompany) loadLedgerDetails();
+    }, [id, selectedCompany]);
+
+    const loadLedgerDetails = async () => {
+        setLoading(true);
+        try {
+            // Get ledger details
+            const { data: ledgerData } = await supabase
+                .from('ledgers')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            setLedger(ledgerData);
+
+            // Get transactions (vouchers where this ledger is the party)
+            if (ledgerData) {
+                const { data: voucherData } = await supabase
+                    .from('vouchers')
+                    .select('*')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('party_name', ledgerData.name)
+                    .order('voucher_date', { ascending: false })
+                    .limit(50);
+
+                setTransactions(voucherData || []);
+            }
+        } catch (error) {
+            console.error('Error loading ledger:', error);
+        } finally {
+            setLoading(false);
         }
-    }, [id]);
-
-    useEffect(() => {
-        if (ledger && selectedCompany) {
-            loadTransactions();
-        }
-    }, [ledger, fromDate, toDate]);
-
-    const loadLedger = async () => {
-        const { data } = await ledgerApi.getById(id);
-        setLedger(data);
-        setLoading(false);
-    };
-
-    const loadTransactions = async () => {
-        const { data } = await reportsApi.getLedgerStatement(
-            selectedCompany.id,
-            ledger.name,
-            fromDate,
-            toDate
-        );
-        setTransactions(data || []);
     };
 
     const formatCurrency = (amount) => {
+        const absAmount = Math.abs(amount || 0);
+        if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)}Cr`;
+        if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(2)}L`;
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
-            maximumFractionDigits: 2
-        }).format(Math.abs(amount || 0));
+            maximumFractionDigits: 0
+        }).format(absAmount);
     };
 
     const formatDate = (date) => {
@@ -57,203 +66,238 @@ export default function LedgerDetailPage() {
         });
     };
 
-    // Calculate running balance
-    let runningBalance = ledger?.opening_balance || 0;
-    const transactionsWithBalance = transactions.map(t => {
-        runningBalance += t.amount || 0;
-        return { ...t, runningBalance };
-    });
-
-    const handleShare = () => {
-        const text = `Ledger: ${ledger?.name}\nBalance: ${formatCurrency(ledger?.closing_balance)}\nAs of: ${formatDate(new Date())}`;
-        if (navigator.share) {
-            navigator.share({ title: 'Ledger Details', text });
-        } else {
-            navigator.clipboard.writeText(text);
-            alert('Copied to clipboard!');
-        }
-    };
-
     if (loading) {
         return (
-            <div className="animate-pulse space-y-6">
-                <div className="h-8 bg-gray-200 rounded w-48"></div>
-                <div className="bg-white rounded-xl p-6 shadow">
-                    <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-48"></div>
-                </div>
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
             </div>
         );
     }
 
     if (!ledger) {
-        return <div className="p-8 text-center text-gray-500">Ledger not found</div>;
+        return (
+            <div className="text-center py-12">
+                <span className="text-5xl">❌</span>
+                <p className="mt-4 text-gray-600">Ledger not found</p>
+                <button onClick={() => navigate('/ledgers')} className="mt-4 text-indigo-600 hover:underline">
+                    ← Back to Ledgers
+                </button>
+            </div>
+        );
     }
 
+    const isDebit = ledger.closing_balance > 0;
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 pb-20 lg:pb-0">
             {/* Back Button */}
-            <Link to="/ledgers" className="inline-flex items-center text-blue-600 hover:text-blue-800">
-                <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button
+                onClick={() => navigate('/ledgers')}
+                className="flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors"
+            >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                Back to Ledgers
-            </Link>
+                Back to Parties
+            </button>
 
-            {/* Ledger Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
-                <div className="flex items-start justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold">{ledger.name}</h1>
-                        <p className="text-blue-200 mt-1">{ledger.parent_group}</p>
-                        <div className="flex items-center gap-4 mt-4 text-sm">
-                            {ledger.phone && (
-                                <a href={`tel:${ledger.phone}`} className="flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full">
-                                    📞 {ledger.phone}
-                                </a>
-                            )}
-                            {ledger.email && (
-                                <a href={`mailto:${ledger.email}`} className="flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full">
-                                    ✉️ {ledger.email}
-                                </a>
-                            )}
-                            {ledger.gstin && (
-                                <span className="flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full">
-                                    GST: {ledger.gstin}
-                                </span>
-                            )}
+            {/* Header Card */}
+            <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+
+                <div className="relative z-10">
+                    <div className="flex items-start gap-4">
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white ${isDebit ? 'bg-emerald-500/30' : 'bg-rose-500/30'
+                            }`}>
+                            {ledger.name?.charAt(0)?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <h1 className="text-white text-xl font-bold truncate">{ledger.name}</h1>
+                            <p className="text-white/60 text-sm">{ledger.parent_group || 'General'}</p>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <p className="text-blue-200 text-sm">Current Balance</p>
-                        <p className="text-3xl font-bold">{formatCurrency(ledger.closing_balance)}</p>
-                        <p className="text-blue-200">{ledger.closing_balance >= 0 ? 'Debit' : 'Credit'}</p>
+
+                    {/* Balance */}
+                    <div className="mt-6 grid grid-cols-2 gap-4">
+                        <div className="bg-white/10 rounded-2xl p-4">
+                            <p className="text-white/60 text-xs">Closing Balance</p>
+                            <p className={`text-2xl font-bold ${isDebit ? 'text-emerald-300' : 'text-rose-300'}`}>
+                                {formatCurrency(ledger.closing_balance)}
+                            </p>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${isDebit ? 'bg-emerald-500/30 text-emerald-200' : 'bg-rose-500/30 text-rose-200'
+                                }`}>
+                                {isDebit ? 'Receivable' : 'Payable'}
+                            </span>
+                        </div>
+                        <div className="bg-white/10 rounded-2xl p-4">
+                            <p className="text-white/60 text-xs">Opening Balance</p>
+                            <p className="text-xl font-bold text-white">
+                                {formatCurrency(ledger.opening_balance)}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Contact Actions */}
+                    <div className="flex gap-2 mt-4">
+                        {ledger.phone && (
+                            <a
+                                href={`tel:${ledger.phone}`}
+                                className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
+                            >
+                                📞 Call
+                            </a>
+                        )}
+                        {ledger.phone && (
+                            <a
+                                href={`https://wa.me/${ledger.phone?.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 bg-emerald-500/30 hover:bg-emerald-500/40 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
+                            >
+                                💬 WhatsApp
+                            </a>
+                        )}
+                        {ledger.email && (
+                            <a
+                                href={`mailto:${ledger.email}`}
+                                className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
+                            >
+                                ✉️ Email
+                            </a>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="flex gap-3">
+            {/* Contact Info Card */}
+            {(ledger.phone || ledger.email || ledger.gstin || ledger.address) && (
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                    <h3 className="font-semibold text-gray-800 mb-3">Contact Details</h3>
+                    <div className="space-y-2 text-sm">
+                        {ledger.phone && (
+                            <div className="flex items-center gap-3 text-gray-600">
+                                <span>📞</span>
+                                <span>{ledger.phone}</span>
+                            </div>
+                        )}
+                        {ledger.email && (
+                            <div className="flex items-center gap-3 text-gray-600">
+                                <span>✉️</span>
+                                <span>{ledger.email}</span>
+                            </div>
+                        )}
+                        {ledger.gstin && (
+                            <div className="flex items-center gap-3 text-gray-600">
+                                <span>🏢</span>
+                                <span>GSTIN: {ledger.gstin}</span>
+                            </div>
+                        )}
+                        {ledger.pan && (
+                            <div className="flex items-center gap-3 text-gray-600">
+                                <span>🆔</span>
+                                <span>PAN: {ledger.pan}</span>
+                            </div>
+                        )}
+                        {ledger.address && (
+                            <div className="flex items-start gap-3 text-gray-600">
+                                <span>📍</span>
+                                <span>{ledger.address}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
                 <button
-                    onClick={handleShare}
-                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow hover:shadow-md transition"
+                    onClick={() => setActiveTab('transactions')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600'
+                        }`}
                 >
-                    <span>📤</span> Share
+                    Transactions
                 </button>
-                {ledger.phone && (
-                    <a
-                        href={`https://wa.me/${ledger.phone.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg shadow hover:bg-green-600 transition"
-                    >
-                        <span>💬</span> WhatsApp
-                    </a>
+                <button
+                    onClick={() => setActiveTab('statement')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'statement' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600'
+                        }`}
+                >
+                    Statement
+                </button>
+            </div>
+
+            {/* Transactions List */}
+            <div className="space-y-3">
+                {transactions.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                        <span className="text-5xl">📭</span>
+                        <p className="mt-4 font-medium">No transactions found</p>
+                    </div>
+                ) : (
+                    transactions.map(txn => (
+                        <Link
+                            key={txn.voucher_id}
+                            to={`/vouchers/${encodeURIComponent(txn.voucher_id)}`}
+                            className="block bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer"
+                        >
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="font-semibold text-gray-800">{txn.voucher_type}</p>
+                                    <p className="text-xs text-gray-500">
+                                        #{txn.voucher_number} • {formatDate(txn.voucher_date)}
+                                    </p>
+                                </div>
+                                <div className="text-right flex items-center gap-2">
+                                    <div>
+                                        <p className={`font-bold ${txn.voucher_type === 'Receipt' ? 'text-emerald-600' :
+                                            txn.voucher_type === 'Payment' ? 'text-rose-600' : 'text-gray-800'
+                                            }`}>
+                                            {formatCurrency(txn.total_amount)}
+                                        </p>
+                                        {(() => {
+                                            const partyEntry = txn.ledger_entries?.find(l =>
+                                                l.ledger_name?.toLowerCase() === ledger.name?.toLowerCase()
+                                            );
+                                            const isDr = partyEntry ? partyEntry.is_debit : (txn.voucher_type === 'Payment' || txn.voucher_type === 'Sales');
+
+                                            return (
+                                                <span className={`text-[9px] px-2 py-0.5 rounded-full ${isDr ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+                                                    }`}>
+                                                    {isDr ? 'Dr' : 'Cr'}
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </div>
+                            </div>
+                            {txn.narration && (
+                                <p className="text-xs text-gray-400 mt-2 truncate">{txn.narration}</p>
+                            )}
+                        </Link>
+                    ))
                 )}
             </div>
 
-            {/* Period Filter */}
-            <div className="bg-white rounded-xl p-4 shadow flex flex-col md:flex-row items-center gap-4">
-                <span className="text-gray-600 font-medium">Period:</span>
-                <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-gray-500">to</span>
-                <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-                <div className="flex gap-2 ml-auto">
-                    <button
-                        onClick={() => {
-                            setFromDate(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-                            setToDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-                        }}
-                        className="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
-                    >
-                        This Month
-                    </button>
-                    <button
-                        onClick={() => {
-                            setFromDate(format(startOfMonth(subMonths(new Date(), 2)), 'yyyy-MM-dd'));
-                            setToDate(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-                        }}
-                        className="px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
-                    >
-                        Last 3 Months
-                    </button>
-                </div>
-            </div>
-
-            {/* Balance Summary */}
-            <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl p-4 shadow">
-                    <p className="text-gray-500 text-sm">Opening Balance</p>
-                    <p className="text-xl font-bold text-gray-800">{formatCurrency(ledger.opening_balance)}</p>
-                </div>
-                <div className="bg-white rounded-xl p-4 shadow">
-                    <p className="text-gray-500 text-sm">Transactions</p>
-                    <p className="text-xl font-bold text-gray-800">{transactions.length}</p>
-                </div>
-                <div className="bg-white rounded-xl p-4 shadow">
-                    <p className="text-gray-500 text-sm">Closing Balance</p>
-                    <p className={`text-xl font-bold ${ledger.closing_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatCurrency(ledger.closing_balance)}
-                    </p>
-                </div>
-            </div>
-
-            {/* Transactions Table */}
-            <div className="bg-white rounded-xl shadow overflow-hidden">
-                <div className="p-4 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-800">Transactions</h3>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Voucher</th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Debit</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Credit</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {transactionsWithBalance.map((t, i) => (
-                                <tr key={i} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-sm">{formatDate(t.vch_date)}</td>
-                                    <td className="px-4 py-3 text-sm font-medium">{t.voucher_number || '-'}</td>
-                                    <td className="px-4 py-3">
-                                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
-                                            {t.voucher_type}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right text-green-600">
-                                        {t.amount > 0 ? formatCurrency(t.amount) : '-'}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right text-red-600">
-                                        {t.amount < 0 ? formatCurrency(t.amount) : '-'}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right font-medium">
-                                        {formatCurrency(t.runningBalance)}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {transactions.length === 0 && (
-                        <div className="p-8 text-center text-gray-500">
-                            No transactions in selected period
-                        </div>
-                    )}
-                </div>
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-4">
+                <Link
+                    to={`/ledger-statement/${id}`}
+                    className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl py-4 font-semibold shadow-lg hover:shadow-xl transition-all text-center"
+                >
+                    📋 View Statement
+                </Link>
+                <button
+                    onClick={() => {
+                        const msg = `Payment Reminder for ${ledger?.name}\n\nOutstanding: ${formatCurrency(ledger?.closing_balance)}\n\nPlease arrange payment.`;
+                        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                    }}
+                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl py-4 font-semibold shadow-lg hover:shadow-xl transition-all"
+                >
+                    📤 Send Reminder
+                </button>
             </div>
         </div>
     );

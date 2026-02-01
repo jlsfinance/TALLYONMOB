@@ -106,7 +106,7 @@ namespace TallySyncApp.Services
             string tableName = dataType.ToLower();
             if (tableName.Contains("vouchers")) tableName = "vouchers";
             else if (tableName.Contains("ledgers")) tableName = "ledgers";
-            else if (tableName.Contains("stock")) tableName = "stock";
+            else if (tableName.Contains("stock")) tableName = "stock_items";
             
             // Safety Check regarding Vouchers PK
             if ((tableName == "vouchers" || dataType.ToLower().Contains("voucher")) && onConflict != "voucher_id")
@@ -176,6 +176,46 @@ namespace TallySyncApp.Services
                 await UpsertAsync<object>("sync_metadata", payload, "company_id,sync_key");
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Get maximum ALTERID from a table for incremental sync
+        /// This allows us to fetch only records modified after last sync
+        /// </summary>
+        public async Task<long> GetMaxAlterIdAsync(string companyId, string tableName)
+        {
+            try
+            {
+                AddAuthHeader();
+                // Query to get MAX(alter_id) for a company - MUST exclude NULLs explicitly
+                var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyId}&alter_id=not.is.null&select=alter_id&order=alter_id.desc&limit=1";
+                var response = await _httpClient.GetStringAsync(url);
+                
+                SyncLogger.Log($"[DEBUG] GetMaxAlterIdAsync for {tableName}: Response = {response}");
+                
+                var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
+                if (items != null && items.Count > 0 && items[0].ContainsKey("alter_id"))
+                {
+                    var alterIdValue = items[0]["alter_id"];
+                    if (alterIdValue != null)
+                    {
+                        // Trim spaces before parsing (Tally sometimes adds leading spaces)
+                        string alterIdStr = alterIdValue.ToString()?.Trim() ?? "";
+                        if (long.TryParse(alterIdStr, out long alterId))
+                        {
+                            SyncLogger.Log($"[DEBUG] {tableName} max alter_id = {alterId}");
+                            return alterId;
+                        }
+                    }
+                }
+                SyncLogger.Log($"[DEBUG] {tableName} max alter_id = 0 (no data or null found)");
+                return 0; // No records yet, start from beginning
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetMaxAlterIdAsync error: {ex.Message}");
+                return 0;
+            }
         }
 
         /// <summary>
@@ -252,6 +292,334 @@ namespace TallySyncApp.Services
                     Success = false,
                     Error = $"Request failed: {ex.Message}"
                 };
+            }
+        }
+
+        // ============================================
+        // TWO-WAY SYNC: Cloud -> Tally
+        // ============================================
+
+        /// <summary>
+        /// Get pending transactions from cloud that need to be pushed to Tally
+        /// </summary>
+        public async Task<List<PendingTransaction>> GetPendingTransactionsAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?company_id=eq.{companyId}&status=eq.pending&order=created_at.asc";
+                var response = await _httpClient.GetStringAsync(url);
+                
+                var transactions = JsonConvert.DeserializeObject<List<PendingTransaction>>(response);
+                return transactions ?? new List<PendingTransaction>();
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetPendingTransactionsAsync error: {ex.Message}");
+                return new List<PendingTransaction>();
+            }
+        }
+
+        /// <summary>
+        /// Update pending transaction status after Tally sync attempt
+        /// </summary>
+        public async Task<bool> UpdatePendingTransactionStatusAsync(string transactionId, string status, string? tallyVoucherNumber = null, string? errorMessage = null)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                var updates = new Dictionary<string, object?>
+                {
+                    { "status", status }
+                };
+                
+                if (!string.IsNullOrEmpty(tallyVoucherNumber))
+                {
+                    updates["tally_voucher_number"] = tallyVoucherNumber;
+                    updates["synced_at"] = DateTime.UtcNow.ToString("o");
+                }
+                
+                if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    updates["error_message"] = errorMessage;
+                }
+                
+                var json = JsonConvert.SerializeObject(updates);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{transactionId}";
+                
+                var request = new HttpRequestMessage(HttpMethod.Patch, url)
+                {
+                    Content = content
+                };
+                
+                var response = await _httpClient.SendAsync(request);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ UpdatePendingTransactionStatusAsync error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ============================================
+        // VOUCHER DELETE DETECTION
+        // ============================================
+
+        /// <summary>
+        /// Get all voucher IDs from cloud for a company
+        /// </summary>
+        public async Task<List<string>> GetCloudVoucherIdsAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&select=voucher_id";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(content);
+                    return items?.Select(i => i["voucher_id"]?.ToString() ?? "").Where(id => !string.IsNullOrEmpty(id)).ToList() ?? new List<string>();
+                }
+                return new List<string>();
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetCloudVoucherIdsAsync error: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Mark vouchers as deleted (soft delete)
+        /// </summary>
+        public async Task<int> MarkVouchersAsDeletedAsync(string companyId, List<string> voucherIds)
+        {
+            if (voucherIds.Count == 0) return 0;
+
+            try
+            {
+                AddAuthHeader();
+                
+                int deleted = 0;
+                
+                // Process in batches of 100
+                foreach (var batch in voucherIds.Chunk(100))
+                {
+                    var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&voucher_id=in.({idsParam})";
+                    
+                    var updates = new { is_deleted = true, deleted_at = DateTime.UtcNow.ToString("o") };
+                    var json = JsonConvert.SerializeObject(updates);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+                    
+                    var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
+                    var response = await _httpClient.SendAsync(request);
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        deleted += batch.Length;
+                    }
+                }
+                
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ MarkVouchersAsDeletedAsync error: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Hard delete vouchers from cloud
+        /// </summary>
+        public async Task<int> DeleteVouchersAsync(string companyId, List<string> voucherIds)
+        {
+            if (voucherIds.Count == 0) return 0;
+
+            try
+            {
+                AddAuthHeader();
+                
+                int deleted = 0;
+                
+                // Process in batches of 100
+                foreach (var batch in voucherIds.Chunk(100))
+                {
+                    var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&voucher_id=in.({idsParam})";
+                    
+                    var request = new HttpRequestMessage(HttpMethod.Delete, url);
+                    var response = await _httpClient.SendAsync(request);
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        deleted += batch.Length;
+                    }
+                }
+                
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ DeleteVouchersAsync error: {ex.Message}");
+                return 0;
+            }
+        }
+
+        // ============================================
+        // SYNC HISTORY METHODS
+        // ============================================
+
+        /// <summary>
+        /// Start a new sync history record
+        /// </summary>
+        public async Task<string?> StartSyncHistoryAsync(string companyId, string syncType)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                var record = new Dictionary<string, object>
+                {
+                    ["company_id"] = companyId,
+                    ["sync_type"] = syncType,
+                    ["started_at"] = DateTime.UtcNow.ToString("o"),
+                    ["status"] = "running"
+                };
+                
+                var json = JsonConvert.SerializeObject(record);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/sync_history")
+                {
+                    Content = content
+                };
+                request.Headers.Add("Prefer", "return=representation");
+                
+                var response = await _httpClient.SendAsync(request);
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(responseBody);
+                    if (items != null && items.Count > 0 && items[0].ContainsKey("id"))
+                    {
+                        return items[0]["id"]?.ToString();
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ StartSyncHistoryAsync error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Update sync history record with counts and status
+        /// </summary>
+        public async Task<bool> UpdateSyncHistoryAsync(
+            string syncHistoryId, 
+            string status,
+            int ledgersSynced = 0,
+            int vouchersSynced = 0,
+            int salesSynced = 0,
+            int purchasesSynced = 0,
+            int stockSynced = 0,
+            int totalRecords = 0,
+            List<string>? voucherIds = null,
+            string? errorMessage = null)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                var updates = new Dictionary<string, object>
+                {
+                    ["status"] = status,
+                    ["ledgers_synced"] = ledgersSynced,
+                    ["vouchers_synced"] = vouchersSynced,
+                    ["sales_synced"] = salesSynced,
+                    ["purchases_synced"] = purchasesSynced,
+                    ["stock_synced"] = stockSynced,
+                    ["total_records"] = totalRecords
+                };
+                
+                if (status == "completed" || status == "failed")
+                {
+                    updates["completed_at"] = DateTime.UtcNow.ToString("o");
+                }
+                
+                if (voucherIds != null && voucherIds.Count > 0)
+                {
+                    // Store voucher IDs for rollback capability (limit to prevent huge arrays)
+                    updates["voucher_ids"] = voucherIds.Take(10000).ToArray();
+                }
+                
+                if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    updates["error_message"] = errorMessage;
+                }
+                
+                var json = JsonConvert.SerializeObject(updates);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?id=eq.{syncHistoryId}";
+                
+                var request = new HttpRequestMessage(HttpMethod.Patch, url)
+                {
+                    Content = content
+                };
+                
+                var response = await _httpClient.SendAsync(request);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ UpdateSyncHistoryAsync error: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Mark all 'running' syncs for a company as failed (used on app startup)
+        /// </summary>
+        public async Task FailRunningSyncsAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                var updates = new 
+                { 
+                    status = "failed", 
+                    error_message = "App restarted/crashed during sync",
+                    completed_at = DateTime.UtcNow.ToString("o")
+                };
+                
+                var json = JsonConvert.SerializeObject(updates);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?company_id=eq.{companyId}&status=eq.running";
+                
+                var request = new HttpRequestMessage(HttpMethod.Patch, url)
+                {
+                    Content = content
+                };
+                
+                await _httpClient.SendAsync(request);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ FailRunningSyncsAsync error: {ex.Message}");
             }
         }
 

@@ -172,6 +172,15 @@ namespace TallySyncApp.Models
 
         [JsonProperty("amount")]
         public decimal Amount { get; set; }
+
+        [JsonProperty("hsn_code")]
+        public string? HsnCode { get; set; }
+
+        [JsonProperty("tax_rate")]
+        public decimal? TaxRate { get; set; }
+
+        [JsonProperty("taxability")]
+        public string? Taxability { get; set; }
     }
 
     /// <summary>
@@ -205,6 +214,9 @@ namespace TallySyncApp.Models
 
         [JsonProperty("voucher_id")]
         public string? VoucherId { get; set; }
+
+        [JsonProperty("company_id")]
+        public string? CompanyId { get; set; }
 
         [JsonProperty("invoice_number")]
         public string? InvoiceNumber { get; set; }
@@ -264,6 +276,7 @@ namespace TallySyncApp.Models
         public string? AlterId { get; set; }
 
         [JsonIgnore]
+        [JsonProperty("items")]
         public List<SaleItem>? Items { get; set; }
 
         public override string ToString() => $"Sale #{InvoiceNumber} - ₹{NetAmount:N2}";
@@ -274,6 +287,15 @@ namespace TallySyncApp.Models
     /// </summary>
     public class SaleItem
     {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("sale_id")]
+        public string? SaleId { get; set; }
+
+        [JsonProperty("company_id")]
+        public string? CompanyId { get; set; }
+
         [JsonProperty("stock_item_id")]
         public string? StockItemId { get; set; }
 
@@ -312,6 +334,9 @@ namespace TallySyncApp.Models
 
         [JsonProperty("voucher_id")]
         public string? VoucherId { get; set; }
+
+        [JsonProperty("company_id")]
+        public string? CompanyId { get; set; }
 
         [JsonProperty("invoice_number")]
         public string? InvoiceNumber { get; set; }
@@ -367,7 +392,53 @@ namespace TallySyncApp.Models
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
 
+        [JsonIgnore]
+        [JsonProperty("items")]
+        public List<PurchaseItem>? Items { get; set; }
+
         public override string ToString() => $"Purchase #{InvoiceNumber} - ₹{NetAmount:N2}";
+    }
+
+    /// <summary>
+    /// Purchase invoice line item
+    /// </summary>
+    public class PurchaseItem
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("purchase_id")]
+        public string? PurchaseId { get; set; }
+
+        [JsonProperty("company_id")]
+        public string? CompanyId { get; set; }
+
+        [JsonProperty("stock_item_id")]
+        public string? StockItemId { get; set; }
+
+        [JsonProperty("stock_item_name")]
+        public string StockItemName { get; set; } = string.Empty;
+
+        [JsonProperty("quantity")]
+        public decimal Quantity { get; set; }
+
+        [JsonProperty("unit")]
+        public string? Unit { get; set; }
+
+        [JsonProperty("rate")]
+        public decimal Rate { get; set; }
+
+        [JsonProperty("discount_percent")]
+        public decimal DiscountPercent { get; set; }
+
+        [JsonProperty("amount")]
+        public decimal Amount { get; set; }
+
+        [JsonProperty("tax_rate")]
+        public decimal TaxRate { get; set; }
+
+        [JsonProperty("hsn_code")]
+        public string? HsnCode { get; set; }
     }
 
     /// <summary>
@@ -468,5 +539,47 @@ namespace TallySyncApp.Models
         public string? OwnerId { get; set; }
 
         public override string ToString() => Name;
+    }
+
+    /// <summary>
+    /// Pending Transaction - Created on Web/App, needs to be pushed to Tally
+    /// </summary>
+    public class PendingTransaction
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("company_id")]
+        public string CompanyId { get; set; } = string.Empty;
+
+        [JsonProperty("transaction_type")]
+        public string TransactionType { get; set; } = string.Empty; // Sales, Purchase, Receipt, Payment, etc.
+
+        [JsonProperty("voucher_data")]
+        public dynamic? VoucherData { get; set; } // JSON object with full voucher details
+
+        [JsonProperty("status")]
+        public string Status { get; set; } = "pending"; // pending, processing, synced, failed
+
+        [JsonProperty("error_message")]
+        public string? ErrorMessage { get; set; }
+
+        [JsonProperty("created_by")]
+        public string? CreatedBy { get; set; }
+
+        [JsonProperty("created_at")]
+        public DateTime CreatedAt { get; set; }
+
+        [JsonProperty("synced_at")]
+        public DateTime? SyncedAt { get; set; }
+
+        [JsonProperty("tally_voucher_number")]
+        public string? TallyVoucherNumber { get; set; }
+
+        [JsonProperty("tally_master_id")]
+        public string? TallyMasterId { get; set; }
+
+        [JsonProperty("retry_count")]
+        public int RetryCount { get; set; }
     }
 }

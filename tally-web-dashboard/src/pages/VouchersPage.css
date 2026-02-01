@@ -1,0 +1,207 @@
+/* VouchersPage 3D Styles */
+
+.vouchers-3d__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+}
+
+.vouchers-3d__header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Stats Row */
+.vouchers-3d__stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 640px) {
+    .vouchers-3d__stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.vouchers-3d__stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+.vouchers-3d__stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.vouchers-3d__stat-value.green {
+    color: #10b981;
+}
+
+.vouchers-3d__stat-value.purple {
+    color: #8b5cf6;
+}
+
+.vouchers-3d__stat-value.blue {
+    color: #00d4ff;
+}
+
+.vouchers-3d__stat-value.red {
+    color: #ef4444;
+}
+
+.vouchers-3d__stat-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Month Filter */
+.vouchers-3d__month-filter {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+.vouchers-3d__month-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+    flex-shrink: 0;
+}
+
+.vouchers-3d__month-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.vouchers-3d__month-btn.active {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+.vouchers-3d__month-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.vouchers-3d__month-btn.active .vouchers-3d__month-name {
+    color: #10b981;
+}
+
+.vouchers-3d__month-total {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 4px;
+}
+
+.vouchers-3d__month-btn.active .vouchers-3d__month-total {
+    color: #10b981;
+}
+
+/* Deleted state */
+.page-3d__list-card.deleted {
+    opacity: 0.6;
+}
+
+.page-3d__list-name.deleted {
+    text-decoration: line-through;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.vouchers-3d__deleted-tag {
+    margin-left: 8px;
+    font-size: 9px;
+    padding: 2px 6px;
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.vouchers-3d__narration {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    margin-top: 4px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Avatar color variants */
+.page-3d__list-avatar.green {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.4) 0%, rgba(5, 150, 105, 0.3) 100%);
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.page-3d__list-avatar.purple {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.4) 0%, rgba(109, 40, 217, 0.3) 100%);
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.page-3d__list-avatar.blue {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.4) 0%, rgba(0, 150, 199, 0.3) 100%);
+    border-color: rgba(0, 212, 255, 0.5);
+}
+
+.page-3d__list-avatar.red {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.3) 100%);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.page-3d__list-avatar.orange {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.4) 0%, rgba(194, 65, 12, 0.3) 100%);
+    border-color: rgba(249, 115, 22, 0.5);
+}
+
+/* Amount color variants */
+.page-3d__list-amount.green {
+    color: #10b981;
+}
+
+.page-3d__list-amount.purple {
+    color: #8b5cf6;
+}
+
+.page-3d__list-amount.blue {
+    color: #00d4ff;
+}
+
+.page-3d__list-amount.red {
+    color: #ef4444;
+}
+
+.page-3d__list-amount.orange {
+    color: #f97316;
+}
+
+/* Badge variants missing from shared styles */
+.page-3d__list-badge.default {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}

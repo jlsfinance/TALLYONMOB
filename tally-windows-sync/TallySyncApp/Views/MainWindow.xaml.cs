@@ -179,7 +179,7 @@ namespace TallySyncApp.Views
 
             try
             {
-                await syncManager.RunManualSyncAsync();
+                await syncManager.RunManualSyncAsync(ForceResetCheckBox.IsChecked == true);
                 UpdateQueueStats();
                 
                 if (syncManager.Status.State == SyncState.Completed)

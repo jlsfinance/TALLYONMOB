@@ -1,0 +1,487 @@
+/* SelectCompanyPage 3D Styles */
+
+.select-company-3d {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+    position: relative;
+    overflow: hidden;
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+/* Background */
+.select-company-3d__bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+}
+
+.select-company-3d__orbs {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.select-company-3d__orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.5;
+    animation: float 8s ease-in-out infinite;
+}
+
+.select-company-3d__orb--1 {
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, transparent 70%);
+    top: -100px;
+    right: -100px;
+}
+
+.select-company-3d__orb--2 {
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%);
+    bottom: -50px;
+    left: -50px;
+    animation-delay: 3s;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-30px) scale(1.05);
+    }
+}
+
+/* Container */
+.select-company-3d__container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 480px;
+}
+
+/* Loading */
+.select-company-3d__loading {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.select-company-3d__spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid rgba(139, 92, 246, 0.2);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Header */
+.select-company-3d__header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.select-company-3d__logo {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(0, 212, 255, 0.2) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+    animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.select-company-3d__title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 8px;
+}
+
+.select-company-3d__subtitle {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0;
+}
+
+/* Search */
+.select-company-3d__search {
+    position: relative;
+    margin-bottom: 24px;
+}
+
+.select-company-3d__search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+}
+
+.select-company-3d__search-input {
+    width: 100%;
+    padding: 16px 16px 16px 48px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s;
+}
+
+.select-company-3d__search-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+}
+
+.select-company-3d__search-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* Company List */
+.select-company-3d__list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 8px;
+}
+
+/* Empty State */
+.select-company-3d__empty {
+    text-align: center;
+    padding: 48px 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+}
+
+.select-company-3d__empty-icon {
+    font-size: 64px;
+    display: block;
+    margin-bottom: 16px;
+}
+
+.select-company-3d__empty p {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0 0 8px;
+}
+
+.select-company-3d__empty span {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Company Card */
+.select-company-3d__card-wrapper {
+    position: relative;
+    animation: slideUp 0.5s ease-out forwards;
+    opacity: 0;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.select-company-3d__card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-align: left;
+}
+
+.select-company-3d__card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(139, 92, 246, 0.4);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 10px 40px rgba(139, 92, 246, 0.2);
+}
+
+.select-company-3d__card-avatar {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #00d4ff 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 22px;
+    font-weight: 700;
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+}
+
+.select-company-3d__card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.select-company-3d__card-name {
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 6px;
+    transition: color 0.3s;
+}
+
+.select-company-3d__card:hover .select-company-3d__card-name {
+    color: #8b5cf6;
+}
+
+.select-company-3d__card-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.select-company-3d__card-guid {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.select-company-3d__card-synced {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #10b981;
+}
+
+.select-company-3d__card-dot {
+    width: 6px;
+    height: 6px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.select-company-3d__card-arrow {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.3);
+    transition: all 0.3s;
+}
+
+.select-company-3d__card:hover .select-company-3d__card-arrow {
+    color: #8b5cf6;
+    transform: translateX(4px);
+}
+
+/* Delete Button */
+.select-company-3d__delete-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.3s;
+}
+
+.select-company-3d__card-wrapper:hover .select-company-3d__delete-btn {
+    opacity: 1;
+}
+
+.select-company-3d__delete-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    transform: scale(1.1);
+}
+
+/* Footer */
+.select-company-3d__footer {
+    margin-top: 32px;
+    text-align: center;
+}
+
+.select-company-3d__footer p {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.3);
+    margin: 0;
+}
+
+/* Modal */
+.select-company-3d__modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+}
+
+.select-company-3d__modal {
+    background: rgba(26, 26, 62, 0.95);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 24px;
+    padding: 32px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.select-company-3d__modal-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.select-company-3d__modal-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 12px;
+}
+
+.select-company-3d__modal-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0 0 8px;
+}
+
+.select-company-3d__modal-text strong {
+    color: #ef4444;
+}
+
+.select-company-3d__modal-warning {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0 0 24px;
+}
+
+.select-company-3d__modal-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.select-company-3d__modal-cancel,
+.select-company-3d__modal-delete {
+    flex: 1;
+    padding: 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.select-company-3d__modal-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.select-company-3d__modal-cancel:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.select-company-3d__modal-delete {
+    background: #ef4444;
+    color: #fff;
+}
+
+.select-company-3d__modal-delete:hover {
+    background: #dc2626;
+}
+
+.select-company-3d__btn-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Pulse Glow Animation */
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 50px rgba(139, 92, 246, 0.5);
+    }
+}

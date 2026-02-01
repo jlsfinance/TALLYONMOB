@@ -1,0 +1,304 @@
+/* Dashboard 3D Page Styles */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+.dashboard-3d {
+    min-height: 100vh;
+    padding: 24px;
+    font-family: 'Space Grotesk', sans-serif;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Background Grid */
+.dashboard-3d__bg-grid {
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* Empty State */
+.dashboard-3d__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 18px;
+}
+
+/* Header */
+.dashboard-3d__header {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding: 24px;
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+}
+
+.dashboard-3d__title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dashboard-3d__title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+}
+
+.dashboard-3d__title-icon {
+    font-size: 32px;
+    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5));
+}
+
+.dashboard-3d__subtitle {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0;
+}
+
+.dashboard-3d__stats-strip {
+    display: flex;
+    gap: 24px;
+}
+
+.dashboard-3d__stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: 12px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-3d__stat-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dashboard-3d__stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #10b981;
+}
+
+.dashboard-3d__stat-value--warning {
+    color: #f59e0b;
+}
+
+/* Loading */
+.dashboard-3d__loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 16px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.dashboard-3d__spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid rgba(139, 92, 246, 0.2);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* KPI Section */
+.dashboard-3d__kpi-section {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+@media (max-width: 1200px) {
+    .dashboard-3d__kpi-section {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .dashboard-3d__kpi-section {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Charts Section */
+.dashboard-3d__charts {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+@media (max-width: 900px) {
+    .dashboard-3d__charts {
+        grid-template-columns: 1fr;
+    }
+}
+
+.dashboard-3d__chart-card,
+.dashboard-3d__progress-card {
+    min-height: 280px;
+}
+
+.dashboard-3d__section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0 0 20px 0;
+}
+
+.dashboard-3d__section-title span {
+    font-size: 20px;
+}
+
+.dashboard-3d__progress-grid {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 20px 0;
+}
+
+/* Recent Vouchers */
+.dashboard-3d__recent {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 32px;
+}
+
+.dashboard-3d__voucher-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.dashboard-3d__voucher-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.dashboard-3d__voucher-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(139, 92, 246, 0.3);
+    transform: translateX(4px);
+}
+
+.dashboard-3d__voucher-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.dashboard-3d__voucher-number {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.dashboard-3d__voucher-party {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.dashboard-3d__voucher-details {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.dashboard-3d__voucher-type {
+    font-size: 11px;
+    padding: 4px 8px;
+    background: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dashboard-3d__voucher-amount {
+    font-size: 15px;
+    font-weight: 700;
+    color: #10b981;
+}
+
+/* Quick Actions */
+.dashboard-3d__actions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dashboard-3d__action-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 24px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(0, 212, 255, 0.1) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.dashboard-3d__action-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(0, 212, 255, 0.2) 100%);
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+}
+
+.dashboard-3d__action-btn span {
+    font-size: 18px;
+}

@@ -1,0 +1,448 @@
+/* LoginPage 3D Styles */
+
+.login-3d {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+    position: relative;
+    overflow: hidden;
+    font-family: 'Space Grotesk', sans-serif;
+}
+
+/* Background Grid */
+.login-3d__bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    pointer-events: none;
+}
+
+/* Animated Orbs */
+.login-3d__bg-orbs {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.login-3d__orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.6;
+    animation: float 8s ease-in-out infinite;
+}
+
+.login-3d__orb--1 {
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, transparent 70%);
+    top: -100px;
+    right: -100px;
+    animation-delay: 0s;
+}
+
+.login-3d__orb--2 {
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%);
+    bottom: -50px;
+    left: -50px;
+    animation-delay: 2s;
+}
+
+.login-3d__orb--3 {
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.3) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation-delay: 4s;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-30px) scale(1.05);
+    }
+}
+
+/* Container */
+.login-3d__container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 440px;
+}
+
+/* Logo Section */
+.login-3d__logo-section {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.login-3d__logo {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(0, 212, 255, 0.2) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.3);
+    animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.login-3d__logo-icon {
+    font-size: 36px;
+    filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
+}
+
+.login-3d__brand {
+    font-size: 32px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.login-3d__tagline {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 8px 0 0;
+}
+
+/* Card */
+.login-3d__card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 28px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.login-3d__title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 8px;
+    text-align: center;
+}
+
+.login-3d__subtitle {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin: 0 0 28px;
+    text-align: center;
+}
+
+/* Form */
+.login-3d__form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.login-3d__field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.login-3d__label {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.login-3d__input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.login-3d__input-icon {
+    position: absolute;
+    left: 16px;
+    font-size: 16px;
+    pointer-events: none;
+}
+
+.login-3d__input {
+    width: 100%;
+    padding: 16px 48px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    transition: all 0.3s;
+}
+
+.login-3d__input:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15), 0 0 20px rgba(139, 92, 246, 0.1);
+}
+
+.login-3d__input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.login-3d__toggle-password {
+    position: absolute;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.3s;
+}
+
+.login-3d__toggle-password:hover {
+    opacity: 1;
+}
+
+/* Options Row */
+.login-3d__options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: -4px;
+}
+
+.login-3d__remember {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+}
+
+.login-3d__checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #8b5cf6;
+    cursor: pointer;
+}
+
+.login-3d__forgot {
+    font-size: 13px;
+    color: #8b5cf6;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.login-3d__forgot:hover {
+    color: #a78bfa;
+}
+
+/* Submit Button */
+.login-3d__submit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(135deg, #8b5cf6 0%, #00d4ff 100%);
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+    margin-top: 8px;
+}
+
+.login-3d__submit:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(139, 92, 246, 0.5);
+}
+
+.login-3d__submit:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.login-3d__submit-arrow {
+    transition: transform 0.3s;
+}
+
+.login-3d__submit:hover .login-3d__submit-arrow {
+    transform: translateX(4px);
+}
+
+.login-3d__spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Divider */
+.login-3d__divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 28px 0;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+}
+
+.login-3d__divider::before,
+.login-3d__divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Social Buttons */
+.login-3d__social {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.login-3d__social-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.login-3d__social-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.login-3d__social-icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* Switch */
+.login-3d__switch {
+    margin-top: 24px;
+    text-align: center;
+}
+
+.login-3d__switch button {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    color: #8b5cf6;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.3s;
+}
+
+.login-3d__switch button:hover {
+    color: #a78bfa;
+}
+
+/* Features */
+.login-3d__features {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 32px;
+}
+
+.login-3d__feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    backdrop-filter: blur(8px);
+}
+
+.login-3d__feature-icon {
+    font-size: 24px;
+    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.4));
+}
+
+.login-3d__feature-text {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Pulse glow animation */
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 40px rgba(139, 92, 246, 0.5);
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 480px) {
+    .login-3d {
+        padding: 16px;
+    }
+
+    .login-3d__card {
+        padding: 28px 24px;
+        border-radius: 24px;
+    }
+
+    .login-3d__features {
+        gap: 12px;
+    }
+
+    .login-3d__feature {
+        padding: 12px 16px;
+    }
+}

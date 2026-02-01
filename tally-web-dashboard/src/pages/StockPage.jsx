@@ -1,233 +1,277 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { stockApi } from '../lib/supabase';
+import { Link } from 'react-router-dom';
 
 export default function StockPage() {
     const { selectedCompany } = useAuth();
-    const [stock, setStock] = useState([]);
-    const [groups, setGroups] = useState([]);
-    const [selectedGroup, setSelectedGroup] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [stockItems, setStockItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedGroup, setSelectedGroup] = useState('all');
+    const [groups, setGroups] = useState([]);
+    const [stats, setStats] = useState({ totalItems: 0, totalValue: 0, lowStock: 0 });
+    const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
 
     useEffect(() => {
         if (selectedCompany) {
-            loadData();
+            loadStock();
+            loadGroups();
         }
-    }, [selectedCompany]);
+    }, [selectedCompany, selectedGroup]);
 
-    const loadData = async () => {
+    const loadStock = async () => {
         setLoading(true);
-        const [stockRes, groupRes] = await Promise.all([
-            stockApi.list(selectedCompany.id),
-            stockApi.getGroups(selectedCompany.id)
-        ]);
-        setStock(stockRes.data || []);
-        setGroups(groupRes.data || []);
+        const { data } = await stockApi.list(
+            selectedCompany.id,
+            selectedGroup !== 'all' ? selectedGroup : null
+        );
+        setStockItems(data || []);
+
+        // Calculate stats
+        const all = data || [];
+        setStats({
+            totalItems: all.length,
+            totalValue: all.reduce((s, item) => s + (item.closing_value || 0), 0),
+            lowStock: all.filter(item => (item.closing_balance || 0) < 10).length
+        });
+
         setLoading(false);
     };
 
+    const loadGroups = async () => {
+        const { data } = await stockApi.getGroups(selectedCompany.id);
+        setGroups(data || []);
+    };
+
     const formatCurrency = (amount) => {
+        const absAmount = Math.abs(amount || 0);
+        if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)}Cr`;
+        if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(2)}L`;
         return new Intl.NumberFormat('en-IN', {
             style: 'currency',
             currency: 'INR',
             maximumFractionDigits: 0
-        }).format(amount || 0);
+        }).format(absAmount);
     };
 
     const formatQuantity = (qty, unit) => {
-        const numQty = parseFloat(qty || 0);
-        return `${numQty.toLocaleString('en-IN')} ${unit || ''}`;
+        if (!qty && qty !== 0) return '-';
+        return `${qty.toFixed(qty % 1 === 0 ? 0 : 2)} ${unit || ''}`.trim();
     };
 
-    const filteredStock = stock.filter(s => {
-        const matchesSearch = s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            s.hsn_code?.includes(searchTerm);
-        const matchesGroup = !selectedGroup || s.stock_group === selectedGroup;
-        return matchesSearch && matchesGroup;
-    });
-
-    // Calculate totals
-    const totalValue = filteredStock.reduce((sum, s) => sum + (s.closing_value || 0), 0);
-    const totalItems = filteredStock.length;
+    const filteredStock = stockItems.filter(item =>
+        item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     if (!selectedCompany) {
         return <div className="p-8 text-center text-gray-500">Please select a company first</div>;
     }
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Stock Items</h1>
-                    <p className="text-gray-500">Inventory management and stock levels</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="text-right">
-                        <p className="text-sm text-gray-500">{totalItems} items</p>
-                        <p className="text-lg font-bold text-purple-600">{formatCurrency(totalValue)}</p>
+        <div className="space-y-4 pb-20 lg:pb-0">
+            {/* Header with Stats */}
+            <div className="bg-gradient-to-br from-orange-500 via-amber-600 to-yellow-600 rounded-3xl p-5 shadow-2xl relative overflow-hidden">
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-gradient-to-br from-yellow-300/30 to-orange-300/30 rounded-full blur-3xl"></div>
+                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-gradient-to-br from-amber-300/30 to-red-300/30 rounded-full blur-3xl"></div>
+
+                <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h1 className="text-white text-xl font-bold">Stock Items</h1>
+                            <p className="text-white/60 text-sm">{stats.totalItems} items in inventory</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                                className="p-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition"
+                            >
+                                {viewMode === 'grid' ? (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                    </svg>
+                                )}
+                            </button>
+                            <button className="p-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex bg-gray-100 rounded-lg p-1">
-                        <button
-                            onClick={() => setViewMode('list')}
-                            className={`px-3 py-1 rounded ${viewMode === 'list' ? 'bg-white shadow' : ''}`}
-                        >
-                            📋
-                        </button>
-                        <button
-                            onClick={() => setViewMode('grid')}
-                            className={`px-3 py-1 rounded ${viewMode === 'grid' ? 'bg-white shadow' : ''}`}
-                        >
-                            📊
-                        </button>
+
+                    {/* Stats Row */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="text-center p-3 bg-white/10 rounded-xl">
+                            <p className="text-white font-bold text-lg">{stats.totalItems}</p>
+                            <p className="text-white/40 text-[10px]">Total Items</p>
+                        </div>
+                        <div className="text-center p-3 bg-white/10 rounded-xl">
+                            <p className="text-yellow-200 font-bold text-lg">{formatCurrency(stats.totalValue)}</p>
+                            <p className="text-white/40 text-[10px]">Stock Value</p>
+                        </div>
+                        <div className="text-center p-3 bg-white/10 rounded-xl">
+                            <p className="text-red-300 font-bold text-lg">{stats.lowStock}</p>
+                            <p className="text-white/40 text-[10px]">Low Stock</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="bg-white rounded-xl p-4 shadow flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                    <input
-                        type="text"
-                        placeholder="Search by name or HSN code..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
-                <select
-                    value={selectedGroup}
-                    onChange={(e) => setSelectedGroup(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            {/* Group Filter Pills */}
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+                <button
+                    onClick={() => setSelectedGroup('all')}
+                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${selectedGroup === 'all'
+                            ? 'bg-orange-500 text-white shadow-lg scale-105'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-300'
+                        }`}
                 >
-                    <option value="">All Groups</option>
-                    {groups.map(g => (
-                        <option key={g} value={g}>{g}</option>
-                    ))}
-                </select>
+                    📦 All Items
+                </button>
+                {groups.slice(0, 5).map(group => (
+                    <button
+                        key={group}
+                        onClick={() => setSelectedGroup(group)}
+                        className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${selectedGroup === group
+                                ? 'bg-orange-500 text-white shadow-lg scale-105'
+                                : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-300'
+                            }`}
+                    >
+                        {group}
+                    </button>
+                ))}
             </div>
 
-            {/* Stock List/Grid */}
+            {/* Search */}
+            <div className="relative">
+                <input
+                    type="text"
+                    placeholder="Search item name or group..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 shadow-sm"
+                />
+                <svg className="w-5 h-5 text-gray-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+
+            {/* Stock Items */}
             {loading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-3' : 'space-y-3'}>
                     {[1, 2, 3, 4, 5, 6].map(i => (
-                        <div key={i} className="bg-white rounded-xl p-4 shadow animate-pulse">
-                            <div className="h-5 bg-gray-200 rounded w-48 mb-2"></div>
-                            <div className="h-4 bg-gray-200 rounded w-32"></div>
+                        <div key={i} className="bg-white rounded-2xl p-4 shadow-sm animate-pulse">
+                            <div className="h-12 bg-gray-200 rounded-xl mb-3"></div>
+                            <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                         </div>
                     ))}
                 </div>
             ) : viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredStock.map(item => (
-                        <div key={item.id} className="bg-white rounded-xl p-5 shadow hover:shadow-lg transition">
-                            <div className="flex items-start justify-between mb-3">
-                                <div>
-                                    <h3 className="font-semibold text-gray-800">{item.name}</h3>
-                                    <p className="text-sm text-gray-500">{item.stock_group || 'Uncategorized'}</p>
+                <div className="grid grid-cols-2 gap-3">
+                    {filteredStock.map(item => {
+                        const isLowStock = (item.closing_balance || 0) < 10;
+                        return (
+                            <div
+                                key={item.id}
+                                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg hover:border-orange-200 transition-all group"
+                            >
+                                <div className={`w-full h-16 rounded-xl flex items-center justify-center text-3xl mb-3 ${isLowStock ? 'bg-red-50' : 'bg-gradient-to-br from-orange-50 to-amber-50'
+                                    }`}>
+                                    📦
                                 </div>
-                                {item.hsn_code && (
-                                    <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                                        HSN: {item.hsn_code}
-                                    </span>
+                                <p className="font-semibold text-gray-900 text-sm truncate group-hover:text-orange-600 transition-colors">
+                                    {item.name}
+                                </p>
+                                <p className="text-[10px] text-gray-500 truncate">{item.stock_group || 'General'}</p>
+
+                                <div className="flex justify-between items-end mt-3">
+                                    <div>
+                                        <p className="text-[10px] text-gray-400">Qty</p>
+                                        <p className={`font-bold ${isLowStock ? 'text-red-600' : 'text-gray-800'}`}>
+                                            {formatQuantity(item.closing_balance, item.base_unit)}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] text-gray-400">Value</p>
+                                        <p className="font-bold text-orange-600 text-sm">
+                                            {formatCurrency(item.closing_value)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {isLowStock && (
+                                    <div className="mt-2 px-2 py-1 bg-red-100 text-red-600 text-[9px] rounded-full text-center font-medium">
+                                        ⚠️ Low Stock
+                                    </div>
                                 )}
                             </div>
-                            <div className="grid grid-cols-2 gap-4 mt-4">
-                                <div className="bg-blue-50 rounded-lg p-3">
-                                    <p className="text-xs text-blue-600">Closing Qty</p>
-                                    <p className="text-lg font-bold text-blue-700">
-                                        {formatQuantity(item.closing_balance, item.base_unit)}
-                                    </p>
-                                </div>
-                                <div className="bg-green-50 rounded-lg p-3">
-                                    <p className="text-xs text-green-600">Value</p>
-                                    <p className="text-lg font-bold text-green-700">
-                                        {formatCurrency(item.closing_value)}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-2 text-xs text-gray-500">
-                                <div>
-                                    <span>In: </span>
-                                    <span className="text-green-600 font-medium">
-                                        {formatQuantity(item.inward_quantity, item.base_unit)}
-                                    </span>
-                                </div>
-                                <div>
-                                    <span>Out: </span>
-                                    <span className="text-red-600 font-medium">
-                                        {formatQuantity(item.outward_quantity, item.base_unit)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             ) : (
-                <div className="bg-white rounded-xl shadow overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Item</th>
-                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Group</th>
-                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">HSN</th>
-                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Opening</th>
-                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Inward</th>
-                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outward</th>
-                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Closing</th>
-                                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Value</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {filteredStock.map(item => (
-                                    <tr key={item.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-3">
-                                            <p className="font-medium text-gray-800">{item.name}</p>
-                                            {item.alias && <p className="text-xs text-gray-500">{item.alias}</p>}
-                                        </td>
-                                        <td className="px-4 py-3 text-sm text-gray-600">{item.stock_group || '-'}</td>
-                                        <td className="px-4 py-3 text-center text-sm text-gray-600">{item.hsn_code || '-'}</td>
-                                        <td className="px-4 py-3 text-right text-sm">
-                                            {formatQuantity(item.opening_balance, item.base_unit)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-sm text-green-600">
-                                            +{formatQuantity(item.inward_quantity, item.base_unit)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right text-sm text-red-600">
-                                            -{formatQuantity(item.outward_quantity, item.base_unit)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-medium">
+                <div className="space-y-3">
+                    {filteredStock.map(item => {
+                        const isLowStock = (item.closing_balance || 0) < 10;
+                        return (
+                            <div
+                                key={item.id}
+                                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg hover:border-orange-200 transition-all group"
+                            >
+                                <div className="flex gap-3 items-center">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl ${isLowStock ? 'bg-red-50' : 'bg-gradient-to-br from-orange-50 to-amber-50'
+                                        }`}>
+                                        📦
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-gray-900 truncate group-hover:text-orange-600 transition-colors">
+                                            {item.name}
+                                        </p>
+                                        <p className="text-xs text-gray-500">{item.stock_group || 'General'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`font-bold ${isLowStock ? 'text-red-600' : 'text-gray-800'}`}>
                                             {formatQuantity(item.closing_balance, item.base_unit)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-bold text-purple-600">
+                                        </p>
+                                        <p className="text-xs text-orange-600 font-medium">
                                             {formatCurrency(item.closing_value)}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot className="bg-gray-50">
-                                <tr>
-                                    <td colSpan="7" className="px-4 py-3 text-right font-semibold text-gray-700">
-                                        Total Stock Value:
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-bold text-purple-600 text-lg">
-                                        {formatCurrency(totalValue)}
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                    {filteredStock.length === 0 && (
-                        <div className="p-8 text-center text-gray-500">
-                            <div className="text-5xl mb-4">📦</div>
-                            <p>No stock items found</p>
-                        </div>
-                    )}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {isLowStock && (
+                                    <div className="mt-2 flex justify-end">
+                                        <span className="px-2 py-1 bg-red-100 text-red-600 text-[9px] rounded-full font-medium">
+                                            ⚠️ Low Stock
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
+
+            {filteredStock.length === 0 && !loading && (
+                <div className="text-center py-12 text-gray-400">
+                    <span className="text-5xl">📦</span>
+                    <p className="mt-4 font-medium">No stock items found</p>
+                    <p className="text-sm">Try adjusting the filters</p>
+                </div>
+            )}
+
+            {/* Floating Action Button */}
+            <button className="fixed bottom-24 lg:bottom-8 right-6 w-14 h-14 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform z-40">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+            </button>
         </div>
     );
 }

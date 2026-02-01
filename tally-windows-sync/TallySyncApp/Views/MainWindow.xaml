@@ -182,6 +182,13 @@
                             <ComboBoxItem Content="Manual only"/>
                         </ComboBox>
 
+                        <!-- Force Reset Checkbox -->
+                        <CheckBox x:Name="ForceResetCheckBox" 
+                                  Content="Force Full Resync (Fix ID Issues)" 
+                                  Margin="0,15,0,0"
+                                  FontSize="12"
+                                  Foreground="#EF4444"/>
+
                         <!-- Progress -->
                         <TextBlock Text="Sync Progress" Foreground="{StaticResource TextSecondaryBrush}" 
                                    FontSize="12" Margin="0,20,0,5"/>

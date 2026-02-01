@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
             // Auto-select first company
             const saved = localStorage.getItem('selectedCompanyId');
             const found = data.find(c => c.id === saved);
-            setSelectedCompany(found || data[0] || null);
+            setSelectedCompany(found || null);
         }
     };
 
@@ -81,6 +81,26 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('selectedCompanyId', company.id);
     };
 
+    // Delete company and all its data
+    const deleteCompany = async (companyId) => {
+        try {
+            const { success, error } = await companyApi.deleteCompanyData(companyId);
+            if (success) {
+                // Refresh companies list
+                await loadCompanies();
+                // If deleted company was selected, clear selection
+                if (selectedCompany?.id === companyId) {
+                    setSelectedCompany(null);
+                    localStorage.removeItem('selectedCompanyId');
+                }
+                return { success: true };
+            }
+            return { success: false, error };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    };
+
     const value = {
         user,
         companies,
@@ -90,6 +110,7 @@ export const AuthProvider = ({ children }) => {
         signUp,
         signOut,
         selectCompany,
+        deleteCompany,
         refreshCompanies: loadCompanies
     };
 

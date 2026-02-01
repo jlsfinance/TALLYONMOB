@@ -304,7 +304,7 @@
                 <TextBlock Text="Ready"/>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="v1.0.0"/>
+                <TextBlock Text="v1.0.2"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>
