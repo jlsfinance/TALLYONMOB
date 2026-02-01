@@ -1,0 +1,13 @@
+
+I have performed a broader sweep and fixed the `firebaseConfig` import issue in all remaining services, components, and context files within `client/src/modules/records`.
+
+Modified files include:
+- `services/NotificationService.ts`
+- `services/dataService.ts`
+- `services/customerAuthService.ts`
+- `components/BottomNav.tsx`
+- `components/NotificationListener.tsx`
+- `context/RecordAuthContext.tsx`
+- `context/CompanyContext.tsx`
+
+This addresses the likely cause of the blank screen during app startup, as these core services were failing to initialize.

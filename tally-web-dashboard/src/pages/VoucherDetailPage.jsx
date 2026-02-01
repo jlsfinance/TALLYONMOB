@@ -74,49 +74,84 @@ export default function VoucherDetailPage() {
 
             if (vData.voucher_type === 'Sales') {
                 // Fetch sales record first
-                const { data: sData, error: sErr } = await supabase
+                let { data: sData, error: sErr } = await supabase
                     .from('sales')
                     .select('*')
                     .eq('voucher_id', vData.voucher_id)
                     .single();
 
-                if (sData) {
-                    // Fetch sales_items separately (FK join was failing with 400)
-                    const { data: itemsData } = await supabase
+                // Synthetic fallback if sales record is missing
+                if (!sData) {
+                    console.log('⚠️ Sales record missing, creating synthetic record');
+                    sData = {
+                        id: 'synthetic',
+                        net_amount: vData.total_amount,
+                        gross_amount: vData.total_amount,
+                        party_name: vData.party_name,
+                        voucher_number: vData.voucher_number,
+                        voucher_date: vData.voucher_date
+                    };
+                }
+
+                // Fetch items (only if NOT synthetic)
+                let itemsData = [];
+                if (sData.id !== 'synthetic') {
+                    const { data: iData } = await supabase
                         .from('sales_items')
                         .select('*')
                         .eq('sale_id', sData.id);
+                    itemsData = iData || [];
+                }
 
-                    // Get stock items to enrich HSN and unit data
-                    const { data: stockItems } = await supabase
-                        .from('stock_items')
-                        .select('name, hsn_code, base_unit')
-                        .eq('company_id', sData.company_id);
+                // Fallback to inventory_entries from vouchers table
+                let currentItems = itemsData.length > 0 ? itemsData : (vData.inventory_entries || []);
 
-                    // Create lookup map
-                    const stockLookup = {};
-                    stockItems?.forEach(item => {
-                        stockLookup[item.name] = item;
-                    });
+                // Get stock items to enrich HSN and unit data
+                const { data: stockItems } = await supabase
+                    .from('stock_items')
+                    .select('name, hsn_code, base_unit')
+                    .eq('company_id', vData.company_id);
 
-                    // Enrich items with HSN and unit from stock master
-                    const enrichedItems = (itemsData || []).map(item => ({
+                const stockLookup = {};
+                stockItems?.forEach(item => stockLookup[item.name] = item);
+
+                // Enrich items
+                sData.sales_items = currentItems.map(item => {
+                    let disc = item.discount_percent;
+                    if ((!disc || disc === 0) && item.rate > 0 && item.quantity > 0) {
+                        const idealAmount = item.rate * item.quantity;
+                        if (idealAmount > item.amount + 1) { // Tolerance
+                            disc = (Math.round(((idealAmount - item.amount) / idealAmount) * 100 * 100) / 100);
+                        }
+                    }
+
+                    return {
                         ...item,
+                        discount_percent: disc,
                         hsn_code: item.hsn_code && item.hsn_code !== 'Stock Item' && item.hsn_code !== 'Stock Group'
                             ? item.hsn_code
-                            : stockLookup[item.stock_item_name]?.hsn_code || '-',
-                        unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
-                    }));
+                            : stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
+                        unit: item.unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
+                    };
+                });
 
-                    // Attach items to sales data
-                    sData.sales_items = enrichedItems;
-
-                    // DEBUG: Log what's in sales_items
-                    console.log('🔍 DEBUG - Sales Data:', sData);
-                    console.log('🔍 DEBUG - Sales Items:', sData.sales_items);
-                    if (sData.sales_items?.length > 0) {
-                        console.log('🔍 DEBUG - First Item:', JSON.stringify(sData.sales_items[0], null, 2));
+                // Extract Round Off from ledgers if missing
+                if ((!sData.round_off || sData.round_off === 0) && vData.ledger_entries) {
+                    const roundLedger = vData.ledger_entries.find(e =>
+                        e.ledger_name.toLowerCase().includes('round') &&
+                        (e.ledger_name.toLowerCase().includes('off') || e.ledger_name.toLowerCase().includes('ing'))
+                    );
+                    if (roundLedger) {
+                        sData.round_off = roundLedger.is_debit ? -roundLedger.amount : roundLedger.amount;
                     }
+                }
+
+                // Extract Taxes if synthetic
+                if (sData.id === 'synthetic' && vData.ledger_entries) {
+                    sData.cgst_amount = vData.ledger_entries.filter(e => e.ledger_name.toLowerCase().includes('cgst')).reduce((s, e) => s + e.amount, 0);
+                    sData.sgst_amount = vData.ledger_entries.filter(e => e.ledger_name.toLowerCase().includes('sgst')).reduce((s, e) => s + e.amount, 0);
+                    sData.igst_amount = vData.ledger_entries.filter(e => e.ledger_name.toLowerCase().includes('igst')).reduce((s, e) => s + e.amount, 0);
+                    sData.taxable_amount = sData.net_amount - sData.cgst_amount - sData.sgst_amount - sData.igst_amount - (sData.round_off || 0);
                 }
 
                 setSaleData(sData);
@@ -137,9 +172,60 @@ export default function VoucherDetailPage() {
                         .select('*')
                         .eq('purchase_id', pData.id);
 
-                    pData.purchase_items = itemsData || [];
-                }
 
+                    // Fallback to inventory_entries if table items are missing
+                    let currentItems = itemsData || [];
+                    if (currentItems.length === 0 && vData.inventory_entries) {
+                        console.log('📦 Using voucher.inventory_entries as fallback for Purchase');
+                        currentItems = vData.inventory_entries;
+                    }
+
+                    pData.purchase_items = currentItems;
+
+                    // Get stock items to enrich HSN and unit data
+                    const { data: stockItems } = await supabase
+                        .from('stock_items')
+                        .select('name, hsn_code, base_unit')
+                        .eq('company_id', pData.company_id);
+
+                    // Create lookup map
+                    const stockLookup = {};
+                    stockItems?.forEach(item => {
+                        stockLookup[item.name] = item;
+                    });
+
+                    // Enrich terms with HSN and unit from stock master
+                    if (pData.purchase_items.length > 0) {
+                        pData.purchase_items = pData.purchase_items.map(item => {
+                            // Calculate implied discount if missing (Rate * Qty > Amount)
+                            let disc = item.discount_percent;
+                            if ((!disc || disc === 0) && item.rate > 0 && item.quantity > 0) {
+                                const idealAmount = item.rate * item.quantity;
+                                if (idealAmount > item.amount) {
+                                    const diff = idealAmount - item.amount;
+                                    if (diff > 1) { // Tolerance
+                                        disc = (diff / idealAmount) * 100;
+                                        disc = Math.round(disc * 100) / 100;
+                                    }
+                                }
+                            }
+
+                            return {
+                                ...item,
+                                discount_percent: disc,
+                                hsn_code: item.hsn_code && item.hsn_code !== 'Stock Item' && item.hsn_code !== 'Stock Group'
+                                    ? item.hsn_code
+                                    : stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
+                                unit: item.unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
+                            };
+                        });
+                    }
+                    // Extract Round Off from ledgers if missing
+                    if ((!pData.round_off || pData.round_off === 0) && vData.ledger_entries) {
+                        const rL = vData.ledger_entries.find(e => e.ledger_name.toLowerCase().includes('round') && (e.ledger_name.toLowerCase().includes('off') || e.ledger_name.toLowerCase().includes('ing')));
+                        if (rL) pData.round_off = rL.is_debit ? rL.amount : -rL.amount;
+                    }
+                }
                 setPurchaseData(pData);
             }
 
@@ -225,295 +311,266 @@ export default function VoucherDetailPage() {
             voucher.voucher_type.toUpperCase();
 
     return (
-        <div className="space-y-4 pb-20 lg:pb-0">
-            {/* Action Buttons - Hidden on Print */}
-            <div className="flex gap-2 flex-wrap print:hidden">
+
+        <div className="space-y-6 min-h-screen bg-slate-900 p-4 md:p-8">
+            {/* Header Controls */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
                 <button
-                    onClick={() => navigate(-1)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition"
+                    onClick={() => {
+                        if (window.history.state && window.history.state.idx > 0) {
+                            navigate(-1);
+                        } else {
+                            navigate('/vouchers');
+                        }
+                    }}
+                    className="inline-flex items-center text-slate-300 hover:text-white transition-colors"
                 >
-                    ← Back
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back
                 </button>
-                <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl shadow hover:bg-indigo-700 transition"
-                >
-                    🖨️ Print / Download PDF
-                </button>
-                <button
-                    onClick={handleWhatsApp}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl shadow hover:bg-green-600 transition"
-                >
-                    💬 WhatsApp
-                </button>
+
+                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                    <button
+                        onClick={handlePrint}
+                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 transition-colors inline-flex"
+                    >
+                        🖨️ <span className="hidden sm:inline">Print</span>
+                    </button>
+                    <button
+                        onClick={handleWhatsApp}
+                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-500 transition-colors inline-flex"
+                    >
+                        💬 <span className="hidden sm:inline">WhatsApp</span>
+                    </button>
+                </div>
             </div>
 
-            {/* ===== TALLY-STYLE INVOICE ===== */}
-            <div ref={printRef} className="bg-white text-gray-900 shadow-lg print:shadow-none" style={{ fontFamily: 'Arial, sans-serif' }}>
+            {/* Voucher Card */}
+            <div ref={printRef} className="bg-white rounded-xl shadow-2xl overflow-hidden max-w-4xl mx-auto print:shadow-none print:rounded-none">
 
-                {/* === HEADER SECTION === */}
-                <div className="border-2 border-black">
-                    {/* Company Header */}
-                    <div className="text-center border-b-2 border-black py-3 px-4">
-                        <h1 className="text-xl font-bold uppercase tracking-wide">{selectedCompany?.name}</h1>
-                        {selectedCompany?.address && (
-                            <p className="text-xs text-gray-600 mt-1">{selectedCompany.address}</p>
-                        )}
-                        {selectedCompany?.gstin && (
-                            <p className="text-xs font-medium mt-1">GSTIN: {selectedCompany.gstin}</p>
-                        )}
-                    </div>
-
-                    {/* Invoice Title */}
-                    <div className="text-center border-b-2 border-black py-2 bg-gray-100">
-                        <h2 className="text-lg font-bold">{voucherTitle}</h2>
-                    </div>
-
-                    {/* Invoice Details Row */}
-                    <div className="grid grid-cols-2 border-b border-black text-sm">
-                        <div className="border-r border-black p-3">
-                            <div className="flex justify-between">
-                                <span className="font-semibold">Voucher No.:</span>
-                                <span>{voucher.voucher_number}</span>
-                            </div>
-                        </div>
-                        <div className="p-3">
-                            <div className="flex justify-between">
-                                <span className="font-semibold">Date:</span>
-                                <span>{formatDate(voucher.voucher_date)}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Party Details */}
-                    <div className="border-b border-black p-3 text-sm">
-                        <div className="flex gap-2">
-                            <span className="font-semibold min-w-[80px]">
-                                {voucher.voucher_type === 'Sales' ? 'Buyer:' :
-                                    voucher.voucher_type === 'Purchase' ? 'Seller:' : 'Party:'}
-                            </span>
-                            <div>
-                                <p className="font-bold">{voucher.party_name || 'Cash'}</p>
-                                {detailData?.party_gstin && (
-                                    <p className="text-xs text-gray-600">GSTIN: {detailData.party_gstin}</p>
-                                )}
-                                {detailData?.place_of_supply && (
-                                    <p className="text-xs text-gray-600">Place of Supply: {detailData.place_of_supply}</p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* === ITEMS TABLE (for Sales/Purchase) === */}
-                    {isSalesOrPurchase && (
-                        <div className="border-b border-black">
-                            {/* DEBUG INFO - Remove after fixing */}
-                            {items.length > 0 && (
-                                <div className="bg-yellow-100 text-xs p-2 border-b border-yellow-300">
-                                    <strong>🔧 DEBUG:</strong> Source: {saleData?.sales_items ? 'sales_items table' : voucher?.inventory_entries ? 'voucher.inventory_entries' : 'unknown'} |
-                                    First item: qty={items[0]?.quantity}, rate={items[0]?.rate}, hsn={items[0]?.hsn_code}, amt={items[0]?.amount}
-                                </div>
+                {/* Header Section */}
+                <div className="bg-slate-50 border-b border-slate-200 p-6 md:p-8">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">{voucherTitle}</h1>
+                            <p className="text-slate-500 mt-1">{selectedCompany?.name}</p>
+                            {selectedCompany?.address && (
+                                <p className="text-sm text-slate-400 mt-0.5 max-w-md">{selectedCompany.address}</p>
                             )}
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="bg-gray-100 border-b border-black">
-                                        <th className="border-r border-black px-2 py-2 text-center w-10">S.No</th>
-                                        <th className="border-r border-black px-2 py-2 text-left">Particulars</th>
-                                        <th className="border-r border-black px-2 py-2 text-center w-16">HSN</th>
-                                        <th className="border-r border-black px-2 py-2 text-center w-16">Unit</th>
-                                        <th className="border-r border-black px-2 py-2 text-right w-16">Qty</th>
-                                        <th className="border-r border-black px-2 py-2 text-right w-20">Rate</th>
-                                        <th className="border-r border-black px-2 py-2 text-right w-16">Disc%</th>
-                                        <th className="px-2 py-2 text-right w-24">Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white text-gray-900">
-                                    {items.length === 0 && (
-                                        <tr className="border-b border-gray-300 bg-white">
-                                            <td colSpan="8" className="px-4 py-8 text-center text-gray-500 italic">
-                                                No inventory details found. Run a full sync to fetch items.
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {items.map((item, idx) => (
-                                        <tr key={item.id || idx} className="border-b border-gray-300 bg-white">
-                                            <td className="border-r border-black px-2 py-2 text-center text-gray-800">{idx + 1}</td>
-                                            <td className="border-r border-black px-2 py-2 font-medium text-gray-900">{item.stock_item_name || 'N/A'}</td>
-                                            <td className="border-r border-black px-2 py-2 text-center text-xs text-gray-700">{item.hsn_code || '-'}</td>
-                                            <td className="border-r border-black px-2 py-2 text-center text-gray-700">{item.unit || '-'}</td>
-                                            <td className="border-r border-black px-2 py-2 text-right text-gray-800">{item.quantity || 0}</td>
-                                            <td className="border-r border-black px-2 py-2 text-right text-gray-800">{formatCurrency(item.rate)}</td>
-                                            <td className="border-r border-black px-2 py-2 text-right text-gray-700">{item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
-                                            <td className="px-2 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
-                                        </tr>
-                                    ))}
-                                    {/* Empty rows for Tally look */}
-                                    {items.length < 5 && [...Array(5 - items.length)].map((_, i) => (
-                                        <tr key={`empty-${i}`} className="border-b border-gray-200">
-                                            <td className="border-r border-black px-2 py-2">&nbsp;</td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="border-r border-black px-2 py-2"></td>
-                                            <td className="px-2 py-2"></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            {selectedCompany?.gstin && (
+                                <p className="text-sm text-slate-500 font-mono mt-1">GSTIN: {selectedCompany.gstin}</p>
+                            )}
                         </div>
-                    )}
+                        <div className="text-left md:text-right">
+                            <p className="text-sm text-slate-500 uppercase font-medium tracking-wider">Voucher No.</p>
+                            <p className="text-xl md:text-2xl font-bold text-indigo-600">{voucher.voucher_number}</p>
+                            <div className="mt-2 flex items-center md:justify-end gap-2 text-sm text-slate-600">
+                                <span>Date:</span>
+                                <span className="font-medium">{formatDate(voucher.voucher_date)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    {/* === LEDGER ENTRIES (for Receipt/Payment/Journal) === */}
-                    {!isSalesOrPurchase && voucher.ledger_entries && voucher.ledger_entries.length > 0 && (
-                        <div className="border-b border-black">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="bg-gray-100 border-b border-black">
-                                        <th className="border-r border-black px-3 py-2 text-left">Particulars</th>
-                                        <th className="border-r border-black px-3 py-2 text-right w-32">Debit (₹)</th>
-                                        <th className="px-3 py-2 text-right w-32">Credit (₹)</th>
+                {/* Party / Details Section */}
+                <div className="p-6 md:p-8 grid md:grid-cols-2 gap-6 md:gap-12 border-b border-slate-100">
+                    {/* Party Details */}
+                    <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            {voucher.voucher_type === 'Sales' ? 'Buyer' :
+                                voucher.voucher_type === 'Purchase' ? 'Seller' : 'Party Details'}
+                        </h3>
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
+                            <p className="text-lg font-semibold text-slate-800 break-words">{voucher.party_name || 'Cash'}</p>
+                            {detailData?.party_gstin && (
+                                <p className="text-sm text-slate-600 mt-1 font-mono">GSTIN: {detailData.party_gstin}</p>
+                            )}
+                            {detailData?.place_of_supply && (
+                                <p className="text-sm text-slate-500 mt-1">Place of Supply: {detailData.place_of_supply}</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Amount Summary */}
+                    <div className="flex flex-col justify-end">
+                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 text-right">
+                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Amount</p>
+                            <p className="text-3xl md:text-4xl font-bold text-indigo-600">
+                                {formatCurrency(detailData?.net_amount || voucher.total_amount)}
+                            </p>
+                            <p className="text-xs text-indigo-400 mt-1 italic">
+                                {numberToWords(Math.round(detailData?.net_amount || voucher.total_amount))}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* === ITEMS TABLE (for Sales/Purchase) === */}
+                {isSalesOrPurchase && (
+                    <div className="border-t border-slate-100">
+                        {items.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[600px]">
+                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-12">#</th>
+                                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Format</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">HSN</th>
+                                            <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Rate</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Disc</th>
+                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {items.map((item, idx) => (
+                                            <tr key={item.id || idx} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4 text-sm text-slate-400">{idx + 1}</td>
+                                                <td className="px-6 py-4">
+                                                    <p className="text-sm font-medium text-slate-900">{item.stock_item_name || item.name || 'Unknown Item'}</p>
+                                                </td>
+                                                <td className="px-6 py-4 text-center text-sm text-slate-500 font-mono">{item.hsn_code || '-'}</td>
+                                                <td className="px-6 py-4 text-center text-sm text-slate-700">
+                                                    <span className="font-semibold">{item.quantity}</span>
+                                                    <span className="text-xs text-slate-400 ml-1">{item.unit}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right text-sm text-slate-700 font-mono">{formatCurrency(item.rate)}</td>
+                                                <td className="px-6 py-4 text-right text-sm text-slate-500">{item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
+                                                <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(item.amount)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center text-slate-500 italic bg-slate-50">
+                                No inventory details found.
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* === LEDGER ENTRIES (for Receipt/Payment/Journal) === */}
+                {!isSalesOrPurchase && voucher.ledger_entries && voucher.ledger_entries.length > 0 && (
+                    <div className="border-t border-slate-100">
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[500px]">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Particulars</th>
+                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-40">Debit</th>
+                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-40">Credit</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-slate-100">
                                     {voucher.ledger_entries.map((entry, idx) => (
-                                        <tr key={idx} className="border-b border-gray-300">
-                                            <td className="border-r border-black px-3 py-2 font-medium">{entry.ledger_name}</td>
-                                            <td className="border-r border-black px-3 py-2 text-right">
-                                                {entry.is_debit ? formatCurrency(entry.amount) : ''}
+                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-6 py-4 text-sm font-medium text-slate-800">{entry.ledger_name}</td>
+                                            <td className="px-6 py-4 text-right text-sm font-mono text-slate-700">
+                                                {entry.is_debit ? formatCurrency(entry.amount) : '-'}
                                             </td>
-                                            <td className="px-3 py-2 text-right">
-                                                {!entry.is_debit ? formatCurrency(entry.amount) : ''}
+                                            <td className="px-6 py-4 text-right text-sm font-mono text-slate-700">
+                                                {!entry.is_debit ? formatCurrency(entry.amount) : '-'}
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
-                                <tfoot>
-                                    <tr className="bg-gray-100 border-t border-black font-bold">
-                                        <td className="border-r border-black px-3 py-2">Total</td>
-                                        <td className="border-r border-black px-3 py-2 text-right">
+                                <tfoot className="bg-slate-50 border-t border-slate-200">
+                                    <tr>
+                                        <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Total</td>
+                                        <td className="px-6 py-4 text-right font-bold text-slate-900">
                                             {formatCurrency(voucher.ledger_entries.filter(e => e.is_debit).reduce((s, e) => s + e.amount, 0))}
                                         </td>
-                                        <td className="px-3 py-2 text-right">
+                                        <td className="px-6 py-4 text-right font-bold text-slate-900">
                                             {formatCurrency(voucher.ledger_entries.filter(e => !e.is_debit).reduce((s, e) => s + e.amount, 0))}
                                         </td>
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
-                    )}
+                    </div>
+                )}
 
-                    {/* === TAX BREAKDOWN (for Sales/Purchase) === */}
+                {/* === SUMMARY & FOOTER === */}
+                <div className="bg-slate-50 border-t border-slate-200 p-6 md:p-8">
+                    {/* Tax Breakdown for Sales/Purchase */}
                     {isSalesOrPurchase && detailData && (
-                        <div className="border-b border-black">
-                            <div className="grid grid-cols-2">
-                                {/* Left: Amount in Words */}
-                                <div className="border-r border-black p-3">
-                                    <p className="text-xs font-semibold text-gray-600">Amount in Words:</p>
-                                    <p className="text-sm font-medium mt-1 italic">
-                                        {numberToWords(Math.round(detailData.net_amount || voucher.total_amount))}
-                                    </p>
+                        <div className="flex flex-col md:flex-row justify-end mb-8">
+                            <div className="w-full md:w-80 space-y-3">
+                                <div className="flex justify-between text-sm text-slate-500">
+                                    <span>Gross Amount</span>
+                                    <span className="font-medium text-slate-700">{formatCurrency(detailData.gross_amount)}</span>
                                 </div>
-
-                                {/* Right: Summary */}
-                                <div className="p-3 text-sm">
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between">
-                                            <span>Gross Amount</span>
-                                            <span className="font-medium">{formatCurrency(detailData.gross_amount)}</span>
-                                        </div>
-                                        {detailData.discount_amount > 0 && (
-                                            <div className="flex justify-between text-red-600">
-                                                <span>Less: Discount</span>
-                                                <span>(-) {formatCurrency(detailData.discount_amount)}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between">
-                                            <span>Taxable Value</span>
-                                            <span className="font-medium">{formatCurrency(detailData.taxable_amount)}</span>
-                                        </div>
-                                        {detailData.cgst_amount > 0 && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Add: CGST</span>
-                                                <span>{formatCurrency(detailData.cgst_amount)}</span>
-                                            </div>
-                                        )}
-                                        {detailData.sgst_amount > 0 && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Add: SGST</span>
-                                                <span>{formatCurrency(detailData.sgst_amount)}</span>
-                                            </div>
-                                        )}
-                                        {detailData.igst_amount > 0 && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Add: IGST</span>
-                                                <span>{formatCurrency(detailData.igst_amount)}</span>
-                                            </div>
-                                        )}
-                                        {detailData.round_off !== 0 && (
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Round Off</span>
-                                                <span>{detailData.round_off > 0 ? '+' : ''}{formatCurrency(detailData.round_off)}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex justify-between border-t border-black pt-2 mt-2 font-bold text-base">
-                                            <span>Net Amount</span>
-                                            <span>₹ {formatCurrency(detailData.net_amount)}</span>
-                                        </div>
+                                {detailData.discount_amount > 0 && (
+                                    <div className="flex justify-between text-sm text-red-500">
+                                        <span>Discount</span>
+                                        <span>- {formatCurrency(detailData.discount_amount)}</span>
                                     </div>
+                                )}
+
+                                <div className="space-y-1 pt-2 border-t border-slate-200">
+                                    <div className="flex justify-between text-sm text-slate-500">
+                                        <span>Taxable Value</span>
+                                        <span className="font-medium text-slate-700">{formatCurrency(detailData.taxable_amount)}</span>
+                                    </div>
+                                    {detailData.cgst_amount > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>CGST</span>
+                                            <span>{formatCurrency(detailData.cgst_amount)}</span>
+                                        </div>
+                                    )}
+                                    {detailData.sgst_amount > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>SGST</span>
+                                            <span>{formatCurrency(detailData.sgst_amount)}</span>
+                                        </div>
+                                    )}
+                                    {detailData.igst_amount > 0 && (
+                                        <div className="flex justify-between text-sm text-slate-500">
+                                            <span>IGST</span>
+                                            <span>{formatCurrency(detailData.igst_amount)}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {detailData.round_off !== 0 && (
+                                    <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-slate-200">
+                                        <span>Round Off</span>
+                                        <span>{detailData.round_off > 0 ? '+' : ''}{formatCurrency(detailData.round_off)}</span>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-center pt-4 border-t border-slate-300">
+                                    <span className="font-bold text-slate-800">Net Amount</span>
+                                    <span className="text-2xl font-bold text-indigo-600">{formatCurrency(detailData.net_amount)}</span>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* === NARRATION === */}
+                    {/* Narration */}
                     {voucher.narration && (
-                        <div className="border-b border-black p-3">
-                            <p className="text-xs font-semibold text-gray-600">Narration:</p>
-                            <p className="text-sm mt-1">{voucher.narration}</p>
+                        <div className="bg-slate-100 p-4 text-xs text-slate-500 rounded-lg border border-slate-200">
+                            <span className="font-bold uppercase mr-2 text-slate-700">Narration:</span>
+                            {voucher.narration}
                         </div>
                     )}
+                </div>
 
-                    {/* === SIGNATURE SECTION === */}
-                    <div className="grid grid-cols-2 text-sm">
-                        <div className="border-r border-black p-4">
-                            <p className="text-xs text-gray-500 mb-8">Receiver's Signature</p>
-                            <div className="border-t border-gray-400 pt-1 text-center text-xs text-gray-500">
-                                (with Seal)
-                            </div>
-                        </div>
-                        <div className="p-4 text-right">
-                            <p className="font-semibold mb-8">For {selectedCompany?.name}</p>
-                            <div className="border-t border-gray-400 pt-1 text-center text-xs text-gray-500">
-                                Authorised Signatory
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* === FOOTER === */}
-                    <div className="border-t border-black bg-gray-50 py-2 text-center text-xs text-gray-500">
-                        <p>This is a computer generated document. No signature required.</p>
-                    </div>
+                {/* Footer Section */}
+                <div className="bg-white border-t border-slate-100 p-6 text-center text-xs text-slate-400">
+                    <p>This is a computer generated document. No signature required.</p>
                 </div>
             </div>
 
-            {/* Print Styles */}
             <style>{`
-                @media print {
-                    @page {
-                        size: A4;
-                        margin: 10mm;
-                    }
-                    body {
-                        -webkit-print-color-adjust: exact !important;
-                        print-color-adjust: exact !important;
-                    }
-                    .print\\:hidden {
-                        display: none !important;
-                    }
-                }
-            `}</style>
+                 @media print {
+                     @page { margin: 10mm; }
+                     body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                 }
+             `}</style>
         </div>
     );
 }

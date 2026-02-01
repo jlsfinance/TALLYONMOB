@@ -1,0 +1,172 @@
+तुझे सीधे और साफ बताता हूँ—अगर तू अपने billing app में GST लगाना चाहता है, तो आधा-अधूरा logic मत डाल। GST toggle ON होते ही पूरी tax-driven workflow बदल जाती है, और OFF होते ही सब vanish होना चाहिए। नीचे पूरा गंभीर, production-ready prompt/feature-spec दे रहा हूँ — CGST, SGST, IGST सब शामिल।
+
+⸻
+
+🔥 Complete GST System Specification for a Billing App
+
+1. Master GST Toggle (Global Setting)
+
+Problem: कई apps GST को cosmetic feature की तरह जोड़ते हैं – गलत।
+Fix: एक Global Boolean Flag बनाओ:
+
+GST_ENABLED = true/false
+
+Behavior:
+	•	GST_ENABLED = true:
+	•	सभी GST fields दिखाई दें (CGST/SGST/IGST rates, HSN/SAC, GSTIN input, GST summary section).
+	•	Invoice template automatically GST-compliant बन जाए.
+	•	Tax splitting logic active हो.
+	•	GST_ENABLED = false:
+	•	सारे GST fields और UI elements पूरी तरह hidden हों, disabled नहीं—hidden।
+	•	Backend invoice model से भी tax fields nullify हो जाएँ।
+	•	App pure “non-GST simple billing” mode में चला जाए।
+
+⸻
+
+2. Tax Type Auto-Selection Logic (CGST+SGST vs IGST)
+
+Algorithm (Mandatory)
+
+IF supplier_state == customer_state:
+        tax_type = "INTRA_STATE"
+        apply CGST + SGST
+ELSE:
+        tax_type = "INTER_STATE"
+        apply IGST
+
+Output:
+	•	Same–state billing → CGST + SGST
+	•	Different–state billing → IGST
+
+यह basic नहीं है, यह mandatory rule है। गलत करने पर invoice illegal हो जाएगा।
+
+⸻
+
+3. GST Rate Handling (Product/Service Level)
+
+हर product/service master में ये fields होने चाहिए:
+
+HSN/SAC Code
+Tax Rate (%) – single field (system splits automatically)
+
+गलती: कई apps अलग-अलग rate fields बनाते हैं (CGST rate, SGST rate).
+Fix: Rate सिर्फ एक ही रखना:
+
+gst_rate = 5 / 12 / 18 / 28
+
+System खुद split करे:
+
+CGST = gst_rate / 2
+SGST = gst_rate / 2
+IGST = gst_rate
+
+
+⸻
+
+4. Line Item Calculation (Correct Formulas)
+
+A. Intra-State (CGST + SGST)
+
+base_amount = qty * price
+cgst_amount = base_amount * (gst_rate/2) / 100
+sgst_amount = base_amount * (gst_rate/2) / 100
+total = base_amount + cgst_amount + sgst_amount
+
+B. Inter-State (IGST)
+
+base_amount = qty * price
+igst_amount = base_amount * gst_rate / 100
+total = base_amount + igst_amount
+
+
+⸻
+
+5. Invoice Model (Backend Structure)
+
+invoice_id
+date
+customer_name
+customer_gstin
+customer_state
+supplier_gstin
+supplier_state
+items: [
+    {
+        name
+        hsn
+        qty
+        price
+        gst_rate
+        base_amount
+        cgst_amount (nullable)
+        sgst_amount (nullable)
+        igst_amount (nullable)
+        total
+    }
+]
+invoice_totals:
+    subtotal
+    total_cgst
+    total_sgst
+    total_igst
+    grand_total
+gst_enabled (boolean)
+
+
+⸻
+
+6. GST OFF Mode (Clean Disable Logic)
+
+GST बंद होते ही:
+	•	HSN/SAC hide
+	•	GSTIN fields hide
+	•	Tax columns hide
+	•	Tax totals hide
+	•	Invoice numbering normal (not GST compliant)
+	•	कोई split calculation नहीं
+
+Invoice model में sgst/cgst/igst हमेशा null return हों।
+
+⸻
+
+7. Invoice Format Requirements
+
+अगर GST ON है, invoice में ये sections अनिवार्य हैं:
+	•	Supplier GSTIN
+	•	Customer GSTIN
+	•	HSN Summary
+	•	Tax Summary:
+	•	CGST Rate / Amount
+	•	SGST Rate / Amount
+	•	IGST Rate / Amount
+	•	Grand Total (tax-inclusive)
+
+⸻
+
+8. Final Developer-Ready Prompt (Copy–Paste Ready)
+
+नीचे वह साफ-सुथरा prompt है जो तू directly अपने dev को दे सकता है:
+
+⸻
+
+✅ Developer Prompt
+
+Implement a full GST system in the billing app with a global toggle GST_ENABLED. 
+When GST_ENABLED = true, show all GST fields (HSN/SAC, GSTIN, GST rate, CGST/SGST/IGST calculations, GST summary). 
+When GST_ENABLED = false, completely hide all GST-related UI and set all tax fields to null.
+
+Auto-detect tax type:
+If supplier_state == customer_state → apply CGST + SGST
+Else → apply IGST.
+
+Store only a single GST rate per product and split automatically:
+CGST = rate/2, SGST = rate/2, IGST = rate.
+
+Correct line-item calculations must be used. 
+Invoice must include GSTINs, HSN codes, tax breakup, and GST totals when GST is ON. 
+When GST is OFF, invoice becomes a simple non-GST invoice with zero tax fields.
+
+
+⸻
+
+अगर तू चाहे तो मैं पूरा UI mockup, database schema, API endpoints, या React/Flutter code भी लिख दूँ।

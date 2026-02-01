@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import html2pdf from 'html2pdf.js';
 
 export default function InvoicePDFPage() {
     const { id } = useParams();
@@ -120,54 +121,23 @@ export default function InvoicePDFPage() {
     };
 
     const handlePrint = () => {
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Invoice ${invoice?.invoice_number}</title>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; font-size: 12px; background: white; }
-                    .invoice-container { max-width: 800px; margin: 0 auto; border: 2px solid #333; }
-                    .header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: white; padding: 20px; text-align: center; }
-                    .header h1 { font-size: 24px; margin-bottom: 5px; }
-                    .header p { font-size: 11px; opacity: 0.9; }
-                    .tax-invoice { background: #f0f0f0; padding: 8px; text-align: center; font-weight: bold; border-bottom: 2px solid #333; }
-                    .info-section { display: flex; border-bottom: 1px solid #ddd; }
-                    .info-box { flex: 1; padding: 15px; }
-                    .info-box:first-child { border-right: 1px solid #ddd; }
-                    .info-box h3 { font-size: 11px; color: #666; margin-bottom: 5px; text-transform: uppercase; }
-                    .info-box p { margin: 3px 0; }
-                    .info-box .value { font-weight: 600; }
-                    table { width: 100%; border-collapse: collapse; }
-                    th { background: #f5f5f5; padding: 10px; text-align: left; border: 1px solid #ddd; font-size: 11px; }
-                    td { padding: 10px; border: 1px solid #ddd; }
-                    .text-right { text-align: right; }
-                    .text-center { text-align: center; }
-                    .totals { background: #f9f9f9; }
-                    .totals td { font-weight: 600; }
-                    .grand-total { background: #1e3a5f; color: white; }
-                    .grand-total td { font-size: 14px; font-weight: bold; }
-                    .amount-words { padding: 15px; background: #fffbea; border-bottom: 1px solid #ddd; }
-                    .footer { display: flex; padding: 20px; }
-                    .footer-left { flex: 1; }
-                    .footer-right { flex: 1; text-align: right; }
-                    .signature-box { border-top: 1px solid #333; margin-top: 50px; padding-top: 10px; display: inline-block; }
-                    .bank-details { font-size: 10px; background: #f5f5f5; padding: 10px; margin-top: 10px; border-radius: 4px; }
-                    @media print { 
-                        body { padding: 0; } 
-                        .invoice-container { border: none; }
-                    }
-                </style>
-            </head>
-            <body>
-                ${printRef.current.innerHTML}
-                <script>window.print(); window.close();</script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
+        const element = printRef.current;
+        const opt = {
+            margin: [10, 10, 10, 10], // top, left, bottom, right
+            filename: `Invoice_${invoice?.invoice_number || 'Draft'}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        // Add a temporary loading indicator or toast if needed
+        console.log('Generating PDF...');
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            console.log('PDF Generated successfully');
+        }).catch(err => {
+            console.error('PDF generation failed:', err);
+        });
     };
 
     const handleWhatsAppShare = () => {

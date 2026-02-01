@@ -1,0 +1,31 @@
+﻿client/src/modules/loan/components/AnimatedSplash.tsx(46,21): error TS2322: Type '{ initial: { scale: number; opacity: number; y: number; }; appear: { scale: number; opacity: number; y: number; transition: { duration: number; ease: string; }; }; moveUp: { y: number; transition: { duration: number; delay: number; ease: string; }; }; }' is not assignable to type 'Variants'.
+  Property 'appear' is incompatible with index signature.
+    Type '{ scale: number; opacity: number; y: number; transition: { duration: number; ease: string; }; }' is not assignable to type 'Variant'.
+      Type '{ scale: number; opacity: number; y: number; transition: { duration: number; ease: string; }; }' is not assignable to type 'TargetAndTransition'.
+        Type '{ scale: number; opacity: number; y: number; transition: { duration: number; ease: string; }; }' is not assignable to type '{ transition?: Transition<any> | undefined; transitionEnd?: ResolvedValues | undefined; }'.
+          Types of property 'transition' are incompatible.
+            Type '{ duration: number; ease: string; }' is not assignable to type 'Transition<any> | undefined'.
+              Type '{ duration: number; ease: string; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                Type '{ duration: number; ease: string; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                  Types of property 'ease' are incompatible.
+                    Type 'string' is not assignable to type 'Easing | Easing[] | undefined'.
+client/src/modules/loan/components/AnimatedSplash.tsx(62,29): error TS2322: Type '{ initial: { opacity: number; y: number; }; animate: (i: number) => { opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }; }' is not assignable to type 'Variants'.
+  Property 'animate' is incompatible with index signature.
+    Type '(i: number) => { opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }' is not assignable to type 'Variant'.
+      Type '(i: number) => { opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }' is not assignable to type 'TargetResolver'.
+        Type '{ opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }' is not assignable to type 'string | TargetAndTransition'.
+          Type '{ opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }' is not assignable to type 'TargetAndTransition'.
+            Type '{ opacity: number; y: number; transition: { delay: number; duration: number; ease: string; }; }' is not assignable to type '{ transition?: Transition<any> | undefined; transitionEnd?: ResolvedValues | undefined; }'.
+              Types of property 'transition' are incompatible.
+                Type '{ delay: number; duration: number; ease: string; }' is not assignable to type 'Transition<any> | undefined'.
+                  Type '{ delay: number; duration: number; ease: string; }' is not assignable to type 'TransitionWithValueOverrides<any>'.
+                    Type '{ delay: number; duration: number; ease: string; }' is not assignable to type 'ValueAnimationTransition<any>'.
+                      Types of property 'ease' are incompatible.
+                        Type 'string' is not assignable to type 'Easing | Easing[] | undefined'.
+client/src/modules/loan/components/BackButtonHandler.tsx(2,37): error TS2307: Cannot find module '@capacitor/app' or its corresponding type declarations.
+client/src/modules/loan/components/BackButtonHandler.tsx(29,37): error TS7006: Parameter 'handler' implicitly has an 'any' type.
+client/src/modules/loan/pages/CustomerPortal.tsx(102,53): error TS2345: Argument of type 'Loan[]' is not assignable to parameter of type 'import("D:/BILL BOOK APP/GitImport/client/src/modules/loan/types").Loan[]'.
+  Type 'Loan' is missing the following properties from type 'Loan': emi, interestRate, tenure
+client/src/modules/loan/pages/CustomerPortal.tsx(128,42): error TS2339: Property 'paymentDate' does not exist on type 'Emi'.
+client/src/modules/loan/pages/CustomerPortal.tsx(128,59): error TS2339: Property 'date' does not exist on type 'Emi'.
+client/src/modules/loan/pages/CustomerPortal.tsx(134,25): error TS2339: Property 'amountPaid' does not exist on type 'Emi'.

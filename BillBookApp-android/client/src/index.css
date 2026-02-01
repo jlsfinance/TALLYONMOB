@@ -1,0 +1,383 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+/* @import "tw-animate-css"; */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* Safe Area Utilities */
+  --spacing-safe-top: env(safe-area-inset-top);
+  --spacing-safe-bottom: env(safe-area-inset-bottom);
+  --spacing-safe-left: env(safe-area-inset-left);
+  --spacing-safe-right: env(safe-area-inset-right);
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-heading: 'Outfit', sans-serif;
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-primary-border: hsl(var(--primary-border));
+  --color-accent-border: hsl(var(--accent-border));
+  --color-card-border: hsl(var(--card-border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* Automatically computed borders: They're already hsl() wrapped. That's okay.
+   * The only reason you don't want to wrap them in hsl() in theme tokens is so that
+   * tailwind can create opacity utilities based on them, which is not important for
+   * borders usually. */
+  --color-sidebar-primary-border: var(--sidebar-primary-border);
+
+  --color-sidebar-accent-border: var(--sidebar-accent-border);
+
+  --color-primary-border: var(--primary-border);
+
+  --color-secondary-border: var(--secondary-border);
+
+  --color-surface: hsl(var(--card));
+  --color-surface-container-low: hsl(var(--surface-container-low));
+  --color-surface-container: hsl(var(--surface-container));
+  --color-surface-container-high: hsl(var(--surface-container-high));
+  --color-surface-container-highest: hsl(var(--surface-container-highest));
+
+  --color-muted-border: var(--muted-border);
+
+  --color-accent-border: var(--accent-border);
+
+  --color-destructive-border: var(--destructive-border);
+
+  --color-google-blue: hsl(var(--google-blue));
+  --color-google-red: hsl(var(--google-red));
+  --color-google-yellow: hsl(var(--google-yellow));
+  --color-google-green: hsl(var(--google-green));
+}
+
+/* MODER MATERIAL 3 THEME - ADVANCED REFINEMENT */
+:root {
+  /* OFFICIAL GOOGLE BRAND COLORS */
+  --google-blue: 217 89% 61%;
+  /* #4285F4 */
+  --google-red: 5 81% 56%;
+  /* #EA4335 */
+  --google-yellow: 45 100% 51%;
+  /* #FBBC05 */
+  --google-green: 152 68% 41%;
+  /* #34A853 */
+
+  --background: 210 33% 99%;
+  --foreground: 220 20% 10%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 220 20% 10%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 20% 10%;
+
+  --primary: 215 100% 45%;
+  --primary-foreground: 210 40% 98%;
+
+  --secondary: 215 20% 95%;
+  --secondary-foreground: 215 10% 10%;
+
+  --muted: 210 30% 96%;
+  --muted-foreground: 215 16% 47%;
+
+  --accent: 215 100% 96%;
+  --accent-foreground: 215 100% 20%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 214 30% 92%;
+  --input: 214 30% 92%;
+  --ring: 215 100% 45%;
+
+  --radius: 1.75rem;
+  /* 28px - Official M3 Large */
+
+  --surface-container-low: 210 33% 98%;
+  --surface-container: 210 33% 100%;
+  --surface-container-high: 210 33% 96%;
+  --surface-container-highest: 210 33% 92%;
+
+  --sidebar: 210 33% 99%;
+  --sidebar-foreground: 220 20% 10%;
+  --sidebar-primary: 215 100% 45%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 215 100% 94%;
+  --sidebar-accent-foreground: 215 100% 15%;
+  --sidebar-border: 214 32% 91%;
+  --sidebar-ring: 215 100% 45%;
+
+  --elevate-1: rgba(0, 0, 0, 0.04);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+
+  /* Google Style Shadows */
+  --shadow-google: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-google-lg: 0 4px 4px 0 rgba(60, 64, 67, 0.30), 0 8px 12px 6px rgba(60, 64, 67, 0.15);
+}
+
+.dark {
+  /* DARK MODE - Deep Material 3 Midnight */
+  --background: 222 25% 4%;
+  --foreground: 210 20% 98%;
+
+  --card: 222 20% 7%;
+  --card-foreground: 210 20% 98%;
+
+  --popover: 222 20% 9%;
+  --popover-foreground: 210 20% 98%;
+
+  --primary: 215 100% 78%;
+  --primary-foreground: 215 100% 10%;
+
+  --secondary: 222 15% 15%;
+  --secondary-foreground: 210 20% 98%;
+
+  --muted: 222 20% 10%;
+  --muted-foreground: 215 12% 65%;
+
+  --accent: 215 100% 15%;
+  --accent-foreground: 215 100% 95%;
+
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 222 15% 12%;
+  --input: 222 15% 12%;
+  --ring: 215 100% 78%;
+
+  --surface-container-low: 222 25% 5%;
+  --surface-container: 222 25% 6%;
+  --surface-container-high: 222 25% 8%;
+  --surface-container-highest: 222 25% 12%;
+
+  --sidebar: 222 25% 4%;
+  --sidebar-foreground: 210 20% 98%;
+  --sidebar-primary: 215 100% 78%;
+  --sidebar-primary-foreground: 215 100% 10%;
+  --sidebar-accent: 215 100% 12%;
+  --sidebar-accent-foreground: 223 10% 95%;
+  --sidebar-border: 222 15% 10%;
+  --sidebar-ring: 215 100% 78%;
+
+  --elevate-1: rgba(255, 255, 255, 0.02);
+  --elevate-2: rgba(255, 255, 255, 0.04);
+
+  --shadow-google: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-google-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply h-full overflow-hidden;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Safe Area Padding Managed by App Layout - NOT BODY */
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Safe Area Utilities - Modern CSS variables with fallbacks */
+@layer utilities {
+
+  /* Safe Area Utility with Status Bar Fallback - Aggressive for Android */
+  .pt-safe {
+    padding-top: 32px;
+    padding-top: max(env(safe-area-inset-top), 32px);
+  }
+
+  .pb-safe {
+    padding-bottom: 20px;
+    padding-bottom: max(env(safe-area-inset-bottom), 20px);
+  }
+
+  .mt-safe {
+    margin-top: 32px;
+    margin-top: max(env(safe-area-inset-top), 32px);
+  }
+
+  .mb-safe {
+    margin-bottom: 20px;
+    margin-bottom: max(env(safe-area-inset-bottom), 20px);
+  }
+
+  .h-safe-screen {
+    height: calc(100vh - max(env(safe-area-inset-top), 32px) - max(env(safe-area-inset-bottom), 20px));
+  }
+}
+
+/**
+ * Using the elevate system.
+ * Automatic contrast adjustment.
+ *
+ * <element className="hover-elevate" />
+ * <element className="active-elevate-2" />
+ *
+ * // Using the tailwind utility when a data attribute is "on"
+ * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
+ * // Or manually controlling the toggle state
+ * <element className="toggle-elevate toggle-elevated" />
+ *
+ * Elevation systems have to handle many states.
+ * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
+ * - toggled or not
+ * - focused or not (this is not handled with these utilities)
+ *
+ * Even without handling focused or not, this is six possible combinations that
+ * need to be distinguished from eachother visually.
+ */
+@layer components {
+  .glass-card {
+    @apply bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-white/20 dark:border-slate-800/50 shadow-sm;
+  }
+}
+
+@layer utilities {
+
+  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  input[type="search"]::-webkit-search-cancel-button {
+    @apply hidden;
+  }
+
+  /* Placeholder styling for contentEditable div */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  /* .no-default-hover-elevate/no-default-active-elevate are marker classes used in selectors below. 
+     They don't need a body. Removing empty definitions to satisfy linter. */
+
+
+
+  /**
+   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
+   * This way they can stack/compound. Both will overlap the parent's borders!
+   * So borders will be automatically adjusted both on toggle, and hover/active,
+   * and they will be compounded.
+   */
+  .toggle-elevate::before,
+  .toggle-elevate-2::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: -1;
+    /* sits behind content but above backdrop */
+  }
+
+  .toggle-elevate.toggle-elevated::before {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.toggle-elevate::before {
+    inset: -1px;
+  }
+
+  /* Does not work on elements with overflow:hidden! */
+  .hover-elevate:not(.no-default-hover-elevate),
+  .active-elevate:not(.no-default-active-elevate),
+  .hover-elevate-2:not(.no-default-hover-elevate),
+  .active-elevate-2:not(.no-default-active-elevate) {
+    position: relative;
+    z-index: 0;
+  }
+
+  .hover-elevate:not(.no-default-hover-elevate)::after,
+  .active-elevate:not(.no-default-active-elevate)::after,
+  .hover-elevate-2:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:not(.no-default-active-elevate)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: 999;
+    /* sits in front of content */
+  }
+
+  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-1);
+  }
+
+  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
+    inset: -1px;
+  }
+}
+
+/* Safe Area Padding Managed by App Layout */
+body {
+  min-height: 100vh;
+  background-color: hsl(var(--background));
+}
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

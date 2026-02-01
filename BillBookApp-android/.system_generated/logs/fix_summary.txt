@@ -1,0 +1,7 @@
+
+I have addressed the reported issues:
+
+1.  **Dashboard.tsx**: Removed the unused `FinancialRecord` import.
+2.  **firebaseConfig.ts**: I could not locate this file at `client/src/modules/records/firebaseConfig.ts` (or anywhere in the project) to fix the unused variables (`addDoc`, `getDoc`, `newApp`).
+
+If `firebaseConfig.ts` exists and is important, please verify its location. However, since `Dashboard.tsx` was importing from it, and I couldn't find it, there might be a missing file or incorrect path issue in your project structure, but I've ensured `Dashboard.tsx` itself is now cleaner.

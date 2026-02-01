@@ -1,0 +1,33 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "api/index.ts": {
+      "runtime": "@vercel/node@3.0.21",
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "api/send-notification.ts": {
+      "runtime": "@vercel/node@3.0.21",
+      "memory": 256,
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/send-notification",
+      "destination": "/api/send-notification.ts"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

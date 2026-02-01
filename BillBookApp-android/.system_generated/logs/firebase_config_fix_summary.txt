@@ -1,0 +1,28 @@
+
+I have systematically updated all files in `client/src/modules/records/pages/` that were incorrectly importing `../firebaseConfig`.
+They now correctly point to `../../../lib/firebase`.
+
+Modified files include:
+- `EditRecord.tsx`
+- `AddRecord.tsx`
+- `Approvals.tsx`
+- `CompanySelector.tsx`
+- `CustomerPortal.tsx`
+- `Customers.tsx`
+- `EditCustomer.tsx`
+- `FinanceOverview.tsx`
+- `ForgotPassword.tsx`
+- `NewCustomer.tsx`
+- `NewEntry.tsx`
+- `NotificationCenter.tsx`
+- `Partners.tsx`
+- `PaymentReminder.tsx`
+- `Receipts.tsx`
+- `RecordDetails.tsx`
+- `Reports.tsx`
+- `Settings.tsx`
+- `UserManagement.tsx`
+- `CustomerLogin.tsx`
+- `Register.tsx`
+
+This should resolve the build errors shown in the browser.

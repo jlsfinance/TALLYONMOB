@@ -1,0 +1,65 @@
+﻿
+> rest-express@2.1.0 dev:client
+> vite dev --port 5000
+
+node.exe : node:internal/mod
+ules/esm/resolve:274
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: (node:  
+  internal/modules/esm/re   
+ solve:274:String) [], R    
+emoteException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+    throw new 
+ERR_MODULE_NOT_FOUND(
+          ^
+
+Error 
+[ERR_MODULE_NOT_FOUND]: 
+Cannot find module 'D:\jls b
+ill\BillBookApp\node_modules
+\fdir\dist\index.mjs' 
+imported from D:\jls bill\Bi
+llBookApp\node_modules\vite\
+dist\node\chunks\config.js
+    at finalizeResolution (n
+ode:internal/modules/esm/res
+olve:274:11)
+    at moduleResolve (node:i
+nternal/modules/esm/resolve:
+864:10)
+    at defaultResolve (node:
+internal/modules/esm/resolve
+:990:11)
+    at 
+#cachedDefaultResolve (node:
+internal/modules/esm/loader:
+737:20)
+    at ModuleLoader.resolve 
+(node:internal/modules/esm/l
+oader:714:38)
+    at ModuleLoader.getModul
+eJobForImport (node:internal
+/modules/esm/loader:293:38)
+    at #link (node:internal/
+modules/esm/module_job:208:4
+9) {
+  code: 
+'ERR_MODULE_NOT_FOUND',
+  url: 'file:///D:/jls%20bil
+l/BillBookApp/node_modules/f
+dir/dist/index.mjs'
+}
+
+Node.js v24.11.1
+

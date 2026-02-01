@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { voucherApi } from '../lib/supabase';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { supabase } from '../lib/supabase';
 import './VouchersPage.css';
 
 export default function VouchersPage() {
@@ -12,7 +12,7 @@ export default function VouchersPage() {
     const [vouchers, setVouchers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
+    const [selectedType, setSelectedType] = useState(searchParams.get('status') === 'pending' ? 'pending' : (searchParams.get('type') || 'all'));
     const [fromDate, setFromDate] = useState(format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd'));
     const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
     const [stats, setStats] = useState({ sales: 0, purchase: 0, receipt: 0, payment: 0 });
@@ -26,6 +26,7 @@ export default function VouchersPage() {
         { key: 'Payment', label: 'Payment', icon: '💸' },
         { key: 'Credit Note', label: 'Cr Note', icon: '📋' },
         { key: 'Debit Note', label: 'Dr Note', icon: '📋' },
+        { key: 'pending', label: 'Pending', icon: '⏳' },
     ];
 
     useEffect(() => {
@@ -55,11 +56,34 @@ export default function VouchersPage() {
         months.reverse();
 
         const statsPromises = months.map(async (m) => {
-            const { data } = await voucherApi.list(selectedCompany.id, {
-                fromDate: m.start,
-                toDate: m.end,
-                type: selectedType !== 'all' ? selectedType : null
-            });
+            if (selectedType === 'pending') {
+                const { data } = await supabase
+                    .from('pending_transactions')
+                    .select('voucher_data')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('status', 'pending')
+                    .gte('created_at', `${m.start}T00:00:00`)
+                    .lte('created_at', `${m.end}T23:59:59`);
+
+                return {
+                    ...m,
+                    total: data?.reduce((sum, p) => sum + Math.abs(p.voucher_data?.amount || p.voucher_data?.total_amount || 0), 0) || 0
+                };
+            }
+
+            let query = supabase
+                .from('vouchers')
+                .select('total_amount')
+                .eq('company_id', selectedCompany.id)
+                .gte('voucher_date', m.start)
+                .lte('voucher_date', m.end);
+
+            if (selectedType !== 'all') {
+                query = query.eq('voucher_type', selectedType);
+            }
+
+            const { data } = await query;
+
             return {
                 ...m,
                 total: data?.reduce((sum, v) => sum + Math.abs(v.total_amount || 0), 0) || 0
@@ -72,11 +96,37 @@ export default function VouchersPage() {
 
     const loadVouchers = async () => {
         setLoading(true);
-        const { data } = await voucherApi.list(selectedCompany.id, {
-            fromDate,
-            toDate,
-            type: selectedType !== 'all' ? selectedType : null
-        });
+        let data = [];
+
+        if (selectedType === 'pending') {
+            const { data: pendingData } = await supabase
+                .from('pending_transactions')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false });
+
+            data = (pendingData || []).map(p => ({
+                voucher_id: p.id,
+                voucher_type: p.transaction_type === 'VOUCHER' ? (p.voucher_data?.voucher_type || 'Sales') : p.transaction_type,
+                voucher_number: 'PENDING',
+                voucher_date: p.created_at,
+                party_name: p.voucher_data?.party_ledger_name || p.voucher_data?.party_name || p.voucher_data?.ledger_name || 'App Created',
+                total_amount: p.voucher_data?.amount || p.voucher_data?.total_amount || 0,
+                narration: p.voucher_data?.narration || 'Pending Sync to Tally',
+                is_pending: true,
+                status: p.status
+            }));
+        } else {
+            const { data: vData } = await supabase.from('vouchers')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .gte('voucher_date', fromDate)
+                .lte('voucher_date', toDate)
+                .eq(selectedType !== 'all' ? 'voucher_type' : 'company_id', selectedType !== 'all' ? selectedType : selectedCompany.id)
+                .order('voucher_date', { ascending: false });
+            data = vData || [];
+        }
         setVouchers(data || []);
 
         const allVouchers = data || [];
@@ -216,20 +266,23 @@ export default function VouchersPage() {
                 <div className="page-3d__list">
                     {filteredVouchers.map(v => {
                         const style = getVoucherStyle(v.voucher_type);
+                        const isPending = v.is_pending;
                         return (
                             <Link
                                 key={v.voucher_id}
-                                to={`/vouchers/${encodeURIComponent(v.voucher_id)}`}
-                                className={`page-3d__list-card ${v.is_deleted ? 'deleted' : ''}`}
+                                to={isPending ? '#' : `/vouchers/${encodeURIComponent(v.voucher_id)}`}
+                                className={`page-3d__list-card ${v.is_deleted ? 'deleted' : ''} ${isPending ? 'pending' : ''}`}
+                                onClick={e => isPending && e.preventDefault()}
                             >
                                 <div className="page-3d__list-left">
-                                    <div className={`page-3d__list-avatar ${style.color}`}>
-                                        {v.is_deleted ? '🗑️' : style.icon}
+                                    <div className={`page-3d__list-avatar ${isPending ? 'warning' : style.color}`}>
+                                        {v.is_deleted ? '🗑️' : (isPending ? '⏳' : style.icon)}
                                     </div>
                                     <div className="page-3d__list-info">
                                         <span className={`page-3d__list-name ${v.is_deleted ? 'deleted' : ''}`}>
                                             {v.party_name || 'Cash / Unknown'}
                                             {v.is_deleted && <span className="vouchers-3d__deleted-tag">Deleted</span>}
+                                            {isPending && <span className="vouchers-3d__pending-tag">Pending Sync</span>}
                                         </span>
                                         <span className="page-3d__list-meta">
                                             #{v.voucher_number} • {formatDate(v.voucher_date)}
@@ -240,10 +293,10 @@ export default function VouchersPage() {
                                     </div>
                                 </div>
                                 <div className="page-3d__list-right">
-                                    <span className={`page-3d__list-amount ${style.color}`}>
+                                    <span className={`page-3d__list-amount ${isPending ? 'warning' : style.color}`}>
                                         {formatCurrency(Math.abs(v.total_amount || 0))}
                                     </span>
-                                    <span className={`page-3d__list-badge ${style.color}`}>
+                                    <span className={`page-3d__list-badge ${isPending ? 'warning' : style.color}`}>
                                         {v.voucher_type}
                                     </span>
                                 </div>

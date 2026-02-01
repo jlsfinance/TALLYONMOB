@@ -1,0 +1,11 @@
+﻿client/src/modules/loan/pages/CustomerPortal.tsx(108,53): error TS2345: Argument of type 'Loan[]' is not assignable to parameter of type 'import("D:/BILL BOOK APP/GitImport/client/src/modules/loan/types").Loan[]'.
+  Type 'Loan' is not assignable to type 'import("D:/BILL BOOK APP/GitImport/client/src/modules/loan/types").Loan'.
+    Types of property 'repaymentSchedule' are incompatible.
+      Type 'Emi[] | undefined' is not assignable to type '{ date: string; amount: number; status: "Pending" | "Paid"; paymentDate?: string | undefined; }[] | undefined'.
+        Type 'Emi[]' is not assignable to type '{ date: string; amount: number; status: "Pending" | "Paid"; paymentDate?: string | undefined; }[]'.
+          Type 'Emi' is not assignable to type '{ date: string; amount: number; status: "Pending" | "Paid"; paymentDate?: string | undefined; }'.
+            Types of property 'date' are incompatible.
+              Type 'string | undefined' is not assignable to type 'string'.
+                Type 'undefined' is not assignable to type 'string'.
+client/src/modules/loan/pages/CustomerPortal.tsx(382,60): error TS2367: This comparison appears to be unintentional because the types '"Pending" | "Overdue" | "Approved" | "Disbursed" | "Rejected" | "Completed" | "Active"' and '"Closed"' have no overlap.
+client/src/modules/loan/pages/CustomerPortal.tsx(382,85): error TS2367: This comparison appears to be unintentional because the types '"Pending" | "Overdue" | "Approved" | "Disbursed" | "Rejected" | "Completed" | "Active"' and '"Paid"' have no overlap.

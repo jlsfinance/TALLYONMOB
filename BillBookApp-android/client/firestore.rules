@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ================= AUTH & HELPER FUNCTIONS ================= */
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper to check if the user is an admin for the target company
+    // Assumes 'users' collection stores role and companyId
+    function isAdminForCompany(companyId) {
+       let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+       return isSignedIn() && userDoc.role == 'admin' && userDoc.companyId == companyId;
+    }
+    
+    // Helper to check if the user is the customer attempting to access their own data.
+    // Relies on 'uid' field in the customer document matching auth.uid
+    // (See CustomerAuthService migration logic)
+    function isCustomerOwner(customerId) {
+        return isSignedIn() && 
+               get(/databases/$(database)/documents/customers/$(customerId)).data.uid == request.auth.uid;
+    }
+    
+    // --- SPECIAL RULE FOR PHONE-BASED LOGIN LOOKUP ---
+    // The client needs to find companies associated with a phone number BEFORE authentication.
+    // This is a trade-off for convenience vs strict privacy.
+    // To mitigate scraping, we could enforce that the query MUST include a phone filter,
+    // but Firestore Rules for 'list' are limited in inspecting query params strictly.
+    // We allow read if the document's phone matches the requested resource? No, that's not how list works.
+    
+    // COMPROMISE: We allow limited read or read based on knowledge. 
+    // Since we can't secure "list" by query param easily in rules version 2 without backend,
+    // we assume the user accepts this risk for the login flow or relies on obscurity.
+    // A better approach validation `resource.data.phone` if possible but `list` rules apply to the result set.
+    
+    /* ================= COMPANIES ================= */
+    match /companies/{companyId} {
+      // Allow public read for login screen "Select Company" flow. 
+      // Risk: Company list can be enumerated.
+      // Mitigation: Only critical info (name, code) should be in this doc.
+      allow read: if true; 
+      allow write: if isAdminForCompany(companyId);
+    }
+
+    /* ================= CUSTOMERS ================= */
+    match /customers/{customerId} {
+      // 1. Strict Owner Access via Email (Bootstrapping & Login)
+      //    Allows a user to find THEIR own record to link it or login.
+      //    This effectively blocks scraping because you can only list docs matching your verified email.
+      // 1. Strict Owner Access via Email (Bootstrapping & Login)
+      //    Allows a user to find THEIR own record to link it or login.
+      // 2. Admin Access (for Approvals Dashboard)
+      // 3. Anonymous Lookup (Strictly for Claim Account flow - only sees INVITED/Pending records)
+      allow list: if isSignedIn() && (
+        resource.data.email == request.auth.token.email || 
+        isAdminForCompany(resource.data.companyId) ||
+        (request.auth.token.firebase.sign_in_provider == 'anonymous' && resource.data.authStatus in ['INVITED', 'EMAIL_PENDING', 'REJECTED'])
+      );
+
+      // 2. Owner Access via UID (Post-Activation) or Email
+      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.email == request.auth.token.email || isAdminForCompany(resource.data.companyId));
+
+      // 3. Allow Customer to Link UID (Activation Step)
+      allow update: if isSignedIn() && (resource.data.email == request.auth.token.email || isAdminForCompany(resource.data.companyId));
+      
+      // 4. Admin Create/Delete
+      allow create, delete: if isAdminForCompany(request.resource.data.companyId);
+    }
+
+    /* ================= USERS (Admin Profiles) ================= */
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    /* ================= FINANCIAL RECORDS ================= */
+    // Note: Collection name in CustomerPortal.tsx is "records"
+    // Supporting legacy "loans" until migration is complete.
+    match /records/{recordId} {
+       // Allow read if the user is the owner of the linked customer profile
+       // We fetch the customer doc referenced by 'customerId' field and check its 'uid'
+       allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/customers/$(resource.data.customerId)).data.uid == request.auth.uid
+          || isAdminForCompany(resource.data.companyId)
+       );
+       
+       allow write: if isAdminForCompany(request.resource.data.companyId);
+    }
+
+    match /loans/{recordId} {
+       allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/customers/$(resource.data.customerId)).data.uid == request.auth.uid
+          || isAdminForCompany(resource.data.companyId)
+       );
+       allow write: if isAdminForCompany(request.resource.data.companyId);
+    }
+    
+    // Catch-all for other collections if needed, usually default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+  }
+}

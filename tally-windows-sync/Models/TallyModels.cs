@@ -275,7 +275,6 @@ namespace TallySyncApp.Models
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
 
-        [JsonIgnore]
         [JsonProperty("items")]
         public List<SaleItem>? Items { get; set; }
 
@@ -392,7 +391,6 @@ namespace TallySyncApp.Models
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
 
-        [JsonIgnore]
         [JsonProperty("items")]
         public List<PurchaseItem>? Items { get; set; }
 

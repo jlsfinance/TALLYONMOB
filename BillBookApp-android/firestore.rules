@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. User Private Data (Full Access to Owner for Invoices, Customers, etc.)
+    // Recursive match ensures subcollections like /users/{uid}/invoices are covered
+    match /users/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. Company Management (Multi-Business Support)
+    match /companies/{companyId} {
+      // READ: Allowed for Owner OR anyone in allowed_emails list
+      allow read: if request.auth != null && (
+        resource.data.owner_uid == request.auth.uid || 
+        (resource.data.allowed_emails != null && request.auth.token.email in resource.data.allowed_emails)
+      );
+      
+      // UPDATE/DELETE: Only Owner can manage business settings or delete the entity
+      allow update, delete: if request.auth != null && resource.data.owner_uid == request.auth.uid;
+      
+      // CREATE: Allowed if you set yourself as the owner
+      allow create: if request.auth != null && request.resource.data.owner_uid == request.auth.uid;
+
+      // Subcollections within Companies (Recursive access check)
+      match /{allSubcollections=**} {
+        allow read, write: if request.auth != null && (
+          get(/databases/$(database)/documents/companies/$(companyId)).data.owner_uid == request.auth.uid ||
+          request.auth.token.email in get(/databases/$(database)/documents/companies/$(companyId)).data.allowed_emails
+        );
+      }
+    }
+
+    // 3. Public Bills (Essential for Sharing / PDF Web View)
+    match /publicBills/{billId} {
+      // Public Read: Allows customers to view shared bills without an account
+      allow read: if true; 
+      // Authenticated Write: Only app users can generate public copies
+      allow write: if request.auth != null;
+    }
+    
+    // 4. System Testing
+    match /system/connection_test {
+      allow read, write: if request.auth != null;
+    }
+
+    // 5. Default Security: Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,50 @@
+11:18:36.192 Running build in Washington, D.C., USA (East) – iad1
+11:18:36.193 Build machine configuration: 2 cores, 8 GB
+11:18:36.352 Cloning github.com/jlsfinance/GitImport (Branch: The, Commit: 5e1a625)
+11:18:36.352 Previous build caches not available.
+11:18:36.552 Cloning completed: 200.000ms
+11:18:36.938 Running "vercel build"
+11:18:37.340 Vercel CLI 48.11.0
+11:18:38.013 Installing dependencies...
+11:18:43.978 npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+11:18:44.039 npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+11:18:44.537 npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+11:18:54.268 
+11:18:54.269 added 634 packages in 16s
+11:18:54.269 
+11:18:54.269 61 packages are looking for funding
+11:18:54.270   run `npm fund` for details
+11:18:54.484 Running "npm run build"
+11:18:54.613 
+11:18:54.613 > rest-express@1.0.0 build
+11:18:54.613 > vite build && esbuild server/index-prod.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js
+11:18:54.613 
+11:18:55.508 [36mvite v7.1.12 [32mbuilding for production...[36m[39m
+11:18:55.575 transforming...
+11:19:02.695 [32m✓[39m 1957 modules transformed.
+11:19:03.119 rendering chunks...
+11:19:03.771 [meta-images] no Replit deployment domain found, skipping meta tag updates
+11:19:04.015 computing gzip size...
+11:19:04.221 [2m../dist/public/[22m[32mindex.html                          [39m[1m[2m    2.74 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+11:19:04.222 [2m../dist/public/[22m[2massets/[22m[35mindex-OgCGQMyQ.css           [39m[1m[2m  114.64 kB[22m[1m[22m[2m │ gzip:  18.81 kB[22m
+11:19:04.223 [2m../dist/public/[22m[2massets/[22m[36mpurify.es-B6FQ9oRL.js        [39m[1m[2m   22.57 kB[22m[1m[22m[2m │ gzip:   8.74 kB[22m
+11:19:04.224 [2m../dist/public/[22m[2massets/[22m[36mindex.es-B7--E1Q7.js         [39m[1m[2m  159.55 kB[22m[1m[22m[2m │ gzip:  53.47 kB[22m
+11:19:04.224 [2m../dist/public/[22m[2massets/[22m[36mhtml2canvas.esm-B0tyYwQk.js  [39m[1m[2m  202.36 kB[22m[1m[22m[2m │ gzip:  48.04 kB[22m
+11:19:04.224 [2m../dist/public/[22m[2massets/[22m[36mindex-Dx5DZlr7.js            [39m[1m[33m1,769.97 kB[39m[22m[2m │ gzip: 490.46 kB[22m
+11:19:04.225 [33m
+11:19:04.225 (!) Some chunks are larger than 500 kB after minification. Consider:
+11:19:04.225 - Using dynamic import() to code-split the application
+11:19:04.226 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+11:19:04.226 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+11:19:04.227 [32m✓ built in 8.69s[39m
+11:19:04.339 
+11:19:04.339   dist/index.js  2.6kb
+11:19:04.339 
+11:19:04.339 ⚡ Done in 4ms
+11:19:04.422 Build Completed in /vercel/output [26s]
+11:19:04.517 Deploying outputs...
+11:19:09.091 Deployment completed
+11:19:09.700 Creating build cache...
+11:19:34.123 Created build cache: 24.420s
+11:19:34.124 Uploading build cache [138.25 MB]
+11:19:36.670 Build cache uploaded: 2.549s

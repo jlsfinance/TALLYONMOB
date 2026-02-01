@@ -1,0 +1,58 @@
+﻿
+> rest-express@2.1.0 dev:client
+> vite dev --port 5000
+
+node.exe : [31mfailed to 
+load config from D:\jls bill
+\BillBookApp\vite.config.ts
+[39m
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          
+    : NotSpecified: ([31m  
+  failed to ....config.ts   
+ [39m:String) [], Remot    
+eException
+    + FullyQualifiedErrorId 
+    : NativeCommandError
+ 
+[31merror when starting 
+dev server:
+Error 
+[ERR_MODULE_NOT_FOUND]: 
+Cannot find module 'D:\jls b
+ill\BillBookApp\node_modules
+\@rolldown\pluginutils\dist\
+index.js' imported from 
+D:\jls bill\BillBookApp\node
+_modules\@vitejs\plugin-reac
+t\dist\index.js
+    at finalizeResolution (n
+ode:internal/modules/esm/res
+olve:274:11)
+    at moduleResolve (node:i
+nternal/modules/esm/resolve:
+864:10)
+    at defaultResolve (node:
+internal/modules/esm/resolve
+:990:11)
+    at 
+#cachedDefaultResolve (node:
+internal/modules/esm/loader:
+737:20)
+    at ModuleLoader.resolve 
+(node:internal/modules/esm/l
+oader:714:38)
+    at ModuleLoader.getModul
+eJobForImport (node:internal
+/modules/esm/loader:293:38)
+    at #link (node:internal/
+modules/esm/module_job:208:4
+9)[39m
+

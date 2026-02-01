@@ -1,0 +1,131 @@
+Bilkul — niche main exact, copy‑paste‑ready prompt lines de raha hoon jise tum apne MASTER PROMPT me add kar sakte ho.
+Isme tumhari 4 problems complete solve ho jayengi:
+
+1️⃣ PDF me company ka GST number nahi aa raha → FIX requirement
+2️⃣ HSN Summary ko Tally-style format me banao → exact table format
+3️⃣ HSN Summary show/hide toggle add karo
+4️⃣ Customer creation form me GST Number + Address optional field only when GST enabled → FIX
+
+⸻
+
+✅ Add This To Your Prompt — PDF GST Number + Tally-Style HSN Summary + Toggle + Party GST Fields
+
+⸻
+
+🔹 1. PDF Invoice – Company GST Number Must be Shown (Mandatory Rule)
+
+PDF invoice template me company GSTIN hamesha show hona chahiye ONLY IF company GST enabled hai.
+
+Add this:
+
+PDF Header Rule:
+If company.tax_mode = “GST Registered” then PDF header ke right/left section me GSTIN: <company.gstin> clear, bold, and properly aligned display hona chahiye.
+If company.tax_mode = “Non-GST”, hide GSTIN field entirely.
+
+Iss rule ko follow karke PDF me company GSTIN kabhi missing nahi hoga.
+
+⸻
+
+🔹 2. Tally-Style HSN Summary Format (Exact Table Requirement)
+
+HSN Summary ko Tally ERP 9 / Tally Prime ke standard format jaisa banana hai.
+
+Add this exact requirement:
+
+HSN Summary (Tally Format):
+Generate HSN/SAC summary table in Tally-style layout with these columns:
+
+| HSN/SAC | Description | UOM | Total Qty | Taxable Value | CGST% | CGST Amt | SGST% | SGST Amt | IGST% | IGST Amt | Total Tax |
+
+Column rules:
+	•	UOM = item.unit
+	•	Total Qty = grouped qty for same HSN
+	•	If intra-state → IGST columns = 0 or blank
+	•	If inter-state → CGST & SGST columns = 0
+	•	Total Tax = CGST Amt + SGST Amt + IGST Amt
+
+Table must perfectly align exactly like Tally’s default GST Summary style.
+
+Formatting rules (important):
+	•	Column widths fixed & consistent (no auto-break).
+	•	Numeric columns right‑aligned.
+	•	Text columns left-aligned.
+	•	Border lines same thickness as invoice table.
+	•	Summary total row at bottom:
+	•	Total Taxable Value
+	•	Total CGST
+	•	Total SGST
+	•	Total IGST
+	•	Total Tax
+
+Iss se HSN summary Tally jaisa dikhega.
+
+⸻
+
+🔹 3. Toggle: HSN Summary Show/Hide Setting
+
+Invoice template me ek toggle add karna zaroori hai jisse user decide kare:
+	•	“HSN Summary: Show”
+	•	“HSN Summary: Hide”
+
+Add this in prompt:
+
+HSN Summary Toggle:
+Company settings me ek toggle field include karo:
+company.settings.show_hsn_summary = true / false
+	•	If true → Show HSN Summary in Invoice Preview and PDF.
+	•	If false → Hide HSN Summary from both Preview & PDF.
+
+Default value = true (for GST companies).
+Non-GST companies me toggle auto-disabled/hidden.
+
+⸻
+
+🔹 4. Customer Creation Form – GST Field Only Visible When GST Enabled
+
+Party create karte time, tum chahte ho GST number aur GST address field optional ho aur sirf tab hi aaye jab company GST mode ON ho.
+
+Add this:
+
+Customer Form Conditional Fields:
+When creating/editing a customer:
+	•	If company.tax_mode = “GST Registered”:
+	•	Show field: Customer GSTIN (optional)
+	•	Show field: Billing Address (GST Billing Address)
+	•	Show field: Shipping Address
+	•	GSTIN validation (15 characters, alphanumeric).
+	•	If company.tax_mode = “Non-GST”:
+	•	Hide Customer GSTIN field
+	•	Hide GST billing address block
+	•	Only basic address fields show
+
+⸻
+
+🔹 5. Acceptance Criteria (Developer Must Follow)
+
+PDF:
+	•	Company GSTIN always visible for GST invoices.
+	•	Aligned correctly, never overlapping.
+	•	Left or right side placement is clean and consistent.
+
+HSN Summary:
+	•	Format identical to Tally ERP.
+	•	Grouping + totals accurate.
+	•	Inter-state = IGST only.
+	•	Intra-state = CGST + SGST only.
+	•	Columns always aligned.
+	•	Totals row bold.
+
+Toggle:
+	•	OFF → HSN Summary completely hidden in Preview & PDF.
+	•	ON → Always visible for GST invoice.
+
+Customer Form:
+	•	GST fields only appear when GST mode enabled.
+
+⸻
+
+Chaho toh main iska FULL SAMPLE PDF layout mockup bhi design kar dunga jaisa EXACT dikhna chahiye.
+
+Bolna:
+“PDF mockup bhi de” → main full layout block bana dunga.

@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Material 3 Gradient - Indigo to Purple to Rose -->
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5"/>
+      <stop offset="50%" style="stop-color:#7C3AED"/>
+      <stop offset="100%" style="stop-color:#EC4899"/>
+    </linearGradient>
+    
+    <!-- Shadow Gradient -->
+    <linearGradient id="shadowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3730A3"/>
+      <stop offset="100%" style="stop-color:#831843"/>
+    </linearGradient>
+    
+    <!-- Rounded Square Mask -->
+    <clipPath id="roundedSquare">
+      <rect x="32" y="32" width="448" height="448" rx="96" ry="96"/>
+    </clipPath>
+  </defs>
+  
+  <!-- Background with Gradient -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="url(#mainGradient)"/>
+  
+  <!-- Subtle Inner Shadow -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="3"/>
+  
+  <!-- Document/Bill Icon Base -->
+  <g transform="translate(120, 100)">
+    <!-- Main Document Shape -->
+    <path d="M 40 0 L 200 0 L 200 270 C 200 290, 180 310, 160 310 L 40 310 C 20 310, 0 290, 0 270 L 0 40 C 0 20, 20 0, 40 0 Z" 
+          fill="white" fill-opacity="0.95"/>
+    
+    <!-- Folded Corner -->
+    <path d="M 200 0 L 200 60 C 200 75, 185 80, 170 80 L 140 80 L 200 0 Z" 
+          fill="white" fill-opacity="0.7"/>
+    
+    <!-- Bill Lines -->
+    <rect x="30" y="100" width="140" height="14" rx="7" fill="url(#mainGradient)" fill-opacity="0.8"/>
+    <rect x="30" y="130" width="100" height="14" rx="7" fill="url(#mainGradient)" fill-opacity="0.6"/>
+    <rect x="30" y="160" width="120" height="14" rx="7" fill="url(#mainGradient)" fill-opacity="0.4"/>
+    
+    <!-- Checkmark Circle (Paid/Verified) -->
+    <circle cx="150" cy="250" r="45" fill="url(#mainGradient)"/>
+    <path d="M 130 250 L 145 265 L 175 235" 
+          stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  
+  <!-- Currency Symbol (₹) on top right -->
+  <g transform="translate(340, 80)">
+    <circle cx="40" cy="40" r="50" fill="white" fill-opacity="0.25"/>
+    <text x="40" y="58" font-family="Arial, sans-serif" font-size="56" font-weight="bold" 
+          fill="white" text-anchor="middle">₹</text>
+  </g>
+</svg>

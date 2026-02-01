@@ -101,6 +101,7 @@ function BottomNav3D() {
 function Layout3D({ children }) {
     const { user, companies, selectedCompany, selectCompany, signOut } = useAuth();
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const navItems = [
         { to: '/', icon: '🏠', label: 'Dashboard' },
@@ -125,6 +126,12 @@ function Layout3D({ children }) {
             {/* Mobile Header */}
             <header className="header-3d-mobile">
                 <div className="header-3d-mobile__left">
+                    <button
+                        className="header-3d-mobile__menu-btn"
+                        onClick={() => setMobileMenuOpen(true)}
+                    >
+                        ☰
+                    </button>
                     <div className="header-3d-mobile__logo">
                         {selectedCompany?.name?.charAt(0) || 'L'}
                     </div>
@@ -139,6 +146,42 @@ function Layout3D({ children }) {
                     {user?.email?.charAt(0)?.toUpperCase()}
                 </div>
             </header>
+
+            {/* Mobile Drawer Overlay */}
+            {mobileMenuOpen && (
+                <div className="mobile-drawer-overlay" onClick={() => setMobileMenuOpen(false)}>
+                    <div className="mobile-drawer" onClick={e => e.stopPropagation()}>
+                        <div className="mobile-drawer__header">
+                            <div className="mobile-drawer__logo">
+                                📊 <span>{selectedCompany?.name || 'LiveKeeping'}</span>
+                            </div>
+                            <button className="mobile-drawer__close" onClick={() => setMobileMenuOpen(false)}>✕</button>
+                        </div>
+                        <nav className="mobile-drawer__nav">
+                            {navItems.map(item => (
+                                <Link
+                                    key={item.to}
+                                    to={item.to}
+                                    className="mobile-drawer__link"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                >
+                                    <span className="mobile-drawer__icon">{item.icon}</span>
+                                    <span className="mobile-drawer__label">{item.label}</span>
+                                </Link>
+                            ))}
+                        </nav>
+                        <div className="mobile-drawer__footer">
+                            <div className="mobile-drawer__user">
+                                <div className="mobile-drawer__avatar">{user?.email?.charAt(0)?.toUpperCase()}</div>
+                                <div className="mobile-drawer__user-info">
+                                    <p className="mobile-drawer__email">{user?.email}</p>
+                                    <button className="mobile-drawer__signout" onClick={() => { signOut(); window.location.href = '/login'; }}>Sign Out</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Desktop Sidebar */}
             <aside className={`sidebar-3d ${sidebarOpen ? 'expanded' : 'collapsed'}`}>

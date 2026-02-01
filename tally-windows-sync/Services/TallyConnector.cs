@@ -826,10 +826,13 @@ namespace TallySyncApp.Services
             // NEW APPROACH: Ask Tally strictly for Sales vouchers
             // This ensures we get all sales sub-types (GST Sales, Export Sales) automatically
             var vouchers = await GetVouchersInternalAsync(fromDate, toDate, companyName, "Sales", stockItemHsnCache);
+            return MapVouchersToSales(vouchers, companyName);
+        }
+
+        public List<Sale> MapVouchersToSales(List<Voucher> vouchers, string? companyName)
+        {
             var companyId = CleanCompanyId(companyName);
-            
             return vouchers
-                // We no longer filter by name "Sales" because Tally already did the filtering logic for us
                 .Select(v => {
                     var sale = new Sale
                     {
@@ -838,9 +841,9 @@ namespace TallySyncApp.Services
                         InvoiceNumber = v.VoucherNumber,
                         InvoiceDate = v.VchDate,
                         PartyLedgerName = v.PartyName ?? "Cash",
-                        GrossAmount = v.TotalAmount,     // Gross = Total bill including tax
-                        NetAmount = v.TotalAmount,       // Initial, will be subtracted below
-                        TaxableAmount = v.TotalAmount,   // Initial
+                        GrossAmount = v.TotalAmount,
+                        NetAmount = v.TotalAmount,
+                        TaxableAmount = v.TotalAmount,
                         Narration = v.Narration,
                         MasterId = v.MasterId,
                         AlterId = v.AlterId,
@@ -859,9 +862,6 @@ namespace TallySyncApp.Services
                         }).ToList()
                     };
 
-                    // Tax and Totals Breakdown
-                    // NOTE: Tally ledger entries have NEGATIVE amounts for credit entries (tax payable)
-                    // We need to use Math.Abs() to get the actual tax values
                     if (v.LedgerEntries != null)
                     {
                         sale.CgstAmount = Math.Abs(v.LedgerEntries
@@ -874,17 +874,15 @@ namespace TallySyncApp.Services
                             .Where(l => l.LedgerName.Contains("IGST", StringComparison.OrdinalIgnoreCase))
                             .Sum(l => l.Amount));
                         
-                        // Taxable (Net) = Gross - Total Tax
                         var totalTax = sale.CgstAmount + sale.SgstAmount + sale.IgstAmount;
                         sale.TaxableAmount = sale.GrossAmount - totalTax;
                         
-                        // Fallback: If no tax ledgers found, Taxable = Items Total
                         if (totalTax == 0 && v.InventoryEntries?.Count > 0)
                         {
                             sale.TaxableAmount = v.InventoryEntries.Sum(i => i.Amount);
                         }
                         
-                        sale.NetAmount = sale.TaxableAmount; // Net = Taxable (matches Tally ledger)
+                        sale.NetAmount = sale.TaxableAmount;
                     }
 
                     return sale;
@@ -896,8 +894,12 @@ namespace TallySyncApp.Services
         {
             // NEW APPROACH: Ask Tally strictly for Purchase vouchers
             var vouchers = await GetVouchersInternalAsync(fromDate, toDate, companyName, "Purchase", stockItemHsnCache);
+            return MapVouchersToPurchases(vouchers, companyName);
+        }
+
+        public List<Purchase> MapVouchersToPurchases(List<Voucher> vouchers, string? companyName)
+        {
             var companyId = CleanCompanyId(companyName);
-            
             return vouchers
                 .Select(v => {
                     var purchase = new Purchase
@@ -984,7 +986,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""StockItemCollection"" ISMODIFY=""No"">
             <TYPE>Stock Item</TYPE>
-            <FETCH>NAME, GUID, PARENT, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, GSTDETAILS.LIST, HSNCODE, GSTAPPLICABLE, GSTCLASSIFICATION, ADDITIONALUNITS</FETCH>
+            <FETCH>NAME, GUID, PARENT, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, GSTDETAILS.LIST, HSNDETAILS.LIST, HSNCODE, GSTAPPLICABLE, GSTCLASSIFICATION, ADDITIONALUNITS</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -1009,10 +1011,31 @@ namespace TallySyncApp.Services
             {
                 try
                 {
-                    // Try to get HSN from multiple locations
+                    // Try to get HSN from multiple locations (Layered approach)
                     string? hsnCode = GetElementValue(itemElement, "HSNCODE");
+
+                    // 1. TallyPrime 4.0+: Check HSNDETAILS.LIST (New Structure)
+                    if (string.IsNullOrEmpty(hsnCode))
+                    {
+                        var hsnDetailsList = itemElement.Descendants()
+                            .Where(x => x.Name.LocalName.Equals("HSNDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+
+                        // Iterate to find the latest valid HSN
+                        foreach (var detail in hsnDetailsList)
+                        {
+                            var hsn = GetElementValue(detail, "HSNCODE");
+                            if (!string.IsNullOrEmpty(hsn)) 
+                            { 
+                                hsnCode = hsn; 
+                                // Don't break immediately, we might want the last one if it's date-ordered? 
+                                // Tally usually exports list in order. Let's assume last or rely on first hit if acceptable.
+                                // Actually, 'HSNCODE' usually appears in the history list.
+                            } 
+                        }
+                    }
                     
-                    // If not found directly, try GSTDETAILS.LIST (Check ALL entries, prefer LAST one as it's usually latest)
+                    // 2. Tally ERP 9 / Older Prime: Check GSTDETAILS.LIST
                     if (string.IsNullOrEmpty(hsnCode))
                     {
                         var gstDetailsList = itemElement.Descendants()
@@ -1030,7 +1053,7 @@ namespace TallySyncApp.Services
                         }
                     }
                     
-                    // Also try HSN or HSNORSACCODE at root level as final fallback
+                    // 3. Final Fallback: Root level tags
                     if (string.IsNullOrEmpty(hsnCode))
                     {
                         hsnCode = GetElementValue(itemElement, "HSN") ?? 
@@ -1147,20 +1170,23 @@ namespace TallySyncApp.Services
 
         private string ResolveHsn(List<XElement> iDescendants, string itemName, Dictionary<string, string>? stockItemHsnCache)
         {
-            var hsn = iDescendants
+            // 1. Try XML First
+            var hsnFromXml = iDescendants
                 .FirstOrDefault(x =>
                     x.Name.LocalName.Equals("HSNCODE", StringComparison.OrdinalIgnoreCase) ||
                     x.Name.LocalName.Equals("HSNORSACCODE", StringComparison.OrdinalIgnoreCase))
                 ?.Value ?? "";
 
-            if (IsValidHsn(hsn)) return NormalizeHsn(hsn);
+            if (IsValidHsn(hsnFromXml)) return NormalizeHsn(hsnFromXml);
 
-            // 2. Stock Item Master
-            if (!string.IsNullOrEmpty(itemName) && stockItemHsnCache != null && 
-                stockItemHsnCache.TryGetValue(itemName, out hsn) && 
-                IsValidHsn(hsn))
+            // 2. Fallback: Stock Item Master Cache
+            if (!string.IsNullOrEmpty(itemName) && stockItemHsnCache != null)
             {
-                return NormalizeHsn(hsn);
+                if (stockItemHsnCache.TryGetValue(itemName, out string? cachedHsn) && IsValidHsn(cachedHsn))
+                {
+                    // SyncLogger.Log($"   🔧 HSN filled from cache: {itemName} -> {cachedHsn}"); 
+                    return NormalizeHsn(cachedHsn);
+                }
             }
 
             return "";

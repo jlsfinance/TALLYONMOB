@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JLS Bill</string>
+    <string name="title_activity_main">JLS Bill</string>
+    <string name="package_name">com.jls.billbook</string>
+    <string name="custom_url_scheme">com.jls.billbook</string>
+    <string name="server_client_id">231225025529-fsoqcbbggrk0hu3kfpvsmdj54j4gt2e5.apps.googleusercontent.com</string>
+</resources>

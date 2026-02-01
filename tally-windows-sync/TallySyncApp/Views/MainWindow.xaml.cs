@@ -250,8 +250,15 @@ namespace TallySyncApp.Views
             Dispatcher.Invoke(() =>
             {
                 SyncProgressBar.Value = status.ProgressPercentage;
-                SyncProgressText.Text = status.Message; // Binding might handle this if set, but updating text explicitly matches old logic
+                SyncProgressText.Text = status.Message;
                 
+                // Update connection dots in real-time
+                UpdateTallyStatus(status.IsTallyConnected ? "Connected" : "Offline", 
+                                 status.IsTallyConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
+                
+                UpdateApiStatus(status.IsServerConnected ? "Connected" : "Offline", 
+                               status.IsServerConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
+
                 // Log significant state changes
                 if (status.State == SyncState.Completed || status.State == SyncState.Error)
                 {

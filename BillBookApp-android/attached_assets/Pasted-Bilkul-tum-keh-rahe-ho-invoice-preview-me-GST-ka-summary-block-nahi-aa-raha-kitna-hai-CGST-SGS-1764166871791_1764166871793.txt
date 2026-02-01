@@ -1,0 +1,89 @@
+Bilkul — tum keh rahe ho invoice preview me GST ka summary block nahi aa raha (kitna % hai, CGST/SGST/IGST breakup, total tax amount).
+Main tumhare liye exact prompt lines likh raha hoon jo tum apne master prompt me add kar sakte ho specifically for Invoice Preview.
+
+⸻
+
+✅ Add This to Your Prompt — Invoice Preview GST Summary Requirement
+
+Add the following requirement in the “Invoice Module / Invoice Preview” section:
+
+⸻
+
+🔹 Invoice Preview – GST Summary (Mandatory Display Rules)
+
+Invoice Preview screen me, agar invoice type = GST Invoice, toh neeche ka GST Summary Block hamesha clearly dikhna chahiye:
+
+1️⃣ Tax Rate Summary (per line item & overall)
+	•	Har item ke liye preview me dikhna chahiye:
+	•	GST Rate (e.g., 18%, 12%, 5%)
+	•	Tax type:
+	•	CGST + SGST (same state)
+	•	IGST (different state)
+	•	Taxable amount
+	•	Tax amount breakup
+
+Format example for each item:
+	•	Item: XYZ Product
+	•	GST: 18%
+	•	CGST: 9% = ₹___
+	•	SGST: 9% = ₹___
+	•	(If inter-state: IGST 18% = ₹___)
+
+⸻
+
+2️⃣ Total GST Summary Block (Invoice Level)
+
+Invoice preview ke bottom par ek clear GST Summary Table dikhni chahiye:
+
+If intra-state (CGST + SGST):
+
+Tax Type	Rate	Taxable Value	Tax Amount
+CGST	9%	₹_____	₹_____
+SGST	9%	₹_____	₹_____
+
+If inter-state (IGST):
+
+Tax Type	Rate	Taxable Value	Tax Amount
+IGST	18%	₹_____	₹_____
+
+And below that:
+
+Total GST: ₹_____
+
+⸻
+
+3️⃣ Percentage Display Rules
+
+Invoice preview me GST rate ALWAYS show hona chahiye:
+	•	Per item
+	•	Summary block
+	•	Tax breakup
+	•	CGST %, SGST %, IGST % separately
+
+Example required in UI:
+“Total GST (18%) = ₹___”
+
+⸻
+
+4️⃣ Validation Rules
+	•	GST summary non-GST invoice me hide hoga.
+	•	GST summary GST invoice me mandatory visible hoga.
+	•	If customer state ≠ company state → IGST only
+	•	If same → CGST + SGST
+	•	Preview me calculation real-time update hona chahiye.
+
+⸻
+
+5️⃣ Invoice Preview Acceptance Criteria
+
+Developer ke liye clear criteria:
+	•	GST percentage har item ke saamne visible.
+	•	Tax breakup (CGST/SGST/IGST) auto-select based on state rule.
+	•	Summary table neechay mandatory show ho.
+	•	Total GST bold highlight ho.
+	•	Round-off ke baad Grand Total correct show ho.
+
+⸻
+
+Agar chaho toh main iska exact UI mockup text format bhi likh dunga jaisa preview me dikhna chahiye.
+Bolo, main turant bana deta hoon.

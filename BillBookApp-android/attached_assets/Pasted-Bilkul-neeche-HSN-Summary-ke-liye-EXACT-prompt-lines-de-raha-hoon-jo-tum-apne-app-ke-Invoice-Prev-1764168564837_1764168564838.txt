@@ -1,0 +1,91 @@
+Bilkul — neeche HSN Summary ke liye EXACT prompt lines de raha hoon, jo tum apne app ke Invoice Preview + PDF dono me add kara sakte ho.
+
+Yeh developer/AI ko direct samajh aane wala production‑grade requirement hai.
+
+⸻
+
+✅ Add This to Your Prompt — HSN Summary (Invoice Preview + PDF)
+
+🔹 HSN Summary Block – Mandatory for GST Invoice
+
+Invoice type agar GST Invoice ho, toh Invoice Preview aur PDF dono me neeche ek HSN Summary Table automatically generate hona chahiye.
+
+⸻
+
+▶️ HSN Summary – Functional Requirement
+
+Invoice me jitne bhi line items ho, unka HSN/SAC according to GST rules group karke neeche table me show karo:
+
+Columns required:
+
+HSN/SAC	Description	Qty	Taxable Value	CGST%	CGST Amt	SGST%	SGST Amt	IGST%	IGST Amt	Total Tax
+
+
+Note:
+	•	Intra-state transaction → sirf CGST + SGST columns use honge.
+	•	Inter-state transaction → sirf IGST column use hoga.
+	•	Jo column applicable na ho → woh “0” ya blank show ho sakta hai (configurable).
+
+⸻
+
+▶️ HSN Summary Calculation Rules
+
+1️⃣ Grouping Rules
+	•	Same HSN/SAC wale saare items ko group karo.
+	•	Qty = grouped quantity ka total.
+	•	Taxable value = sum(item taxable value).
+	•	Tax % = per item GST rate ke hisaab se (same HSN ke liye same rate mandatory).
+	•	CGST/SGST/IGST auto-detect based on:
+	•	Company State
+	•	Customer State
+
+2️⃣ Tax Calculation
+
+If Same State →
+	•	CGST% = GST% / 2
+	•	SGST% = GST% / 2
+	•	IGST = 0
+
+If Different State →
+	•	IGST% = GST%
+	•	CGST = SGST = 0
+
+3️⃣ Totals
+	•	Last line me show:
+	•	Total Taxable Value
+	•	Total GST Amount
+	•	Total (CGST + SGST + IGST)
+
+⸻
+
+▶️ Display Rules (Invoice Preview + PDF)
+
+Invoice Preview:
+	•	HSN Summary hamesha bottom part me Total Section ke just neeche show ho.
+	•	Table compact, clean, aligned grid style.
+	•	Borders same invoice table jaise.
+	•	HSN summary ko collapse/expand ka UI optional.
+
+PDF Invoice:
+	•	HSN Summary mandatory for GST invoice.
+	•	Non-GST invoice me hide.
+	•	Table must be A4-friendly, compact, and professional looking.
+	•	Columns auto-resize based on content.
+	•	Font same as main invoice.
+
+⸻
+
+▶️ HSN Summary – Acceptance Criteria
+
+Developer ko yeh pass karna hi hoga:
+	1.	GST Invoice me HSN Summary hamesha visible.
+	2.	Non-GST invoice me HSN Summary bilkul nahi dikhna chahiye.
+	3.	Table group-by-HSN logic sahi ho.
+	4.	CGST/SGST/IGST breakup cross‑state rules follow kare.
+	5.	Totals correctly calculate ho.
+	6.	PDF version layout clean & non-breaking ho.
+
+⸻
+
+Agar chaho toh main tumhare liye HSN Summary ka exact UI mockup text form me bhi bana dunga jaisa preview me dikhna chahiye.
+Bolo, main turant de dunga.

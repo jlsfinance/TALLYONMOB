@@ -1,0 +1,316 @@
+सीधा, काम वाला integration नोट और कॉपी-पेेस्ट करने वाला कोड — ताकि तुम्हारा existing project में जल्दी से जोड़ सको। नीचे हर ज़रूरी कदम, छोटा HTML स्निपेट और एक modular JS फाइल दी गयी है। इसे अपने प्रोजेक्ट में वही जगह डालो जहाँ Firebase पहले से initialize हुआ है (या अगर नहीं हुआ तो नीचे बताया गया तरीका पालन करो)।
+
+⸻
+
+1) क्या करना है — सारांश (एक लाइन)
+
+अपने current site में एक छोटा ES-module जोड़ो जो: Auth (email/password) करे, first-login पर compulsory company form खोले, /companies/{uid} में data save करे, और saved company होने तक protected content छुपा रखे।
+
+⸻
+
+2) फाइल/स्थान
+	•	auth-company.js — नया ES module (place in src/ या public folder)
+	•	existing HTML में एक छोटा modal / container HTML add करो और <script type="module" src="/path/to/auth-company.js"></script> जोड़ो (Firebase init के बाद या उसी फाइल के साथ लोड करो).
+
+⸻
+
+3) HTML स्निपेट (paste जहाँ चाहो — उदाहरण: index.html के body में)
+
+<!-- AUTH + COMPANY UI (minimal, paste into body) -->
+<div id="auth-ui">
+  <input id="email" type="email" placeholder="email" />
+  <input id="password" type="password" placeholder="password" />
+  <button id="sign-in-btn">Sign in</button>
+  <button id="sign-up-btn">Sign up</button>
+  <button id="sign-out-btn" style="display:none;">Sign out</button>
+</div>
+
+<!-- Protected app area -->
+<div id="protected-app" style="display:none;">
+  <div id="company-block" style="display:none;">
+    <h3>Company</h3>
+    <div id="company-info"></div>
+    <button id="edit-company-btn">Edit Company</button>
+  </div>
+  <div id="app-content" style="display:none;">
+    <!-- यहाँ आपका protected content आएगा -->
+    <p>Protected content visible after company saved.</p>
+  </div>
+</div>
+
+<!-- Company modal / panel -->
+<div id="company-panel" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:16px; border:1px solid #ddd;">
+  <h4>Company Details (required)</h4>
+  <input id="company-name" placeholder="Company name" />
+  <input id="company-address" placeholder="Address" />
+  <input id="company-gst" placeholder="GST number (optional)" />
+  <label><input id="gst-enabled" type="checkbox" checked /> GST enabled</label>
+  <div style="margin-top:8px;">
+    <button id="save-company-btn">Save</button>
+    <button id="cancel-company-btn">Cancel</button>
+  </div>
+  <div id="company-error" style="color:red;margin-top:8px;"></div>
+</div>
+
+
+⸻
+
+4) auth-company.js — पूरा ES module (paste और <script type="module" src="..."> से load करो)
+
+// auth-company.js
+import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+/*
+  IMPORTANT:
+  - If your project already initializes Firebase (initializeApp) DON'T re-initialize.
+  - If not initialized, set firebaseConfig below or pass your config via window.FIREBASE_CONFIG before loading this script.
+*/
+
+// Option A: if app already initialized elsewhere, do nothing.
+// Option B: if not, provide config here:
+const maybeConfig = window.FIREBASE_CONFIG || {
+  // If you already set window.FIREBASE_CONFIG in a script tag, this will be used.
+  // Otherwise replace the placeholders with your project's config OR remove this block
+  apiKey: "AIzaSyDOhuszbQuXpMO0WY-FXzkyY8dABjj4MHg",
+  authDomain: "sample-firebase-ai-app-1f72d.firebaseapp.com",
+  projectId: "sample-firebase-ai-app-1f72d",
+  storageBucket: "sample-firebase-ai-app-1f72d.firebasestorage.app",
+  messagingSenderId: "231225025529",
+  appId: "1:231225025529:web:e079fe0aa1be713625d328"
+};
+
+// initialize only if no apps exist
+let app;
+if (!getApps().length) {
+  app = initializeApp(maybeConfig);
+} else {
+  // reuse existing app
+  // eslint-disable-next-line no-undef
+  app = getApps()[0];
+}
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// DOM refs (IDs from the HTML snippet)
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+const signInBtn = document.getElementById('sign-in-btn');
+const signUpBtn = document.getElementById('sign-up-btn');
+const signOutBtn = document.getElementById('sign-out-btn');
+
+const protectedApp = document.getElementById('protected-app');
+const companyBlock = document.getElementById('company-block');
+const appContent = document.getElementById('app-content');
+const companyInfo = document.getElementById('company-info');
+const editCompanyBtn = document.getElementById('edit-company-btn');
+
+const companyPanel = document.getElementById('company-panel');
+const companyName = document.getElementById('company-name');
+const companyAddress = document.getElementById('company-address');
+const companyGst = document.getElementById('company-gst');
+const gstEnabled = document.getElementById('gst-enabled');
+const saveCompanyBtn = document.getElementById('save-company-btn');
+const cancelCompanyBtn = document.getElementById('cancel-company-btn');
+const companyError = document.getElementById('company-error');
+
+// helper show/hide
+const show = el => el && (el.style.display = '');
+const hide = el => el && (el.style.display = 'none');
+
+signInBtn?.addEventListener('click', async () => {
+  const email = (emailInput.value || '').trim();
+  const pwd = passwordInput.value || '';
+  if (!email || !pwd) { alert('Provide email & password'); return; }
+  try {
+    await signInWithEmailAndPassword(auth, email, pwd);
+  } catch (e) {
+    alert('Sign in failed: ' + e.message);
+  }
+});
+
+signUpBtn?.addEventListener('click', async () => {
+  const email = (emailInput.value || '').trim();
+  const pwd = passwordInput.value || '';
+  if (!email || !pwd) { alert('Provide email & password'); return; }
+  try {
+    await createUserWithEmailAndPassword(auth, email, pwd);
+    // onAuthStateChanged handles post-signup flow
+  } catch (e) {
+    alert('Sign up failed: ' + e.message);
+  }
+});
+
+signOutBtn?.addEventListener('click', async () => {
+  await signOut(auth);
+});
+
+// Edit company
+editCompanyBtn?.addEventListener('click', async () => {
+  // populate from currently shown info if you saved it somewhere; simplest: fetch again
+  const user = auth.currentUser;
+  if (!user) return;
+  const snap = await getDoc(doc(db, 'companies', user.uid));
+  if (snap.exists()) {
+    const d = snap.data();
+    companyName.value = d.name || '';
+    companyAddress.value = d.address || '';
+    companyGst.value = d.gst || '';
+    gstEnabled.checked = !!d.gst_enabled;
+  } else {
+    companyName.value = '';
+    companyAddress.value = '';
+    companyGst.value = '';
+    gstEnabled.checked = true;
+  }
+  companyError.textContent = '';
+  show(companyPanel);
+});
+
+// Save company
+saveCompanyBtn?.addEventListener('click', async () => {
+  companyError.textContent = '';
+  const name = (companyName.value || '').trim();
+  if (!name) { companyError.textContent = 'Company name is required.'; return; }
+  const addr = (companyAddress.value || '').trim();
+  const gst = (companyGst.value || '').trim();
+  const gst_on = !!gstEnabled.checked;
+  const user = auth.currentUser;
+  if (!user) { companyError.textContent = 'Not signed in.'; return; }
+
+  const docRef = doc(db, 'companies', user.uid);
+  try {
+    await setDoc(docRef, {
+      name,
+      address: addr,
+      gst,
+      gst_enabled: gst_on,
+      owner_uid: user.uid,
+      owner_email: user.email || null,
+      updated_at: serverTimestamp()
+    }, { merge: true });
+    hide(companyPanel);
+    await loadCompany(user.uid);
+  } catch (err) {
+    companyError.textContent = 'Save failed: ' + err.message;
+  }
+});
+
+cancelCompanyBtn?.addEventListener('click', () => {
+  hide(companyPanel);
+  companyError.textContent = '';
+});
+
+// Auth state handling
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    // signed in
+    hide(document.getElementById('auth-ui'));
+    show(signOutBtn);
+    show(protectedApp);
+    // check if company exists
+    const snap = await getDoc(doc(db, 'companies', user.uid));
+    if (!snap.exists()) {
+      // force company panel
+      companyName.value = '';
+      companyAddress.value = '';
+      companyGst.value = '';
+      gstEnabled.checked = true;
+      show(companyPanel);
+      hide(companyBlock);
+      hide(appContent);
+    } else {
+      await loadCompany(user.uid);
+    }
+  } else {
+    // signed out
+    show(document.getElementById('auth-ui'));
+    hide(signOutBtn);
+    hide(protectedApp);
+    hide(companyPanel);
+  }
+});
+
+async function loadCompany(uid) {
+  const snap = await getDoc(doc(db, 'companies', uid));
+  if (!snap.exists()) {
+    hide(companyBlock);
+    hide(appContent);
+    return;
+  }
+  const d = snap.data();
+  companyInfo.innerHTML = `
+    <div><strong>Name:</strong> ${escapeHtml(d.name)}</div>
+    <div><strong>Address:</strong> ${escapeHtml(d.address)}</div>
+    <div><strong>GST:</strong> ${escapeHtml(d.gst)}</div>
+    <div><strong>GST Enabled:</strong> ${d.gst_enabled ? 'Yes' : 'No'}</div>
+  `;
+  show(companyBlock);
+  show(appContent);
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+
+⸻
+
+5) Firestore Security Rules (must publish in Firebase console)
+
+यह बिलकुल जरूरी है — API key public होना सामान्य है; सुरक्षा rules ही data सुरक्षित रखेंगी।
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /companies/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+⸻
+
+6) कहाँ क्या paste करना है (एक लाइन में)
+	•	अगर आपके पास पहले से firebase initialize है: बस auth-company.js को उसी HTML में <script type="module" src="/path/auth-company.js"></script> के रूप में include करो (init के बाद) और HTML snippet paste करो।
+	•	अगर नहीं है: पहले Firebase config वाला init script डालो (या window.FIREBASE_CONFIG सेट करो), फिर ऊपर वाली स्क्रिप्ट डालो।
+
+⸻
+
+7) टेस्ट केस (exact steps)
+	1.	Open site (incognito recommended) — should see auth inputs.
+	2.	Sign up with email/password (>=6 chars).
+	3.	On first sign in panel should force company form. Try saving without name → error. Fill name → Save.
+	4.	Check Firestore → collection companies → document id = uid → fields stored.
+	5.	Sign out → sign in again → protected content + company info visible.
+	6.	Try editing company → save → verify updated_at changed.
+
+⸻
+
+8) Common pitfalls / hard truths
+	•	अगर Firestore rules नहीं लगाये तो कोई भी बदल सकता है — तुरंत rules लगाओ।
+	•	Frontend API key होना कोई सुरक्षा रिस्क नहीं जब तक rules सही हों.
+	•	Don’t initialize Firebase twice — console error। ऊपर कोड getApps() से safe-guard करता है।
+	•	GST validation not included — अगर ज़रूरी हो तो बताओ, regex दे दूँगा।
+
+⸻
+
+अगर मैं तेरे प्रोजेक्ट में सीधे code inject कर दूँ (file path बताकर), तो मैं वो भी लिखकर दे दूँ — बताओ project structure (index.html कहाँ है, firebase init किस फाइल में है) और मैं exact lines/patch दे दूँ।

@@ -1,0 +1,74 @@
+Ye sample ledger report visually cluttered, outdated layout follow karta hai. Tumhe ek clean, consistent, professional prompt chahiye jo is format ki exact structure, spacing, tables, headings, debit–credit columns, left-right split ko reliably reproduce kar sake.
+
+Neeche diya gaya prompt seedha-sa, replicable aur clearly instructive hai. Isse koi bhi model ko bolkar tum is screenshot-style ledger report generate kara sakte ho.
+
+⸻
+
+Prompt (Use as-is)
+
+“Create a formal ledger-style Confirmation of Accounts report in the same structure as a traditional Tally confirmation letter.
+Report must follow this exact layout:
+
+1. Header
+	•	Left side: Company logo placeholder + “Power of Simplicity” tagline
+	•	To (Customer details):
+	•	Customer name
+	•	Address lines
+	•	From (Sender details):
+	•	Company name
+	•	Address lines
+	•	Contact number
+	•	Date aligned to the right.
+
+2. Subject Section
+	•	Title: Confirmation of Accounts
+	•	Period range (e.g., 1-Apr-2009 to 31-Mar-2010) displayed under subject.
+	•	Below that, one paragraph explaining that these are the account details from our books and asking customer to confirm within a specified period.
+
+3. Ledger Table Layout
+
+Two vertical sections:
+
+Left Table (Debit side)
+Columns:
+	•	Date
+	•	Particulars
+	•	Debit Amount
+
+Format rules:
+	•	List multiple entries with dates, narration lines, and amounts.
+	•	Support multi-line narration under a date.
+	•	Show subtotal at the bottom.
+
+Right Table (Credit side)
+Columns:
+	•	Date
+	•	Particulars
+	•	Credit Amount
+
+Format rules:
+	•	Fewer entries than debit side
+	•	Closing balance aligned at bottom.
+
+4. Closing Section
+	•	Left bottom: “I/We hereby confirm the above”
+	•	Right bottom: “Yours faithfully” + Manager + PAN number.
+
+Style Requirements
+	•	Professional, minimalist, ledger-like formatting.
+	•	Consistent alignment of debit/credit columns.
+	•	Narration text should follow the exact indentation style of accounting statements.
+	•	Currency formatting must use commas (e.g., 14,61,850.00).
+	•	Keep spacing similar to a Tally printed confirmation letter.
+
+Now generate the ledger using this structure for the following data (insert my data here):
+[YOUR CUSTOMER DETAILS]
+[YOUR COMPANY DETAILS]
+[DATE]
+[DEBIT ENTRIES]
+[CREDIT ENTRIES]
+[CLOSING BALANCE]”
+
+⸻
+
+Agar tum chaho to main is prompt ko tumhare actual ledger data ke hisaab se fill karke complete report bhi bana dunga.

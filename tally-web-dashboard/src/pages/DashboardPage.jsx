@@ -88,10 +88,16 @@ export default function DashboardPage() {
             const totalPayables = creditors?.reduce((sum, l) => sum + (l.closing_balance || 0), 0) || 0;
 
             setStats({
-                sales: totalSales,
+                sales: dbStats.sales_total || 0,
+                salesGross: dbStats.sales_gross || 0,
+                salesTaxable: dbStats.sales_taxable || 0,
                 salesCount: dbStats.sales_count || 0,
-                purchases: totalPurchases,
+
+                purchases: dbStats.purchases_total || 0,
+                purchasesGross: dbStats.purchases_gross || 0,
+                purchasesTaxable: dbStats.purchases_taxable || 0,
                 purchasesCount: dbStats.purchases_count || 0,
+
                 receipts: totalReceipts,
                 receiptsCount: dbStats.receipts_count || 0,
                 payments: totalPayments,
@@ -216,7 +222,7 @@ export default function DashboardPage() {
                             value={stats.sales}
                             icon="📈"
                             variant="sales"
-                            subtitle={`${stats.salesCount} Invoices`}
+                            subtitle={`Txbl: ${formatCurrency(stats.salesTaxable)} • ${stats.salesCount} Inv`}
                             onClick={() => window.location.href = '/sales'}
                         />
                         <KPICard
@@ -224,7 +230,7 @@ export default function DashboardPage() {
                             value={stats.purchases}
                             icon="🛒"
                             variant="purchases"
-                            subtitle={`${stats.purchasesCount} Invoices`}
+                            subtitle={`Txbl: ${formatCurrency(stats.purchasesTaxable)} • ${stats.purchasesCount} Inv`}
                             onClick={() => window.location.href = '/purchases'}
                         />
                         <KPICard
@@ -247,7 +253,7 @@ export default function DashboardPage() {
 
                     {/* Charts Row */}
                     <section className="dashboard-page__charts">
-                        <GlassCard size="lg" className="dashboard-page__chart-card">
+                        <GlassCard size="lg" className="dashboard-page__chart-card glass-card--prismatic">
                             <h3 className="dashboard-page__section-title">
                                 <span>💹</span> Net Position
                             </h3>

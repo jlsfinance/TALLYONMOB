@@ -4,12 +4,14 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding: 20px 24px;
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
+    margin-bottom: 24px;
+    padding: 24px 32px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
 .vouchers-3d__header-info {
@@ -36,10 +38,19 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 16px 12px;
+    padding: 18px 16px;
     background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    border-radius: 20px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: default;
+}
+
+.vouchers-3d__stat-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .vouchers-3d__stat-value {
@@ -83,23 +94,45 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 80px;
-    padding: 14px 16px;
+    min-width: 90px;
+    padding: 16px 20px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 18px;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.vouchers-3d__month-btn::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 3px;
+    background: #10b981;
+    transition: all 0.3s ease;
+    transform: translateX(-50%);
+    border-radius: 3px 3px 0 0;
 }
 
 .vouchers-3d__month-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-4px);
 }
 
 .vouchers-3d__month-btn.active {
-    background: rgba(16, 185, 129, 0.15);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.05) 100%);
     border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 10px 20px rgba(16, 185, 129, 0.15);
+}
+
+.vouchers-3d__month-btn.active::after {
+    width: 30px;
 }
 
 .vouchers-3d__month-name {
@@ -139,7 +172,17 @@
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
     border-radius: 4px;
-    text-decoration: none;
+}
+
+.vouchers-3d__pending-tag {
+    margin-left: 8px;
+    font-size: 9px;
+    padding: 2px 6px;
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 700;
 }
 
 .vouchers-3d__narration {
@@ -178,6 +221,11 @@
     border-color: rgba(249, 115, 22, 0.5);
 }
 
+.page-3d__list-avatar.warning {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.4) 0%, rgba(180, 83, 9, 0.3) 100%);
+    border-color: rgba(245, 158, 11, 0.5);
+}
+
 /* Amount color variants */
 .page-3d__list-amount.green {
     color: #10b981;
@@ -199,9 +247,23 @@
     color: #f97316;
 }
 
+.page-3d__list-amount.warning {
+    color: #f59e0b;
+}
+
 /* Badge variants missing from shared styles */
 .page-3d__list-badge.default {
     background: rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.page-3d__list-badge.warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.page-3d__list-card.pending {
+    border: 1px dashed rgba(245, 158, 11, 0.3);
 }
