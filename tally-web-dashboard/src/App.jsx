@@ -25,6 +25,7 @@ import SalesDashboardPage from './pages/SalesDashboardPage';
 import InvoicePDFPage from './pages/InvoicePDFPage';
 import CreateInvoicePage from './pages/CreateInvoicePage';
 import Dashboard3DPage from './pages/Dashboard3DPage';
+import LandingPage3D from './pages/LandingPage3D';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }) {
@@ -105,7 +106,8 @@ function Layout3D({ children }) {
 
     const navItems = [
         { to: '/', icon: '🏠', label: 'Dashboard' },
-        { to: '/dashboard-3d', icon: '✨', label: '3D Dashboard' },
+        { to: '/landing', icon: '✨', label: 'Sync Flow' },
+        { to: '/dashboard-3d', icon: '🔮', label: '3D Dashboard' },
         { to: '/sales-dashboard', icon: '📊', label: 'Sales Analytics' },
         { to: '/ledgers', icon: '📒', label: 'Ledgers' },
         { to: '/vouchers', icon: '📝', label: 'Vouchers' },
@@ -286,6 +288,7 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
+                    <Route path="/landing" element={<ProtectedRoute><LandingPage3D /></ProtectedRoute>} />
 
                     <Route
                         path="/*"

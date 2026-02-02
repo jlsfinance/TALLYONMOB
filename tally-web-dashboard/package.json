@@ -11,16 +11,20 @@
     "dependencies": {
         "@headlessui/react": "^2.2.9",
         "@heroicons/react": "^2.2.0",
+        "@react-three/drei": "^10.7.7",
+        "@react-three/fiber": "^8.18.0",
         "@supabase/supabase-js": "^2.93.3",
         "axios": "^1.6.0",
         "date-fns": "^4.1.0",
+        "framer-motion": "^12.29.2",
         "html2pdf.js": "^0.14.0",
         "lucide-react": "^0.292.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-hot-toast": "^2.6.0",
         "react-router-dom": "^6.30.3",
-        "recharts": "^2.10.0"
+        "recharts": "^2.10.0",
+        "three": "^0.182.0"
     },
     "devDependencies": {
         "@types/react": "^18.2.15",

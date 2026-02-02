@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { ledgerApi } from '../lib/supabase';
 import { Link, useSearchParams } from 'react-router-dom';
-import './LedgersPage.css';
+import '../styles/Material3.css';
 
 export default function LedgersPage() {
     const { selectedCompany } = useAuth();
@@ -68,83 +68,61 @@ export default function LedgersPage() {
     });
 
     if (!selectedCompany) {
-        return <div className="page-3d__empty"><p>Please select a company first</p></div>;
+        return (
+            <div className="page-m3" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                <p>Please select a company first</p>
+            </div>
+        );
     }
 
     return (
-        <div className="page-3d ledgers-3d">
+        <div className="page-m3">
             {/* Header */}
-            <header className="ledgers-3d__header">
-                <div className="ledgers-3d__header-info">
-                    <h1 className="page-3d__title">
-                        <span className="page-3d__title-icon">👥</span>
-                        Parties
-                    </h1>
-                    <p className="page-3d__subtitle">
-                        Total Outstanding: {formatCurrency(stats.total)}
-                    </p>
-                </div>
+            <header className="page-m3__header">
+                <h1 className="page-m3__title">
+                    <span style={{ marginRight: '8px' }}>👥</span> Parties
+                </h1>
+                <p className="page-m3__subtitle">
+                    Total Outstanding: {formatCurrency(stats.total)}
+                </p>
             </header>
 
-            {/* Stats Row */}
-            <div className="ledgers-3d__stats">
-                <button
-                    onClick={() => setViewMode('all')}
-                    className={`ledgers-3d__stat-btn ${viewMode === 'all' ? 'active' : ''}`}
-                >
-                    <span className="ledgers-3d__stat-value">{stats.count}</span>
-                    <span className="ledgers-3d__stat-label">Total Parties</span>
-                </button>
-                <button
-                    onClick={() => setViewMode('debit')}
-                    className={`ledgers-3d__stat-btn ${viewMode === 'debit' ? 'active green' : ''}`}
-                >
-                    <span className="ledgers-3d__stat-value green">{formatCurrency(stats.debit)}</span>
-                    <span className="ledgers-3d__stat-label">Receivable</span>
-                </button>
-                <button
-                    onClick={() => setViewMode('credit')}
-                    className={`ledgers-3d__stat-btn ${viewMode === 'credit' ? 'active red' : ''}`}
-                >
-                    <span className="ledgers-3d__stat-value red">{formatCurrency(stats.credit)}</span>
-                    <span className="ledgers-3d__stat-label">Payable</span>
-                </button>
-            </div>
+
 
             {/* Group Filters */}
-            <div className="page-3d__filters">
+            <div className="page-m3__filter-chips" style={{ marginTop: '16px', padding: '0 4px', overflowX: 'auto', flexWrap: 'nowrap' }}>
                 {groupFilters.map(filter => (
                     <button
                         key={filter.key}
                         onClick={() => setSelectedGroup(filter.key)}
-                        className={`page-3d__filter-btn ${selectedGroup === filter.key ? 'active' : ''}`}
+                        className={`page-m3__chip ${selectedGroup === filter.key ? 'page-m3__chip--active' : ''}`}
                     >
-                        <span>{filter.icon}</span>
+                        <span style={{ marginRight: '4px' }}>{filter.icon}</span>
                         {filter.label}
                     </button>
                 ))}
             </div>
 
             {/* Search */}
-            <div className="page-3d__search">
-                <span className="page-3d__search-icon">🔍</span>
+            <div className="page-m3__search-bar" style={{ marginTop: '16px' }}>
+                <span className="page-m3__search-icon">🔍</span>
                 <input
                     type="text"
                     placeholder="Search party name..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="page-3d__search-input"
+                    className="page-m3__search-input"
                 />
             </div>
 
             {/* Ledger List */}
             {loading ? (
-                <div className="page-3d__loading">
-                    <div className="page-3d__spinner" />
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
                     <p>Loading parties...</p>
                 </div>
             ) : (
-                <div className="page-3d__list">
+                <div className="page-m3__list" style={{ marginTop: '16px' }}>
                     {filteredLedgers.map(ledger => {
                         const isDebit = ledger.closing_balance > 0;
                         const balance = Math.abs(ledger.closing_balance || 0);
@@ -153,43 +131,67 @@ export default function LedgersPage() {
                             <Link
                                 key={ledger.id}
                                 to={`/ledgers/${ledger.id}`}
-                                className="page-3d__list-card"
+                                className="page-m3__list-item"
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                             >
-                                <div className="page-3d__list-left">
-                                    <div className={`page-3d__list-avatar ${isDebit ? 'green' : 'red'}`}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '12px',
+                                        background: isDebit ? '#e8f5e9' : '#ffebee',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '20px',
+                                        color: isDebit ? '#1b5e20' : '#b71c1c'
+                                    }}>
                                         {ledger.name?.charAt(0)?.toUpperCase()}
                                     </div>
-                                    <div className="page-3d__list-info">
-                                        <span className="page-3d__list-name">{ledger.name}</span>
-                                        <span className="page-3d__list-meta">
+                                    <div>
+                                        <p style={{ fontWeight: '600', color: '#1f2937' }}>{ledger.name}</p>
+                                        <p style={{ fontSize: '11px', color: '#6b7280' }}>
                                             {ledger.parent_group || 'General'}
                                             {ledger.phone && ` • ${ledger.phone}`}
-                                        </span>
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="page-3d__list-right">
-                                    <span className={`page-3d__list-amount ${isDebit ? 'credit' : 'debit'}`}>
+                                <div style={{ textAlign: 'right' }}>
+                                    <p style={{
+                                        fontWeight: 'bold',
+                                        color: isDebit ? '#1b5e20' : '#d32f2f',
+                                        fontSize: '14px'
+                                    }}>
                                         {formatCurrency(balance)}
-                                    </span>
-                                    <span className={`page-3d__list-badge ${isDebit ? 'green' : 'red'}`}>
-                                        {isDebit ? 'Dr' : 'Cr'}
+                                    </p>
+                                    <span style={{
+                                        fontSize: '10px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        background: isDebit ? '#e8f5e9' : '#ffebee',
+                                        color: isDebit ? '#1b5e20' : '#b71c1c',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {isDebit ? 'Receivable' : 'Payable'}
                                     </span>
                                 </div>
                             </Link>
                         );
                     })}
                     {filteredLedgers.length === 0 && (
-                        <div className="page-3d__empty">
-                            <span className="page-3d__empty-icon">👤</span>
-                            <p className="page-3d__empty-text">No parties found</p>
-                            <p className="page-3d__empty-hint">Try adjusting the filters</p>
+                        <div className="page-m3__empty-state">
+                            <p style={{ fontSize: '32px', marginBottom: '8px' }}>👤</p>
+                            <p>No parties found</p>
+                            <p style={{ fontSize: '12px', opacity: 0.7 }}>Try adjusting the filters</p>
                         </div>
                     )}
                 </div>
             )}
 
             {/* FAB */}
-            <button className="page-3d__fab">➕</button>
+            <button className="page-m3__fab" title="New Party">
+                <span className="material-icons">+</span>
+            </button>
         </div>
     );
 }

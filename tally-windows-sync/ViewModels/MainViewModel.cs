@@ -83,7 +83,7 @@ namespace TallySyncApp.ViewModels
             };
 
             // Initialize Commands
-            StartSyncCommand = new RelayCommand(StartSync);
+            StartSyncCommand = new RelayCommand(async () => await StartSync());
             StopSyncCommand = new RelayCommand(StopSync);
             ManualSyncCommand = new RelayCommand(async () => await ManualSync());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
@@ -96,8 +96,10 @@ namespace TallySyncApp.ViewModels
             Task.Run(async () => await LoadLogs());
         }
 
-        private void StartSync()
+        private async Task StartSync()
         {
+            if (!await CheckSerialAndConfirmAsync()) return;
+
             try
             {
                 _syncManager.StartSync();
@@ -119,6 +121,8 @@ namespace TallySyncApp.ViewModels
 
         private async Task ManualSync()
         {
+            if (!await CheckSerialAndConfirmAsync()) return;
+
             IsSyncing = true;
             Log("Starting manual sync...");
             await _syncManager.RunManualSyncAsync();
@@ -164,6 +168,38 @@ namespace TallySyncApp.ViewModels
                 RecentLogs.Clear();
                 foreach (var log in logs) RecentLogs.Add(log);
             });
+        }
+
+        private async Task<bool> CheckSerialAndConfirmAsync()
+        {
+             var (isValid, current, stored, msg) = await _syncManager.CheckTallySerialAsync();
+             
+             if (isValid)
+             {
+                 if (!string.IsNullOrEmpty(current) && string.IsNullOrEmpty(stored))
+                 {
+                     _syncManager.UpdateTallySerial(current);
+                     Log($"Captured Tally Serial: {current}");
+                 }
+                 return true;
+             }
+
+             // Mismatch
+             var res = MessageBox.Show(
+                 $"Tally Serial Number Mismatch!\n\nStored: {stored}\nCurrent: {current}\n\nDo you want to proceed and update the serial number?",
+                 "Security Warning",
+                 MessageBoxButton.YesNo,
+                 MessageBoxImage.Warning);
+                
+             if (res == MessageBoxResult.Yes)
+             {
+                 _syncManager.UpdateTallySerial(current!);
+                 Log($"Updated Tally Serial to: {current}");
+                 return true;
+             }
+             
+             Log("Sync cancelled by user due to serial mismatch.");
+             return false;
         }
 
         public void Log(string message)

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import html2pdf from 'html2pdf.js';
+import '../styles/Material3.css';
 
 export default function InvoicePDFPage() {
     const { id } = useParams();
@@ -173,33 +174,39 @@ Generated via TallySync`;
     };
 
     if (!selectedCompany) {
-        return <div className="p-8 text-center text-gray-500">Please select a company first</div>;
+        return <div className="page-m3 flex justify-center items-center"><p>Please select a company first</p></div>;
     }
 
     if (loading) {
         return (
-            <div className="p-8 flex justify-center">
-                <div className="animate-spin w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+            <div className="page-m3">
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
+                </div>
             </div>
         );
     }
 
     if (!invoice) {
-        return <div className="p-8 text-center text-gray-500">Invoice not found</div>;
+        return <div className="page-m3 flex justify-center items-center"><p>Invoice not found</p></div>;
     }
 
     return (
-        <div className="p-6 max-w-4xl mx-auto">
+        <div className="page-m3">
             {/* Controls */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                <button onClick={() => navigate(-1)} className="text-gray-500 hover:text-gray-700">
-                    ← Back
+            <div className="page-m3__action-bar" style={{ marginBottom: '24px' }}>
+                <button
+                    onClick={() => navigate(-1)}
+                    className="page-m3__back-link"
+                >
+                    <span>←</span> Back
                 </button>
-                <div className="flex gap-3">
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <select
                         value={template}
                         onChange={(e) => setTemplate(e.target.value)}
-                        className="px-4 py-2 border rounded-lg bg-white"
+                        className="page-m3__select"
+                        style={{ width: 'auto' }}
                     >
                         <option value="modern">Modern Template</option>
                         <option value="classic">Classic Template</option>
@@ -207,13 +214,13 @@ Generated via TallySync`;
                     </select>
                     <button
                         onClick={handlePrint}
-                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                        className="page-m3__button page-m3__button--primary"
                     >
-                        🖨️ Print / Download PDF
+                        🖨️ Download PDF
                     </button>
                     <button
                         onClick={handleWhatsAppShare}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                        className="page-m3__button page-m3__button--secondary"
                     >
                         📱 WhatsApp
                     </button>

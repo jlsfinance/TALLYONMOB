@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import './VouchersPage.css';
+import '../styles/Material3.css';
 
 export default function VouchersPage() {
     const { selectedCompany } = useAuth();
@@ -24,8 +24,8 @@ export default function VouchersPage() {
         { key: 'Purchase', label: 'Purchase', icon: '🛒' },
         { key: 'Receipt', label: 'Receipt', icon: '💰' },
         { key: 'Payment', label: 'Payment', icon: '💸' },
-        { key: 'Credit Note', label: 'Cr Note', icon: '📋' },
-        { key: 'Debit Note', label: 'Dr Note', icon: '📋' },
+        { key: 'Credit Note', label: 'Cr Note', icon: '️📝' },
+        { key: 'Debit Note', label: 'Dr Note', icon: '📝' },
         { key: 'pending', label: 'Pending', icon: '⏳' },
     ];
 
@@ -156,16 +156,16 @@ export default function VouchersPage() {
 
     const getVoucherStyle = (type) => {
         const styles = {
-            'Sales': { color: 'green', icon: '📈' },
-            'Purchase': { color: 'purple', icon: '🛒' },
-            'Receipt': { color: 'blue', icon: '💰' },
-            'Payment': { color: 'red', icon: '💸' },
-            'Journal': { color: 'orange', icon: '📖' },
-            'Contra': { color: 'blue', icon: '🔄' },
-            'Debit Note': { color: 'orange', icon: '📋' },
-            'Credit Note': { color: 'purple', icon: '📋' },
+            'Sales': { color: '', icon: '📈', badgeBackground: '#e8f5e9', badgeColor: '#1b5e20' }, // Green
+            'Purchase': { color: 'purple', icon: '🛒', badgeBackground: '#f3e5f5', badgeColor: '#4a148c' }, // Purple
+            'Receipt': { color: 'blue', icon: '💰', badgeBackground: '#e3f2fd', badgeColor: '#0d47a1' }, // Blue
+            'Payment': { color: 'red', icon: '💸', badgeBackground: '#ffebee', badgeColor: '#b71c1c' }, // Red
+            'Journal': { color: 'orange', icon: '📖', badgeBackground: '#fff3e0', badgeColor: '#e65100' }, // Orange
+            'Contra': { color: 'blue', icon: '🔄', badgeBackground: '#e3f2fd', badgeColor: '#0d47a1' },
+            'Debit Note': { color: 'orange', icon: '📋', badgeBackground: '#fff3e0', badgeColor: '#e65100' },
+            'Credit Note': { color: 'purple', icon: '📋', badgeBackground: '#f3e5f5', badgeColor: '#4a148c' },
         };
-        return styles[type] || { color: 'default', icon: '📝' };
+        return styles[type] || { color: 'black', icon: '📝', badgeBackground: '#f5f5f5', badgeColor: '#212121' };
     };
 
     const filteredVouchers = vouchers.filter(v =>
@@ -174,58 +174,41 @@ export default function VouchersPage() {
     );
 
     if (!selectedCompany) {
-        return <div className="page-3d__empty"><p>Please select a company first</p></div>;
+        return (
+            <div className="page-m3" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+                <p>Please select a company</p>
+            </div>
+        );
     }
 
     return (
-        <div className="page-3d vouchers-3d">
+        <div className="page-m3">
             {/* Header */}
-            <header className="vouchers-3d__header">
-                <div className="vouchers-3d__header-info">
-                    <h1 className="page-3d__title">
-                        <span className="page-3d__title-icon">📖</span>
-                        Day Book
-                    </h1>
-                    <p className="page-3d__subtitle">{filteredVouchers.length} entries found</p>
-                </div>
+            <header className="page-m3__header">
+                <h1 className="page-m3__title">
+                    <span style={{ marginRight: '8px' }}>📖</span> Day Book
+                </h1>
+                <p className="page-m3__subtitle">{filteredVouchers.length} entries found</p>
             </header>
 
-            {/* Stats Row */}
-            <div className="vouchers-3d__stats">
-                <div className="vouchers-3d__stat-card">
-                    <span className="vouchers-3d__stat-value green">{formatCurrency(stats.sales)}</span>
-                    <span className="vouchers-3d__stat-label">Sales</span>
-                </div>
-                <div className="vouchers-3d__stat-card">
-                    <span className="vouchers-3d__stat-value purple">{formatCurrency(stats.purchase)}</span>
-                    <span className="vouchers-3d__stat-label">Purchase</span>
-                </div>
-                <div className="vouchers-3d__stat-card">
-                    <span className="vouchers-3d__stat-value blue">{formatCurrency(stats.receipt)}</span>
-                    <span className="vouchers-3d__stat-label">Receipt</span>
-                </div>
-                <div className="vouchers-3d__stat-card">
-                    <span className="vouchers-3d__stat-value red">{formatCurrency(stats.payment)}</span>
-                    <span className="vouchers-3d__stat-label">Payment</span>
-                </div>
-            </div>
+
 
             {/* Voucher Type Filters */}
-            <div className="page-3d__filters">
+            <div className="page-m3__filter-chips" style={{ marginTop: '16px', padding: '0 4px' }}>
                 {voucherTypes.map((type) => (
                     <button
                         key={type.key}
                         onClick={() => setSelectedType(type.key)}
-                        className={`page-3d__filter-btn ${selectedType === type.key ? 'active' : ''}`}
+                        className={`page-m3__chip ${selectedType === type.key ? 'page-m3__chip--active' : ''}`}
                     >
-                        <span>{type.icon}</span>
+                        <span style={{ marginRight: '4px' }}>{type.icon}</span>
                         {type.label}
                     </button>
                 ))}
             </div>
 
             {/* Month Filter */}
-            <div className="vouchers-3d__month-filter">
+            <div className="page-m3__filter-chips" style={{ marginTop: '12px', padding: '0 4px', overflowX: 'auto', flexWrap: 'nowrap' }}>
                 {monthStats.map((ms, idx) => {
                     const isActive = fromDate === ms.start && toDate === ms.end;
                     return (
@@ -235,35 +218,42 @@ export default function VouchersPage() {
                                 setFromDate(ms.start);
                                 setToDate(ms.end);
                             }}
-                            className={`vouchers-3d__month-btn ${isActive ? 'active' : ''}`}
+                            className={`page-m3__chip ${isActive ? 'page-m3__chip--active' : ''}`}
+                            style={{
+                                flexDirection: 'column',
+                                height: 'auto',
+                                padding: '8px 16px',
+                                alignItems: 'center',
+                                minWidth: '80px'
+                            }}
                         >
-                            <span className="vouchers-3d__month-name">{ms.name}</span>
-                            <span className="vouchers-3d__month-total">{formatCurrency(ms.total)}</span>
+                            <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{ms.name}</span>
+                            <span style={{ fontSize: '10px', opacity: 0.8 }}>{formatCurrency(ms.total)}</span>
                         </button>
                     );
                 })}
             </div>
 
             {/* Search */}
-            <div className="page-3d__search">
-                <span className="page-3d__search-icon">🔍</span>
+            <div className="page-m3__search-bar" style={{ marginTop: '16px' }}>
+                <span className="page-m3__search-icon">🔍</span>
                 <input
                     type="text"
                     placeholder="Search party or voucher number..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="page-3d__search-input"
+                    className="page-m3__search-input"
                 />
             </div>
 
             {/* Voucher List */}
             {loading ? (
-                <div className="page-3d__loading">
-                    <div className="page-3d__spinner" />
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-700 mb-2"></div>
                     <p>Loading vouchers...</p>
                 </div>
             ) : (
-                <div className="page-3d__list">
+                <div className="page-m3__list" style={{ marginTop: '16px' }}>
                     {filteredVouchers.map(v => {
                         const style = getVoucherStyle(v.voucher_type);
                         const isPending = v.is_pending;
@@ -271,50 +261,72 @@ export default function VouchersPage() {
                             <Link
                                 key={v.voucher_id}
                                 to={isPending ? '#' : `/vouchers/${encodeURIComponent(v.voucher_id)}`}
-                                className={`page-3d__list-card ${v.is_deleted ? 'deleted' : ''} ${isPending ? 'pending' : ''}`}
+                                className={`page-m3__list-item ${v.is_deleted ? 'opacity-50' : ''}`}
                                 onClick={e => isPending && e.preventDefault()}
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isPending ? 'default' : 'pointer' }}
                             >
-                                <div className="page-3d__list-left">
-                                    <div className={`page-3d__list-avatar ${isPending ? 'warning' : style.color}`}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '12px',
+                                        background: isPending ? '#fff3e0' : style.badgeBackground,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '20px'
+                                    }}>
                                         {v.is_deleted ? '🗑️' : (isPending ? '⏳' : style.icon)}
                                     </div>
-                                    <div className="page-3d__list-info">
-                                        <span className={`page-3d__list-name ${v.is_deleted ? 'deleted' : ''}`}>
+                                    <div>
+                                        <p style={{ fontWeight: '600', color: '#1f2937' }}>
                                             {v.party_name || 'Cash / Unknown'}
-                                            {v.is_deleted && <span className="vouchers-3d__deleted-tag">Deleted</span>}
-                                            {isPending && <span className="vouchers-3d__pending-tag">Pending Sync</span>}
-                                        </span>
-                                        <span className="page-3d__list-meta">
-                                            #{v.voucher_number} • {formatDate(v.voucher_date)}
-                                        </span>
-                                        {v.narration && (
-                                            <span className="vouchers-3d__narration">{v.narration}</span>
-                                        )}
+                                            {v.is_deleted && <span style={{ color: '#ef4444', fontSize: '10px', marginLeft: '4px' }}>(Deleted)</span>}
+                                        </p>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <span style={{
+                                                fontSize: '10px',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                background: style.badgeBackground,
+                                                color: style.badgeColor,
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {v.voucher_type}
+                                            </span>
+                                            <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                                                #{v.voucher_number} • {formatDate(v.voucher_date)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="page-3d__list-right">
-                                    <span className={`page-3d__list-amount ${isPending ? 'warning' : style.color}`}>
+                                <div style={{ textAlign: 'right' }}>
+                                    <p style={{
+                                        fontWeight: 'bold',
+                                        color: style.color === 'red' ? '#d32f2f' : style.color === 'blue' ? '#0d47a1' : '#1b5e20',
+                                        fontSize: '14px'
+                                    }}>
                                         {formatCurrency(Math.abs(v.total_amount || 0))}
-                                    </span>
-                                    <span className={`page-3d__list-badge ${isPending ? 'warning' : style.color}`}>
-                                        {v.voucher_type}
-                                    </span>
+                                    </p>
+                                    {isPending && <p style={{ color: '#f57c00', fontSize: '10px', fontWeight: 'bold' }}>Sync Pending</p>}
                                 </div>
                             </Link>
                         );
                     })}
                     {filteredVouchers.length === 0 && (
-                        <div className="page-3d__empty">
-                            <span className="page-3d__empty-icon">📭</span>
-                            <p className="page-3d__empty-text">No vouchers found</p>
-                            <p className="page-3d__empty-hint">Try adjusting the date range or filters</p>
+                        <div className="page-m3__empty-state">
+                            <p style={{ fontSize: '32px', marginBottom: '8px' }}>📭</p>
+                            <p>No vouchers found</p>
+                            <p style={{ fontSize: '12px', opacity: 0.7 }}>Try adjusting the filter</p>
                         </div>
                     )}
                 </div>
             )}
 
             {/* FAB */}
-            <Link to="/create-invoice" className="page-3d__fab">➕</Link>
+            <Link to="/invoice/create" className="page-m3__fab" title="New Invoice">
+                <span className="material-icons">+</span>
+            </Link>
         </div>
     );
 }

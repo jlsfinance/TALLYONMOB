@@ -28,9 +28,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final authProvider = context.read<AuthProvider>();
       final dataProvider = context.read<DataProvider>();
 
-      final summary = await dataProvider.getCompanySummary(
-        authProvider.selectedCompanyId!,
-      );
+      await dataProvider.fetchDashboard(authProvider.selectedCompanyId!);
+      final ds = dataProvider.dashboardSummary;
+      final summary = ds != null
+          ? {
+              'totalSales': ds.totalSalesAmount,
+              'totalPurchases': ds.totalPurchasesAmount,
+              'ledgerCount': ds.totalLedgers,
+              'stockCount': ds.totalStockValue,
+            }
+          : null;
 
       setState(() {
         _summary = summary;
@@ -69,7 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.swap_horiz),
             tooltip: 'Switch Company',
             onPressed: () {
-              authProvider.clearCompanySelection();
+              authProvider.clearSelectedCompany();
             },
           ),
           IconButton(

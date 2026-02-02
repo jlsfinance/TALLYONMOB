@@ -153,6 +153,7 @@ namespace TallySyncApp.Models
         public string Host { get; set; } = "localhost";
         public int Port { get; set; } = 9000;
         public int TimeoutSeconds { get; set; } = 30;
+        public string? SerialNumber { get; set; } // Stored serial number
     }
 
     public class SyncSettings

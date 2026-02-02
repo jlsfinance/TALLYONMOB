@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import html2pdf from 'html2pdf.js';
+import '../styles/Material3.css';
 
 // Number to words converter for Indian currency
 const numberToWords = (num) => {
@@ -176,7 +176,6 @@ export default function VoucherDetailPage() {
                     // Fallback to inventory_entries if table items are missing
                     let currentItems = itemsData || [];
                     if (currentItems.length === 0 && vData.inventory_entries) {
-                        console.log('📦 Using voucher.inventory_entries as fallback for Purchase');
                         currentItems = vData.inventory_entries;
                     }
 
@@ -268,11 +267,10 @@ export default function VoucherDetailPage() {
 
     if (loading) {
         return (
-            <div className="animate-pulse space-y-6 p-4">
-                <div className="h-8 bg-gray-200 rounded w-48"></div>
-                <div className="bg-white rounded-xl p-6 shadow">
-                    <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-48"></div>
+            <div className="page-m3">
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
+                    <p>Loading voucher...</p>
                 </div>
             </div>
         );
@@ -280,10 +278,10 @@ export default function VoucherDetailPage() {
 
     if (!voucher) {
         return (
-            <div className="text-center py-12">
-                <span className="text-5xl">❌</span>
-                <p className="mt-4 text-gray-600">Voucher not found</p>
-                <button onClick={() => navigate(-1)} className="mt-4 text-indigo-600 hover:underline">
+            <div className="page-m3" style={{ textAlign: 'center', paddingTop: '48px' }}>
+                <span style={{ fontSize: '48px' }}>❌</span>
+                <p style={{ marginTop: '16px', color: '#6b7280' }}>Voucher not found</p>
+                <button onClick={() => navigate(-1)} className="page-m3__button page-m3__button--secondary" style={{ marginTop: '16px' }}>
                     ← Go Back
                 </button>
             </div>
@@ -300,7 +298,6 @@ export default function VoucherDetailPage() {
     if (items.length === 0 || (items.length > 0 && !items[0].quantity && !items[0].rate)) {
         const invEntries = voucher?.inventory_entries || [];
         if (invEntries.length > 0) {
-            console.log('📦 Using voucher.inventory_entries as fallback:', invEntries);
             items = invEntries;
         }
     }
@@ -311,10 +308,9 @@ export default function VoucherDetailPage() {
             voucher.voucher_type.toUpperCase();
 
     return (
-
-        <div className="space-y-6 min-h-screen bg-slate-900 p-4 md:p-8">
+        <div className="page-m3">
             {/* Header Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
+            <div className="page-m3__action-bar print:hidden">
                 <button
                     onClick={() => {
                         if (window.history.state && window.history.state.idx > 0) {
@@ -323,24 +319,22 @@ export default function VoucherDetailPage() {
                             navigate('/vouchers');
                         }
                     }}
-                    className="inline-flex items-center text-slate-300 hover:text-white transition-colors"
+                    className="page-m3__back-link"
                 >
-                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
+                    <span style={{ marginRight: '8px' }}>←</span>
                     Back
                 </button>
 
-                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                         onClick={handlePrint}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 transition-colors inline-flex"
+                        className="page-m3__button page-m3__button--secondary"
                     >
                         🖨️ <span className="hidden sm:inline">Print</span>
                     </button>
                     <button
                         onClick={handleWhatsApp}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-500 transition-colors inline-flex"
+                        className="page-m3__button page-m3__button--primary"
                     >
                         💬 <span className="hidden sm:inline">WhatsApp</span>
                     </button>
@@ -348,59 +342,59 @@ export default function VoucherDetailPage() {
             </div>
 
             {/* Voucher Card */}
-            <div ref={printRef} className="bg-white rounded-xl shadow-2xl overflow-hidden max-w-4xl mx-auto print:shadow-none print:rounded-none">
+            <div ref={printRef} className="page-m3__detail-container">
 
                 {/* Header Section */}
-                <div className="bg-slate-50 border-b border-slate-200 p-6 md:p-8">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="page-m3__detail-header">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
                         <div>
-                            <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">{voucherTitle}</h1>
-                            <p className="text-slate-500 mt-1">{selectedCompany?.name}</p>
+                            <h1 className="page-m3__detail-title">{voucherTitle}</h1>
+                            <p style={{ color: '#6b7280', marginTop: '4px' }}>{selectedCompany?.name}</p>
                             {selectedCompany?.address && (
-                                <p className="text-sm text-slate-400 mt-0.5 max-w-md">{selectedCompany.address}</p>
+                                <p style={{ fontSize: '14px', color: '#9ca3af', marginTop: '2px', maxWidth: '400px' }}>{selectedCompany.address}</p>
                             )}
                             {selectedCompany?.gstin && (
-                                <p className="text-sm text-slate-500 font-mono mt-1">GSTIN: {selectedCompany.gstin}</p>
+                                <p style={{ fontSize: '14px', color: '#6b7280', fontFamily: 'monospace', marginTop: '4px' }}>GSTIN: {selectedCompany.gstin}</p>
                             )}
                         </div>
-                        <div className="text-left md:text-right">
-                            <p className="text-sm text-slate-500 uppercase font-medium tracking-wider">Voucher No.</p>
-                            <p className="text-xl md:text-2xl font-bold text-indigo-600">{voucher.voucher_number}</p>
-                            <div className="mt-2 flex items-center md:justify-end gap-2 text-sm text-slate-600">
+                        <div style={{ textAlign: 'right' }}>
+                            <p style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', fontWeight: '500', letterSpacing: '0.5px' }}>Voucher No.</p>
+                            <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#1b5e20' }}>{voucher.voucher_number}</p>
+                            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', fontSize: '14px', color: '#4b5563' }}>
                                 <span>Date:</span>
-                                <span className="font-medium">{formatDate(voucher.voucher_date)}</span>
+                                <span style={{ fontWeight: '500' }}>{formatDate(voucher.voucher_date)}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Party / Details Section */}
-                <div className="p-6 md:p-8 grid md:grid-cols-2 gap-6 md:gap-12 border-b border-slate-100">
+                <div style={{ padding: '24px 32px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', borderBottom: '1px solid #e0e2ec' }}>
                     {/* Party Details */}
                     <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        <h3 className="page-m3__detail-label" style={{ marginBottom: '12px' }}>
                             {voucher.voucher_type === 'Sales' ? 'Buyer' :
                                 voucher.voucher_type === 'Purchase' ? 'Seller' : 'Party Details'}
                         </h3>
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                            <p className="text-lg font-semibold text-slate-800 break-words">{voucher.party_name || 'Cash'}</p>
+                        <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '12px', border: '1px solid #e0e2ec' }}>
+                            <p className="page-m3__detail-value" style={{ fontSize: '18px' }}>{voucher.party_name || 'Cash'}</p>
                             {detailData?.party_gstin && (
-                                <p className="text-sm text-slate-600 mt-1 font-mono">GSTIN: {detailData.party_gstin}</p>
+                                <p style={{ fontSize: '14px', color: '#4b5563', marginTop: '4px', fontFamily: 'monospace' }}>GSTIN: {detailData.party_gstin}</p>
                             )}
                             {detailData?.place_of_supply && (
-                                <p className="text-sm text-slate-500 mt-1">Place of Supply: {detailData.place_of_supply}</p>
+                                <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px' }}>Place of Supply: {detailData.place_of_supply}</p>
                             )}
                         </div>
                     </div>
 
                     {/* Amount Summary */}
-                    <div className="flex flex-col justify-end">
-                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 text-right">
-                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Total Amount</p>
-                            <p className="text-3xl md:text-4xl font-bold text-indigo-600">
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                        <div style={{ background: '#e8f5e9', padding: '16px', borderRadius: '12px', border: '1px solid #c8e6c9', textAlign: 'right' }}>
+                            <p className="page-m3__detail-label" style={{ color: '#2e7d32', marginBottom: '4px' }}>Total Amount</p>
+                            <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#1b5e20' }}>
                                 {formatCurrency(detailData?.net_amount || voucher.total_amount)}
                             </p>
-                            <p className="text-xs text-indigo-400 mt-1 italic">
+                            <p style={{ fontSize: '12px', color: '#2e7d32', marginTop: '4px', fontStyle: 'italic' }}>
                                 {numberToWords(Math.round(detailData?.net_amount || voucher.total_amount))}
                             </p>
                         </div>
@@ -409,43 +403,41 @@ export default function VoucherDetailPage() {
 
                 {/* === ITEMS TABLE (for Sales/Purchase) === */}
                 {isSalesOrPurchase && (
-                    <div className="border-t border-slate-100">
+                    <div className="page-m3__table-container">
                         {items.length > 0 ? (
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[600px]">
-                                    <thead className="bg-slate-50 border-b border-slate-200">
-                                        <tr>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-12">#</th>
-                                            <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Format</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">HSN</th>
-                                            <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty</th>
-                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Rate</th>
-                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Disc</th>
-                                            <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Amount</th>
+                            <table className="page-m3__table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '40px' }}>#</th>
+                                        <th>Item Format</th>
+                                        <th style={{ textAlign: 'center', width: '100px' }}>HSN</th>
+                                        <th style={{ textAlign: 'center', width: '100px' }}>Qty</th>
+                                        <th style={{ textAlign: 'right', width: '120px' }}>Rate</th>
+                                        <th style={{ textAlign: 'right', width: '80px' }}>Disc</th>
+                                        <th style={{ textAlign: 'right', width: '120px' }}>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.map((item, idx) => (
+                                        <tr key={item.id || idx}>
+                                            <td style={{ color: '#9ca3af' }}>{idx + 1}</td>
+                                            <td>
+                                                <p style={{ fontWeight: '500', color: '#1f2937' }}>{item.stock_item_name || item.name || 'Unknown Item'}</p>
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#6b7280' }}>{item.hsn_code || '-'}</td>
+                                            <td style={{ textAlign: 'center', color: '#374151' }}>
+                                                <span style={{ fontWeight: '600' }}>{item.quantity}</span>
+                                                <span style={{ fontSize: '12px', color: '#9ca3af', marginLeft: '4px' }}>{item.unit}</span>
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#374151' }}>{formatCurrency(item.rate)}</td>
+                                            <td style={{ textAlign: 'right', color: '#6b7280' }}>{item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>{formatCurrency(item.amount)}</td>
                                         </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {items.map((item, idx) => (
-                                            <tr key={item.id || idx} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 text-sm text-slate-400">{idx + 1}</td>
-                                                <td className="px-6 py-4">
-                                                    <p className="text-sm font-medium text-slate-900">{item.stock_item_name || item.name || 'Unknown Item'}</p>
-                                                </td>
-                                                <td className="px-6 py-4 text-center text-sm text-slate-500 font-mono">{item.hsn_code || '-'}</td>
-                                                <td className="px-6 py-4 text-center text-sm text-slate-700">
-                                                    <span className="font-semibold">{item.quantity}</span>
-                                                    <span className="text-xs text-slate-400 ml-1">{item.unit}</span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right text-sm text-slate-700 font-mono">{formatCurrency(item.rate)}</td>
-                                                <td className="px-6 py-4 text-right text-sm text-slate-500">{item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
-                                                <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(item.amount)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                    ))}
+                                </tbody>
+                            </table>
                         ) : (
-                            <div className="p-8 text-center text-slate-500 italic bg-slate-50">
+                            <div style={{ padding: '32px', textAlign: 'center', color: '#6b7280', fontStyle: 'italic', background: '#f9fafb' }}>
                                 No inventory details found.
                             </div>
                         )}
@@ -454,81 +446,79 @@ export default function VoucherDetailPage() {
 
                 {/* === LEDGER ENTRIES (for Receipt/Payment/Journal) === */}
                 {!isSalesOrPurchase && voucher.ledger_entries && voucher.ledger_entries.length > 0 && (
-                    <div className="border-t border-slate-100">
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[500px]">
-                                <thead className="bg-slate-50 border-b border-slate-200">
-                                    <tr>
-                                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Particulars</th>
-                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-40">Debit</th>
-                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-40">Credit</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {voucher.ledger_entries.map((entry, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-800">{entry.ledger_name}</td>
-                                            <td className="px-6 py-4 text-right text-sm font-mono text-slate-700">
-                                                {entry.is_debit ? formatCurrency(entry.amount) : '-'}
-                                            </td>
-                                            <td className="px-6 py-4 text-right text-sm font-mono text-slate-700">
-                                                {!entry.is_debit ? formatCurrency(entry.amount) : '-'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                                <tfoot className="bg-slate-50 border-t border-slate-200">
-                                    <tr>
-                                        <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Total</td>
-                                        <td className="px-6 py-4 text-right font-bold text-slate-900">
-                                            {formatCurrency(voucher.ledger_entries.filter(e => e.is_debit).reduce((s, e) => s + e.amount, 0))}
+                    <div className="page-m3__table-container">
+                        <table className="page-m3__table">
+                            <thead>
+                                <tr>
+                                    <th>Particulars</th>
+                                    <th style={{ textAlign: 'right', width: '150px' }}>Debit</th>
+                                    <th style={{ textAlign: 'right', width: '150px' }}>Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {voucher.ledger_entries.map((entry, idx) => (
+                                    <tr key={idx}>
+                                        <td style={{ fontWeight: '500', color: '#1f2937' }}>{entry.ledger_name}</td>
+                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#374151' }}>
+                                            {entry.is_debit ? formatCurrency(entry.amount) : '-'}
                                         </td>
-                                        <td className="px-6 py-4 text-right font-bold text-slate-900">
-                                            {formatCurrency(voucher.ledger_entries.filter(e => !e.is_debit).reduce((s, e) => s + e.amount, 0))}
+                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#374151' }}>
+                                            {!entry.is_debit ? formatCurrency(entry.amount) : '-'}
                                         </td>
                                     </tr>
-                                </tfoot>
-                            </table>
-                        </div>
+                                ))}
+                            </tbody>
+                            <tfoot style={{ background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                                <tr>
+                                    <td style={{ fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Total</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
+                                        {formatCurrency(voucher.ledger_entries.filter(e => e.is_debit).reduce((s, e) => s + e.amount, 0))}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#111827' }}>
+                                        {formatCurrency(voucher.ledger_entries.filter(e => !e.is_debit).reduce((s, e) => s + e.amount, 0))}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
                 )}
 
                 {/* === SUMMARY & FOOTER === */}
-                <div className="bg-slate-50 border-t border-slate-200 p-6 md:p-8">
+                <div className="page-m3__detail-footer">
                     {/* Tax Breakdown for Sales/Purchase */}
                     {isSalesOrPurchase && detailData && (
-                        <div className="flex flex-col md:flex-row justify-end mb-8">
-                            <div className="w-full md:w-80 space-y-3">
-                                <div className="flex justify-between text-sm text-slate-500">
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginBottom: '32px' }}>
+                            <div style={{ width: '100%', maxWidth: '350px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <div className="page-m3__summary-row">
                                     <span>Gross Amount</span>
-                                    <span className="font-medium text-slate-700">{formatCurrency(detailData.gross_amount)}</span>
+                                    <span style={{ fontWeight: '500', color: '#374151' }}>{formatCurrency(detailData.gross_amount)}</span>
                                 </div>
                                 {detailData.discount_amount > 0 && (
-                                    <div className="flex justify-between text-sm text-red-500">
+                                    <div className="page-m3__summary-row" style={{ color: '#ef4444' }}>
                                         <span>Discount</span>
                                         <span>- {formatCurrency(detailData.discount_amount)}</span>
                                     </div>
                                 )}
 
-                                <div className="space-y-1 pt-2 border-t border-slate-200">
-                                    <div className="flex justify-between text-sm text-slate-500">
+                                <div style={{ paddingTop: '8px', borderTop: '1px solid #e0e2ec', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div className="page-m3__summary-row">
                                         <span>Taxable Value</span>
-                                        <span className="font-medium text-slate-700">{formatCurrency(detailData.taxable_amount)}</span>
+                                        <span style={{ fontWeight: '500', color: '#374151' }}>{formatCurrency(detailData.taxable_amount)}</span>
                                     </div>
                                     {detailData.cgst_amount > 0 && (
-                                        <div className="flex justify-between text-sm text-slate-500">
+                                        <div className="page-m3__summary-row">
                                             <span>CGST</span>
                                             <span>{formatCurrency(detailData.cgst_amount)}</span>
                                         </div>
                                     )}
                                     {detailData.sgst_amount > 0 && (
-                                        <div className="flex justify-between text-sm text-slate-500">
+                                        <div className="page-m3__summary-row">
                                             <span>SGST</span>
                                             <span>{formatCurrency(detailData.sgst_amount)}</span>
                                         </div>
                                     )}
                                     {detailData.igst_amount > 0 && (
-                                        <div className="flex justify-between text-sm text-slate-500">
+                                        <div className="page-m3__summary-row">
                                             <span>IGST</span>
                                             <span>{formatCurrency(detailData.igst_amount)}</span>
                                         </div>
@@ -536,15 +526,15 @@ export default function VoucherDetailPage() {
                                 </div>
 
                                 {detailData.round_off !== 0 && (
-                                    <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-slate-200">
+                                    <div className="page-m3__summary-row" style={{ paddingTop: '8px', borderTop: '1px solid #e0e2ec' }}>
                                         <span>Round Off</span>
                                         <span>{detailData.round_off > 0 ? '+' : ''}{formatCurrency(detailData.round_off)}</span>
                                     </div>
                                 )}
 
-                                <div className="flex justify-between items-center pt-4 border-t border-slate-300">
-                                    <span className="font-bold text-slate-800">Net Amount</span>
-                                    <span className="text-2xl font-bold text-indigo-600">{formatCurrency(detailData.net_amount)}</span>
+                                <div className="page-m3__summary-row total">
+                                    <span>Net Amount</span>
+                                    <span style={{ color: '#1b5e20' }}>{formatCurrency(detailData.net_amount)}</span>
                                 </div>
                             </div>
                         </div>
@@ -552,15 +542,15 @@ export default function VoucherDetailPage() {
 
                     {/* Narration */}
                     {voucher.narration && (
-                        <div className="bg-slate-100 p-4 text-xs text-slate-500 rounded-lg border border-slate-200">
-                            <span className="font-bold uppercase mr-2 text-slate-700">Narration:</span>
+                        <div style={{ background: '#f3f4f6', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '14px', color: '#4b5563' }}>
+                            <span style={{ fontWeight: 'bold', textTransform: 'uppercase', marginRight: '8px', color: '#374151' }}>Narration:</span>
                             {voucher.narration}
                         </div>
                     )}
                 </div>
 
                 {/* Footer Section */}
-                <div className="bg-white border-t border-slate-100 p-6 text-center text-xs text-slate-400">
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '12px', color: '#9ca3af', borderTop: '1px solid #e0e2ec', background: '#fff' }}>
                     <p>This is a computer generated document. No signature required.</p>
                 </div>
             </div>
@@ -569,6 +559,8 @@ export default function VoucherDetailPage() {
                  @media print {
                      @page { margin: 10mm; }
                      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                     .page-m3 { padding: 0 !important; background: white !important; }
+                     .page-m3__detail-container { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; }
                  }
              `}</style>
         </div>

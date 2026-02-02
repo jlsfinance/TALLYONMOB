@@ -39,3 +39,8 @@ Thumbs.db
 sync_queue.db
 .temp/
 .snapshots/
+publish/
+*.exe
+*.dll
+*.pdb
+*.log

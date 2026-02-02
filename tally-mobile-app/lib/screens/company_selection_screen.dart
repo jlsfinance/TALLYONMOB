@@ -25,7 +25,10 @@ class _CompanySelectionScreenState extends State<CompanySelectionScreen> {
     setState(() => _isLoading = true);
     try {
       final dataProvider = context.read<DataProvider>();
-      final companies = await dataProvider.getCompanies();
+      await dataProvider.fetchCompanies();
+      final companies = dataProvider.companies
+          .map((c) => {'id': c.id, 'name': c.name})
+          .toList();
       setState(() {
         _companies = companies;
         _isLoading = false;

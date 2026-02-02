@@ -174,6 +174,8 @@ namespace TallySyncApp.Views
                 return;
             }
 
+            if (!await CheckSerialAndConfirmAsync()) return;
+
             SyncNowButton.IsEnabled = false;
             UpdateStatus("Starting...", "#6366F1");
 
@@ -198,8 +200,9 @@ namespace TallySyncApp.Views
             }
         }
 
-        private void StartAutoSyncButton_Click(object sender, RoutedEventArgs e)
+        private async void StartAutoSyncButton_Click(object sender, RoutedEventArgs e)
         {
+            if (!await CheckSerialAndConfirmAsync()) return;
             var intervalMinutes = GetSelectedInterval();
             
             if (intervalMinutes <= 0)
@@ -367,6 +370,38 @@ namespace TallySyncApp.Views
         {
             MessageBox.Show("Settings are configured in appsettings.json", 
                             "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        private async Task<bool> CheckSerialAndConfirmAsync()
+        {
+             var syncManager = App.GetSyncManager();
+             var (isValid, current, stored, msg) = await syncManager.CheckTallySerialAsync();
+             
+             if (isValid)
+             {
+                 if (!string.IsNullOrEmpty(current) && string.IsNullOrEmpty(stored))
+                 {
+                     syncManager.UpdateTallySerial(current);
+                     AddLog($"Captured Tally Serial: {current}");
+                 }
+                 return true;
+             }
+
+             // Mismatch
+             var res = MessageBox.Show(
+                 $"Tally Serial Number Mismatch!\n\nStored: {stored}\nCurrent: {current}\n\nDo you want to proceed and update the serial number?",
+                 "Security Warning",
+                 MessageBoxButton.YesNo,
+                 MessageBoxImage.Warning);
+                
+             if (res == MessageBoxResult.Yes)
+             {
+                 syncManager.UpdateTallySerial(current!);
+                 AddLog($"Updated Tally Serial to: {current}");
+                 return true;
+             }
+             
+             AddLog("Sync cancelled by user due to serial mismatch.");
+             return false;
         }
     }
 

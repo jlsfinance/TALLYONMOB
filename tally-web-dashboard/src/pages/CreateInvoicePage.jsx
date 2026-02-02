@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { masterApi, pendingTransactionApi } from '../lib/supabase';
 import { format } from 'date-fns';
+import '../styles/Material3.css';
 
 export default function CreateInvoicePage() {
     const { selectedCompany } = useAuth();
@@ -36,9 +37,6 @@ export default function CreateInvoicePage() {
                 masterApi.getStockItems(selectedCompany.id)
             ]);
 
-            // Filter only likely parties (Sundry Debtors/Creditors/Sales)
-            // Tally parent hierarchy is complex, so we'll just show all but prioritize later loops if needed.
-            // For now, sorting alphabetically.
             setLedgers(lRes.data || []);
             setStockItems(sRes.data || []);
         } catch (error) {
@@ -62,7 +60,7 @@ export default function CreateInvoicePage() {
             item.amount = (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
         }
 
-        // If item selected, set rate from stock item (if available) - TODO
+        // If item selected, set rate from stock item (if available)
         if (field === 'itemId') {
             const stock = stockItems.find(s => s.id === value);
             if (stock) {
@@ -139,31 +137,38 @@ export default function CreateInvoicePage() {
         }
     };
 
-    if (loading) return <div className="p-8 text-center">Loading masters...</div>;
+    if (loading) {
+        return (
+            <div className="page-m3">
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
+                    <p>Loading masters...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="pb-24 lg:pb-8">
-            {/* Header */}
-            <div className="bg-white sticky top-0 z-10 p-4 border-b flex items-center justify-between shadow-sm rounded-t-2xl lg:rounded-none">
-                <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full">
-                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                </button>
-                <h1 className="text-xl font-bold text-gray-800">New Sales Invoice</h1>
-                <div className="w-10"></div> {/* Spacer for center alignment */}
-            </div>
+        <div className="page-m3">
+            <header className="page-m3__header">
+                <h1 className="page-m3__title">
+                    <Link to="/sales" className="text-gray-400 mr-2 hover:text-green-700 no-underline">←</Link>
+                    New Sales Invoice
+                </h1>
+                <p className="page-m3__subtitle">Create a new invoice to be synced with Tally</p>
+            </header>
 
-            <form onSubmit={handleSubmit} className="max-w-3xl mx-auto p-4 space-y-6">
-
+            <form onSubmit={handleSubmit} className="page-m3__form-container">
                 {/* Party & Date Section */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Party A/c Name</label>
+                <div className="page-m3__form-section">
+                    <h2 className="page-m3__form-title">Invoice Details</h2>
+
+                    <div className="page-m3__form-group">
+                        <label className="page-m3__label">Party A/c Name</label>
                         <select
                             value={formData.partyId}
                             onChange={(e) => handleHeaderChange('partyId', e.target.value)}
-                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                            className="page-m3__select"
                             required
                         >
                             <option value="">Select Party</option>
@@ -173,24 +178,24 @@ export default function CreateInvoicePage() {
                         </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <div className="page-m3__form-row">
+                        <div className="page-m3__form-group">
+                            <label className="page-m3__label">Date</label>
                             <input
                                 type="date"
                                 value={formData.date}
                                 onChange={(e) => handleHeaderChange('date', e.target.value)}
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                                className="page-m3__input"
                                 required
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Ref No (Optional)</label>
+                        <div className="page-m3__form-group">
+                            <label className="page-m3__label">Ref No (Optional)</label>
                             <input
                                 type="text"
                                 value={formData.reference}
                                 onChange={(e) => handleHeaderChange('reference', e.target.value)}
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                                className="page-m3__input"
                                 placeholder="e.g. INV/001"
                             />
                         </div>
@@ -198,29 +203,29 @@ export default function CreateInvoicePage() {
                 </div>
 
                 {/* Items Section */}
-                <div className="space-y-3">
-                    <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider px-2">Items</h2>
-                    {formData.items.map((item, index) => (
-                        <div key={index} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 relative group">
+                <div className="page-m3__form-section">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h2 className="page-m3__form-title">Items</h2>
+                    </div>
 
-                            {/* Remove Button */}
+                    {formData.items.map((item, index) => (
+                        <div key={index} className="page-m3__item-row">
                             {formData.items.length > 1 && (
                                 <button
                                     type="button"
                                     onClick={() => removeItem(index)}
-                                    className="absolute -top-2 -right-2 bg-red-100 text-red-500 p-1 rounded-full shadow-sm hover:bg-red-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="page-m3__remove-btn"
+                                    title="Remove Item"
                                 >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
+                                    ×
                                 </button>
                             )}
 
-                            <div className="space-y-3">
+                            <div className="page-m3__form-group" style={{ marginBottom: '12px' }}>
                                 <select
                                     value={item.itemId}
                                     onChange={(e) => handleItemChange(index, 'itemId', e.target.value)}
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none font-medium"
+                                    className="page-m3__select"
                                     required
                                 >
                                     <option value="">Select Item</option>
@@ -228,37 +233,50 @@ export default function CreateInvoicePage() {
                                         <option key={s.id} value={s.id}>{s.name}</option>
                                     ))}
                                 </select>
+                            </div>
 
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="text-[10px] text-gray-400 uppercase font-bold">Qty</label>
-                                        <input
-                                            type="number"
-                                            value={item.quantity}
-                                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                                            className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-right"
-                                            placeholder="0"
-                                            min="0.1"
-                                            step="any"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-gray-400 uppercase font-bold">Rate</label>
-                                        <input
-                                            type="number"
-                                            value={item.rate}
-                                            onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
-                                            className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-right"
-                                            placeholder="0.00"
-                                            min="0"
-                                            step="0.01"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-gray-400 uppercase font-bold">Amount</label>
-                                        <div className="w-full p-2 bg-gray-100 border border-transparent rounded-lg text-right font-bold text-gray-700">
-                                            {item.amount.toLocaleString('en-IN')}
-                                        </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Qty</label>
+                                    <input
+                                        type="number"
+                                        value={item.quantity}
+                                        onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                        className="page-m3__input"
+                                        style={{ width: '100%', padding: '8px', textAlign: 'right' }}
+                                        placeholder="0"
+                                        min="0.1"
+                                        step="any"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Rate</label>
+                                    <input
+                                        type="number"
+                                        value={item.rate}
+                                        onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                                        className="page-m3__input"
+                                        style={{ width: '100%', padding: '8px', textAlign: 'right' }}
+                                        placeholder="0.00"
+                                        min="0"
+                                        step="0.01"
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase' }}>Amount</label>
+                                    <div style={{
+                                        padding: '8px',
+                                        background: '#e0e2ec',
+                                        borderRadius: '8px',
+                                        textAlign: 'right',
+                                        fontWeight: 'bold',
+                                        color: '#1b5e20',
+                                        height: '42px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'flex-end'
+                                    }}>
+                                        {item.amount.toLocaleString('en-IN')}
                                     </div>
                                 </div>
                             </div>
@@ -268,61 +286,50 @@ export default function CreateInvoicePage() {
                     <button
                         type="button"
                         onClick={addItem}
-                        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-medium hover:border-emerald-500 hover:text-emerald-500 transition-colors flex items-center justify-center gap-2"
+                        className="page-m3__add-btn"
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Add Another Item
+                        <span>+</span> Add Another Item
                     </button>
                 </div>
 
                 {/* Footer Section: Narration & Total */}
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Narration</label>
+                <div className="page-m3__form-section">
+                    <div className="page-m3__form-group">
+                        <label className="page-m3__label">Narration</label>
                         <textarea
                             value={formData.narration}
                             onChange={(e) => handleHeaderChange('narration', e.target.value)}
-                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none resize-none h-20"
+                            className="page-m3__textarea"
+                            rows="3"
                             placeholder="Enter remarks..."
                         ></textarea>
                     </div>
 
-                    <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                        <span className="text-lg font-bold text-gray-600">Total Amount</span>
-                        <span className="text-2xl font-bold text-emerald-600">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid #e0e2ec' }}>
+                        <span style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563' }}>Total Amount</span>
+                        <span style={{ fontSize: '24px', fontWeight: 'bold', color: '#1b5e20' }}>
                             ₹{calculateTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-lg flex gap-3 lg:relative lg:bg-transparent lg:border-none lg:shadow-none lg:p-0">
+                <div className="page-m3__form-actions">
                     <button
                         type="button"
                         onClick={() => navigate(-1)}
-                        className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition"
+                        className="page-m3__button page-m3__button--secondary"
                         disabled={submitting}
                     >
                         Cancel
                     </button>
                     <button
                         type="submit"
-                        className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="page-m3__button page-m3__button--primary"
                         disabled={submitting}
+                        style={{ padding: '8px 24px' }}
                     >
-                        {submitting ? (
-                            <>
-                                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Saving...
-                            </>
-                        ) : (
-                            'Save Invoice'
-                        )}
+                        {submitting ? 'Saving...' : 'Save Invoice'}
                     </button>
                 </div>
 
@@ -330,3 +337,4 @@ export default function CreateInvoicePage() {
         </div>
     );
 }
+

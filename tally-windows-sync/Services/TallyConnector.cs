@@ -139,6 +139,62 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Fetch Tally Serial Number
+        /// </summary>
+        public async Task<string> GetTallySerialNumberAsync()
+        {
+            var request = @"
+<ENVELOPE>
+    <HEADER>
+        <TALLYREQUEST>Export Data</TALLYREQUEST>
+    </HEADER>
+    <BODY>
+        <EXPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>SerialReport</REPORTNAME>
+                <STATICVARIABLES>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <REPORT NAME=""SerialReport"">
+                            <FORMS>SerialForm</FORMS>
+                        </REPORT>
+                        <FORM NAME=""SerialForm"">
+                            <PARTS>SerialPart</PARTS>
+                        </FORM>
+                        <PART NAME=""SerialPart"">
+                            <LINES>SerialLine</LINES>
+                        </PART>
+                        <LINE NAME=""SerialLine"">
+                            <FIELDS>SerialField</FIELDS>
+                        </LINE>
+                        <FIELD NAME=""SerialField"">
+                            <SET>$$LicenseInfo:SerialNumber</SET>
+                        </FIELD>
+                    </TDLMESSAGE>
+                </TDL>
+            </REQUESTDESC>
+        </EXPORTDATA>
+    </BODY>
+</ENVELOPE>";
+
+            try 
+            {
+                var doc = await SendRequestAsync(request, null, 10);
+                if (doc == null) return string.Empty;
+
+                var serial = doc.Descendants("SERIALFIELD").FirstOrDefault()?.Value;
+                return serial?.Trim() ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching serial: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
         /// Get active company info using standard Tally system variable
         /// </summary>
         public async Task<List<Company>> GetOpenCompaniesAsync()

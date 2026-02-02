@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase, salesApi } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import '../styles/Material3.css';
 
 export default function InvoiceDetailPage() {
     const { id } = useParams();
@@ -58,7 +59,6 @@ export default function InvoiceDetailPage() {
                     }));
                 } else {
                     // FALLBACK: If itemsData is empty, try fetching from vouchers table
-                    console.log('⚠️ Sales items missing, checking vouchers table...');
                     const { data: voucherData } = await supabase
                         .from('vouchers')
                         .select('inventory_entries')
@@ -66,7 +66,6 @@ export default function InvoiceDetailPage() {
                         .single();
 
                     if (voucherData?.inventory_entries && voucherData.inventory_entries.length > 0) {
-                        console.log('📦 Using voucher.inventory_entries as fallback:', voucherData.inventory_entries);
                         enrichedItems = voucherData.inventory_entries.map(item => ({
                             ...item,
                             stock_item_name: item.stock_item_name || item.name || 'Unknown Item',
@@ -140,77 +139,66 @@ export default function InvoiceDetailPage() {
 
     if (loading) {
         return (
-            <div className="animate-pulse space-y-6">
-                <div className="h-8 bg-gray-200 rounded w-48"></div>
-                <div className="bg-white rounded-xl p-6 shadow">
-                    <div className="h-6 bg-gray-200 rounded w-64 mb-4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-48"></div>
+            <div className="page-m3">
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
+                    <p>Loading invoice...</p>
                 </div>
             </div>
         );
     }
 
     if (!invoice) {
-        return <div className="p-8 text-center text-gray-500">Invoice not found</div>;
+        return <div className="page-m3 flex justify-center items-center"><p>Invoice not found</p></div>;
     }
 
     return (
-        <div className="space-y-6 min-h-screen bg-slate-900 p-4 md:p-8">
-            {/* Header Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:hidden">
-                <Link to="/sales" className="inline-flex items-center text-slate-300 hover:text-white transition-colors">
-                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                    Back to Sales
+        <div className="page-m3">
+            {/* Action Bar */}
+            <div className="page-m3__action-bar print:hidden">
+                <Link to="/sales" className="page-m3__back-link">
+                    <span>←</span> Back to Sales
                 </Link>
 
-                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <div style={{ display: 'flex', gap: '8px' }}>
                     <Link
                         to={`/invoice/${invoice.voucher_id || id}`}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-500 transition-colors inline-flex"
+                        className="page-m3__button page-m3__button--secondary"
                     >
-                        📄 <span className="hidden sm:inline">PDF</span>
+                        📄 PDF
                     </Link>
-                    <button
-                        onClick={handlePrint}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-500 transition-colors inline-flex"
-                    >
-                        🖨️ <span className="hidden sm:inline">Print</span>
+                    <button onClick={handlePrint} className="page-m3__button page-m3__button--secondary">
+                        🖨️ Print
                     </button>
-                    <button
-                        onClick={handleShare}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg shadow hover:bg-slate-600 transition-colors inline-flex"
-                    >
-                        📤 <span className="hidden sm:inline">Share</span>
+                    <button onClick={handleShare} className="page-m3__button page-m3__button--secondary">
+                        📤 Share
                     </button>
-                    <button
-                        onClick={handleWhatsApp}
-                        className="flex-1 md:flex-none items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg shadow hover:bg-green-500 transition-colors inline-flex"
-                    >
-                        💬 <span className="hidden sm:inline">WhatsApp</span>
+                    <button onClick={handleWhatsApp} className="page-m3__button page-m3__button--primary">
+                        💬 WhatsApp
                     </button>
                 </div>
             </div>
 
             {/* Invoice Container */}
-            <div ref={printRef} className="bg-white rounded-xl shadow-2xl overflow-hidden max-w-4xl mx-auto print:shadow-none print:rounded-none">
+            <div ref={printRef} className="page-m3__detail-container">
 
                 {/* Invoice Header */}
-                <div className="bg-slate-50 border-b border-slate-200 p-6 md:p-8">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="page-m3__detail-header">
+                    <div className="page-m3__detail-row">
                         <div>
-                            <h1 className="text-2xl md:text-3xl font-bold text-slate-800 tracking-tight">TAX INVOICE</h1>
-                            <p className="text-slate-500 mt-1">{selectedCompany?.name || 'Company Name'}</p>
+                            <h1 className="page-m3__detail-title">TAX INVOICE</h1>
+                            <p className="page-m3__subtitle">{selectedCompany?.name || 'Company Name'}</p>
                             {selectedCompany?.address && (
-                                <p className="text-sm text-slate-400 mt-0.5 max-w-md">{selectedCompany.address}</p>
+                                <p className="text-sm text-gray-400 mt-1 max-w-md">{selectedCompany.address}</p>
                             )}
                         </div>
-                        <div className="text-left md:text-right">
-                            <p className="text-sm text-slate-500 uppercase font-medium tracking-wider">Invoice No.</p>
-                            <p className="text-xl md:text-2xl font-bold text-indigo-600">{invoice.invoice_number || '-'}</p>
-                            <div className="mt-2 flex items-center md:justify-end gap-2 text-sm text-slate-600">
-                                <span>Date:</span>
+                        <div style={{ textAlign: 'right' }}>
+                            <p className="page-m3__detail-label">Invoice No.</p>
+                            <p className="page-m3__detail-value" style={{ fontSize: '20px', color: 'var(--md-sys-color-primary)' }}>
+                                {invoice.invoice_number || '-'}
+                            </p>
+                            <div style={{ marginTop: '8px' }}>
+                                <span className="text-sm text-gray-500">Date: </span>
                                 <span className="font-medium">{formatDate(invoice.invoice_date)}</span>
                             </div>
                         </div>
@@ -218,143 +206,137 @@ export default function InvoiceDetailPage() {
                 </div>
 
                 {/* Party Section */}
-                <div className="p-6 md:p-8 grid md:grid-cols-2 gap-6 md:gap-12">
+                <div className="page-m3__detail-row page-m3__detail-section">
                     {/* Bill To */}
                     <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Bill To</h3>
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                            <p className="text-lg font-semibold text-slate-800 break-words">{invoice.party_ledger_name}</p>
+                        <span className="page-m3__detail-label">Bill To</span>
+                        <div style={{ background: '#f8f9fa', padding: '16px', borderRadius: '8px' }}>
+                            <p className="page-m3__detail-value">{invoice.party_ledger_name}</p>
                             {invoice.party_gstin && (
-                                <p className="text-sm text-slate-600 mt-1 font-mono">GSTIN: {invoice.party_gstin}</p>
+                                <p className="text-sm text-gray-600 mt-1">GSTIN: {invoice.party_gstin}</p>
                             )}
                             {invoice.place_of_supply && (
-                                <p className="text-sm text-slate-500 mt-1">Place of Supply: {invoice.place_of_supply}</p>
+                                <p className="text-sm text-gray-500 mt-1">Place of Supply: {invoice.place_of_supply}</p>
                             )}
                         </div>
                     </div>
 
                     {/* Amount Highlight */}
-                    <div className="flex flex-col justify-end">
-                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 text-right">
-                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Invoice Amount</p>
-                            <p className="text-3xl md:text-4xl font-bold text-indigo-600">{formatCurrency(invoice.net_amount)}</p>
+                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <div style={{ background: '#e8f5e9', padding: '16px', borderRadius: '8px', textAlign: 'right', minWidth: '200px' }}>
+                            <span className="page-m3__detail-label" style={{ color: '#1b5e20' }}>Invoice Amount</span>
+                            <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#1b5e20', margin: 0 }}>
+                                {formatCurrency(invoice.net_amount)}
+                            </p>
                         </div>
                     </div>
                 </div>
 
                 {/* Items Table */}
-                <div className="border-t border-slate-100">
-                    <div className="overflow-x-auto">
-                        <table className="w-full min-w-[600px]">
-                            <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-12">#</th>
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Item Details</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">HSN</th>
-                                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">Qty</th>
-                                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Rate</th>
-                                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider w-32">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {(invoice.sales_items && invoice.sales_items.length > 0) ? (
-                                    invoice.sales_items.map((item, idx) => (
-                                        <tr key={item.id || idx} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4 text-sm text-slate-400">{idx + 1}</td>
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-medium text-slate-900">{item.stock_item_name || item.name || 'Unknown Item'}</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-center text-sm text-slate-500 font-mono">{item.hsn_code || '-'}</td>
-                                            <td className="px-6 py-4 text-center text-sm text-slate-700">
-                                                <span className="font-semibold">{item.quantity}</span>
-                                                <span className="text-xs text-slate-400 ml-1">{item.unit}</span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right text-sm text-slate-700 font-mono">{formatCurrency(item.rate)}</td>
-                                            <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(item.amount)}</td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="6" className="px-6 py-12 text-center text-slate-400 italic bg-slate-50">
-                                            No items found in this invoice.
+                <div className="page-m3__table-container">
+                    <table className="page-m3__table">
+                        <thead>
+                            <tr>
+                                <th style={{ width: '40px' }}>#</th>
+                                <th>Item Details</th>
+                                <th className="text-center" style={{ width: '80px' }}>HSN</th>
+                                <th className="text-center" style={{ width: '80px' }}>Qty</th>
+                                <th className="text-right" style={{ width: '120px' }}>Rate</th>
+                                <th className="text-right" style={{ width: '120px' }}>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(invoice.sales_items && invoice.sales_items.length > 0) ? (
+                                invoice.sales_items.map((item, idx) => (
+                                    <tr key={item.id || idx}>
+                                        <td style={{ color: '#9ca3af' }}>{idx + 1}</td>
+                                        <td>
+                                            <p style={{ fontWeight: 500 }}>{item.stock_item_name || item.name || 'Unknown Item'}</p>
                                         </td>
+                                        <td className="text-center text-sm">{item.hsn_code || '-'}</td>
+                                        <td className="text-center">
+                                            <span style={{ fontWeight: 600 }}>{item.quantity}</span>
+                                            <span className="text-xs text-gray-400 ml-1">{item.unit}</span>
+                                        </td>
+                                        <td className="text-right font-mono">{formatCurrency(item.rate)}</td>
+                                        <td className="text-right font-semibold">{formatCurrency(item.amount)}</td>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '32px', textAlign: 'center', color: '#9ca3af' }}>
+                                        No items found in this invoice.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
                 </div>
 
                 {/* Footer / Summary */}
-                <div className="bg-slate-50 border-t border-slate-200 p-6 md:p-8">
-                    <div className="flex flex-col md:flex-row justify-end">
-                        <div className="w-full md:w-80 space-y-3">
-                            {/* Summary Rows */}
-                            <div className="flex justify-between text-sm text-slate-500">
-                                <span>Gross Amount</span>
-                                <span className="font-medium text-slate-700">{formatCurrency(invoice.gross_amount)}</span>
-                            </div>
+                <div className="page-m3__detail-footer">
+                    <div style={{ marginLeft: 'auto', maxWidth: '350px' }}>
+                        <div className="page-m3__summary-row">
+                            <span>Gross Amount</span>
+                            <span style={{ color: '#374151' }}>{formatCurrency(invoice.gross_amount)}</span>
+                        </div>
 
-                            {invoice.discount_amount > 0 && (
-                                <div className="flex justify-between text-sm text-red-500">
-                                    <span>Discount</span>
-                                    <span>- {formatCurrency(invoice.discount_amount)}</span>
+                        {invoice.discount_amount > 0 && (
+                            <div className="page-m3__summary-row" style={{ color: '#ef4444' }}>
+                                <span>Discount</span>
+                                <span>- {formatCurrency(invoice.discount_amount)}</span>
+                            </div>
+                        )}
+
+                        <div style={{ borderTop: '1px solid #e5e7eb', margin: '8px 0', paddingTop: '8px' }}>
+                            <div className="page-m3__summary-row">
+                                <span>Taxable Value</span>
+                                <span style={{ color: '#374151' }}>{formatCurrency(invoice.taxable_amount)}</span>
+                            </div>
+                            {invoice.cgst_amount > 0 && (
+                                <div className="page-m3__summary-row">
+                                    <span>CGST</span>
+                                    <span>{formatCurrency(invoice.cgst_amount)}</span>
                                 </div>
                             )}
-
-                            {/* Tax Rows */}
-                            <div className="space-y-1 pt-2 border-t border-slate-200">
-                                <div className="flex justify-between text-sm text-slate-500">
-                                    <span>Taxable Value</span>
-                                    <span className="font-medium text-slate-700">{formatCurrency(invoice.taxable_amount)}</span>
-                                </div>
-                                {invoice.cgst_amount > 0 && (
-                                    <div className="flex justify-between text-sm text-slate-500">
-                                        <span>CGST</span>
-                                        <span>{formatCurrency(invoice.cgst_amount)}</span>
-                                    </div>
-                                )}
-                                {invoice.sgst_amount > 0 && (
-                                    <div className="flex justify-between text-sm text-slate-500">
-                                        <span>SGST</span>
-                                        <span>{formatCurrency(invoice.sgst_amount)}</span>
-                                    </div>
-                                )}
-                                {invoice.igst_amount > 0 && (
-                                    <div className="flex justify-between text-sm text-slate-500">
-                                        <span>IGST</span>
-                                        <span>{formatCurrency(invoice.igst_amount)}</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Round Off */}
-                            {invoice.round_off !== 0 && (
-                                <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-slate-200">
-                                    <span>Round Off</span>
-                                    <span>{invoice.round_off > 0 ? '+' : ''}{formatCurrency(invoice.round_off)}</span>
+                            {invoice.sgst_amount > 0 && (
+                                <div className="page-m3__summary-row">
+                                    <span>SGST</span>
+                                    <span>{formatCurrency(invoice.sgst_amount)}</span>
                                 </div>
                             )}
+                            {invoice.igst_amount > 0 && (
+                                <div className="page-m3__summary-row">
+                                    <span>IGST</span>
+                                    <span>{formatCurrency(invoice.igst_amount)}</span>
+                                </div>
+                            )}
+                        </div>
 
-                            {/* Grand Total */}
-                            <div className="flex justify-between items-center pt-4 border-t border-slate-300">
-                                <span className="font-bold text-slate-800">Net Amount</span>
-                                <span className="text-2xl font-bold text-indigo-600">{formatCurrency(invoice.net_amount)}</span>
+                        {invoice.round_off !== 0 && (
+                            <div className="page-m3__summary-row" style={{ borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
+                                <span>Round Off</span>
+                                <span>{invoice.round_off > 0 ? '+' : ''}{formatCurrency(invoice.round_off)}</span>
                             </div>
+                        )}
+
+                        <div className="page-m3__summary-row total">
+                            <span>Net Amount</span>
+                            <span>{formatCurrency(invoice.net_amount)}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Narration Footer */}
                 {invoice.narration && (
-                    <div className="bg-slate-100 p-4 text-xs text-slate-500 border-t border-slate-200">
-                        <span className="font-bold uppercase mr-2">Remarks:</span>
+                    <div style={{ background: '#f9fafb', padding: '16px', borderTop: '1px solid #e5e7eb', fontSize: '12px', color: '#6b7280' }}>
+                        <span style={{ fontWeight: 'bold', textTransform: 'uppercase', marginRight: '8px' }}>Remarks:</span>
                         {invoice.narration}
                     </div>
                 )}
             </div>
 
-            <div className="text-center text-slate-500 text-sm pb-8 print:hidden">
+            <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '12px', paddingBottom: '32px', marginTop: '16px' }} className="print:hidden">
                 LiveKeeping &bull; {selectedCompany?.name}
             </div>
         </div>

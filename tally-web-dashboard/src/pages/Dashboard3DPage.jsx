@@ -315,6 +315,10 @@ export default function Dashboard3DPage() {
                         <button className="dashboard-3d__action-btn" onClick={() => navigate('/vouchers')}>
                             <span>📄</span> Vouchers
                         </button>
+                        <button className="dashboard-3d__action-btn" onClick={() => window.open('/TallyLink.exe', '_blank')}>
+                            <img src="/tallylink_logo.png" alt="TallyLink" style={{ width: '24px', height: '24px', marginRight: '8px' }} />
+                            Download TallyLink PC App
+                        </button>
                     </section>
                 </>
             )}

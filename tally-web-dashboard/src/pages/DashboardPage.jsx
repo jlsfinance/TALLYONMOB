@@ -3,8 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow, format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from 'date-fns';
-import { GlassCard, KPICard, ProgressRing, BarChart3D } from '../components/3d';
-import './DashboardPage.css';
+import '../styles/Material3.css';
 
 export default function DashboardPage() {
     const { selectedCompany } = useAuth();
@@ -69,8 +68,6 @@ export default function DashboardPage() {
 
             if (rpcErr) throw rpcErr;
 
-            const totalSales = dbStats.sales_total || 0;
-            const totalPurchases = dbStats.purchases_total || 0;
             const totalReceipts = dbStats.receipts_total || 0;
             const totalPayments = dbStats.payments_total || 0;
 
@@ -144,242 +141,168 @@ export default function DashboardPage() {
 
     if (!selectedCompany) return null;
 
-    const netProfit = stats.sales - stats.purchases;
-    const collectionRate = stats.sales > 0 ? Math.min((stats.receipts / stats.sales) * 100, 100) : 0;
-
-    const quickActions = [
-        { icon: '📖', label: 'Day Book', to: '/vouchers' },
-        { icon: '📊', label: 'Ledgers', to: '/ledgers' },
-        { icon: '📈', label: 'Sales', to: '/sales' },
-        { icon: '📉', label: 'Purchases', to: '/purchases' },
-        { icon: '📦', label: 'Stock', to: '/stock' },
-        { icon: '🧾', label: 'GST', to: '/gst-reports' },
-    ];
-
     return (
-        <div className="dashboard-page">
+        <div className="page-m3">
             {/* Header Section */}
-            <header className="dashboard-page__header">
-                <div className="dashboard-page__header-info">
-                    <h1 className="dashboard-page__title">
-                        <span className="dashboard-page__title-icon">📊</span>
-                        Dashboard
+            <header className="page-m3__header">
+                <div>
+                    <h1 className="page-m3__title">
+                        <span>📊</span> Dashboard
                     </h1>
-                    <p className="dashboard-page__company">{selectedCompany.name}</p>
+                    <p className="page-m3__subtitle">{selectedCompany.name}</p>
                 </div>
                 {syncStatus.lastSync && (
-                    <div className="dashboard-page__sync-status">
-                        <span className="dashboard-page__sync-dot" />
-                        <span>Synced {formatDistanceToNow(new Date(syncStatus.lastSync))} ago</span>
+                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                        Synced {formatDistanceToNow(new Date(syncStatus.lastSync))} ago
                     </div>
                 )}
             </header>
 
             {/* Period Filter */}
-            <div className="dashboard-page__period-filter">
-                <div className="dashboard-page__period-pills">
-                    {['Today', 'This Month', 'Last 30 Days', 'This Year', 'Custom'].map((p) => (
-                        <button
-                            key={p}
-                            onClick={() => handlePeriodChange(p)}
-                            className={`dashboard-page__period-btn ${period === p ? 'active' : ''}`}
-                        >
-                            {p}
-                        </button>
-                    ))}
-                </div>
-
-                {period === 'Custom' && (
-                    <div className="dashboard-page__date-range">
-                        <input
-                            type="date"
-                            value={dateRange.start}
-                            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                            className="dashboard-page__date-input"
-                        />
-                        <span>to</span>
-                        <input
-                            type="date"
-                            value={dateRange.end}
-                            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                            className="dashboard-page__date-input"
-                        />
-                    </div>
-                )}
+            <div className="page-m3__filter-chips" style={{ marginBottom: '24px' }}>
+                {['Today', 'This Month', 'Last 30 Days', 'This Year', 'Custom'].map((p) => (
+                    <button
+                        key={p}
+                        onClick={() => handlePeriodChange(p)}
+                        className={`page-m3__chip ${period === p ? 'page-m3__chip--active' : ''}`}
+                    >
+                        {p}
+                    </button>
+                ))}
             </div>
 
             {loading ? (
-                <div className="dashboard-page__loading">
-                    <div className="dashboard-page__spinner" />
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
                     <p>Loading analytics...</p>
                 </div>
             ) : (
                 <>
-                    {/* KPI Cards */}
-                    <section className="dashboard-page__kpi-section">
-                        <KPICard
-                            title="Total Sales"
-                            value={stats.sales}
-                            icon="📈"
-                            variant="sales"
-                            subtitle={`Txbl: ${formatCurrency(stats.salesTaxable)} • ${stats.salesCount} Inv`}
-                            onClick={() => window.location.href = '/sales'}
-                        />
-                        <KPICard
-                            title="Purchases"
-                            value={stats.purchases}
-                            icon="🛒"
-                            variant="purchases"
-                            subtitle={`Txbl: ${formatCurrency(stats.purchasesTaxable)} • ${stats.purchasesCount} Inv`}
-                            onClick={() => window.location.href = '/purchases'}
-                        />
-                        <KPICard
-                            title="Receivables"
-                            value={stats.receivables}
-                            icon="💰"
-                            variant="outstanding"
-                            subtitle="Outstanding"
-                            onClick={() => window.location.href = '/ledgers'}
-                        />
-                        <KPICard
-                            title="Payables"
-                            value={stats.payables}
-                            icon="📤"
-                            variant="profit"
-                            subtitle="Outstanding"
-                            onClick={() => window.location.href = '/ledgers'}
-                        />
-                    </section>
-
-                    {/* Charts Row */}
-                    <section className="dashboard-page__charts">
-                        <GlassCard size="lg" className="dashboard-page__chart-card glass-card--prismatic">
-                            <h3 className="dashboard-page__section-title">
-                                <span>💹</span> Net Position
-                            </h3>
-                            <div className="dashboard-page__net-position">
-                                <div className="dashboard-page__net-item">
-                                    <span className="dashboard-page__net-label">Net Profit</span>
-                                    <span className={`dashboard-page__net-value ${netProfit >= 0 ? 'positive' : 'negative'}`}>
-                                        {formatCurrency(netProfit)}
-                                    </span>
-                                </div>
-                                <div className="dashboard-page__net-item">
-                                    <span className="dashboard-page__net-label">Receipts</span>
-                                    <span className="dashboard-page__net-value positive">
-                                        {formatCurrency(stats.receipts)}
-                                    </span>
-                                </div>
-                                <div className="dashboard-page__net-item">
-                                    <span className="dashboard-page__net-label">Payments</span>
-                                    <span className="dashboard-page__net-value negative">
-                                        {formatCurrency(stats.payments)}
-                                    </span>
-                                </div>
-                            </div>
-                        </GlassCard>
-
-                        <GlassCard size="lg" className="dashboard-page__progress-card">
-                            <h3 className="dashboard-page__section-title">
-                                <span>🎯</span> Key Metrics
-                            </h3>
-                            <div className="dashboard-page__progress-grid">
-                                <ProgressRing
-                                    value={collectionRate}
-                                    label="Collection"
-                                    color="emerald"
-                                    size={90}
-                                />
-                                <ProgressRing
-                                    value={netProfit > 0 ? Math.min((netProfit / stats.sales) * 100, 100) : 0}
-                                    label="Profit %"
-                                    color="purple"
-                                    size={90}
-                                />
-                            </div>
-                        </GlassCard>
-                    </section>
-
-                    {/* Quick Actions */}
-                    <section className="dashboard-page__quick-actions">
-                        <h3 className="dashboard-page__section-title">
-                            <span>⚡</span> Quick Access
-                        </h3>
-                        <div className="dashboard-page__actions-grid">
-                            {quickActions.map((action, idx) => (
-                                <Link key={idx} to={action.to} className="dashboard-page__action-card">
-                                    <span className="dashboard-page__action-icon">{action.icon}</span>
-                                    <span className="dashboard-page__action-label">{action.label}</span>
-                                </Link>
-                            ))}
-                        </div>
-                    </section>
-
-                    {/* Recent Vouchers */}
-                    <section className="dashboard-page__recent">
-                        <GlassCard size="lg">
-                            <div className="dashboard-page__recent-header">
-                                <h3 className="dashboard-page__section-title">
-                                    <span>📄</span> Recent Vouchers
+                    {/* Sync Flow Banner */}
+                    <div style={{ marginBottom: '20px' }}>
+                        <Link to="/landing" style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '16px 20px', background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+                            borderRadius: '16px', color: 'white', textDecoration: 'none',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+                                    <span style={{ fontSize: '20px' }}>✨</span> Visual Sync Flow
                                 </h3>
-                                <Link to="/vouchers" className="dashboard-page__view-all">
-                                    View All →
-                                </Link>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                                    See how your data moves from Tally PC to Mobile
+                                </p>
                             </div>
-                            <div className="dashboard-page__voucher-list">
-                                {recentVouchers.slice(0, 5).map((v, idx) => (
-                                    <Link
-                                        key={v.voucher_id || idx}
-                                        to={`/vouchers/${v.id}`}
-                                        className="dashboard-page__voucher-item"
-                                    >
-                                        <div className="dashboard-page__voucher-left">
-                                            <span className={`dashboard-page__voucher-icon ${v.voucher_type?.toLowerCase()}`}>
-                                                {v.voucher_type === 'Sales' ? '📈' :
-                                                    v.voucher_type === 'Receipt' ? '💰' :
-                                                        v.voucher_type === 'Purchase' ? '🛒' : '📝'}
-                                            </span>
-                                            <div className="dashboard-page__voucher-info">
-                                                <span className="dashboard-page__voucher-party">
-                                                    {v.party_name || 'Cash'}
-                                                </span>
-                                                <span className="dashboard-page__voucher-meta">
-                                                    {formatDate(v.voucher_date)} • #{v.voucher_number}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="dashboard-page__voucher-right">
-                                            <span className={`dashboard-page__voucher-amount ${v.voucher_type === 'Receipt' || v.voucher_type === 'Sales' ? 'credit' : 'debit'
-                                                }`}>
-                                                {formatCurrency(Math.abs(v.total_amount || 0))}
-                                            </span>
-                                            <span className={`dashboard-page__voucher-type ${v.voucher_type?.toLowerCase()}`}>
-                                                {v.voucher_type}
-                                            </span>
-                                        </div>
-                                    </Link>
-                                ))}
-                                {recentVouchers.length === 0 && (
-                                    <div className="dashboard-page__empty">
-                                        <span>📭</span>
-                                        <p>No vouchers found</p>
-                                    </div>
-                                )}
+                            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '8px 16px', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold' }}>
+                                View 3D →
                             </div>
-                        </GlassCard>
-                    </section>
+                        </Link>
+                    </div>
 
-                    {/* Action Buttons */}
-                    <section className="dashboard-page__cta-buttons">
-                        <Link to="/vouchers?type=Receipt" className="dashboard-page__cta dashboard-page__cta--primary">
-                            <span>💰</span> Collect Payment
+                    {/* KPI Cards */}
+                    <div className="page-m3__stats-grid" style={{ marginBottom: '24px' }}>
+                        <Link to="/sales" className="page-m3__stat-card" style={{ textDecoration: 'none' }}>
+                            <div className="page-m3__stat-icon" style={{ background: '#ecfdf5', color: '#059669' }}>📈</div>
+                            <div>
+                                <p className="page-m3__stat-value">{formatCurrency(stats.sales)}</p>
+                                <p className="page-m3__stat-label">Total Sales</p>
+                            </div>
                         </Link>
-                        <Link to="/create-invoice" className="dashboard-page__cta dashboard-page__cta--secondary">
-                            <span>📝</span> Create Invoice
+                        <Link to="/purchases" className="page-m3__stat-card" style={{ textDecoration: 'none' }}>
+                            <div className="page-m3__stat-icon" style={{ background: '#f3e8ff', color: '#7e22ce' }}>🛒</div>
+                            <div>
+                                <p className="page-m3__stat-value" style={{ color: '#7e22ce' }}>{formatCurrency(stats.purchases)}</p>
+                                <p className="page-m3__stat-label">Total Purchases</p>
+                            </div>
                         </Link>
-                    </section>
+                        <Link to="/ledgers" className="page-m3__stat-card" style={{ textDecoration: 'none' }}>
+                            <div className="page-m3__stat-icon" style={{ background: '#e0f2f1', color: '#0f766e' }}>💰</div>
+                            <div>
+                                <p className="page-m3__stat-value" style={{ color: '#0f766e' }}>{formatCurrency(stats.receivables)}</p>
+                                <p className="page-m3__stat-label">Receivables</p>
+                            </div>
+                        </Link>
+                        <Link to="/ledgers" className="page-m3__stat-card" style={{ textDecoration: 'none' }}>
+                            <div className="page-m3__stat-icon" style={{ background: '#fee2e2', color: '#b91c1c' }}>📤</div>
+                            <div>
+                                <p className="page-m3__stat-value" style={{ color: '#b91c1c' }}>{formatCurrency(stats.payables)}</p>
+                                <p className="page-m3__stat-label">Payables</p>
+                            </div>
+                        </Link>
+                    </div>
+
+                    {/* Quick Access */}
+                    <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', marginBottom: '16px' }}>Quick Access</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '32px' }}>
+                        <Link to="/create-invoice" className="page-m3__card" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px' }}>
+                            <span style={{ fontSize: '24px' }}>📝</span>
+                            <span style={{ fontSize: '12px', fontWeight: '500' }}>Invoice</span>
+                        </Link>
+                        <Link to="/vouchers" className="page-m3__card" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px' }}>
+                            <span style={{ fontSize: '24px' }}>📖</span>
+                            <span style={{ fontSize: '12px', fontWeight: '500' }}>Day Book</span>
+                        </Link>
+                        <Link to="/stock" className="page-m3__card" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px' }}>
+                            <span style={{ fontSize: '24px' }}>📦</span>
+                            <span style={{ fontSize: '12px', fontWeight: '500' }}>Stock</span>
+                        </Link>
+                    </div>
+
+                    {/* Recent Transactions */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937', margin: 0 }}>Recent</h3>
+                        <Link to="/vouchers" style={{ fontSize: '14px', color: '#1b5e20', fontWeight: '500', textDecoration: 'none' }}>View All →</Link>
+                    </div>
+
+                    <div className="page-m3__list">
+                        {recentVouchers.map(v => (
+                            <Link
+                                key={v.id}
+                                to={`/vouchers/${v.id}`}
+                                className="page-m3__list-item"
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        borderRadius: '12px',
+                                        background: v.voucher_type === 'Sales' ? '#ecfdf5' :
+                                            v.voucher_type === 'Receipt' ? '#eff6ff' :
+                                                v.voucher_type === 'Payment' ? '#fee2e2' : '#f3f4f6',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontSize: '20px'
+                                    }}>
+                                        {v.voucher_type === 'Sales' ? '📈' :
+                                            v.voucher_type === 'Receipt' ? '💰' :
+                                                v.voucher_type === 'Purchase' ? '🛒' : '📝'}
+                                    </div>
+                                    <div>
+                                        <p style={{ fontWeight: '600', color: '#1f2937' }}>{v.party_name || 'Cash'}</p>
+                                        <p style={{ fontSize: '11px', color: '#6b7280' }}>
+                                            {formatDate(v.voucher_date)} • #{v.voucher_number}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <p style={{
+                                        fontWeight: 'bold',
+                                        color: (v.voucher_type === 'Receipt' || v.voucher_type === 'Sales') ? '#059669' : '#1f2937',
+                                        fontSize: '14px'
+                                    }}>
+                                        {formatCurrency(Math.abs(v.total_amount || 0))}
+                                    </p>
+                                    <span style={{ fontSize: '10px', color: '#9ca3af' }}>{v.voucher_type}</span>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
                 </>
             )}
         </div>
     );
 }
+

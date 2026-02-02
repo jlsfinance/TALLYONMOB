@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import '../styles/Material3.css';
 
 export default function LedgerDetailPage() {
     const { id } = useParams();
@@ -68,20 +69,25 @@ export default function LedgerDetailPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+            <div className="page-m3">
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+                    <p>Loading ledger details...</p>
+                </div>
             </div>
         );
     }
 
     if (!ledger) {
         return (
-            <div className="text-center py-12">
-                <span className="text-5xl">❌</span>
-                <p className="mt-4 text-gray-600">Ledger not found</p>
-                <button onClick={() => navigate('/ledgers')} className="mt-4 text-indigo-600 hover:underline">
-                    ← Back to Ledgers
-                </button>
+            <div className="page-m3">
+                <div className="page-m3__empty-state">
+                    <span style={{ fontSize: '48px' }}>❌</span>
+                    <p>Ledger not found</p>
+                    <button onClick={() => navigate('/ledgers')} className="page-m3__button page-m3__button--secondary" style={{ marginTop: '16px' }}>
+                        ← Back to Ledgers
+                    </button>
+                </div>
             </div>
         );
     }
@@ -89,119 +95,118 @@ export default function LedgerDetailPage() {
     const isDebit = ledger.closing_balance > 0;
 
     return (
-        <div className="space-y-4 pb-20 lg:pb-0">
-            {/* Back Button */}
-            <button
-                onClick={() => navigate('/ledgers')}
-                className="flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors"
-            >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                Back to Parties
-            </button>
-
-            {/* Header Card */}
-            <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div className="absolute -top-24 -right-24 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
-
-                <div className="relative z-10">
-                    <div className="flex items-start gap-4">
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white ${isDebit ? 'bg-emerald-500/30' : 'bg-rose-500/30'
-                            }`}>
+        <div className="page-m3">
+            <header className="page-m3__header">
+                <button
+                    onClick={() => navigate('/ledgers')}
+                    className="page-m3__back-btn"
+                >
+                    <span className="material-icons">arrow_back</span> Back
+                </button>
+                <div className="page-m3__header-content" style={{ marginTop: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '16px',
+                            background: isDebit ? '#ecfdf5' : '#fff1f2',
+                            color: isDebit ? '#059669' : '#e11d48',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                        }}>
                             {ledger.name?.charAt(0)?.toUpperCase()}
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <h1 className="text-white text-xl font-bold truncate">{ledger.name}</h1>
-                            <p className="text-white/60 text-sm">{ledger.parent_group || 'General'}</p>
+                        <div>
+                            <h1 className="page-m3__title">{ledger.name}</h1>
+                            <p className="page-m3__subtitle">{ledger.parent_group || 'General'}</p>
                         </div>
                     </div>
+                </div>
+            </header>
 
-                    {/* Balance */}
-                    <div className="mt-6 grid grid-cols-2 gap-4">
-                        <div className="bg-white/10 rounded-2xl p-4">
-                            <p className="text-white/60 text-xs">Closing Balance</p>
-                            <p className={`text-2xl font-bold ${isDebit ? 'text-emerald-300' : 'text-rose-300'}`}>
-                                {formatCurrency(ledger.closing_balance)}
-                            </p>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${isDebit ? 'bg-emerald-500/30 text-emerald-200' : 'bg-rose-500/30 text-rose-200'
-                                }`}>
+            {/* Balance Cards */}
+            <div className="page-m3__stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                <div className="page-m3__stat-card">
+                    <div className="page-m3__stat-icon" style={{ background: isDebit ? '#ecfdf5' : '#fff1f2', color: isDebit ? '#059669' : '#e11d48' }}>💰</div>
+                    <div>
+                        <p className="page-m3__stat-value" style={{ color: isDebit ? '#059669' : '#e11d48' }}>
+                            {formatCurrency(ledger.closing_balance)} {isDebit ? 'Dr' : 'Cr'}
+                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <p className="page-m3__stat-label">Closing Balance</p>
+                            <span style={{
+                                fontSize: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                background: isDebit ? '#d1fae5' : '#ffe4e6',
+                                color: isDebit ? '#065f46' : '#9f1239',
+                                fontWeight: 'bold'
+                            }}>
                                 {isDebit ? 'Receivable' : 'Payable'}
                             </span>
                         </div>
-                        <div className="bg-white/10 rounded-2xl p-4">
-                            <p className="text-white/60 text-xs">Opening Balance</p>
-                            <p className="text-xl font-bold text-white">
-                                {formatCurrency(ledger.opening_balance)}
-                            </p>
-                        </div>
                     </div>
-
-                    {/* Contact Actions */}
-                    <div className="flex gap-2 mt-4">
-                        {ledger.phone && (
-                            <a
-                                href={`tel:${ledger.phone}`}
-                                className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
-                            >
-                                📞 Call
-                            </a>
-                        )}
-                        {ledger.phone && (
-                            <a
-                                href={`https://wa.me/${ledger.phone?.replace(/\D/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex-1 bg-emerald-500/30 hover:bg-emerald-500/40 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
-                            >
-                                💬 WhatsApp
-                            </a>
-                        )}
-                        {ledger.email && (
-                            <a
-                                href={`mailto:${ledger.email}`}
-                                className="flex-1 bg-white/10 hover:bg-white/20 text-white rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
-                            >
-                                ✉️ Email
-                            </a>
-                        )}
+                </div>
+                <div className="page-m3__stat-card">
+                    <div className="page-m3__stat-icon" style={{ background: '#f3f4f6', color: '#4b5563' }}>🏛️</div>
+                    <div>
+                        <p className="page-m3__stat-value" style={{ color: '#374151' }}>
+                            {formatCurrency(ledger.opening_balance)}
+                        </p>
+                        <p className="page-m3__stat-label">Opening Balance</p>
                     </div>
                 </div>
             </div>
 
-            {/* Contact Info Card */}
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '24px' }}>
+                {ledger.phone && (
+                    <a href={`tel:${ledger.phone}`} className="page-m3__chip" style={{ background: '#e0f2f1', color: '#00695c', border: 'none' }}>
+                        📞 Call
+                    </a>
+                )}
+                {ledger.phone && (
+                    <a href={`https://wa.me/${ledger.phone?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="page-m3__chip" style={{ background: '#dcfce7', color: '#166534', border: 'none' }}>
+                        💬 WhatsApp
+                    </a>
+                )}
+                {ledger.email && (
+                    <a href={`mailto:${ledger.email}`} className="page-m3__chip" style={{ background: '#eff6ff', color: '#1e40af', border: 'none' }}>
+                        ✉️ Email
+                    </a>
+                )}
+                <Link to={`/ledger-statement/${id}`} className="page-m3__chip" style={{ background: '#f3e8ff', color: '#6b21a8', border: 'none' }}>
+                    📋 Statement
+                </Link>
+            </div>
+
+            {/* Contact Details */}
             {(ledger.phone || ledger.email || ledger.gstin || ledger.address) && (
-                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-                    <h3 className="font-semibold text-gray-800 mb-3">Contact Details</h3>
-                    <div className="space-y-2 text-sm">
+                <div className="page-m3__card" style={{ padding: '20px', marginBottom: '24px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Details</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                         {ledger.phone && (
-                            <div className="flex items-center gap-3 text-gray-600">
-                                <span>📞</span>
-                                <span>{ledger.phone}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#4b5563' }}>
+                                <span style={{ fontSize: '18px' }}>📞</span> {ledger.phone}
                             </div>
                         )}
                         {ledger.email && (
-                            <div className="flex items-center gap-3 text-gray-600">
-                                <span>✉️</span>
-                                <span>{ledger.email}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#4b5563' }}>
+                                <span style={{ fontSize: '18px' }}>✉️</span> {ledger.email}
                             </div>
                         )}
                         {ledger.gstin && (
-                            <div className="flex items-center gap-3 text-gray-600">
-                                <span>🏢</span>
-                                <span>GSTIN: {ledger.gstin}</span>
-                            </div>
-                        )}
-                        {ledger.pan && (
-                            <div className="flex items-center gap-3 text-gray-600">
-                                <span>🆔</span>
-                                <span>PAN: {ledger.pan}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#4b5563' }}>
+                                <span style={{ fontSize: '18px' }}>🏢</span> <span style={{ fontFamily: 'monospace' }}>{ledger.gstin}</span>
                             </div>
                         )}
                         {ledger.address && (
-                            <div className="flex items-start gap-3 text-gray-600">
-                                <span>📍</span>
-                                <span>{ledger.address}</span>
+                            <div style={{ display: 'flex', alignItems: 'start', gap: '12px', fontSize: '14px', color: '#4b5563', gridColumn: '1 / -1' }}>
+                                <span style={{ fontSize: '18px' }}>📍</span> {ledger.address}
                             </div>
                         )}
                     </div>
@@ -209,49 +214,50 @@ export default function LedgerDetailPage() {
             )}
 
             {/* Tabs */}
-            <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
+            <div className="page-m3__tabs">
                 <button
                     onClick={() => setActiveTab('transactions')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600'
-                        }`}
+                    className={`page-m3__tab ${activeTab === 'transactions' ? 'page-m3__tab--active' : ''}`}
                 >
                     Transactions
                 </button>
                 <button
                     onClick={() => setActiveTab('statement')}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'statement' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-600'
-                        }`}
+                    className={`page-m3__tab ${activeTab === 'statement' ? 'page-m3__tab--active' : ''}`}
                 >
-                    Statement
+                    Statement View
                 </button>
             </div>
 
             {/* Transactions List */}
-            <div className="space-y-3">
+            <div style={{ marginTop: '24px' }}>
                 {transactions.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                        <span className="text-5xl">📭</span>
-                        <p className="mt-4 font-medium">No transactions found</p>
+                    <div className="page-m3__empty-state">
+                        <span style={{ fontSize: '48px' }}>📭</span>
+                        <p>No transactions found</p>
                     </div>
                 ) : (
-                    transactions.map(txn => (
-                        <Link
-                            key={txn.voucher_id}
-                            to={`/vouchers/${encodeURIComponent(txn.voucher_id)}`}
-                            className="block bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-lg hover:border-indigo-200 transition-all cursor-pointer"
-                        >
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-semibold text-gray-800">{txn.voucher_type}</p>
-                                    <p className="text-xs text-gray-500">
-                                        #{txn.voucher_number} • {formatDate(txn.voucher_date)}
-                                    </p>
-                                </div>
-                                <div className="text-right flex items-center gap-2">
+                    <div className="page-m3__list">
+                        {transactions.map(txn => (
+                            <Link
+                                key={txn.voucher_id}
+                                to={`/vouchers/${encodeURIComponent(txn.voucher_id)}`}
+                                className="page-m3__list-item"
+                                style={{ display: 'block', textDecoration: 'none' }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                     <div>
-                                        <p className={`font-bold ${txn.voucher_type === 'Receipt' ? 'text-emerald-600' :
-                                            txn.voucher_type === 'Payment' ? 'text-rose-600' : 'text-gray-800'
-                                            }`}>
+                                        <p style={{ fontWeight: '600', color: '#1f2937' }}>{txn.voucher_type}</p>
+                                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                                            #{txn.voucher_number} • {formatDate(txn.voucher_date)}
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <p style={{
+                                            fontWeight: 'bold',
+                                            color: txn.voucher_type === 'Receipt' ? '#059669' :
+                                                txn.voucher_type === 'Payment' ? '#e11d48' : '#1f2937'
+                                        }}>
                                             {formatCurrency(txn.total_amount)}
                                         </p>
                                         {(() => {
@@ -261,40 +267,41 @@ export default function LedgerDetailPage() {
                                             const isDr = partyEntry ? partyEntry.is_debit : (txn.voucher_type === 'Payment' || txn.voucher_type === 'Sales');
 
                                             return (
-                                                <span className={`text-[9px] px-2 py-0.5 rounded-full ${isDr ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
-                                                    }`}>
+                                                <span style={{
+                                                    fontSize: '10px',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    background: isDr ? '#e0e7ff' : '#d1fae5',
+                                                    color: isDr ? '#3730a3' : '#065f46',
+                                                    marginTop: '4px',
+                                                    display: 'inline-block'
+                                                }}>
                                                     {isDr ? 'Dr' : 'Cr'}
                                                 </span>
                                             );
                                         })()}
                                     </div>
-                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
                                 </div>
-                            </div>
-                            {txn.narration && (
-                                <p className="text-xs text-gray-400 mt-2 truncate">{txn.narration}</p>
-                            )}
-                        </Link>
-                    ))
+                                {txn.narration && (
+                                    <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {txn.narration}
+                                    </p>
+                                )}
+                            </Link>
+                        ))}
+                    </div>
                 )}
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 mt-4">
-                <Link
-                    to={`/ledger-statement/${id}`}
-                    className="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-2xl py-4 font-semibold shadow-lg hover:shadow-xl transition-all text-center"
-                >
-                    📋 View Statement
-                </Link>
+            {/* Bottom Actions */}
+            <div className="page-m3__fab-container" style={{ right: 'auto', left: '50%', transform: 'translateX(-50%)', bottom: '24px', width: '90%', maxWidth: '400px', display: 'flex', gap: '12px' }}>
                 <button
                     onClick={() => {
                         const msg = `Payment Reminder for ${ledger?.name}\n\nOutstanding: ${formatCurrency(ledger?.closing_balance)}\n\nPlease arrange payment.`;
                         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
                     }}
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl py-4 font-semibold shadow-lg hover:shadow-xl transition-all"
+                    className="page-m3__button page-m3__button--primary"
+                    style={{ flex: 1, justifyContent: 'center', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}
                 >
                     📤 Send Reminder
                 </button>

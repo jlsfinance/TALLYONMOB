@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi } from '../lib/supabase';
 import { Link } from 'react-router-dom';
-import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import './SalesPage.css';
+import { format } from 'date-fns';
+import '../styles/Material3.css';
 
 export default function SalesPage() {
     const { selectedCompany } = useAuth();
@@ -12,6 +12,7 @@ export default function SalesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
+    const [filterType, setFilterType] = useState('All');
     const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     // Initialize dates based on company settings or session
@@ -27,7 +28,6 @@ export default function SalesPage() {
                 setFromDate(from);
                 setToDate(to);
             } catch (e) {
-                console.error("Error parsing saved dates", e);
                 setDefaultDates();
             }
         } else {
@@ -56,7 +56,6 @@ export default function SalesPage() {
     useEffect(() => {
         if (selectedCompany && fromDate && toDate) {
             loadSales();
-            // Save to session
             const sessionKey = `sales_date_range_${selectedCompany.id}`;
             sessionStorage.setItem(sessionKey, JSON.stringify({ from: fromDate, to: toDate }));
         }
@@ -79,12 +78,6 @@ export default function SalesPage() {
         setLoading(false);
     };
 
-    const handleDateChange = (type, value) => {
-        if (type === 'from') setFromDate(value);
-        else setToDate(value);
-    };
-
-
     const formatCurrency = (amount) => {
         const absAmount = Math.abs(amount || 0);
         if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)}Cr`;
@@ -97,130 +90,129 @@ export default function SalesPage() {
     };
 
     const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
     };
 
-    const filteredSales = sales.filter(s =>
-        s.party_ledger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredSales = sales.filter(s => {
+        const matchesSearch = s.party_ledger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            s.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        if (filterType === 'All') return matchesSearch;
+        // Simple filter based on voucher type string inclusion
+        return matchesSearch && s.voucher_type?.includes(filterType);
+    });
 
     if (!selectedCompany) {
-        return <div className="page-3d__empty"><p>Please select a company first</p></div>;
+        return <div className="page-m3 flex justify-center items-center"><p>Please select a company</p></div>;
     }
 
     return (
-        <div className="page-3d sales-3d">
+        <div className="page-m3">
             {/* Header */}
-            <header className="sales-3d__header">
-                <div className="sales-3d__header-info">
-                    <h1 className="page-3d__title">
-                        <span className="page-3d__title-icon">📈</span>
-                        Sales
-                    </h1>
-                    <p className="page-3d__subtitle">{stats.count} invoices</p>
-                </div>
+            <header className="page-m3__header">
+                <h1 className="page-m3__title">
+                    <span>📈</span> Sales Register
+                </h1>
+                <p className="page-m3__subtitle">{stats.count} vouchers found in selected period</p>
             </header>
 
-            {/* Stats Row */}
-            <div className="sales-3d__stats">
-                <div className="sales-3d__stat-card">
-                    <span className="sales-3d__stat-value green">{formatCurrency(stats.total)}</span>
-                    <span className="sales-3d__stat-label">Total Sales</span>
+            {/* Date Range & Search Container */}
+            <div className="flex flex-wrap gap-4 mb-6 items-center justify-between">
+                <div className="page-m3__date-range">
+                    <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="page-m3__date-input"
+                    />
+                    <span className="text-gray-400">→</span>
+                    <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="page-m3__date-input"
+                    />
                 </div>
-                <div className="sales-3d__stat-card">
-                    <span className="sales-3d__stat-value blue">{stats.count}</span>
-                    <span className="sales-3d__stat-label">Invoices</span>
-                </div>
-                <div className="sales-3d__stat-card">
-                    <span className="sales-3d__stat-value purple">{formatCurrency(stats.avgValue)}</span>
-                    <span className="sales-3d__stat-label">Avg Value</span>
+
+                <div className="relative flex-1 max-w-md">
+                    <input
+                        type="text"
+                        placeholder="Search Party Name or Invoice No..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-200 focus:outline-none focus:border-green-700 bg-white shadow-sm"
+                    />
+                    <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
                 </div>
             </div>
 
-            {/* Date Filter */}
-            <div className="sales-3d__date-filter">
-                <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="page-3d__date-input"
-                />
-                <span>to</span>
-                <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="page-3d__date-input"
-                />
-            </div>
 
-            {/* Search */}
-            <div className="page-3d__search">
-                <span className="page-3d__search-icon">🔍</span>
-                <input
-                    type="text"
-                    placeholder="Search party or invoice number..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="page-3d__search-input"
-                />
+
+            {/* Filters */}
+            <div className="page-m3__filters">
+                {['All', 'Sales', 'Credit Note'].map(type => (
+                    <button
+                        key={type}
+                        className={`page-m3__chip ${filterType === type ? 'active' : ''}`}
+                        onClick={() => setFilterType(type)}
+                    >
+                        {type}
+                    </button>
+                ))}
             </div>
 
             {/* Sales List */}
             {loading ? (
-                <div className="page-3d__loading">
-                    <div className="page-3d__spinner" />
-                    <p>Loading sales...</p>
+                <div className="page-m3__loading">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700 mb-2"></div>
+                    <p>Syncing sales data...</p>
                 </div>
             ) : (
-                <div className="page-3d__list">
+                <div className="page-m3__list">
                     {filteredSales.map(sale => (
                         <Link
                             key={sale.id}
                             to={`/sales/${sale.id}`}
-                            className="page-3d__list-card"
+                            className="page-m3__card"
                         >
-                            <div className="page-3d__list-left">
-                                <div className="page-3d__list-avatar green">
-                                    {sale.party_ledger_name?.charAt(0)?.toUpperCase() || '₹'}
+                            <div className="page-m3__card-left">
+                                <div className="page-m3__avatar">
+                                    {sale.party_ledger_name?.charAt(0)?.toUpperCase() || '#'}
                                 </div>
-                                <div className="page-3d__list-info">
-                                    <span className="page-3d__list-name">
+                                <div className="page-m3__card-info">
+                                    <span className="page-m3__party-name">
                                         {sale.party_ledger_name || 'Cash Sale'}
                                     </span>
-                                    <span className="page-3d__list-meta">
+                                    <span className="page-m3__details">
                                         #{sale.invoice_number} • {formatDate(sale.invoice_date)}
                                     </span>
-                                    {(sale.cgst_amount || sale.sgst_amount || sale.igst_amount) && (
-                                        <div className="sales-3d__tax-info">
-                                            {sale.cgst_amount > 0 && <span>CGST: ₹{sale.cgst_amount?.toFixed(0)}</span>}
-                                            {sale.sgst_amount > 0 && <span>SGST: ₹{sale.sgst_amount?.toFixed(0)}</span>}
-                                            {sale.igst_amount > 0 && <span>IGST: ₹{sale.igst_amount?.toFixed(0)}</span>}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
-                            <div className="page-3d__list-right">
-                                <span className="page-3d__list-amount credit">
+                            <div className="page-m3__card-right">
+                                <span className="page-m3__amount">
                                     {formatCurrency(sale.net_amount)}
                                 </span>
-                                <span className="page-3d__list-badge green">SALE</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium">
+                                    {sale.voucher_type}
+                                </span>
                             </div>
                         </Link>
                     ))}
+
                     {filteredSales.length === 0 && (
-                        <div className="page-3d__empty">
-                            <span className="page-3d__empty-icon">📈</span>
-                            <p className="page-3d__empty-text">No sales found</p>
-                            <p className="page-3d__empty-hint">Try adjusting the date range</p>
+                        <div className="text-center py-12 text-gray-500">
+                            <p className="text-4xl mb-2">📭</p>
+                            <p>No invoices found in this range</p>
                         </div>
                     )}
                 </div>
             )}
 
             {/* FAB */}
-            <Link to="/create-invoice" className="page-3d__fab">➕</Link>
+            <Link to="/create-invoice" className="page-m3__fab" title="Create Invoice">
+                <span>+</span>
+            </Link>
         </div>
     );
 }
+

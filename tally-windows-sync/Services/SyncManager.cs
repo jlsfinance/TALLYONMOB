@@ -183,6 +183,55 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Check Tally Serial Number against stored value
+        /// </summary>
+        public async Task<(bool IsValid, string? CurrentSerial, string? StoredSerial, string Message)> CheckTallySerialAsync()
+        {
+            try
+            {
+                if (_tallyConnector == null) return (false, null, null, "Tally connector not initialized");
+
+                var currentSerial = await _tallyConnector.GetTallySerialNumberAsync();
+                
+                // If we can't get it, we default to valid to avoid blocking valid usage on errors
+                if (string.IsNullOrEmpty(currentSerial))
+                {
+                    return (true, null, _settings.TallySettings.SerialNumber, "Could not fetch Tally Serial Number");
+                }
+
+                var storedSerial = _settings.TallySettings.SerialNumber;
+
+                // First run: Valid (will need to be saved)
+                if (string.IsNullOrEmpty(storedSerial))
+                {
+                    return (true, currentSerial, null, "First run");
+                }
+
+                // Verification
+                if (!storedSerial.Equals(currentSerial, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false, currentSerial, storedSerial, "Serial number mismatch");
+                }
+
+                return (true, currentSerial, storedSerial, "Verified");
+            }
+            catch (Exception ex)
+            {
+                return (true, null, null, $"Error checking serial: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update stored Tally Serial Number
+        /// </summary>
+        public void UpdateTallySerial(string newSerial)
+        {
+            _settings.TallySettings.SerialNumber = newSerial;
+            SaveSettings(_settings);
+            AddLog($"🔐 Tally License Serial updated to: {newSerial}");
+        }
+
+        /// <summary>
         /// Start background sync timer
         /// </summary>
         public async Task<List<Company>> GetOpenCompaniesAsync()
