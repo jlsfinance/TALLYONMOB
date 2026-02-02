@@ -25,21 +25,26 @@ export default function AgingReportPage() {
         try {
             const voucherType = reportType === 'receivables' ? 'Sales' : 'Purchase';
 
-            const { data: vouchers } = await supabase
+            const { data: vouchers, error: vError } = await supabase
                 .from('vouchers')
-                .select('*')
+                .select('voucher_number, voucher_date, total_amount, party_name')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', voucherType)
                 .lte('voucher_date', asOnDate)
-                .eq('is_deleted', false);
+                .limit(100000);
+
+            if (vError) throw vError;
 
             const paymentType = reportType === 'receivables' ? 'Receipt' : 'Payment';
-            const { data: payments } = await supabase
+            const { data: payments, error: pError } = await supabase
                 .from('vouchers')
-                .select('*')
+                .select('total_amount, party_name')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', paymentType)
-                .lte('voucher_date', asOnDate);
+                .lte('voucher_date', asOnDate)
+                .limit(100000);
+
+            if (pError) throw pError;
 
             const partyMap = new Map();
             const today = new Date(asOnDate);
@@ -250,6 +255,7 @@ ${selectedCompany?.name}`;
                     <span className="flex items-center gap-2"><span className="w-3 h-3 bg-orange-500 rounded" /> 61-90</span>
                     <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-500 rounded" /> 91-120</span>
                     <span className="flex items-center gap-2"><span className="w-3 h-3 bg-red-700 rounded" /> 120+</span>
+                    <span className="flex items-center gap-2 opacity-50"><span className="w-3 h-3 bg-gray-500 rounded" /> Paid</span>
                 </div>
             </GlassCard>
 

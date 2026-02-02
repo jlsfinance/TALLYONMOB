@@ -1,4 +1,4 @@
-/* LedgersPage 3D Styles */
+/* LedgersPage 3D Styles - Theme Aware */
 
 .ledgers-3d__header {
     display: flex;
@@ -6,10 +6,11 @@
     align-items: center;
     margin-bottom: 20px;
     padding: 20px 24px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
     border-radius: 20px;
+    box-shadow: var(--shadow-sm);
 }
 
 .ledgers-3d__header-info {
@@ -31,59 +32,66 @@
     flex-direction: column;
     align-items: center;
     padding: 20px 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
     cursor: pointer;
     transition: all 0.3s;
+    box-shadow: var(--shadow-sm);
 }
 
 .ledgers-3d__stat-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--surface-variant);
+    border-color: var(--primary);
 }
 
 .ledgers-3d__stat-btn.active {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--surface-elevated);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
 }
 
 .ledgers-3d__stat-btn.active.green {
-    background: rgba(16, 185, 129, 0.15);
-    border-color: rgba(16, 185, 129, 0.3);
+    background: var(--success-bg);
+    border-color: var(--success);
 }
 
 .ledgers-3d__stat-btn.active.red {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
+    background: var(--error-bg);
+    border-color: var(--error);
 }
 
 .ledgers-3d__stat-value {
     font-size: 18px;
     font-weight: 700;
-    color: #fff;
+    color: var(--on-surface);
     margin-bottom: 4px;
 }
 
 .ledgers-3d__stat-value.green {
-    color: #10b981;
+    color: var(--success);
 }
 
 .ledgers-3d__stat-value.red {
-    color: #ef4444;
+    color: var(--error);
 }
 
 .ledgers-3d__stat-label {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 /* Avatar color variants */
 .page-3d__list-avatar.green {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.4) 0%, rgba(5, 150, 105, 0.3) 100%);
-    border-color: rgba(16, 185, 129, 0.5);
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid var(--success);
 }
 
 .page-3d__list-avatar.red {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.3) 100%);
-    border-color: rgba(239, 68, 68, 0.5);
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
 }

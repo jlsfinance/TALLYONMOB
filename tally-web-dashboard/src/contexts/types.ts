@@ -18,6 +18,8 @@ export interface AuthContextType {
     companies: Company[];
     selectedCompany: Company | null;
     loading: boolean;
+    appMode: 'tally' | 'billing' | null;
+    setAppMode: (mode: 'tally' | 'billing' | null) => void;
     signIn: (email: string, password: string) => Promise<{ data: any; error: any }>;
     signUp: (email: string, password: string, fullName: string) => Promise<{ data: any; error: any }>;
     signOut: () => Promise<void>;

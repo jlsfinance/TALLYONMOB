@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== MATERIAL 3 DESIGN SYSTEM - FRESH BUILD ===== */
+/* ===== NEO-GLASS PREMIUM DESIGN SYSTEM ===== */
+/* Version 2.2 - "Premium Nebula" */
 
 * {
   margin: 0;
@@ -10,100 +11,170 @@
   box-sizing: border-box;
 }
 
-:root {
-  /* Primary - Blue */
-  --primary: #1a73e8;
-  --primary-light: #4285f4;
-  --primary-dark: #1557b0;
-  --on-primary: #ffffff;
-
-  /* Secondary - Teal */
-  --secondary: #00897b;
-  --secondary-light: #4db6ac;
-  --on-secondary: #ffffff;
-
-  /* Surface colors - Light */
-  --background: #f8fafc;
-  --surface: #ffffff;
-  --surface-variant: #f1f5f9;
-  --surface-elevated: #ffffff;
-
-  /* Text colors */
-  --on-background: #1e293b;
-  --on-surface: #1e293b;
-  --on-surface-variant: #64748b;
-  --text-muted: #94a3b8;
-
-  /* Status colors */
-  --success: #16a34a;
-  --success-bg: #dcfce7;
-  --error: #dc2626;
-  --error-bg: #fee2e2;
-  --warning: #ea580c;
-  --warning-bg: #ffedd5;
-
-  /* Border & Shadow */
-  --border: #e2e8f0;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-full: 9999px;
-}
-
-/* Dark Theme */
-.dark {
-  --primary: #8ab4f8;
-  --primary-light: #aecbfa;
-  --primary-dark: #669df6;
-  --on-primary: #062e6f;
-
-  --secondary: #4db6ac;
-  --secondary-light: #80cbc4;
-  --on-secondary: #00363d;
-
-  --background: #0f172a;
-  --surface: #1e293b;
-  --surface-variant: #334155;
-  --surface-elevated: #334155;
-
-  --on-background: #f1f5f9;
-  --on-surface: #f1f5f9;
-  --on-surface-variant: #94a3b8;
-  --text-muted: #64748b;
-
-  --success: #4ade80;
-  --success-bg: rgba(74, 222, 128, 0.15);
-  --error: #f87171;
-  --error-bg: rgba(248, 113, 113, 0.15);
-  --warning: #fb923c;
-  --warning-bg: rgba(251, 146, 60, 0.15);
-
-  --border: #334155;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-}
-
 html {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background-color: var(--background);
-  color: var(--on-background);
-  min-height: 100vh;
-  transition: background-color 0.2s ease, color 0.2s ease;
+/* Light Mode - "Premium Porcelain/Glass" */
+:root {
+  /* High-Contrast Brand Palette */
+  --primary: #4F46E5;
+  --primary-glow: rgba(79, 70, 230, 0.15);
+  --primary-light: #818CF8;
+  --secondary: #0EA5E9;
+  --accent: #F43F5E;
+
+  /* Neutral Palette - Ultra Clean */
+  --background: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-hover: #F1F5F9;
+  --surface-active: #E2E8F0;
+  --surface-variant: #F1F5F9;
+
+  /* Typography - Obsidian Contrast (Pure Black) */
+  --on-background: #000000;
+  --on-surface: #000000;
+  --on-surface-variant: #0F172A;
+  --text-muted: #334155;
+
+  /* Indicators */
+  --success: #10B981;
+  --success-bg: #D1FAE5;
+  --error: #EF4444;
+  --error-bg: #FEE2E2;
+  --warning: #F59E0B;
+  --warning-bg: #FEF3C7;
+  --info: #3B82F6;
+  --info-bg: #DBEAFE;
+
+  /* Glassmorphism */
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-blur: 20px;
+
+  /* Elevation */
+  --border: rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 32px;
 }
 
-/* Scrollbar */
+/* Dark Mode - "Nebula Midnight" */
+[class="dark"] {
+  /* Vibrant Brand Palette */
+  --primary: #818CF8;
+  --primary-glow: rgba(129, 140, 248, 0.25);
+  --primary-light: #A5B4FC;
+  --secondary: #38BDF8;
+  --accent: #FB7185;
+
+  /* Deep Backgrounds */
+  --background: #020617;
+  --surface: #0F172A;
+  --surface-hover: #1E293B;
+  --surface-active: #334155;
+  --surface-variant: rgba(255, 255, 255, 0.03);
+
+  /* Typography - Paper White (Pure White) */
+  --on-background: #FFFFFF;
+  --on-surface: #FFFFFF;
+  --on-surface-variant: #E2E8F0;
+  --text-muted: #94A3B8;
+
+  /* Indicators */
+  --success: #34D399;
+  --success-bg: rgba(52, 211, 153, 0.1);
+  --error: #F87171;
+  --error-bg: rgba(248, 113, 113, 0.1);
+  --warning: #FBBF24;
+  --warning-bg: rgba(251, 191, 36, 0.1);
+  --info: #60A5FA;
+  --info-bg: rgba(96, 165, 250, 0.1);
+
+  /* Glassmorphism */
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 25px;
+
+  /* Elevation */
+  --border: rgba(255, 255, 255, 0.08);
+  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+body {
+  background: var(--background);
+  color: var(--on-background);
+  min-height: 100vh;
+  transition: background-color 0.4s ease, color 0.3s ease;
+  overflow-x: hidden;
+}
+
+/* Nebula Mesh Background */
+.nebula-mesh {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(79, 70, 230, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(14, 165, 233, 0.05) 0%, transparent 40%);
+}
+
+[class="dark"] .nebula-mesh {
+  background:
+    radial-gradient(circle at 10% 10%, rgba(129, 140, 248, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 90% 90%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 50% 20%, rgba(251, 113, 133, 0.05) 0%, transparent 50%);
+}
+
+/* Animations */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px var(--primary-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 35px var(--primary-glow);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Modern Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -114,32 +185,35 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  border-radius: 9999px;
+  background: var(--border);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--on-surface-variant);
+  background: var(--text-muted);
+}
+/* Mobile Responsiveness Improvements */
+@media (max-width: 768px) {
+  :root {
+    --radius-xl: 24px;
+    --radius-lg: 14px;
+    --glass-blur: 15px;
+  }
+  
+  h1 { font-size: 1.5rem !important; line-height: 1.2 !important; }
+  h2 { font-size: 1.25rem !important; }
+  h3 { font-size: 1.125rem !important; }
+  
+  .p-4 { padding: 1rem !important; }
+  .p-6 { padding: 1.25rem !important; }
 }
 
-/* Utility to hide scrollbar */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Focus styles */
-*:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-/* Selection */
-::selection {
-  background-color: var(--primary);
-  color: var(--on-primary);
+@media (max-width: 480px) {
+  :root {
+    --radius-xl: 20px;
+    --radius-lg: 12px;
+  }
+  
+  .p-5 { padding: 1rem !important; }
+  .p-4 { padding: 0.75rem !important; }
 }

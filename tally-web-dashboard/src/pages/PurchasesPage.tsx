@@ -1,39 +1,59 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { purchasesApi } from '@/lib/supabase';
-import { Link } from 'react-router-dom';
-import { format, startOfYear } from 'date-fns';
-import { ShoppingCart, Search, Calendar, FileText, TrendingDown } from 'lucide-react';
-import { GlassCard, MetricCard } from '@/components/ui/GlassUI';
+import { useNavigate } from 'react-router-dom';
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { supabase } from '@/lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ShoppingCart, Search, Plus, IndianRupee, FileText, Filter, ArrowDownLeft } from 'lucide-react';
+import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
+import TransactionCard from '@/components/shared/TransactionCard';
+import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
 
 export default function PurchasesPage() {
     const { selectedCompany } = useAuth() as any;
+    const navigate = useNavigate();
     const [purchases, setPurchases] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [fromDate, setFromDate] = useState(format(startOfYear(new Date()), 'yyyy-MM-dd'));
-    const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-    const [filterType, setFilterType] = useState('All');
+    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+    const [fromDate, setFromDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+    const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
     const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     useEffect(() => {
-        if (selectedCompany && fromDate && toDate) {
-            loadPurchases();
-        }
+        // Update dates when FY changes
+        const fyYear = parseInt(selectedFy.split(' ')[1].split('-')[0]);
+        setFromDate(format(new Date(fyYear, 3, 1), 'yyyy-MM-dd'));
+        setToDate(format(new Date(fyYear + 1, 2, 31), 'yyyy-MM-dd'));
+    }, [selectedFy]);
+
+    useEffect(() => {
+        if (selectedCompany) loadPurchases();
     }, [selectedCompany, fromDate, toDate]);
 
     const loadPurchases = async () => {
         setLoading(true);
-        const { data } = await purchasesApi.list(selectedCompany.id, { fromDate, toDate });
-        setPurchases(data || []);
+        try {
+            const { data } = await supabase.from('vouchers')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .eq('voucher_type', 'Purchase')
+                .gte('voucher_date', fromDate)
+                .lte('voucher_date', toDate)
+                .order('voucher_date', { ascending: false });
 
-        const total = data?.reduce((s: number, p: any) => s + (p.net_amount || 0), 0) || 0;
-        setStats({
-            total,
-            count: data?.length || 0,
-            avgValue: data?.length ? Math.round(total / data.length) : 0
-        });
+            const purchaseData = data || [];
+            setPurchases(purchaseData);
 
+            const total = purchaseData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);
+            setStats({
+                total,
+                count: purchaseData.length,
+                avgValue: purchaseData.length > 0 ? total / purchaseData.length : 0
+            });
+        } catch (error) {
+            console.error('Error loading purchases:', error);
+        }
         setLoading(false);
     };
 
@@ -44,110 +64,86 @@ export default function PurchasesPage() {
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(absAmount);
     };
 
-    const filteredPurchases = purchases.filter((p: any) => {
-        const matchesSearch = p.party_ledger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase());
-        if (filterType === 'All') return matchesSearch;
-        return matchesSearch && p.voucher_type?.includes(filterType);
-    });
+    const filteredPurchases = purchases.filter(p =>
+        p.party_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.voucher_number?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-4 max-w-7xl mx-auto pb-24">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white">Purchase Register</h1>
-                    <p className="text-gray-500 mt-1">{stats.count} bills in selected period</p>
+                    <h1 className="text-2xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Expense Stream</h1>
+                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name}</p>
+                </div>
+                {/* Link to Vouchers filtered by Purchase */}
+                <button
+                    onClick={() => navigate('/vouchers?type=Purchase')}
+                    className="flex items-center gap-2 px-5 py-3 bg-[var(--primary)] text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-[var(--primary-glow)]"
+                >
+                    <Plus size={14} /> New Record
+                </button>
+            </header>
+
+            {/* Performance Indicators */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Selected FY Total</p>
+                    <p className="text-lg font-black text-red-500 mt-1">{formatCurrency(stats.total)}</p>
+                </div>
+                <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
+                    <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Bill Count</p>
+                    <p className="text-lg font-black text-[var(--on-surface)] mt-1">{stats.count}</p>
                 </div>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-4">
-                <MetricCard title="Total Purchases" value={formatCurrency(stats.total)} icon={<ShoppingCart size={20} />} color="purple" />
-                <MetricCard title="Bill Count" value={stats.count.toString()} icon={<FileText size={20} />} color="blue" />
-                <MetricCard title="Avg. Value" value={formatCurrency(stats.avgValue)} icon={<TrendingDown size={20} />} color="orange" />
-            </div>
+            {/* Global FY Slider */}
+            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
 
-            {/* Date Range & Search */}
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex items-center gap-2 bg-[#121214] border border-white/10 rounded-2xl px-4 py-3">
-                    <Calendar size={16} className="text-gray-500" />
-                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="bg-transparent text-white text-sm focus:outline-none" />
-                    <span className="text-gray-500">→</span>
-                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="bg-transparent text-white text-sm focus:outline-none" />
-                </div>
-                <div className="relative flex-1">
-                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+            {/* Filter Hub */}
+            <div className="space-y-4">
+                <div className="relative group/search">
+                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within/search:text-[var(--primary)] transition-colors" />
                     <input
-                        type="text"
-                        placeholder="Search party or invoice..."
+                        placeholder="Search Supplier or Bill Number..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-[#121214] border border-white/10 rounded-2xl pl-12 pr-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-white/20"
+                        className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-4 pl-12 pr-6 text-xs font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)] transition-all placeholder:text-[var(--text-muted)] placeholder:uppercase placeholder:text-[9px]"
                     />
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex gap-2">
-                {['All', 'Purchase', 'Debit Note'].map(type => (
-                    <button
-                        key={type}
-                        onClick={() => setFilterType(type)}
-                        className={`
-                            px-4 py-2 rounded-xl text-sm font-medium transition-all border
-                            ${filterType === type
-                                ? 'bg-white text-black border-transparent'
-                                : 'bg-[#121214] text-gray-400 border-white/10 hover:bg-[#1C1C1F]'}
-                        `}
-                    >
-                        {type}
-                    </button>
-                ))}
-            </div>
-
-            {/* Purchases List */}
-            {loading ? (
-                <div className="flex flex-col items-center justify-center py-20">
-                    <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
-                    <p className="text-gray-500">Loading purchases...</p>
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    {filteredPurchases.map((purchase: any) => (
-                        <Link key={purchase.id} to={`/purchases/${purchase.id}`} className="block">
-                            <GlassCard className="p-4 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 font-bold">
-                                        {purchase.party_ledger_name?.charAt(0)?.toUpperCase() || '₹'}
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-white">{purchase.party_ledger_name || 'Cash Purchase'}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            #{purchase.invoice_number} • {format(new Date(purchase.invoice_date), 'dd MMM yyyy')}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-bold text-purple-400 font-mono">{formatCurrency(purchase.net_amount)}</p>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-purple-500/10 border border-purple-500/20 text-purple-400">
-                                        {purchase.voucher_type}
-                                    </span>
-                                </div>
-                            </GlassCard>
-                        </Link>
-                    ))}
-                    {filteredPurchases.length === 0 && (
-                        <div className="text-center py-16 text-gray-500">
-                            <ShoppingCart size={48} className="mx-auto mb-4 opacity-30" />
-                            <p className="font-medium">No purchases found</p>
-                            <p className="text-sm">Try adjusting the date range</p>
-                        </div>
-                    )}
-                </div>
-            )}
+            {/* Transaction Logic */}
+            <AnimatePresence mode="wait">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-24">
+                        <Spinner size="md" />
+                    </div>
+                ) : filteredPurchases.length === 0 ? (
+                    <EmptyState
+                        icon={<ShoppingCart size={48} />}
+                        title="No Records Found"
+                        description="Try another Finance Year or search term."
+                    />
+                ) : (
+                    <div className="space-y-3">
+                        {filteredPurchases.map((purchase, idx) => (
+                            <TransactionCard
+                                key={purchase.voucher_id}
+                                type={purchase.voucher_type}
+                                partyName={purchase.party_name}
+                                voucherNumber={purchase.voucher_number}
+                                date={purchase.voucher_date}
+                                amount={purchase.total_amount}
+                                status={purchase.sync_status || 'Synced'}
+                                onClick={() => navigate(`/vouchers/${encodeURIComponent(purchase.voucher_id)}`)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -134,7 +134,7 @@ export default function PurchaseDetailPage() {
                                 <tr>
                                     <th className="px-6 py-4 w-10">#</th>
                                     <th className="px-6 py-4">Item</th>
-                                    <th className="px-6 py-4 text-center">HSN</th>
+                                    <th className="px-6 py-4 text-center">HSN CODE</th>
                                     <th className="px-6 py-4 text-center">Qty</th>
                                     <th className="px-6 py-4 text-right">Rate</th>
                                     <th className="px-6 py-4 text-right">Amount</th>

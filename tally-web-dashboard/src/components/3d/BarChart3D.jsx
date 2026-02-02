@@ -1,65 +1,77 @@
 import './BarChart3D.css';
 
 /**
- * BarChart3D - Premium 3D bar chart with gradient bars and glow effects
+ * BarChart3D - Premium depth-enhanced bar chart
+ * Features glassy bars, top faces for depth, and intelligent scaling
  */
 export default function BarChart3D({
     data = [],        // [{ label: string, value: number }]
-    height = 200,
-    barColor = 'purple', // purple, blue, emerald, gold, orange
+    height = 150,
+    barColor = 'purple',
     showLabels = true,
     showValues = true,
     animated = true,
 }) {
-    const maxValue = Math.max(...data.map(d => d.value), 1);
+    // Optimized scaling: ensure tiny values are at least visible, and large values don't dwarf others too much
+    const rawMax = Math.max(...data.map(d => d.value), 0);
+    const maxValue = rawMax === 0 ? 1 : rawMax;
 
     const colorGradients = {
-        purple: ['#8b5cf6', '#a78bfa'],
-        blue: ['#00d4ff', '#22d3ee'],
-        emerald: ['#10b981', '#34d399'],
-        gold: ['#f59e0b', '#fbbf24'],
-        orange: ['#f97316', '#fb923c'],
+        purple: { from: '#8b5cf6', to: '#6d28d9', glow: 'rgba(139, 92, 246, 0.4)' },
+        blue: { from: '#0ea5e9', to: '#0369a1', glow: 'rgba(14, 165, 233, 0.4)' },
+        emerald: { from: '#10b981', to: '#047857', glow: 'rgba(16, 185, 129, 0.4)' },
+        gold: { from: '#f59e0b', to: '#b45309', glow: 'rgba(245, 158, 11, 0.4)' },
+        orange: { from: '#f97316', to: '#c2410c', glow: 'rgba(249, 115, 22, 0.4)' },
     };
 
-    const gradient = colorGradients[barColor] || colorGradients.purple;
+    const palette = colorGradients[barColor] || colorGradients.purple;
 
     const formatValue = (val) => {
         if (val >= 10000000) return `${(val / 10000000).toFixed(1)}Cr`;
         if (val >= 100000) return `${(val / 100000).toFixed(1)}L`;
-        if (val >= 1000) return `${(val / 1000).toFixed(0)}K`;
+        if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
         return val.toLocaleString('en-IN');
     };
 
     return (
-        <div className={`bar-chart-3d ${animated ? 'bar-chart-3d--animated' : ''}`}>
-            <div className="bar-chart-3d__container" style={{ height }}>
+        <div className={`bar-chart-premium ${animated ? 'animate-bars' : ''}`} style={{ height }}>
+            <div className="chart-base-line" />
+
+            <div className="bars-container">
                 {data.map((item, index) => {
-                    const barHeight = (item.value / maxValue) * 100;
+                    // Min height of 4% ensures bars with small values are still visible as "seeds"
+                    const percentage = (item.value / maxValue) * 100;
+                    const barHeight = Math.max(percentage, item.value > 0 ? 4 : 0);
 
                     return (
-                        <div key={index} className="bar-chart-3d__bar-wrapper">
-                            <div className="bar-chart-3d__bar-container">
-                                {showValues && (
-                                    <div className="bar-chart-3d__value">
+                        <div key={index} className="bar-column">
+                            <div className="bar-wrapper" style={{ height: `${barHeight}%` }}>
+                                {showValues && item.value > 0 && (
+                                    <div className="bar-value-popup">
                                         {formatValue(item.value)}
                                     </div>
                                 )}
+
                                 <div
-                                    className="bar-chart-3d__bar"
+                                    className="bar-body-3d"
                                     style={{
-                                        height: `${barHeight}%`,
-                                        background: `linear-gradient(180deg, ${gradient[0]} 0%, ${gradient[1]} 100%)`,
-                                        '--glow-color': gradient[0],
-                                        animationDelay: `${index * 0.1}s`,
+                                        background: `linear-gradient(180deg, ${palette.from} 0%, ${palette.to} 100%)`,
+                                        '--bar-glow': palette.glow,
+                                        animationDelay: `${index * 0.1}s`
                                     }}
                                 >
-                                    <div className="bar-chart-3d__bar-shine" />
+                                    {/* Glass Shine Effect */}
+                                    <div className="bar-shine-layer" />
+
+                                    {/* 3D Top Face */}
+                                    <div className="bar-top-face" style={{ backgroundColor: palette.from }} />
                                 </div>
                             </div>
+
                             {showLabels && (
-                                <span className="bar-chart-3d__label">
+                                <div className="bar-label-text">
                                     {item.label}
-                                </span>
+                                </div>
                             )}
                         </div>
                     );

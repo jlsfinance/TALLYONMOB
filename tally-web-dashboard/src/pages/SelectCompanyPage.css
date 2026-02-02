@@ -1,4 +1,4 @@
-/* SelectCompanyPage 3D Styles */
+/* SelectCompanyPage 3D Styles - Theme Aware */
 
 .select-company-3d {
     min-height: 100vh;
@@ -6,10 +6,11 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+    background: var(--background);
     position: relative;
     overflow: hidden;
     font-family: 'Space Grotesk', sans-serif;
+    transition: background 0.3s ease;
 }
 
 /* Background */
@@ -17,9 +18,10 @@
     position: absolute;
     inset: 0;
     background-image:
-        linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
     background-size: 50px 50px;
+    opacity: 0.05;
     pointer-events: none;
 }
 
@@ -34,14 +36,14 @@
     position: absolute;
     border-radius: 50%;
     filter: blur(80px);
-    opacity: 0.5;
+    opacity: 0.3;
     animation: float 8s ease-in-out infinite;
 }
 
 .select-company-3d__orb--1 {
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, transparent 70%);
+    background: var(--primary);
     top: -100px;
     right: -100px;
 }
@@ -49,7 +51,7 @@
 .select-company-3d__orb--2 {
     width: 300px;
     height: 300px;
-    background: radial-gradient(circle, rgba(0, 212, 255, 0.3) 0%, transparent 70%);
+    background: var(--secondary);
     bottom: -50px;
     left: -50px;
     animation-delay: 3s;
@@ -83,14 +85,14 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--on-surface-variant);
 }
 
 .select-company-3d__spinner {
     width: 48px;
     height: 48px;
-    border: 3px solid rgba(139, 92, 246, 0.2);
-    border-top-color: #8b5cf6;
+    border: 3px solid var(--primary-light);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -111,27 +113,28 @@
     width: 80px;
     height: 80px;
     margin: 0 auto 16px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(0, 212, 255, 0.2) 100%);
-    border: 1px solid rgba(139, 92, 246, 0.4);
+    background: var(--surface-variant);
+    border: 1px solid var(--primary);
     border-radius: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 40px;
-    box-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 40px var(--primary-container);
+    color: var(--primary);
     animation: pulse-glow 3s ease-in-out infinite;
 }
 
 .select-company-3d__title {
     font-size: 32px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--on-background);
     margin: 0 0 8px;
 }
 
 .select-company-3d__subtitle {
     font-size: 15px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--on-surface-variant);
     margin: 0;
 }
 
@@ -147,6 +150,7 @@
     top: 50%;
     transform: translateY(-50%);
     font-size: 16px;
+    color: var(--text-muted);
 }
 
 .select-company-3d__search-input {
@@ -154,9 +158,9 @@
     padding: 16px 16px 16px 48px;
     font-family: 'Space Grotesk', sans-serif;
     font-size: 15px;
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--on-surface);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
     backdrop-filter: blur(8px);
     transition: all 0.3s;
@@ -164,12 +168,12 @@
 
 .select-company-3d__search-input:focus {
     outline: none;
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-container);
 }
 
 .select-company-3d__search-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-muted);
 }
 
 /* Company List */
@@ -186,8 +190,8 @@
 .select-company-3d__empty {
     text-align: center;
     padding: 48px 24px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 20px;
 }
 
@@ -199,13 +203,13 @@
 
 .select-company-3d__empty p {
     font-size: 16px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--on-surface);
     margin: 0 0 8px;
 }
 
 .select-company-3d__empty span {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--on-surface-variant);
 }
 
 /* Company Card */
@@ -233,35 +237,36 @@
     gap: 16px;
     width: 100%;
     padding: 20px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border);
     border-radius: 20px;
     cursor: pointer;
     transition: all 0.3s;
     text-align: left;
+    box-shadow: var(--shadow-sm);
 }
 
 .select-company-3d__card:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(139, 92, 246, 0.4);
+    background: var(--surface-variant);
+    border-color: var(--primary);
     transform: translateY(-4px) scale(1.01);
-    box-shadow: 0 10px 40px rgba(139, 92, 246, 0.2);
+    box-shadow: var(--shadow-md);
 }
 
 .select-company-3d__card-avatar {
     width: 56px;
     height: 56px;
     min-width: 56px;
-    background: linear-gradient(135deg, #8b5cf6 0%, #00d4ff 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    color: var(--on-primary);
     font-size: 22px;
     font-weight: 700;
-    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 4px 20px var(--primary-container);
 }
 
 .select-company-3d__card-info {
@@ -272,13 +277,13 @@
 .select-company-3d__card-name {
     font-size: 17px;
     font-weight: 600;
-    color: #fff;
+    color: var(--on-surface);
     margin: 0 0 6px;
     transition: color 0.3s;
 }
 
 .select-company-3d__card:hover .select-company-3d__card-name {
-    color: #8b5cf6;
+    color: var(--primary);
 }
 
 .select-company-3d__card-meta {
@@ -289,7 +294,7 @@
 
 .select-company-3d__card-guid {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--on-surface-variant);
 }
 
 .select-company-3d__card-synced {
@@ -297,13 +302,13 @@
     align-items: center;
     gap: 6px;
     font-size: 11px;
-    color: #10b981;
+    color: var(--success);
 }
 
 .select-company-3d__card-dot {
     width: 6px;
     height: 6px;
-    background: #10b981;
+    background: var(--success);
     border-radius: 50%;
     animation: pulse 2s infinite;
 }
@@ -322,12 +327,12 @@
 
 .select-company-3d__card-arrow {
     font-size: 18px;
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--on-surface-variant);
     transition: all 0.3s;
 }
 
 .select-company-3d__card:hover .select-company-3d__card-arrow {
-    color: #8b5cf6;
+    color: var(--primary);
     transform: translateX(4px);
 }
 
@@ -338,8 +343,9 @@
     right: 12px;
     width: 32px;
     height: 32px;
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: var(--error-bg);
+    border: 1px solid var(--error-bg);
+    color: var(--error);
     border-radius: 10px;
     display: flex;
     align-items: center;
@@ -355,7 +361,8 @@
 }
 
 .select-company-3d__delete-btn:hover {
-    background: rgba(239, 68, 68, 0.3);
+    background: var(--error);
+    color: white;
     transform: scale(1.1);
 }
 
@@ -367,7 +374,7 @@
 
 .select-company-3d__footer p {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--on-surface-variant);
     margin: 0;
 }
 
@@ -385,14 +392,14 @@
 }
 
 .select-company-3d__modal {
-    background: rgba(26, 26, 62, 0.95);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: var(--surface);
+    border: 1px solid var(--error);
     border-radius: 24px;
     padding: 32px;
     max-width: 400px;
     width: 100%;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-xl);
 }
 
 .select-company-3d__modal-icon {
@@ -403,23 +410,23 @@
 .select-company-3d__modal-title {
     font-size: 22px;
     font-weight: 700;
-    color: #fff;
+    color: var(--on-surface);
     margin: 0 0 12px;
 }
 
 .select-company-3d__modal-text {
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--on-surface-variant);
     margin: 0 0 8px;
 }
 
 .select-company-3d__modal-text strong {
-    color: #ef4444;
+    color: var(--error);
 }
 
 .select-company-3d__modal-warning {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-muted);
     margin: 0 0 24px;
 }
 
@@ -446,22 +453,23 @@
 }
 
 .select-company-3d__modal-cancel {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--surface-variant);
+    color: var(--on-surface);
+    border: 1px solid var(--border);
 }
 
 .select-company-3d__modal-cancel:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--surface-elevated);
 }
 
 .select-company-3d__modal-delete {
-    background: #ef4444;
+    background: var(--error);
     color: #fff;
 }
 
 .select-company-3d__modal-delete:hover {
-    background: #dc2626;
+    background: var(--error-bg);
+    color: var(--error);
 }
 
 .select-company-3d__btn-spinner {
@@ -478,10 +486,10 @@
 
     0%,
     100% {
-        box-shadow: 0 0 30px rgba(139, 92, 246, 0.3);
+        box-shadow: 0 0 30px var(--primary-container);
     }
 
     50% {
-        box-shadow: 0 0 50px rgba(139, 92, 246, 0.5);
+        box-shadow: 0 0 50px var(--primary-container);
     }
 }

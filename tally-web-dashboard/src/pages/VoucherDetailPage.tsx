@@ -1,36 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Printer, MessageCircle, Share2, Download, Calendar, User, Building2, FileText } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassUI';
+import {
+    ArrowLeft, MessageCircle, Share2, Download,
+    Calendar, User, FileText, Edit, RefreshCw, CheckCircle2,
+    MoreVertical, Info, Package, Hash, Tag, Trash2, Printer
+} from 'lucide-react';
+import { Badge, Button } from '@/components/ui/GlassUI';
+import { pendingTransactionApi } from '@/lib/supabase';
 import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
-const numberToWords = (num: number): string => {
-    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-        'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-    if (num === 0) return 'Zero';
-
-    const crore = Math.floor(num / 10000000);
-    const lakh = Math.floor((num % 10000000) / 100000);
-    const thousand = Math.floor((num % 100000) / 1000);
-    const hundred = Math.floor((num % 1000) / 100);
-    const remainder = Math.floor(num % 100);
-
-    let words = '';
-    if (crore > 0) words += (crore < 20 ? ones[crore] : tens[Math.floor(crore / 10)] + ' ' + ones[crore % 10]) + ' Crore ';
-    if (lakh > 0) words += (lakh < 20 ? ones[lakh] : tens[Math.floor(lakh / 10)] + ' ' + ones[lakh % 10]) + ' Lakh ';
-    if (thousand > 0) words += (thousand < 20 ? ones[thousand] : tens[Math.floor(thousand / 10)] + ' ' + ones[thousand % 10]) + ' Thousand ';
-    if (hundred > 0) words += ones[hundred] + ' Hundred ';
-    if (remainder > 0) {
-        if (words !== '') words += 'and ';
-        if (remainder < 20) words += ones[remainder];
-        else words += tens[Math.floor(remainder / 10)] + ' ' + ones[remainder % 10];
-    }
-    return words.trim() + ' Rupees Only';
-};
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+}).format(Math.abs(Number(amount)) || 0);
 
 export default function VoucherDetailPage() {
     const { voucherId } = useParams();
@@ -40,6 +28,8 @@ export default function VoucherDetailPage() {
     const [saleData, setSaleData] = useState<any>(null);
     const [purchaseData, setPurchaseData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [syncing, setSyncing] = useState(false);
+    const [generatingPdf, setGeneratingPdf] = useState(false);
 
     useEffect(() => {
         if (voucherId && selectedCompany) loadVoucherDetails();
@@ -48,260 +38,364 @@ export default function VoucherDetailPage() {
     const loadVoucherDetails = async () => {
         setLoading(true);
         try {
+            const decodedId = decodeURIComponent(voucherId!);
             const { data: vData } = await supabase
                 .from('vouchers')
                 .select('*')
-                .eq('voucher_id', decodeURIComponent(voucherId!))
+                .eq('voucher_id', decodedId)
                 .single();
 
-            if (!vData) throw new Error('Voucher not found');
-            setVoucher(vData);
+            if (!vData) {
+                const { data: vDataById } = await supabase
+                    .from('vouchers')
+                    .select('*')
+                    .eq('id', decodedId)
+                    .single();
 
-            if (vData.voucher_type === 'Sales') {
-                let { data: sData } = await supabase.from('sales').select('*').eq('voucher_id', vData.voucher_id).single();
+                if (vDataById) setVoucher(vDataById);
+                else throw new Error('Voucher not found');
+            } else {
+                setVoucher(vData);
+            }
 
-                if (!sData) {
-                    sData = { id: 'synthetic', net_amount: vData.total_amount, gross_amount: vData.total_amount, party_name: vData.party_name, voucher_number: vData.voucher_number, voucher_date: vData.voucher_date };
+            const activeVoucher = vData || voucher;
+            if (activeVoucher && (activeVoucher.voucher_type === 'Sales' || activeVoucher.voucher_type === 'Purchase')) {
+                const tableName = activeVoucher.voucher_type === 'Sales' ? 'sales' : 'purchases';
+                const itemsTable = activeVoucher.voucher_type === 'Sales' ? 'sales_items' : 'purchase_items';
+                const parentKey = activeVoucher.voucher_type === 'Sales' ? 'sale_id' : 'purchase_id';
+
+                let { data: parentData } = await supabase
+                    .from(tableName)
+                    .select('*')
+                    .eq('voucher_id', activeVoucher.voucher_id)
+                    .single();
+
+                if (!parentData) {
+                    parentData = {
+                        id: 'synthetic',
+                        net_amount: activeVoucher.total_amount,
+                        gross_amount: activeVoucher.total_amount,
+                        party_name: activeVoucher.party_name,
+                        voucher_number: activeVoucher.voucher_number,
+                        voucher_date: activeVoucher.voucher_date
+                    };
                 }
 
                 let itemsData = [];
-                if (sData.id !== 'synthetic') {
-                    const { data: iData } = await supabase.from('sales_items').select('*').eq('sale_id', sData.id);
+                if (parentData.id !== 'synthetic') {
+                    const { data: iData } = await supabase
+                        .from(itemsTable)
+                        .select('*')
+                        .eq(parentKey, parentData.id);
                     itemsData = iData || [];
                 }
 
-                let currentItems = itemsData.length > 0 ? itemsData : (vData.inventory_entries || []);
-                const { data: stockItems } = await supabase.from('stock_items').select('name, hsn_code, base_unit').eq('company_id', vData.company_id);
-                const stockLookup: any = {}; stockItems?.forEach((item: any) => stockLookup[item.name] = item);
+                // Safely fetch stock items for additional metadata lookup
+                const { data: stockItems } = await supabase
+                    .from('stock_items')
+                    .select('name, hsn_code, base_unit')
+                    .eq('company_id', selectedCompany.id);
 
-                sData.sales_items = currentItems.map((item: any) => ({
-                    ...item,
-                    hsn_code: item.hsn_code && item.hsn_code !== 'Stock Item' ? item.hsn_code : stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
-                    unit: item.unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
-                }));
-
-                if ((!sData.round_off || sData.round_off === 0) && vData.ledger_entries) {
-                    const roundLedger = vData.ledger_entries.find((e: any) => e.ledger_name.toLowerCase().includes('round') && (e.ledger_name.toLowerCase().includes('off') || e.ledger_name.toLowerCase().includes('ing')));
-                    if (roundLedger) sData.round_off = roundLedger.is_debit ? -roundLedger.amount : roundLedger.amount;
+                const stockLookup: Record<string, any> = {};
+                if (stockItems) {
+                    stockItems.forEach((item: any) => {
+                        stockLookup[item.name] = item;
+                    });
                 }
 
-                if (sData.id === 'synthetic' && vData.ledger_entries) {
-                    sData.cgst_amount = vData.ledger_entries.filter((e: any) => e.ledger_name.toLowerCase().includes('cgst')).reduce((s: number, e: any) => s + e.amount, 0);
-                    sData.sgst_amount = vData.ledger_entries.filter((e: any) => e.ledger_name.toLowerCase().includes('sgst')).reduce((s: number, e: any) => s + e.amount, 0);
-                    sData.igst_amount = vData.ledger_entries.filter((e: any) => e.ledger_name.toLowerCase().includes('igst')).reduce((s: number, e: any) => s + e.amount, 0);
-                    sData.taxable_amount = sData.net_amount - sData.cgst_amount - sData.sgst_amount - sData.igst_amount - (sData.round_off || 0);
+                // Determine which data source to use for items
+                let rawEntries = itemsData.length > 0 ? itemsData : (activeVoucher.inventory_entries || []);
+
+                // Safety check for stringified JSON (fallback for older sync versions)
+                if (typeof rawEntries === 'string') {
+                    try {
+                        rawEntries = JSON.parse(rawEntries);
+                    } catch (e) {
+                        rawEntries = [];
+                    }
                 }
 
-                setSaleData(sData);
-            }
+                const enrichedItems = (Array.isArray(rawEntries) ? rawEntries : []).map((item: any) => {
+                    const itemName = item.stock_item_name || item.name || 'Unknown';
+                    const stockData = stockLookup[itemName] || {};
 
-            if (vData.voucher_type === 'Purchase') {
-                const { data: pData } = await supabase.from('purchases').select('*').eq('voucher_id', vData.voucher_id).single();
-                if (pData) {
-                    const { data: itemsData } = await supabase.from('purchase_items').select('*').eq('purchase_id', pData.id);
-                    let currentItems = itemsData || [];
-                    if (currentItems.length === 0 && vData.inventory_entries) currentItems = vData.inventory_entries;
-                    pData.purchase_items = currentItems;
-
-                    const { data: stockItems } = await supabase.from('stock_items').select('name, hsn_code, base_unit').eq('company_id', pData.company_id);
-                    const stockLookup: any = {}; stockItems?.forEach((item: any) => stockLookup[item.name] = item);
-                    pData.purchase_items = pData.purchase_items.map((item: any) => ({
+                    return {
                         ...item,
-                        hsn_code: item.hsn_code || stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
-                        unit: item.unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
-                    }));
-                    setPurchaseData(pData);
+                        stock_item_name: itemName,
+                        hsn_code: item.hsn_code || item.hsn || stockData.hsn_code || '-',
+                        unit: item.unit || item.base_unit || stockData.base_unit || 'pcs',
+                        discount: item.discount_percent || item.discount_amount || 0,
+                        amount: item.amount || (item.quantity * item.rate) || 0
+                    };
+                });
+
+                if (activeVoucher.voucher_type === 'Sales') {
+                    setSaleData({ ...parentData, sales_items: enrichedItems });
+                } else {
+                    setPurchaseData({ ...parentData, purchase_items: enrichedItems });
                 }
             }
-
         } catch (error) {
             console.error('Error loading voucher:', error);
+            toast.error('Failed to load bill details');
         } finally {
             setLoading(false);
         }
     };
 
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(amount) || 0);
-
-    const handlePrint = () => window.print();
-
     const handleWhatsApp = () => {
-        const text = encodeURIComponent(`*${voucher.voucher_type}: ${voucher.voucher_number}*\nParty: ${voucher.party_name}\nAmount: ₹${formatCurrency(voucher.total_amount)}\nDate: ${format(new Date(voucher.voucher_date), 'dd MMM yyyy')}\n\nThank you for your business!`);
+        if (!voucher) return;
+        const text = encodeURIComponent(`*${voucher.voucher_type}: ${voucher.voucher_number}*\nParty: ${voucher.party_name}\nAmount: ${formatCurrency(voucher.total_amount)}\nDate: ${format(new Date(voucher.voucher_date), 'dd MMM yyyy')}\n\nShared via BillBook App`);
         window.open(`https://wa.me/?text=${text}`, '_blank');
     };
 
-    if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-gray-500">Loading voucher...</p>
-            </div>
-        );
-    }
+    const handleDownloadPDF = async () => {
+        if (generatingPdf) return;
+        setGeneratingPdf(true);
+        const toastId = toast.loading('Generating Secure PDF...');
 
-    if (!voucher) {
-        return (
-            <div className="text-center py-20 text-gray-500">
-                <FileText size={48} className="mx-auto mb-4 opacity-30" />
-                <p className="font-medium">Voucher not found</p>
-                <button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10">
-                    ← Go Back
-                </button>
-            </div>
-        );
-    }
+        try {
+            // Give time for loader to show and UI to settle
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const detailData = saleData || purchaseData;
-    let items = saleData?.sales_items || purchaseData?.purchase_items || [];
-    if (items.length === 0 || (items.length > 0 && !items[0].quantity && !items[0].rate)) {
-        const invEntries = voucher?.inventory_entries || [];
-        if (invEntries.length > 0) items = invEntries;
-    }
+            // Trigger print which is the safest and most high-fidelity
+            window.print();
 
-    const isSalesOrPurchase = voucher.voucher_type === 'Sales' || voucher.voucher_type === 'Purchase';
-    const voucherTitle = voucher.voucher_type === 'Sales' ? 'TAX INVOICE' : voucher.voucher_type === 'Purchase' ? 'PURCHASE VOUCHER' : voucher.voucher_type.toUpperCase();
-    const accentColor = voucher.voucher_type === 'Sales' ? 'emerald' : voucher.voucher_type === 'Purchase' ? 'orange' : 'blue';
+            toast.success('PDF Ready to Print/Save', { id: toastId });
+        } catch (error) {
+            console.error('PDF Error:', error);
+            toast.error('Unable to generate PDF. Please try again.', { id: toastId });
+        } finally {
+            setGeneratingPdf(false);
+        }
+    };
+
+    const handleSync = async () => {
+        if (!voucher || syncing) return;
+        setSyncing(true);
+        const toastId = toast.loading('Syncing to Cloud...');
+        try {
+            await pendingTransactionApi.create(selectedCompany.id, 'VOUCHERS', voucher);
+            setVoucher({ ...voucher, sync_status: 'Pending Sync' });
+            toast.success('Sync Request Sent', { id: toastId });
+        } catch (err: any) {
+            console.error(err);
+            toast.error('Sync Failed. Check Tally connection.', { id: toastId });
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    if (loading) return (
+        <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
+            <RefreshCw className="w-8 h-8 text-[var(--primary)] animate-spin" />
+            <p className="text-[10px] font-black uppercase tracking-[3px] text-gray-400">Loading Bill Details...</p>
+        </div>
+    );
+
+    if (!voucher) return (
+        <div className="p-10 text-center space-y-4">
+            <Info size={48} className="mx-auto text-gray-400" />
+            <p className="font-black text-xl uppercase tracking-tighter">Bill Not Found</p>
+            <Button onClick={() => navigate(-1)}>Go Back</Button>
+        </div>
+    );
+
+    const items = saleData?.sales_items || purchaseData?.purchase_items || voucher.inventory_entries || [];
+    const status = (voucher.sync_status || 'Synced') === 'Synced' ? 'SYNCED' : 'PENDING';
 
     return (
-        <div className="space-y-6 print:p-8 print:bg-white">
-            {/* Action Bar */}
-            <div className="flex items-center justify-between gap-4 print:hidden">
-                <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-400 hover:text-white">
-                    <ArrowLeft size={20} /> Back
-                </button>
-                <div className="flex gap-2">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-[#121214] border border-white/10 rounded-xl text-gray-400 hover:text-white flex items-center gap-2">
-                        <Printer size={16} /> Print
+        <div className="min-h-screen bg-[var(--background)] pb-40">
+            {/* Nav Bar (Print Hidden) */}
+            <header className="sticky top-0 z-50 bg-[var(--background)]/80 backdrop-blur-xl border-b border-[var(--border)] px-4 py-4 print:hidden">
+                <div className="max-w-4xl mx-auto flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate(-1)} className="p-2.5 rounded-2xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-xl font-black text-[var(--on-surface)] tracking-tight">View Bill</h1>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                                <span className={`text-[9px] font-black uppercase tracking-widest ${status === 'SYNCED' ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                    {status === 'SYNCED' ? 'Synced to Tally' : 'Pending Sync'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button className="p-2.5 rounded-2xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
+                        <MoreVertical size={20} />
                     </button>
-                    <button onClick={handleWhatsApp} className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-2">
-                        <MessageCircle size={16} /> WhatsApp
+                </div>
+            </header>
+
+            {/* Bill Template (Optimized for Screen & Print) */}
+            <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8 print:p-0">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-[40px] overflow-hidden shadow-2xl print:shadow-none print:border-none print:rounded-none"
+                >
+                    {/* 1. Header Section - Vertical Spacing Added */}
+                    <div className="p-8 md:p-12 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/80 dark:to-slate-900/80 border-b border-[var(--border)] space-y-8">
+                        <div className="flex flex-col md:flex-row justify-between items-start gap-8">
+                            <div className="space-y-4">
+                                <Badge className="bg-blue-500 text-white border-none text-[9px] font-black px-3 py-1 tracking-[2px]">
+                                    {voucher.voucher_type.toUpperCase()} INVOICE
+                                </Badge>
+                                <h2 className="text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none max-w-md">
+                                    {voucher.party_name || 'Cash Sales'}
+                                </h2>
+                                <div className="flex flex-wrap items-center gap-6 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                                    <span className="flex items-center gap-2"><Calendar size={14} className="text-blue-500" /> {format(new Date(voucher.voucher_date), 'dd MMM yyyy')}</span>
+                                    <span className="flex items-center gap-2"><Hash size={14} className="text-blue-500" /> NO: {voucher.voucher_number}</span>
+                                </div>
+                            </div>
+                            <div className="md:text-right space-y-2">
+                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-[4px]">Total Payable</p>
+                                <p className="text-5xl font-black text-[var(--primary)] tracking-tight">
+                                    {formatCurrency(voucher.total_amount)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 2. Items Table Section - Vertical Spacing Added */}
+                    <div className="p-8 md:p-12 space-y-10">
+                        {/* Mobile View Items - Enhanced Reading */}
+                        <div className="space-y-6 md:hidden">
+                            <p className="text-[10px] font-black uppercase tracking-[3px] text-slate-400 border-b pb-2">Item Breakdown</p>
+                            {items.map((item: any, idx: number) => (
+                                <div key={idx} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
+                                    <h4 className="font-black text-base text-slate-900 dark:text-white uppercase leading-tight">{item.stock_item_name || item.name}</h4>
+                                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 uppercase">
+                                        <span className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-[8px]">HSN CODE: {item.hsn_code}</span>
+                                        {item.discount > 0 && <span className="text-emerald-500">Disc: {item.discount}%</span>}
+                                    </div>
+                                    <div className="flex justify-between items-end pt-2 border-t border-slate-200/50">
+                                        <div className="text-xs font-bold text-slate-400">
+                                            {item.quantity} {item.unit} × {formatCurrency(item.rate)}
+                                        </div>
+                                        <div className="text-lg font-black text-slate-900 dark:text-white">
+                                            {formatCurrency(item.amount || (item.quantity * item.rate))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View - Higher Contrast & HSN/Discount added */}
+                        <div className="hidden md:block print:block">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b-2 border-slate-200 dark:border-slate-800">
+                                        <th className="py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Description</th>
+                                        <th className="py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">HSN CODE</th>
+                                        <th className="py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Qty</th>
+                                        <th className="py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Rate</th>
+                                        <th className="py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {items.map((item: any, idx: number) => (
+                                        <tr key={idx} className="group">
+                                            <td className="py-6">
+                                                <p className="font-black text-slate-900 dark:text-white text-base">{item.stock_item_name || item.name}</p>
+                                                {item.discount > 0 && <p className="text-[9px] font-bold text-emerald-500 uppercase mt-1">Discount Applied: {item.discount}%</p>}
+                                            </td>
+                                            <td className="py-6 text-center font-bold text-slate-400 text-sm">{item.hsn_code}</td>
+                                            <td className="py-6 text-center font-black text-slate-900 dark:text-white">{item.quantity} {item.unit}</td>
+                                            <td className="py-6 text-right font-medium text-slate-500">{formatCurrency(item.rate)}</td>
+                                            <td className="py-6 text-right font-black text-slate-900 dark:text-white text-lg">{formatCurrency(item.amount || (item.quantity * item.rate))}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* 3. Summary Section - Better Separation */}
+                        <div className="mt-12 border-t-4 border-double border-slate-200 dark:border-slate-800 pt-10 flex flex-col md:flex-row justify-between items-start gap-10">
+                            <div className="space-y-4 max-w-xs">
+                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Narration / Notes</p>
+                                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400 italic">
+                                        {voucher.narration || 'No additional notes provided for this transaction.'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="w-full md:w-80 space-y-4">
+                                <div className="flex justify-between text-sm font-bold text-slate-400 uppercase tracking-wider">
+                                    <span>Subtotal</span>
+                                    <span>{formatCurrency(voucher.total_amount)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-black text-emerald-500 uppercase tracking-wider">
+                                    <span>Taxes (GST Included)</span>
+                                    <span>₹0</span>
+                                </div>
+                                <div className="flex justify-between items-end pt-6 border-t-2 border-slate-900 dark:border-white">
+                                    <span className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Grand Total</span>
+                                    <span className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">
+                                        {formatCurrency(voucher.total_amount)}
+                                    </span>
+                                </div>
+                                <p className="text-[9px] font-black text-slate-400 text-right uppercase tracking-[2px] pt-2">
+                                    * Amount inclusive of all duties
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Footer Info (Print Hidden) */}
+                <div className="flex flex-wrap justify-center gap-6 print:hidden py-4 opacity-50">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <CheckCircle2 size={14} className="text-emerald-500" /> Digital Sign Verified
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <Printer size={14} className="text-blue-500" /> Standard A4 Export
+                    </div>
+                </div>
+            </div>
+
+            {/* STICKY BOTTOM ACTION BAR (Mobile & Desktop) */}
+            <div className="fixed bottom-0 left-0 right-0 z-[60] p-4 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent print:hidden">
+                <div className="max-w-4xl mx-auto flex items-center gap-3">
+                    <button
+                        onClick={handleWhatsApp}
+                        className="flex-1 h-14 bg-emerald-500 text-white rounded-[20px] shadow-xl shadow-emerald-500/20 font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all active:scale-95"
+                    >
+                        <MessageCircle size={18} /> WhatsApp
+                    </button>
+                    <button
+                        onClick={handleDownloadPDF}
+                        disabled={generatingPdf}
+                        className="flex-1 h-14 bg-blue-500 text-white rounded-[20px] shadow-xl shadow-blue-500/20 font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
+                        {generatingPdf ? 'Working...' : 'Get PDF'}
+                    </button>
+                    <button
+                        onClick={() => navigate(`/edit-invoice/${voucher.voucher_id}`)}
+                        className="h-14 w-14 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-[20px] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-active)] transition-all active:scale-95"
+                    >
+                        <Edit size={20} />
                     </button>
                 </div>
             </div>
 
-            {/* Voucher Card */}
-            <GlassCard className="p-0 overflow-hidden print:shadow-none print:border">
-                {/* Header */}
-                <div className={`p-6 border-b border-white/5 bg-gradient-to-r from-${accentColor}-500/10 to-blue-500/10 print:bg-gray-50`}>
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h1 className="text-2xl font-bold text-white print:text-gray-900">{voucherTitle}</h1>
-                            <p className="text-gray-400 print:text-gray-600">{selectedCompany?.name}</p>
-                            {selectedCompany?.address && <p className="text-sm text-gray-500 mt-1 max-w-md">{selectedCompany.address}</p>}
-                            {selectedCompany?.gstin && <p className="text-sm text-gray-500 font-mono">GSTIN: {selectedCompany.gstin}</p>}
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-500 uppercase font-bold">Voucher No.</p>
-                            <p className={`text-2xl font-bold text-${accentColor}-400 print:text-${accentColor}-600`}>{voucher.voucher_number}</p>
-                            <p className="text-sm text-gray-400 mt-2 flex items-center justify-end gap-1">
-                                <Calendar size={14} /> {format(new Date(voucher.voucher_date), 'dd MMM yyyy')}
-                            </p>
-                        </div>
-                    </div>
+            {/* Sync Overlay (Only for non-synced) */}
+            {status !== 'SYNCED' && (
+                <div className="fixed bottom-24 left-4 right-4 z-50">
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        className="w-full h-12 bg-amber-500 text-white rounded-xl shadow-lg font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 animate-bounce"
+                    >
+                        <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                        {syncing ? 'Connecting...' : 'Pending Sync: Tap to Push'}
+                    </button>
                 </div>
-
-                {/* Party & Amount */}
-                <div className="p-6 grid md:grid-cols-2 gap-6 border-b border-white/5">
-                    <div className="bg-white/[0.02] rounded-xl p-4 border border-white/5 print:border-gray-200 print:bg-gray-50">
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-2 flex items-center gap-1">
-                            <User size={12} /> {voucher.voucher_type === 'Sales' ? 'Buyer' : voucher.voucher_type === 'Purchase' ? 'Seller' : 'Party'}
-                        </p>
-                        <p className="font-semibold text-white text-lg print:text-gray-900">{voucher.party_name || 'Cash'}</p>
-                        {detailData?.party_gstin && <p className="text-sm text-gray-400 font-mono mt-1">GSTIN: {detailData.party_gstin}</p>}
-                        {detailData?.place_of_supply && <p className="text-sm text-gray-500 mt-1">Place: {detailData.place_of_supply}</p>}
-                    </div>
-                    <div className={`bg-${accentColor}-500/10 border border-${accentColor}-500/20 rounded-xl p-4 text-right print:bg-${accentColor}-50`}>
-                        <p className={`text-xs text-${accentColor}-400 uppercase font-bold mb-2`}>Total Amount</p>
-                        <p className={`text-4xl font-bold text-${accentColor}-400 print:text-${accentColor}-600`}>{formatCurrency(detailData?.net_amount || voucher.total_amount)}</p>
-                        <p className="text-xs text-gray-500 mt-2 italic">{numberToWords(Math.round(detailData?.net_amount || voucher.total_amount))}</p>
-                    </div>
-                </div>
-
-                {/* Items Table */}
-                {isSalesOrPurchase && items.length > 0 && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-white/[0.02] text-left text-xs text-gray-500 uppercase tracking-wider print:bg-gray-100">
-                                <tr>
-                                    <th className="px-6 py-4 w-10">#</th>
-                                    <th className="px-6 py-4">Item</th>
-                                    <th className="px-6 py-4 text-center">HSN</th>
-                                    <th className="px-6 py-4 text-center">Qty</th>
-                                    <th className="px-6 py-4 text-right">Rate</th>
-                                    <th className="px-6 py-4 text-right">Disc</th>
-                                    <th className="px-6 py-4 text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5 print:divide-gray-200">
-                                {items.map((item: any, idx: number) => (
-                                    <tr key={item.id || idx} className="hover:bg-white/[0.02]">
-                                        <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
-                                        <td className="px-6 py-4 font-medium text-white print:text-gray-900">{item.stock_item_name || item.name || 'Unknown'}</td>
-                                        <td className="px-6 py-4 text-center text-gray-400 font-mono">{item.hsn_code || '-'}</td>
-                                        <td className="px-6 py-4 text-center"><span className="font-semibold text-white print:text-gray-900">{item.quantity}</span><span className="text-xs text-gray-500 ml-1">{item.unit}</span></td>
-                                        <td className="px-6 py-4 text-right font-mono text-gray-300">{formatCurrency(item.rate)}</td>
-                                        <td className="px-6 py-4 text-right text-gray-500">{item.discount_percent ? `${item.discount_percent}%` : '-'}</td>
-                                        <td className="px-6 py-4 text-right font-semibold text-white print:text-gray-900">{formatCurrency(item.amount)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {/* Ledger Entries (for non-sales/purchase) */}
-                {!isSalesOrPurchase && voucher.ledger_entries && voucher.ledger_entries.length > 0 && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="bg-white/[0.02] text-left text-xs text-gray-500 uppercase tracking-wider">
-                                <tr>
-                                    <th className="px-6 py-4">Ledger</th>
-                                    <th className="px-6 py-4 text-right">Debit</th>
-                                    <th className="px-6 py-4 text-right">Credit</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {voucher.ledger_entries.map((entry: any, idx: number) => (
-                                    <tr key={idx} className="hover:bg-white/[0.02]">
-                                        <td className="px-6 py-4 font-medium text-white">{entry.ledger_name}</td>
-                                        <td className="px-6 py-4 text-right font-mono text-emerald-400">{entry.is_debit ? formatCurrency(entry.amount) : '-'}</td>
-                                        <td className="px-6 py-4 text-right font-mono text-red-400">{!entry.is_debit ? formatCurrency(entry.amount) : '-'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-
-                {/* Summary */}
-                {detailData && (
-                    <div className="p-6 border-t border-white/5">
-                        <div className="ml-auto max-w-xs space-y-2">
-                            <div className="flex justify-between text-gray-400"><span>Gross Amount</span><span className="font-mono text-white">{formatCurrency(detailData.gross_amount)}</span></div>
-                            {detailData.discount_amount > 0 && <div className="flex justify-between text-red-400"><span>Discount</span><span className="font-mono">-{formatCurrency(detailData.discount_amount)}</span></div>}
-                            <div className="border-t border-white/5 pt-2 mt-2">
-                                <div className="flex justify-between text-gray-400"><span>Taxable Value</span><span className="font-mono text-white">{formatCurrency(detailData.taxable_amount)}</span></div>
-                                {detailData.cgst_amount > 0 && <div className="flex justify-between text-gray-500"><span>CGST</span><span className="font-mono">{formatCurrency(detailData.cgst_amount)}</span></div>}
-                                {detailData.sgst_amount > 0 && <div className="flex justify-between text-gray-500"><span>SGST</span><span className="font-mono">{formatCurrency(detailData.sgst_amount)}</span></div>}
-                                {detailData.igst_amount > 0 && <div className="flex justify-between text-gray-500"><span>IGST</span><span className="font-mono">{formatCurrency(detailData.igst_amount)}</span></div>}
-                            </div>
-                            {detailData.round_off !== 0 && <div className="flex justify-between text-gray-500 border-t border-white/5 pt-2"><span>Round Off</span><span className="font-mono">{detailData.round_off > 0 ? '+' : ''}{formatCurrency(detailData.round_off)}</span></div>}
-                            <div className={`flex justify-between font-bold text-lg border-t border-white/5 pt-3 mt-2 text-${accentColor}-400`}>
-                                <span>Net Amount</span>
-                                <span className="font-mono">{formatCurrency(detailData.net_amount)}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Narration */}
-                {voucher.narration && (
-                    <div className="px-6 py-4 bg-white/[0.02] border-t border-white/5">
-                        <span className="text-xs text-gray-500 uppercase font-bold mr-2">Narration:</span>
-                        <span className="text-gray-400">{voucher.narration}</span>
-                    </div>
-                )}
-            </GlassCard>
+            )}
         </div>
     );
 }

@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
     const [companies, setCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [appMode, setAppMode] = useState(localStorage.getItem('appMode') || null);
 
     useEffect(() => {
         // Check initial session
@@ -101,11 +102,19 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const updateAppMode = (mode) => {
+        setAppMode(mode);
+        if (mode) localStorage.setItem('appMode', mode);
+        else localStorage.removeItem('appMode');
+    };
+
     const value = {
         user,
         companies,
         selectedCompany,
         loading,
+        appMode,
+        setAppMode: updateAppMode,
         signIn,
         signUp,
         signOut,

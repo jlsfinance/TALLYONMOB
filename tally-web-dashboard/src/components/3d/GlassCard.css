@@ -1,13 +1,12 @@
+/* Glass Card Component - Theme Aware */
 .glass-card-component {
     position: relative;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-radius: 24px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-        0 4px 24px -1px rgba(0, 0, 0, 0.2),
-        inset 0 0 20px rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
     overflow: hidden;
     transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -19,7 +18,7 @@
     inset: 0;
     z-index: -1;
     background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
-    opacity: 0.4;
+    opacity: 0.1;
     mix-blend-mode: overlay;
     pointer-events: none;
 }
@@ -32,10 +31,10 @@
     z-index: -2;
     border-radius: 25px;
     background: linear-gradient(135deg,
-            rgba(255, 255, 255, 0.1),
-            rgba(255, 255, 255, 0) 40%,
-            rgba(255, 255, 255, 0) 60%,
-            rgba(255, 255, 255, 0.1));
+            var(--border),
+            transparent 40%,
+            transparent 60%,
+            var(--border));
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: xor;
@@ -45,25 +44,22 @@
 
 .glass-card-component:hover {
     transform: translateY(-5px) scale(1.01);
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow:
-        0 20px 40px -5px rgba(0, 0, 0, 0.3),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    background: var(--surface-variant);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary);
 }
 
 /* Variant: Prismatic (Rainbow sheen for Hero Cards) */
 .glass-card--prismatic::after {
     background: linear-gradient(135deg,
-            rgba(255, 0, 128, 0.4),
+            var(--primary),
             rgba(100, 100, 255, 0.1) 40%,
             rgba(0, 255, 255, 0.1) 60%,
-            rgba(0, 255, 128, 0.4));
+            var(--secondary));
 }
 
 .glass-card--prismatic:hover {
-    box-shadow:
-        0 20px 50px -10px rgba(139, 92, 246, 0.3),
-        inset 0 0 20px rgba(255, 255, 255, 0.05);
+    box-shadow: 0 20px 50px -10px var(--primary-container);
 }
 
 /* Tilt Effect 3D */

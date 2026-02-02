@@ -3,17 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, Building2, Calendar, ArrowRight, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Building2, Calendar, ArrowRight, RefreshCw, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 
 export default function SelectCompanyPage() {
-    const { companies, selectCompany, deleteCompany, refreshCompanies } = useAuth() as AuthContextType;
+    const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode } = useAuth() as AuthContextType;
     const navigate = useNavigate();
 
     useEffect(() => {
         refreshCompanies();
     }, []);
+
+    const handleBack = () => {
+        setAppMode(null);
+        navigate('/select-mode');
+    };
 
     const handleSelect = (company: any) => {
         selectCompany(company);
@@ -42,6 +47,17 @@ export default function SelectCompanyPage() {
             <div className="absolute top-[-400px] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[150px]" />
 
             <div className="relative z-10 w-full max-w-4xl">
+                {/* Back to Modules */}
+                <motion.button
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={handleBack}
+                    className="absolute -top-12 left-0 flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
+                >
+                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                    <span className="text-sm font-medium">Change Module</span>
+                </motion.button>
+
                 {/* Header */}
                 <div className="text-center mb-12">
                     <motion.div

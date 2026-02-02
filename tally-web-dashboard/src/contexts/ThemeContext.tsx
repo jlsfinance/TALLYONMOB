@@ -30,14 +30,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
         if (theme === 'dark') {
             root.classList.add('dark');
-            // Slate-900 for visible dark theme
-            document.body.style.backgroundColor = '#0f172a';
-            document.body.style.color = '#f1f5f9';
         } else {
             root.classList.remove('dark');
-            // Light theme
-            document.body.style.backgroundColor = '#ffffff';
-            document.body.style.color = '#0f172a';
         }
     }, [theme]);
 

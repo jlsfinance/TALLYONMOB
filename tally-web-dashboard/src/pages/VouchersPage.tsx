@@ -1,86 +1,80 @@
-import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { supabase } from '@/lib/supabase';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { motion } from 'framer-motion';
-import { FileText, Search, Plus, Filter } from 'lucide-react';
-import { Card, Chip, Badge, Input, ListItem, Avatar, Fab, Spinner, EmptyState } from '@/components/ui/GlassUI';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    FileText, Search, Activity, ArrowUpRight, ArrowDownLeft,
+    Zap, Calendar
+} from 'lucide-react';
+import {
+    Spinner, EmptyState
+} from '../components/ui/GlassUI';
+import TransactionCard from '../components/shared/TransactionCard';
+import { FinancialYearFilter } from '../components/shared/FinancialYearFilter';
 
 export default function VouchersPage() {
     const { selectedCompany } = useAuth() as any;
+    const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [vouchers, setVouchers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
-    const [months, setMonths] = useState<any[]>([]);
+    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
     const voucherTypes = [
-        { key: 'all', label: 'All' },
-        { key: 'Sales', label: 'Sales' },
-        { key: 'Purchase', label: 'Purchase' },
-        { key: 'Receipt', label: 'Receipt' },
-        { key: 'Payment', label: 'Payment' },
+        { key: 'all', label: 'All', icon: <Activity size={12} /> },
+        { key: 'Sales', label: 'Sales', icon: <ArrowUpRight size={12} /> },
+        { key: 'Purchase', label: 'Purchase', icon: <ArrowDownLeft size={12} /> },
+        { key: 'Receipt', label: 'Receipt', icon: <Zap size={12} /> },
+        { key: 'Payment', label: 'Payment', icon: <Zap size={12} /> },
     ];
 
+    // Generate months for the selected FY
+    const monthsInFy = useMemo(() => {
+        const startYearText = selectedFy.split(' ')[1].split('-')[0];
+        const startYear = parseInt(startYearText);
+        const months = [];
+
+        // FY starts from April of startYear to March of startYear + 1
+        for (let i = 0; i < 12; i++) {
+            const date = new Date(startYear, 3 + i, 1); // 3 = April
+            months.push({
+                key: format(date, 'yyyy-MM'),
+                label: format(date, 'MMM'),
+                fullLabel: format(date, 'MMMM yyyy'),
+                start: format(startOfMonth(date), 'yyyy-MM-dd'),
+                end: format(endOfMonth(date), 'yyyy-MM-dd')
+            });
+        }
+        return months.reverse(); // Show latest months first
+    }, [selectedFy]);
+
     useEffect(() => {
-        loadMonthStats();
-    }, [selectedCompany]);
+        if (monthsInFy.length > 0) {
+            setSelectedMonth(monthsInFy[0].key);
+        }
+    }, [monthsInFy]);
 
     useEffect(() => {
         if (selectedMonth && selectedCompany) loadVouchers();
     }, [selectedMonth, selectedType, selectedCompany]);
 
-    const loadMonthStats = async () => {
-        if (!selectedCompany) return;
-
-        const now = new Date();
-        const fyStart = now.getMonth() >= 3 ? new Date(now.getFullYear(), 3, 1) : new Date(now.getFullYear() - 1, 3, 1);
-
-        const monthList = [];
-        let current = now;
-
-        while (current >= fyStart) {
-            const monthStart = format(startOfMonth(current), 'yyyy-MM-dd');
-            const monthEnd = format(endOfMonth(current), 'yyyy-MM-dd');
-
-            const { count } = await supabase.from('vouchers').select('*', { count: 'exact', head: true })
-                .eq('company_id', selectedCompany.id)
-                .gte('voucher_date', monthStart)
-                .lte('voucher_date', monthEnd);
-
-            monthList.push({
-                key: monthStart,
-                label: format(current, 'MMM yy'),
-                fullLabel: format(current, 'MMMM yyyy'),
-                count: count || 0,
-                start: monthStart,
-                end: monthEnd
-            });
-
-            current = subMonths(current, 1);
-        }
-
-        setMonths(monthList);
-        if (monthList.length > 0) setSelectedMonth(monthList[0].key);
-    };
-
     const loadVouchers = async () => {
-        if (!selectedCompany || !selectedMonth) return;
         setLoading(true);
-
-        const month = months.find(m => m.key === selectedMonth);
-        if (!month) return;
+        const monthObj = monthsInFy.find(m => m.key === selectedMonth);
+        if (!monthObj) return;
 
         let query = supabase.from('vouchers')
             .select('*')
             .eq('company_id', selectedCompany.id)
-            .gte('voucher_date', month.start)
-            .lte('voucher_date', month.end)
-            .order('voucher_date', { ascending: false });
+            .gte('voucher_date', monthObj.start)
+            .lte('voucher_date', monthObj.end)
+            .order('voucher_date', { ascending: false })
+            .limit(1000);
 
         if (selectedType !== 'all') {
             query = query.eq('voucher_type', selectedType);
@@ -91,13 +85,6 @@ export default function VouchersPage() {
         setLoading(false);
     };
 
-    const formatCurrency = (amount: number) => {
-        const absAmount = Math.abs(amount || 0);
-        if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)} Cr`;
-        if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(2)} L`;
-        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(absAmount);
-    };
-
     const filteredVouchers = vouchers.filter(v =>
         v.party_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         v.voucher_number?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -106,109 +93,103 @@ export default function VouchersPage() {
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-[var(--on-surface)]">Vouchers</h1>
-                <p className="text-[var(--on-surface-variant)] mt-1">
-                    {months.find(m => m.key === selectedMonth)?.fullLabel || 'Select month'}
-                </p>
-            </div>
-
-            {/* Month Selector */}
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {months.map((month) => (
-                    <Chip
-                        key={month.key}
-                        selected={selectedMonth === month.key}
-                        onClick={() => setSelectedMonth(month.key)}
-                    >
-                        <div className="text-center">
-                            <div>{month.label}</div>
-                            <div className="text-xs opacity-70">{month.count}</div>
-                        </div>
-                    </Chip>
-                ))}
-            </div>
-
-            {/* Type Filters */}
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {voucherTypes.map((type) => (
-                    <Chip
-                        key={type.key}
-                        selected={selectedType === type.key}
-                        onClick={() => setSelectedType(type.key)}
-                        size="sm"
-                    >
-                        {type.label}
-                    </Chip>
-                ))}
-            </div>
-
-            {/* Search */}
-            <Input
-                placeholder="Search voucher or party..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                icon={<Search size={18} />}
-            />
-
-            {/* Voucher List */}
-            {loading ? (
-                <div className="flex items-center justify-center py-20">
-                    <Spinner size="lg" />
+        <div className="space-y-4 max-w-7xl mx-auto pb-24 px-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Transactions</h1>
+                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
                 </div>
-            ) : filteredVouchers.length === 0 ? (
-                <EmptyState
-                    icon={<FileText size={48} />}
-                    title="No vouchers found"
-                    description="Try adjusting your filters"
-                />
-            ) : (
-                <Card padding="none">
-                    <div className="divide-y divide-[var(--border)]">
-                        {filteredVouchers.map((voucher) => {
-                            const isCredit = voucher.voucher_type === 'Sales' || voucher.voucher_type === 'Receipt';
-                            const colorMap: Record<string, 'success' | 'error' | 'warning' | 'primary'> = {
-                                'Sales': 'success',
-                                'Purchase': 'warning',
-                                'Receipt': 'primary',
-                                'Payment': 'error'
-                            };
-
-                            return (
-                                <Link key={voucher.voucher_id} to={`/vouchers/${encodeURIComponent(voucher.voucher_id)}`}>
-                                    <ListItem
-                                        title={voucher.party_name || 'Unknown Party'}
-                                        subtitle={`#${voucher.voucher_number} • ${format(new Date(voucher.voucher_date), 'dd MMM yyyy')}`}
-                                        leading={
-                                            <Avatar
-                                                name={voucher.voucher_type?.charAt(0) || 'V'}
-                                                color={colorMap[voucher.voucher_type] || 'primary'}
-                                            />
-                                        }
-                                        trailing={
-                                            <div className="text-right">
-                                                <p className={`font-semibold ${isCredit ? 'text-[var(--success)]' : 'text-[var(--error)]'}`}>
-                                                    {isCredit ? '+' : '-'} {formatCurrency(Math.abs(voucher.total_amount || 0))}
-                                                </p>
-                                                <Badge variant={colorMap[voucher.voucher_type] || 'default'}>
-                                                    {voucher.voucher_type}
-                                                </Badge>
-                                            </div>
-                                        }
-                                    />
-                                </Link>
-                            );
-                        })}
-                    </div>
-                </Card>
-            )}
-
-            {/* FAB */}
-            <div className="fixed bottom-20 md:bottom-6 right-6 z-50">
-                <Fab icon={<Plus size={24} />} />
             </div>
+
+            {/* Global FY Slider */}
+            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+
+            {/* Month Filter for Selected FY - Compact Horizontal Scroller */}
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide py-2 -mx-2 px-2">
+                {monthsInFy.map((m) => {
+                    const isActive = selectedMonth === m.key;
+                    return (
+                        <button
+                            key={m.key}
+                            onClick={() => setSelectedMonth(m.key)}
+                            className={`
+                                min-w-[60px] flex flex-col items-center py-2 px-3 rounded-2xl text-[9px] font-black uppercase transition-all border
+                                ${isActive
+                                    ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] border-none text-white shadow-lg scale-105 z-10'
+                                    : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-active)] opacity-70'
+                                }
+                            `}
+                        >
+                            <Calendar size={12} className={isActive ? 'mb-1 opacity-100' : 'mb-1 opacity-40'} />
+                            {m.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* Sticky Header Section for Mobile */}
+            <div className="sticky top-0 z-20 bg-[var(--background)]/80 backdrop-blur-md pt-2 pb-3 -mx-4 px-4 space-y-3 shadow-xl shadow-[var(--background)]">
+                {/* Search Bar - Most critical for mobile UX */}
+                <div className="relative group">
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--primary)] opacity-50" />
+                    <input
+                        placeholder="SEARCH PARTY OR VOUCHER..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-3.5 pl-11 pr-4 text-[11px] font-black text-[var(--on-surface)] focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] focus:outline-none transition-all placeholder:text-[var(--text-muted)] placeholder:font-black"
+                    />
+                </div>
+
+                {/* Type Filter - Compact Chips */}
+                <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+                    {voucherTypes.map((type) => {
+                        const isActive = selectedType === type.key;
+                        return (
+                            <button
+                                key={type.key}
+                                onClick={() => setSelectedType(type.key)}
+                                className={`
+                                    flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border
+                                    ${isActive
+                                        ? 'bg-[var(--on-surface)] text-[var(--surface)] border-[var(--on-surface)] shadow-md'
+                                        : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-active)]'
+                                    }
+                                `}
+                            >
+                                {type.icon}
+                                {type.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Stream List */}
+            <AnimatePresence mode="wait">
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                        <Spinner size="md" />
+                        <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)] mt-4">Streaming Node Data...</p>
+                    </div>
+                ) : filteredVouchers.length === 0 ? (
+                    <EmptyState icon={<FileText size={48} />} title="No Records" description="Try another month or FY" />
+                ) : (
+                    <div className="space-y-3">
+                        {filteredVouchers.map((v, idx) => (
+                            <TransactionCard
+                                key={v.voucher_id || v.id || idx}
+                                type={v.voucher_type}
+                                partyName={v.party_name}
+                                voucherNumber={v.voucher_number}
+                                date={v.voucher_date}
+                                amount={Number(v.total_amount) || 0}
+                                status={v.sync_status || 'Synced'}
+                                onClick={() => navigate(`/vouchers/${encodeURIComponent(v.voucher_id || v.id)}`)}
+                            />
+                        ))}
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

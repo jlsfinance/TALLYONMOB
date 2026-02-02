@@ -7,31 +7,32 @@ import './App.css';
 import { AuthContextType } from './contexts/types';
 
 // Pages - Using new Bento Dark Theme TypeScript pages where available
-import LoginPage from './pages/LoginPage.tsx';
-import SelectCompanyPage from './pages/SelectCompanyPage.tsx';
-import DashboardPage from './pages/DashboardPage.tsx';
-import LedgersPage from './pages/LedgersPage.tsx';
-import LedgerDetailPage from './pages/LedgerDetailPage.tsx';
-import SalesPage from './pages/SalesPage.tsx';
-import InvoiceDetailPage from './pages/InvoiceDetailPage.tsx';
-import PurchasesPage from './pages/PurchasesPage.tsx';
-import PurchaseDetailPage from './pages/PurchaseDetailPage.tsx';
-import VouchersPage from './pages/VouchersPage.tsx';
-import VoucherDetailPage from './pages/VoucherDetailPage.tsx';
-import StockPage from './pages/StockPage.tsx';
-import SyncHistoryPage from './pages/SyncHistoryPage.tsx';
-import GSTReportsPage from './pages/GSTReportsPage.tsx';
-import LedgerStatementPage from './pages/LedgerStatementPage.tsx';
-import AgingReportPage from './pages/AgingReportPage.tsx';
-import SalesDashboardPage from './pages/SalesDashboardPage.tsx';
-import InvoicePDFPage from './pages/InvoicePDFPage.jsx';
-import CreateInvoicePage from './pages/CreateInvoicePage.jsx';
-import Dashboard3DPage from './pages/Dashboard3DPage.jsx';
-import LandingPage3D from './pages/LandingPage3D.tsx';
+import LoginPage from './pages/LoginPage';
+import ModuleSelectionPage from './pages/ModuleSelectionPage';
+import SelectCompanyPage from './pages/SelectCompanyPage';
+import DashboardPage from './pages/DashboardPage';
+import LedgersPage from './pages/LedgersPage';
+import LedgerDetailPage from './pages/LedgerDetailPage';
+import SalesPage from './pages/SalesPage';
+import InvoiceDetailPage from './pages/InvoiceDetailPage';
+import PurchasesPage from './pages/PurchasesPage';
+import PurchaseDetailPage from './pages/PurchaseDetailPage';
+import VouchersPage from './pages/VouchersPage';
+import VoucherDetailPage from './pages/VoucherDetailPage';
+import StockPage from './pages/StockPage';
+import SyncHistoryPage from './pages/SyncHistoryPage';
+import GSTReportsPage from './pages/GSTReportsPage';
+import LedgerStatementPage from './pages/LedgerStatementPage';
+import AgingReportPage from './pages/AgingReportPage';
+import SalesDashboardPage from './pages/SalesDashboardPage';
+import InvoicePDFPage from './pages/InvoicePDFPage';
+import CreateInvoicePage from './pages/CreateInvoicePage';
+import Dashboard3DPage from './pages/Dashboard3DPage';
+import LandingPage3D from './pages/LandingPage3D';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading, selectedCompany } = useAuth() as AuthContextType;
+    const { user, loading, selectedCompany, appMode } = useAuth() as any;
     const location = useLocation();
 
     if (loading) {
@@ -49,7 +50,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         return <Navigate to="/login" replace />;
     }
 
-    if (!selectedCompany && location.pathname !== '/select-company') {
+    // First force mode selection if not set
+    if (!appMode && location.pathname !== '/select-mode') {
+        return <Navigate to="/select-mode" replace />;
+    }
+
+    // If in Tally mode, force company selection
+    if (appMode === 'tally' && !selectedCompany && location.pathname !== '/select-company') {
         return <Navigate to="/select-company" replace />;
     }
 
@@ -89,6 +96,7 @@ function App() {
                         <Route path="/login" element={<LoginPage />} />
 
                         {/* Protected Routes */}
+                        <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
                         <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
 
                         {/* Landing Page (Fullscreen, No Layout) */}

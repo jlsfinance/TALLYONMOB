@@ -39,17 +39,17 @@ export default function Dashboard3DPage() {
             // Fetch sales data
             const { data: sales } = await supabase
                 .from('sales')
-                .select('net_amount, invoice_date')
+                .select('gross_amount, invoice_date')
                 .eq('company_id', selectedCompany.id)
                 .gte('invoice_date', format(fyStart, 'yyyy-MM-dd'))
                 .eq('is_cancelled', false);
 
-            const totalSales = (sales || []).reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
+            const totalSales = (sales || []).reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
 
             // This month sales
             const thisMonthSales = (sales || [])
                 .filter(s => s.invoice_date >= monthStart && s.invoice_date <= monthEnd)
-                .reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
+                .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
 
             // Previous month sales for comparison
             const lastMonth = subMonths(today, 1);
@@ -58,7 +58,7 @@ export default function Dashboard3DPage() {
 
             const lastMonthSales = (sales || [])
                 .filter(s => s.invoice_date >= lastMonthStart && s.invoice_date <= lastMonthEnd)
-                .reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
+                .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
 
             const salesTrend = lastMonthSales > 0
                 ? ((thisMonthSales - lastMonthSales) / lastMonthSales * 100).toFixed(1)
@@ -76,20 +76,20 @@ export default function Dashboard3DPage() {
             // Fetch purchases data
             const { data: purchases } = await supabase
                 .from('purchases')
-                .select('net_amount')
+                .select('gross_amount')
                 .eq('company_id', selectedCompany.id)
                 .gte('invoice_date', format(fyStart, 'yyyy-MM-dd'))
                 .eq('is_cancelled', false);
 
-            const totalPurchases = (purchases || []).reduce((sum, p) => sum + (Number(p.net_amount) || 0), 0);
+            const totalPurchases = (purchases || []).reduce((sum, p) => sum + (Number(p.gross_amount) || 0), 0);
             setPurchaseData({ total: totalPurchases });
 
             // Fetch outstanding receivables
             const { data: ledgers } = await supabase
                 .from('ledgers')
-                .select('closing_balance, ledger_type')
+                .select('closing_balance, parent_group')
                 .eq('company_id', selectedCompany.id)
-                .eq('ledger_type', 'Sundry Debtors');
+                .eq('parent_group', 'Sundry Debtors');
 
             const totalReceivables = (ledgers || []).reduce((sum, l) => sum + Math.abs(Number(l.closing_balance) || 0), 0);
             setOutstandingData({ receivables: totalReceivables });
@@ -103,7 +103,7 @@ export default function Dashboard3DPage() {
 
                 const monthSales = (sales || [])
                     .filter(s => s.invoice_date >= mStart && s.invoice_date <= mEnd)
-                    .reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0);
+                    .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
 
                 monthlyData.push({
                     label: format(month, 'MMM'),
@@ -111,6 +111,14 @@ export default function Dashboard3DPage() {
                 });
             }
             setMonthlySales(monthlyData);
+
+            // Fetch recent vouchers
+            const { data: vouchers } = await supabase
+                .from('vouchers')
+                .select('voucher_id, voucher_number, party_name, voucher_type, total_amount')
+                .eq('company_id', selectedCompany.id)
+                .order('voucher_date', { ascending: false })
+                .limit(5);
 
             setRecentVouchers(vouchers || []);
 
@@ -127,18 +135,42 @@ export default function Dashboard3DPage() {
             const todayStr = format(new Date(), 'yyyy-MM-dd');
             const { data: tSales } = await supabase
                 .from('sales')
-                .select('net_amount')
+                .select('gross_amount')
                 .eq('company_id', selectedCompany.id)
                 .eq('invoice_date', todayStr)
                 .eq('is_cancelled', false);
 
-            setTodaySales((tSales || []).reduce((sum, s) => sum + (Number(s.net_amount) || 0), 0));
+            setTodaySales((tSales || []).reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0));
+
+            // Fetch Receipts for Collection %
+            const { data: receipts } = await supabase
+                .from('vouchers')
+                .select('total_amount')
+                .eq('company_id', selectedCompany.id)
+                .eq('voucher_type', 'Receipt')
+                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
+                .lte('voucher_date', format(today, 'yyyy-MM-dd'));
+
+            const totalReceipts = (receipts || []).reduce((sum, r) => sum + (Math.abs(Number(r.total_amount)) || 0), 0);
+
+            // Calculate Ratios
+            const collectionRate = totalSales > 0 ? (totalReceipts / totalSales) * 100 : 0;
+            const expenseRate = totalSales > 0 ? (totalPurchases / totalSales) * 100 : 0;
+            const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+
+            setKpiRatios({
+                collection: Math.min(collectionRate, 100),
+                expense: Math.min(expenseRate, 100),
+                profit: profitMargin
+            });
 
         } catch (error) {
             console.error('Error loading dashboard:', error);
         }
         setLoading(false);
     };
+
+    const [kpiRatios, setKpiRatios] = useState({ collection: 0, expense: 0, profit: 0 });
 
     const formatCurrency = (amount) => {
         if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
@@ -172,7 +204,7 @@ export default function Dashboard3DPage() {
                         <span className="dashboard-3d__title-icon">📊</span>
                         Analytics Dashboard
                     </h1>
-                    <p className="dashboard-3d__subtitle">{selectedCompany.name}</p>
+                    <p className="dashboard-3d__subtitle">{selectedCompany.name} (FY {new Date().getMonth() >= 3 ? `${new Date().getFullYear()}-${new Date().getFullYear() + 1}` : `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`})</p>
                 </div>
                 <div className="dashboard-3d__stats-strip">
                     <div className="dashboard-3d__stat" onClick={() => navigate('/sales')}>
@@ -198,7 +230,7 @@ export default function Dashboard3DPage() {
                     {/* KPI Cards */}
                     <section className="dashboard-3d__kpi-section">
                         <KPICard
-                            title="Total Sales"
+                            title="Total Sales (Gross)"
                             value={salesData?.total || 0}
                             icon="💰"
                             trend={salesData?.trend}
@@ -207,7 +239,7 @@ export default function Dashboard3DPage() {
                             onClick={() => navigate('/sales')}
                         />
                         <KPICard
-                            title="Purchases"
+                            title="Total Purchases (Gross)"
                             value={purchaseData?.total || 0}
                             icon="🛒"
                             variant="purchases"
@@ -249,23 +281,23 @@ export default function Dashboard3DPage() {
                         {/* Progress Rings */}
                         <GlassCard size="lg" className="dashboard-3d__progress-card">
                             <h3 className="dashboard-3d__section-title">
-                                <span>🎯</span> Key Metrics
+                                <span>🎯</span> Business Health
                             </h3>
                             <div className="dashboard-3d__progress-grid">
                                 <ProgressRing
-                                    value={75}
+                                    value={kpiRatios.collection}
                                     label="Collection"
                                     color="emerald"
                                     size={100}
                                 />
                                 <ProgressRing
-                                    value={92}
-                                    label="GST"
+                                    value={kpiRatios.expense}
+                                    label="Expense %"
                                     color="blue"
                                     size={100}
                                 />
                                 <ProgressRing
-                                    value={netProfit > 0 ? Math.min((netProfit / (salesData?.total || 1)) * 100, 100) : 0}
+                                    value={kpiRatios.profit}
                                     label="Profit %"
                                     color="purple"
                                     size={100}

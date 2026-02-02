@@ -19,11 +19,21 @@ export default function InvoiceDetailPage() {
 
     const loadInvoice = async () => {
         try {
-            const { data: salesData, error } = await supabase
+            // First try to find by voucher_id or id
+            let { data: salesData } = await supabase
                 .from('sales')
                 .select('*')
                 .eq('voucher_id', id)
                 .single();
+
+            if (!salesData && id) {
+                const { data: fallback } = await supabase
+                    .from('sales')
+                    .select('*')
+                    .eq('id', id)
+                    .single();
+                salesData = fallback;
+            }
 
             if (salesData) {
                 const { data: itemsData } = await supabase.from('sales_items').select('*').eq('sale_id', salesData.id);
@@ -32,29 +42,54 @@ export default function InvoiceDetailPage() {
                 const stockLookup: any = {};
                 stockItems?.forEach((item: any) => { stockLookup[item.name] = item; });
 
-                let enrichedItems = [];
+                let finalItems = [];
                 if (itemsData && itemsData.length > 0) {
-                    enrichedItems = itemsData.map((item: any) => ({
+                    finalItems = itemsData.map((item: any) => ({
                         ...item,
                         hsn_code: item.hsn_code || stockLookup[item.stock_item_name]?.hsn_code || '-',
                         unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
                     }));
                 } else {
-                    const { data: voucherData } = await supabase.from('vouchers').select('inventory_entries').eq('voucher_id', salesData.voucher_id).single();
-                    if (voucherData?.inventory_entries) {
-                        enrichedItems = voucherData.inventory_entries.map((item: any) => ({
+                    // Fallback to vouchers table
+                    const { data: vData } = await supabase.from('vouchers').select('inventory_entries').eq('voucher_id', salesData.voucher_id).single();
+                    let rawEntries = vData?.inventory_entries || [];
+
+                    // Safety check for stringified JSON
+                    if (typeof rawEntries === 'string') {
+                        try { rawEntries = JSON.parse(rawEntries); } catch (e) { rawEntries = []; }
+                    }
+
+                    if (Array.isArray(rawEntries)) {
+                        finalItems = rawEntries.map((item: any) => ({
                             ...item,
                             stock_item_name: item.stock_item_name || item.name || 'Unknown',
-                            hsn_code: item.hsn_code || stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
-                            unit: item.unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
+                            hsn_code: item.hsn_code || item.hsn || stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
+                            unit: item.unit || item.base_unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
                         }));
                     }
                 }
-                salesData.sales_items = enrichedItems;
+                salesData.sales_items = finalItems;
                 setInvoice(salesData);
             } else {
-                const { data } = await salesApi.getById(id!);
-                setInvoice(data);
+                // Last ditch effort: try the API wrapper if it exists (though supabase direct is better)
+                try {
+                    const { data } = await salesApi.getById(id!);
+                    setInvoice(data);
+                } catch (e) {
+                    // If still no invoice, try fetching directly from vouchers and synthesize
+                    const { data: vRecord } = await supabase.from('vouchers').select('*').eq('voucher_id', id).single();
+                    if (vRecord) {
+                        const synthesized = {
+                            invoice_number: vRecord.voucher_number || '---',
+                            invoice_date: vRecord.voucher_date,
+                            party_ledger_name: vRecord.party_name,
+                            net_amount: vRecord.total_amount,
+                            gross_amount: vRecord.total_amount,
+                            sales_items: Array.isArray(vRecord.inventory_entries) ? vRecord.inventory_entries : []
+                        };
+                        setInvoice(synthesized);
+                    }
+                }
             }
         } catch (err) {
             console.error('Error loading invoice:', err);
@@ -176,7 +211,7 @@ export default function InvoiceDetailPage() {
                             <tr>
                                 <th className="px-6 py-4 w-10">#</th>
                                 <th className="px-6 py-4">Item</th>
-                                <th className="px-6 py-4 text-center">HSN</th>
+                                <th className="px-6 py-4 text-center">HSN CODE</th>
                                 <th className="px-6 py-4 text-center">Qty</th>
                                 <th className="px-6 py-4 text-right">Rate</th>
                                 <th className="px-6 py-4 text-right">Amount</th>
@@ -188,7 +223,7 @@ export default function InvoiceDetailPage() {
                                     <tr key={item.id || idx} className="hover:bg-white/[0.02] print:hover:bg-gray-50">
                                         <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
                                         <td className="px-6 py-4 font-medium text-white print:text-gray-900">{item.stock_item_name || item.name || 'Unknown'}</td>
-                                        <td className="px-6 py-4 text-center text-gray-400 font-mono">{item.hsn_code || '-'}</td>
+                                        <td className="px-6 py-4 text-center text-gray-400 font-mono text-[10px]">HSN CODE: {item.hsn_code || '-'}</td>
                                         <td className="px-6 py-4 text-center"><span className="font-semibold text-white print:text-gray-900">{item.quantity}</span><span className="text-xs text-gray-500 ml-1">{item.unit}</span></td>
                                         <td className="px-6 py-4 text-right font-mono text-gray-300 print:text-gray-700">{formatCurrency(item.rate)}</td>
                                         <td className="px-6 py-4 text-right font-semibold text-white print:text-gray-900">{formatCurrency(item.amount)}</td>
