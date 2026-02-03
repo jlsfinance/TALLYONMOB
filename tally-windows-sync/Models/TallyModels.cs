@@ -14,6 +14,9 @@ namespace TallySyncApp.Models
         [JsonProperty("id")]
         public string Id { get; set; } = string.Empty;
 
+        [JsonProperty("company_id")]
+        public string CompanyId { get; set; } = string.Empty;
+
         [JsonProperty("name")]
         public string Name { get; set; } = string.Empty;
 
@@ -128,10 +131,18 @@ namespace TallySyncApp.Models
         public override string ToString() => $"{VoucherType} #{VoucherNumber} - ₹{TotalAmount:N2}";
 
         /// <summary>
-        /// Generates a deterministic ID for UPSERT: company_id*type*number_date
+        /// Generates a deterministic ID for UPSERT. Uses MasterID (primary) or legacy composite (fallback).
         /// </summary>
-        public static string GenerateId(string companyId, string type, string? number, DateTime date)
+        public static string GenerateId(string companyId, string type, string? number, DateTime date, string? masterId = null)
         {
+            // PREFERRED: Use Tally's MasterID (Immutable GUID)
+            // This ensures 1:1 mapping even if the user changes Date or Voucher Number in Tally.
+            if (!string.IsNullOrEmpty(masterId))
+            {
+                return $"{companyId}*{masterId}";
+            }
+
+            // FALLBACK: Legacy composite ID (Fragile if date/number changes)
             string cleanNumber = (number ?? "0").Replace(" ", "").Replace("*", "").Replace("_", "");
             string cleanType = type.Replace(" ", "").ToUpper();
             return $"{companyId}*{cleanType}*{cleanNumber}_{date:yyyyMMdd}";
@@ -140,7 +151,7 @@ namespace TallySyncApp.Models
         public void GenerateDeterministicId(string companyId)
         {
             this.CompanyId = companyId;
-            this.VoucherId = GenerateId(companyId, VoucherType, VoucherNumber, VoucherDate);
+            this.VoucherId = GenerateId(companyId, VoucherType, VoucherNumber, VoucherDate, MasterId);
         }
     }
 
@@ -447,6 +458,9 @@ namespace TallySyncApp.Models
         [JsonProperty("id")]
         public string Id { get; set; } = string.Empty;
 
+        [JsonProperty("company_id")]
+        public string CompanyId { get; set; } = string.Empty;
+
         [JsonProperty("name")]
         public string Name { get; set; } = string.Empty;
 
@@ -497,6 +511,9 @@ namespace TallySyncApp.Models
 
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
+
+        [JsonProperty("is_deleted")]
+        public bool IsDeleted { get; set; }
 
         public override string ToString() => $"{Name} - {ClosingBalance} {BaseUnit}";
     }
@@ -579,5 +596,56 @@ namespace TallySyncApp.Models
 
         [JsonProperty("retry_count")]
         public int RetryCount { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a single ledger line in a voucher (for Ledger Statements)
+    /// </summary>
+    public class LedgerTransaction
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("company_id")]
+        public string CompanyId { get; set; } = string.Empty;
+
+        [JsonProperty("ledger_id")]
+        public string? LedgerId { get; set; }
+
+        [JsonProperty("ledger_name")]
+        public string LedgerName { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_id")]
+        public string VoucherId { get; set; } = string.Empty;
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("voucher_date")]
+        public DateTime VoucherDate { get; set; }
+
+        [JsonProperty("voucher_type")]
+        public string VoucherType { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_number")]
+        public string VoucherNumber { get; set; } = string.Empty;
+
+        [JsonProperty("narration")]
+        public string? Narration { get; set; }
+
+        [JsonProperty("amount")]
+        public decimal Amount { get; set; }
+
+        [JsonProperty("debit")]
+        public decimal Debit { get; set; }
+
+        [JsonProperty("credit")]
+        public decimal Credit { get; set; }
+
+        [JsonProperty("is_debit")]
+        public bool IsDebit { get; set; }
+
+        [JsonProperty("is_deleted")]
+        public bool IsDeleted { get; set; }
     }
 }

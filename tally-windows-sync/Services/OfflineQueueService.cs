@@ -245,6 +245,27 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Force clear all pending items for a specific company
+        /// </summary>
+        public async Task ClearQueueAsync(string companyId)
+        {
+            try
+            {
+                using var command = _connection!.CreateCommand();
+                command.CommandText = "DELETE FROM sync_queue WHERE status != 'completed' AND company_id = @companyId";
+                command.Parameters.AddWithValue("@companyId", companyId);
+                await Task.Run(() => command.ExecuteNonQuery());
+                Console.WriteLine($"Cleared sync queue for company {companyId}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to clear queue: {ex.Message}");
+            }
+        }
+
+
+
+        /// <summary>
         /// Get queue statistics
         /// </summary>
         public async Task<(int Pending, int Failed, int Completed)> GetQueueStatsAsync()

@@ -252,6 +252,10 @@
                         <TextBlock Text="Tally Configuration" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
                         <Border Background="White" Padding="20" CornerRadius="8" Margin="0,0,0,20">
                             <StackPanel>
+                                <CheckBox Content="Start with Windows (Minimize to Tray)" 
+                                          Checked="StartWithWindows_Checked" Unchecked="StartWithWindows_Unchecked"
+                                          x:Name="StartupCheckBox" Margin="0,0,0,15"/>
+
                                 <TextBlock Text="Host (ODBC Server IP)" Margin="0,0,0,5"/>
                                 <TextBox Text="{Binding Settings.TallySettings.Host}" Padding="5" Margin="0,0,0,15"/>
                                 
@@ -274,7 +278,10 @@
                                 <TextBlock Text="Sync Interval (Minutes)" Margin="0,0,0,5"/>
                                 <TextBox Text="{Binding Settings.SyncSettings.SyncIntervalMinutes}" Padding="5" Margin="0,0,0,15"/>
                                 
-                                <Button Command="{Binding SaveSettingsCommand}" Content="Save Settings" HorizontalAlignment="Left" Style="{StaticResource ModernButton}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Command="{Binding SaveSettingsCommand}" Content="Save Settings" Style="{StaticResource ModernButton}" Margin="0,0,10,0"/>
+                                    <Button Command="{Binding PurgeDataCommand}" Content="⚠️ RESET CLOUD DATA" Background="#EF4444" Style="{StaticResource ModernButton}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>

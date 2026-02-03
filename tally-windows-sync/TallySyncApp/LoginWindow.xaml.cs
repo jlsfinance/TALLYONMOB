@@ -2,10 +2,11 @@ using System;
 using System.Windows;
 using System.Windows.Input;
 using TallySyncApp.Services;
+using MessageBox = System.Windows.MessageBox; // Fix Ambiguity
 
 namespace TallySyncApp
 {
-    public partial class LoginWindow : Window
+    public partial class LoginWindow : System.Windows.Window
     {
         private readonly AuthService _authService;
         private bool _isLoginMode = true;

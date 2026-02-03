@@ -7,6 +7,7 @@ using TallySyncApp.Models;
 using TallySyncApp.Views;
 using Newtonsoft.Json;
 using System.Windows.Threading;
+using MessageBox = System.Windows.MessageBox; // Fix Ambiguity
 
 namespace TallySyncApp
 {
@@ -14,7 +15,7 @@ namespace TallySyncApp
     /// Main Application Entry Point
     /// Tally ERP Sync Application for Windows
     /// </summary>
-    public partial class App : Application
+    public partial class App : System.Windows.Application
     {
         private static ILogger<App>? _logger;
         private static SyncManager? _syncManager;

@@ -113,13 +113,19 @@ namespace TallySyncApp.Services
             string tableName = dataType.ToLower();
             if (tableName.Contains("vouchers")) tableName = "vouchers";
             else if (tableName.Contains("ledgers")) tableName = "ledgers";
-            else if (tableName.Contains("stock")) tableName = "stock_items";
+            else if (tableName.Contains("stock")) tableName = "stock";
+            else if (tableName.Contains("ledger_transactions")) tableName = "ledger_transactions";
             
             // Safety Check regarding Vouchers PK
-            if ((tableName == "vouchers" || dataType.ToLower().Contains("voucher")) && onConflict != "voucher_id")
+            // FIX: Allow 'master_id' and composite keys for vouchers
+            if ((tableName == "vouchers" || dataType.ToLower().Contains("voucher")) && 
+                onConflict != "voucher_id" && 
+                onConflict != "master_id" &&
+                onConflict != "company_id,master_id" &&
+                onConflict != "master_id,company_id")
             {
                 SyncLogger.Log($"🚨 FATAL: Attempted to sync Vouchers with wrong PK: {onConflict}");
-                throw new Exception("FATAL: Voucher sync called with wrong PK ('id'). Must be 'voucher_id'.");
+                throw new Exception($"FATAL: Voucher sync called with wrong PK ('{onConflict}'). Allowed: voucher_id, master_id, or composite.");
             }
 
             // Explicit Log for Debugging
@@ -136,47 +142,44 @@ namespace TallySyncApp.Services
                     dict["company_id"] = companyId;
                     
                     // Handle Vouchers, Sales, and Purchases specifically to match Supabase schema
-                    if (tableName == "vouchers" || tableName == "sales" || tableName == "purchases")
+                    if (tableName == "vouchers")
                     {
-                        // Map C# properties to SQL columns if they differ
-                        if (dict.ContainsKey("voucher_date")) 
-                        {
-                            dict["vch_date"] = dict["voucher_date"];
-                            if (tableName == "sales" || tableName == "purchases") dict["invoice_date"] = dict["voucher_date"];
-                        }
+                        // Vanners table schema is direct
+                        // Keep: voucher_id, company_id, voucher_type, voucher_number, voucher_date, party_name, narration, total_amount, alter_id, master_id
                         
-                        if (dict.ContainsKey("total_amount")) 
-                        {
-                            dict["amount"] = dict["total_amount"];
-                            if (tableName == "sales" || tableName == "purchases") dict["net_amount"] = dict["total_amount"];
-                        }
-                        
-                        if (dict.ContainsKey("party_name")) 
-                        {
-                            dict["party_ledger_name"] = dict["party_name"];
-                        }
-                        
-                        if (dict.ContainsKey("voucher_number"))
-                        {
-                            if (tableName == "sales" || tableName == "purchases") dict["invoice_number"] = dict["voucher_number"];
-                        }
-                        
-                        // Move extra fields to raw_data to avoid PostgREST errors
+                        // Move extra fields to raw_data
                         var rawData = new Dictionary<string, object>();
                         if (dict.ContainsKey("ledger_entries")) rawData["ledger_entries"] = dict["ledger_entries"];
                         if (dict.ContainsKey("inventory_entries")) rawData["inventory_entries"] = dict["inventory_entries"];
-                        
                         dict["raw_data"] = rawData;
                         
-                        // Remove fields that are not in the SQL schema
+                        dict.Remove("ledger_entries");
+                        dict.Remove("inventory_entries");
+                        // DO NOT remove voucher_date, total_amount, or party_name for vouchers
+                        // DO NOT add id or party_ledger_name for vouchers
+                    }
+                    else if (tableName == "sales" || tableName == "purchases")
+                    {
+                        // Sales/Purchases mapping to match SQL schema
+                        if (dict.ContainsKey("voucher_date")) dict["invoice_date"] = dict["voucher_date"];
+                        if (dict.ContainsKey("total_amount")) dict["net_amount"] = dict["total_amount"];
+                        if (dict.ContainsKey("party_name")) dict["party_ledger_name"] = dict["party_name"];
+                        if (dict.ContainsKey("voucher_number")) dict["invoice_number"] = dict["voucher_number"];
+                        if (dict.ContainsKey("voucher_id")) dict["id"] = dict["voucher_id"];
+                        
+                        // Move extra fields to raw_data
+                        var rawData = new Dictionary<string, object>();
+                        if (dict.ContainsKey("ledger_entries")) rawData["ledger_entries"] = dict["ledger_entries"];
+                        if (dict.ContainsKey("inventory_entries")) rawData["inventory_entries"] = dict["inventory_entries"];
+                        dict["raw_data"] = rawData;
+                        
                         dict.Remove("ledger_entries");
                         dict.Remove("inventory_entries");
                         dict.Remove("voucher_date");
                         dict.Remove("total_amount");
                         dict.Remove("party_name");
-                        
-                        // Ensure ID is set correctly for on_conflict
-                        if (dict.ContainsKey("voucher_id")) dict["id"] = dict["voucher_id"];
+                        dict.Remove("voucher_number");
+                        dict.Remove("voucher_id");
                     }
                     
                     itemsWithCompanyId.Add(dict);
@@ -449,6 +452,78 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Get all Master IDs of active vouchers from cloud for a company
+        /// </summary>
+        public async Task<List<string>> GetCloudVoucherMasterIdsAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                // Select only master_id where is_deleted is false (or null)
+                var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&select=master_id&is_deleted=is.false";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(content);
+                    return items?.Select(i => i["master_id"]?.ToString() ?? "").Where(id => !string.IsNullOrEmpty(id)).ToList() ?? new List<string>();
+                }
+                return new List<string>();
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetCloudVoucherMasterIdsAsync error: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Mark vouchers as deleted (soft delete) using Master ID
+        /// </summary>
+        public async Task<int> MarkVouchersAsDeletedByMasterIdAsync(string companyId, List<string> masterIds)
+        {
+            if (masterIds.Count == 0) return 0;
+
+            try
+            {
+                AddAuthHeader();
+                
+                int deleted = 0;
+                
+                // Process in batches of 100
+                string[] tables = { "vouchers", "sales", "purchases", "ledger_transactions" };
+
+                foreach (var batch in masterIds.Chunk(100))
+                {
+                    var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
+                    var updates = new { is_deleted = true, deleted_at = DateTime.UtcNow.ToString("o") };
+                    var json = JsonConvert.SerializeObject(updates);
+                    var contentString = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    foreach (var table in tables)
+                    {
+                        var url = $"{_supabaseUrl}/rest/v1/{table}?company_id=eq.{companyId}&master_id=in.({idsParam})";
+                        var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = contentString };
+                        var response = await _httpClient.SendAsync(request);
+                        
+                        if (response.IsSuccessStatusCode && table == "vouchers")
+                        {
+                            deleted += batch.Length;
+                        }
+                    }
+                }
+                
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ MarkVouchersAsDeletedByMasterIdAsync error: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
         /// Mark vouchers as deleted (soft delete)
         /// </summary>
         public async Task<int> MarkVouchersAsDeletedAsync(string companyId, List<string> voucherIds)
@@ -672,6 +747,124 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 SyncLogger.Log($"⚠️ FailRunningSyncsAsync error: {ex.Message}");
+            }
+        }
+
+        // ============================================
+        // UPDATE CHECK
+        // ============================================
+
+        public async Task<AppRelease?> GetLatestReleaseAsync()
+        {
+            try
+            {
+                AddAuthHeader();
+                // Assumed table 'app_releases'
+                var url = $"{_supabaseUrl}/rest/v1/app_releases?select=version,download_url,release_notes&order=created_at.desc&limit=1";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var items = JsonConvert.DeserializeObject<List<AppRelease>>(content);
+                    return items?.FirstOrDefault();
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Update check error: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<List<string>> GetFcmTokensAsync()
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/fcm_tokens?select=token";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var items = JsonConvert.DeserializeObject<List<dynamic>>(content);
+                    return items?.Select(x => (string)x.token).ToList() ?? new List<string>();
+                }
+                return new List<string>();
+            }
+            catch
+            {
+                return new List<string>();
+            }
+        }
+
+        // ============================================
+        // PURGE DATA
+        // ============================================
+
+        /// <summary>
+        /// Permanently deletes ALL data for a company to allow a fresh start
+        /// </summary>
+        public async Task<(bool Success, string Error)> PurgeCompanyDataAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                
+                // Delete Tables in Order (Child -> Parent)
+                // Note: stock_items included cleanup for legacy table if it exists
+                string[] tables = 
+                { 
+                    "sales_items", 
+                    "purchase_items", 
+                    "ledger_transactions",
+                    "sales", 
+                    "purchases", 
+                    "vouchers", 
+                    "stock",
+                    "stock_items", // Cleanup old table
+                    "ledgers", 
+                    "sync_metadata", 
+                    "pending_transactions",
+                    "sync_history",
+                    "sync_state"
+                };
+
+                foreach (var table in tables)
+                {
+                    try 
+                    {
+                        var url = $"{_supabaseUrl}/rest/v1/{table}?company_id=eq.{companyId}";
+                        var request = new HttpRequestMessage(HttpMethod.Delete, url);
+                        var response = await _httpClient.SendAsync(request);
+                        
+                        if (!response.IsSuccessStatusCode && response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                        {
+                            var err = await response.Content.ReadAsStringAsync();
+                            SyncLogger.Log($"⚠️ Failed to purge table {table}: {err}");
+                            // Continue anyway to try deleting other tables
+                        }
+                        else
+                        {
+                            SyncLogger.Log($"🗑️ Purged table: {table}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                         SyncLogger.Log($"⚠️ Error purging {table}: {ex.Message}");
+                    }
+                }
+
+                // Note: We do NOT delete the Company entry itself, as that would unlink the user.
+                // We only clear the DATA.
+
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
             }
         }
 

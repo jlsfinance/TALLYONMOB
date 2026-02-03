@@ -21,6 +21,7 @@ namespace TallySyncApp.ViewModels
         public ICommand StartSyncCommand { get; }
         public ICommand StopSyncCommand { get; }
         public ICommand ManualSyncCommand { get; }
+        public ICommand PurgeDataCommand { get; }
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
 
@@ -86,6 +87,7 @@ namespace TallySyncApp.ViewModels
             StartSyncCommand = new RelayCommand(async () => await StartSync());
             StopSyncCommand = new RelayCommand(StopSync);
             ManualSyncCommand = new RelayCommand(async () => await ManualSync());
+            PurgeDataCommand = new RelayCommand(async () => await PurgeData());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
 
@@ -128,6 +130,23 @@ namespace TallySyncApp.ViewModels
             await _syncManager.RunManualSyncAsync();
             await LoadLogs();
             IsSyncing = false;
+        }
+
+        private async Task PurgeData()
+        {
+            var res = MessageBox.Show(
+                "Are you sure you want to RESET all cloud data?\n\nThis will DELETE all data on the website for this company. The data will be re-synced from Tally.",
+                "Confirm Data Reset",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            
+            if (res == MessageBoxResult.Yes)
+            {
+                IsSyncing = true;
+                await _syncManager.PurgeCompanyDataAsync();
+                IsSyncing = false;
+                MessageBox.Show("Data Reset Complete. Sync will restart.", "Done");
+            }
         }
 
         private void SaveSettings()

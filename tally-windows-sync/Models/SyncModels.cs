@@ -165,6 +165,7 @@ namespace TallySyncApp.Models
         public int MaxRetries { get; set; } = 3;
         public int RetryDelaySeconds { get; set; } = 30;
         public bool EnableVoucherSync { get; set; } = true;
+        public string? FcmServerKey { get; set; } // Legacy FCM Server Key
     }
 
     public class DatabaseSettings

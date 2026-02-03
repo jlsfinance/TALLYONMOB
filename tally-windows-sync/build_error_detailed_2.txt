@@ -1,0 +1,34 @@
+﻿  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Build number updated to 151
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(81,23): warning CS8602: Dereference of a possibly null reference. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(102,87): warning CS8604: Possible null reference argument for parameter 'sender' in 'void MainWindow.SyncNowButton_Click(object sender, RoutedEventArgs e)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(102,90): warning CS8625: Cannot convert null literal to non-nullable reference type. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(502,21): warning CS4014: Because this call is not awaited, execution of the current method continues before the call is completed. Consider applying the 'await' operator to the result of the call. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\ApiClient.cs(863,24): warning CS8619: Nullability of reference types in value of type '(bool, string?)' doesn't match target type '(bool Success, string Error)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\TallyConnector.cs(597,158): warning CS8604: Possible null reference argument for parameter 'hsn' in 'bool TallyConnector.IsValidHsn(string hsn)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(672,45): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(673,71): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(674,87): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(580,33): warning CS0219: The variable 'chunksProcessed' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(581,34): warning CS0219: The variable 'allChunksSuccessful' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(21,22): warning CS0414: The field 'MainWindow._isAutoSyncRunning' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+
+Build FAILED.
+
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(81,23): warning CS8602: Dereference of a possibly null reference. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(102,87): warning CS8604: Possible null reference argument for parameter 'sender' in 'void MainWindow.SyncNowButton_Click(object sender, RoutedEventArgs e)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(102,90): warning CS8625: Cannot convert null literal to non-nullable reference type. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(502,21): warning CS4014: Because this call is not awaited, execution of the current method continues before the call is completed. Consider applying the 'await' operator to the result of the call. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\ApiClient.cs(863,24): warning CS8619: Nullability of reference types in value of type '(bool, string?)' doesn't match target type '(bool Success, string Error)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\TallyConnector.cs(597,158): warning CS8604: Possible null reference argument for parameter 'hsn' in 'bool TallyConnector.IsValidHsn(string hsn)'. [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(580,33): warning CS0219: The variable 'chunksProcessed' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(581,34): warning CS0219: The variable 'allChunksSuccessful' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\Views\MainWindow.xaml.cs(21,22): warning CS0414: The field 'MainWindow._isAutoSyncRunning' is assigned but its value is never used [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(672,45): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(673,71): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+D:\New folder (2)\TALLYONMOB\tally-windows-sync\Services\SyncManager.cs(674,87): error CS0103: The name 'monthsProcessed' does not exist in the current context [D:\New folder (2)\TALLYONMOB\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+    9 Warning(s)
+    3 Error(s)
+
+Time Elapsed 00:00:02.96

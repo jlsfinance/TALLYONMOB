@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -13,7 +14,7 @@
 
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallyLink</RootNamespace>
-    <Version>1.0.3</Version>
+    <Version>3.0.0</Version>
     <Authors>TallyLink</Authors>
     <Description>TallyLink Limitless Sync</Description>
     <Copyright>Copyright © 2026 TallyLink</Copyright>
@@ -44,5 +45,15 @@
     <Compile Include="..\Services\**\*.cs" Link="Services\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="build.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="powershell -ExecutionPolicy Bypass -File &quot;$(ProjectDir)increment-build.ps1&quot;" />
+  </Target>
 
 </Project>

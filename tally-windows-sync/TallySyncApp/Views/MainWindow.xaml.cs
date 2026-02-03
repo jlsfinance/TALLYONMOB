@@ -7,13 +7,14 @@ using System.Windows.Media;
 using TallySyncApp.Models;
 using TallySyncApp.Services;
 using TallySyncApp;
+using MessageBox = System.Windows.MessageBox; // Fix Ambiguity
 
 namespace TallySyncApp.Views
 {
     /// <summary>
     /// Main window code-behind with sync controls and status display
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : System.Windows.Window
     {
         private readonly ObservableCollection<LogEntry> _logEntries = new();
         private readonly ObservableCollection<ErrorEntry> _errorEntries = new();
@@ -28,6 +29,9 @@ namespace TallySyncApp.Views
             Loaded += MainWindow_Loaded;
             Closed += MainWindow_Closed;
         }
+
+        private System.Windows.Forms.NotifyIcon? _notifyIcon;
+        private bool _isExplicitExit = false;
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
@@ -46,12 +50,33 @@ namespace TallySyncApp.Views
                     ApiEndpoint.Text = "Supabase Direct";
                 }
 
+                // Update Version Text
+                try 
+                {
+                    var buildInfo = BuildInfo.Load();
+                    VersionText.Text = $"© 2026 TallyLink • v{buildInfo.version} (Build {buildInfo.build})";
+                }
+                catch { }
+
+                InitializeTrayIcon();
+                LoadStartupState();
+
                 // Subscribe to sync events
                 var syncManager = App.GetSyncManager();
                 if (syncManager != null)
                 {
                     syncManager.StatusChanged += SyncManager_StatusChanged;
                     syncManager.SyncLogRequested += (s, msg) => Dispatcher.Invoke(() => AddLog(msg));
+                    
+                    // AUTO-START SYNC
+                    // "Jese hi Tally on ho vo Sync chalu kar de"
+                    // We start the timer immediately. The timer will check for Tally connection.
+                    AddLog("🚀 Auto-starting sync service...");
+                    syncManager.StartSync();
+                    _isAutoSyncRunning = true;
+                    StartAutoSyncButton.IsEnabled = false;
+                    StopAutoSyncButton.IsEnabled = true;
+                    UpdateStatus("Auto-Syncing", "#10B981");
                 }
 
                 // Check connections
@@ -59,6 +84,9 @@ namespace TallySyncApp.Views
                 
                 // Update queue stats
                 UpdateQueueStats();
+
+                // Check for updates
+                await syncManager.CheckForUpdatesAsync();
             }
             catch (Exception ex)
             {
@@ -66,6 +94,103 @@ namespace TallySyncApp.Views
                 AddLog($"Startup Error: {ex.Message}");
             }
         }
+
+        private void InitializeTrayIcon()
+        {
+            try
+            {
+                _notifyIcon = new System.Windows.Forms.NotifyIcon();
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application; 
+                _notifyIcon.Visible = true;
+                _notifyIcon.Text = "LiveKeeping Tally Sync";
+                _notifyIcon.DoubleClick += (s, args) => ShowWindow();
+
+                var contextMenu = new System.Windows.Forms.ContextMenuStrip();
+                contextMenu.Items.Add("Open", null, (s, e) => ShowWindow());
+                contextMenu.Items.Add("Sync Now", null, (s, e) => SyncNowButton_Click(s, null));
+                contextMenu.Items.Add("-");
+                contextMenu.Items.Add("Exit", null, (s, e) => {
+                    _isExplicitExit = true;
+                    this.Close();
+                });
+                _notifyIcon.ContextMenuStrip = contextMenu;
+            }
+            catch {}
+        }
+
+        private void ShowWindow()
+        {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+            this.Activate();
+        }
+
+        protected override void OnStateChanged(EventArgs e)
+        {
+            if (this.WindowState == WindowState.Minimized)
+            {
+                this.Hide(); 
+            }
+            base.OnStateChanged(e);
+        }
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (!_isExplicitExit)
+            {
+                e.Cancel = true;
+                this.Hide();
+                _notifyIcon?.ShowBalloonTip(3000, "LiveKeeping Sync", "App is running in background.", System.Windows.Forms.ToolTipIcon.Info);
+            }
+            else
+            {
+                _notifyIcon?.Dispose();
+                base.OnClosing(e);
+            }
+        }
+
+        private void LoadStartupState()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", false))
+                {
+                    var val = key?.GetValue("LiveKeepingSync");
+                    if (val != null)
+                    {
+                        StartupCheckBox.IsChecked = true;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public void SetStartup(bool enable)
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true))
+                {
+                    if (enable)
+                    {
+                         string exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                         if (exePath.EndsWith(".dll")) exePath = exePath.Replace(".dll", ".exe");
+                         key?.SetValue("LiveKeepingSync", exePath);
+                    }
+                    else
+                    {
+                        key?.DeleteValue("LiveKeepingSync", false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to change startup settings: {ex.Message}");
+            }
+        }
+
+        private void StartWithWindows_Checked(object sender, RoutedEventArgs e) => SetStartup(true);
+        private void StartWithWindows_Unchecked(object sender, RoutedEventArgs e) => SetStartup(false);
 
         private void MainWindow_Closed(object? sender, EventArgs e)
         {
@@ -85,7 +210,7 @@ namespace TallySyncApp.Views
 
             if (tallyOk)
             {
-                UpdateTallyStatus("Connected", Brushes.LimeGreen);
+                UpdateTallyStatus("Connected", System.Windows.Media.Brushes.LimeGreen);
                 AddLog("✅ Tally ERP connected");
                 
                 // Show detected companies
@@ -93,19 +218,19 @@ namespace TallySyncApp.Views
             }
             else
             {
-                UpdateTallyStatus("Offline", Brushes.OrangeRed);
+                UpdateTallyStatus("Offline", System.Windows.Media.Brushes.OrangeRed);
                 AddLog("⚠️ Tally ERP is offline");
                 AddError("Tally Connection Failed", error ?? "Is Tally open and ODBC enabled on port 9000?");
             }
 
             if (serverOk)
             {
-                UpdateApiStatus("Connected", Brushes.LimeGreen);
+                UpdateApiStatus("Connected", System.Windows.Media.Brushes.LimeGreen);
                 AddLog("✅ Supabase connected");
             }
             else
             {
-                UpdateApiStatus("Offline", Brushes.OrangeRed);
+                UpdateApiStatus("Offline", System.Windows.Media.Brushes.OrangeRed);
                 AddLog("⚠️ Supabase offline");
                 AddError("Supabase Connection Failed", error ?? "Check internet connection and API keys.");
             }
@@ -257,11 +382,10 @@ namespace TallySyncApp.Views
                 
                 // Update connection dots in real-time
                 UpdateTallyStatus(status.IsTallyConnected ? "Connected" : "Offline", 
-                                 status.IsTallyConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
+                                 status.IsTallyConnected ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.OrangeRed);
                 
                 UpdateApiStatus(status.IsServerConnected ? "Connected" : "Offline", 
-                               status.IsServerConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
-
+                               status.IsServerConnected ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.OrangeRed);
                 // Log significant state changes
                 if (status.State == SyncState.Completed || status.State == SyncState.Error)
                 {
@@ -271,7 +395,7 @@ namespace TallySyncApp.Views
                 switch (status.State)
                 {
                     case SyncState.FetchingData:
-                        UpdateStatus(status.Message, "#F59E0B"); // Orange for fetching
+                        UpdateStatus(status.Message, "#F59E0B"); // Orange
                         break;
                     case SyncState.Syncing:
                     case SyncState.Uploading:
@@ -308,7 +432,7 @@ namespace TallySyncApp.Views
         {
             StatusText.Text = text;
             try {
-                StatusBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hexColor));
+                StatusBadge.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hexColor));
             } catch {}
         }
 
@@ -364,6 +488,36 @@ namespace TallySyncApp.Views
         private void ClearErrorsButton_Click(object sender, RoutedEventArgs e)
         {
             _errorEntries.Clear();
+        }
+
+        private async void PurgeDataButton_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "⚠️ DANGER: This will delete ALL synced data for this company from the Cloud.\n\n" +
+                "Are you sure you want to proceed?\n" +
+                "(This cannot be undone. Data will re-sync from Tally afterwards.)",
+                "Start Fresh?", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                PurgeDataButton.IsEnabled = false;
+                try 
+                {
+                    await App.GetSyncManager().PurgeCompanyDataAsync();
+                    MessageBox.Show("Data Reset Successfully. Starting fresh sync...", "Done", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    // Trigger fresh sync
+                    CheckConnectionsAsync(); 
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Reset Failed: {ex.Message}");
+                }
+                finally
+                {
+                    PurgeDataButton.IsEnabled = true;
+                }
+            }
         }
 
         private void SettingsLink_Click(object sender, RoutedEventArgs e)

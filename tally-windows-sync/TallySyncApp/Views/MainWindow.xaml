@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="TallyLink - Limitless Sync" 
+        Title="TallyLink - FALLBACK ENABLED (V3.2)" 
         Height="700" Width="1000"
         MinHeight="600" MinWidth="800"
         WindowStartupLocation="CenterScreen"
@@ -146,6 +146,11 @@
 
                     <!-- Company Selection -->
                     <StackPanel Grid.Row="1">
+                        <CheckBox Content="Start with Windows (Minimize to Tray)" 
+                                  Checked="StartWithWindows_Checked" Unchecked="StartWithWindows_Unchecked"
+                                  x:Name="StartupCheckBox" Margin="0,0,0,15"
+                                  Foreground="{StaticResource TextSecondaryBrush}"/>
+
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                             <TextBlock Text="Company" Foreground="{StaticResource TextSecondaryBrush}" 
                                        FontSize="12" VerticalAlignment="Center"/>
@@ -220,7 +225,22 @@
                                 Content="⏹️ Stop" 
                                 Style="{StaticResource SecondaryButton}"
                                 Click="StopAutoSyncButton_Click"
-                                IsEnabled="False"/>
+                                IsEnabled="False"
+                                Margin="0,0,10,0"/>
+                        <Button x:Name="PurgeDataButton"
+                                Content="🗑️ DELETE ALL DATA"
+                                Background="#DC2626"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Padding="15,8"
+                                Click="PurgeDataButton_Click"
+                                Cursor="Hand">
+                            <Button.Resources>
+                                <Style TargetType="Border">
+                                    <Setter Property="CornerRadius" Value="6"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -289,7 +309,8 @@
         <!-- Footer -->
         <Border Grid.Row="3" Margin="0,20,0,0">
             <Grid>
-                <TextBlock Text="© 2026 TallyLink • Build v1.0.3" 
+                <TextBlock x:Name="VersionText"
+                           Text="© 2026 TallyLink • Build v..." 
                            Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="12"
                            HorizontalAlignment="Left"/>
