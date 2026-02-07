@@ -31,6 +31,7 @@ import Dashboard3DPage from './pages/Dashboard3DPage';
 import LandingPage3D from './pages/LandingPage3D';
 import ProfitLossPage from './pages/ProfitLossPage';
 import BalanceSheetPage from './pages/BalanceSheetPage';
+import AuthCallback from './pages/AuthCallback';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -96,6 +97,7 @@ function App() {
                     />
                     <Routes>
                         <Route path="/login" element={<LoginPage />} />
+                        <Route path="/auth/callback" element={<AuthCallback />} />
 
                         {/* Protected Routes */}
                         <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />

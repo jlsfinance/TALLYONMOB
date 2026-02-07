@@ -145,8 +145,8 @@ export default function InvoiceDetailPage() {
                     Back to Sales
                 </button>
                 <div className="flex gap-2">
-                    <Link to={`/invoice/${invoice.voucher_id || id}`} className="px-4 py-2 bg-[#121214] border border-white/10 rounded-xl text-gray-400 hover:text-white hover:bg-[#1C1C1F] flex items-center gap-2">
-                        <Download size={16} /> PDF
+                    <Link to={`/invoice/${id}`} className="px-4 py-2 bg-gradient-to-r from-[#1e3a5f] to-[#0d7377] border border-teal-500/30 rounded-xl text-white font-bold hover:opacity-90 flex items-center gap-2">
+                        <Download size={16} /> Get PDF
                     </Link>
                     <button onClick={handlePrint} className="px-4 py-2 bg-[#121214] border border-white/10 rounded-xl text-gray-400 hover:text-white hover:bg-[#1C1C1F] flex items-center gap-2">
                         <Printer size={16} /> Print

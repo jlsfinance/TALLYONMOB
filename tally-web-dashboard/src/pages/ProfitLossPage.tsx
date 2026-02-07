@@ -1,378 +1,620 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { format, parseISO } from 'date-fns';
-import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart3, Download, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
-import { GlassCard, Spinner } from '@/components/ui/GlassUI';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
+import { GlassCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
+import {
+    Calendar, Download, ChevronRight, ChevronDown, TrendingUp, TrendingDown,
+    RefreshCw, Filter, BarChart3
+} from 'lucide-react';
+import { format, startOfYear, endOfYear, parseISO } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
-interface LedgerGroup {
-    name: string;
-    ledgers: { name: string; balance: number }[];
-    total: number;
-}
+const formatCurrency = (amount: number) => {
+    const absAmount = Math.abs(amount || 0);
+    return new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(absAmount);
+};
 
-interface PnLData {
-    revenue: LedgerGroup[];
-    expenses: LedgerGroup[];
-    totalRevenue: number;
-    totalExpenses: number;
-    grossProfit: number;
-    netProfit: number;
-    profitMargin: number;
-}
+// Clickable row component
+const PLRow = ({
+    label,
+    amount,
+    isClickable = true,
+    isExpanded = false,
+    isSubtotal = false,
+    isProfit = false,
+    isLoss = false,
+    indent = 0,
+    onClick,
+    children
+}: any) => {
+    const hasChildren = children && children.length > 0;
+
+    return (
+        <>
+            <div
+                onClick={isClickable ? onClick : undefined}
+                className={`
+                    flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]/30
+                    transition-all group
+                    ${isClickable ? 'cursor-pointer hover:bg-blue-500/10' : ''}
+                    ${isSubtotal ? 'bg-[var(--surface-variant)]/50 font-bold border-t-2 border-b-2 border-[var(--border)]' : ''}
+                    ${isProfit ? 'bg-emerald-500/10' : ''}
+                    ${isLoss ? 'bg-red-500/10' : ''}
+                `}
+                style={{ paddingLeft: `${16 + indent * 20}px` }}
+            >
+                <div className="flex items-center gap-2">
+                    {hasChildren && (
+                        <span className="text-[var(--text-muted)]">
+                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </span>
+                    )}
+                    {isClickable && !hasChildren && (
+                        <ChevronRight size={14} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
+                    <span className={`
+                        ${isSubtotal ? 'font-bold text-[var(--on-surface)]' : 'text-[var(--on-surface)]'}
+                        ${isProfit ? 'text-emerald-500 font-bold' : ''}
+                        ${isLoss ? 'text-red-500 font-bold' : ''}
+                    `}>
+                        {label}
+                    </span>
+                </div>
+                <span className={`
+                    font-mono text-sm
+                    ${isSubtotal ? 'font-bold text-[var(--on-surface)]' : 'text-[var(--text-muted)]'}
+                    ${isProfit ? 'text-emerald-500 font-bold' : ''}
+                    ${isLoss ? 'text-red-500 font-bold' : ''}
+                `}>
+                    {formatCurrency(amount)}
+                </span>
+            </div>
+        </>
+    );
+};
 
 export default function ProfitLossPage() {
     const { selectedCompany } = useAuth() as any;
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
-    const [pnlData, setPnlData] = useState<PnLData | null>(null);
-    const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
-
-    // Calculate current FY dynamically (FY starts in April)
-    const getCurrentFy = () => {
-        const now = new Date();
-        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-        const endYear = (currentYear + 1).toString().slice(2);
-        return `FY ${currentYear}-${endYear}`;
-    };
-
-    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-
-    // Calculate FY date range
-    const fyDateRange = useMemo(() => {
-        const startYearText = selectedFy.split(' ')[1].split('-')[0];
-        const startYear = parseInt(startYearText);
-        return {
-            start: `${startYear}-04-01`,
-            end: `${startYear + 1}-03-31`
-        };
-    }, [selectedFy]);
+    const [data, setData] = useState<any>(null);
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const [dateRange, setDateRange] = useState({
+        from: selectedCompany?.fy_start || new Date().toISOString().split('T')[0],
+        to: new Date().toISOString().split('T')[0]
+    });
 
     useEffect(() => {
-        if (selectedCompany?.id) loadPnLData();
-    }, [selectedCompany, selectedFy]);
+        if (selectedCompany?.id) loadPLData();
+    }, [selectedCompany, dateRange]);
 
-    const loadPnLData = async () => {
+    const loadPLData = async () => {
         setLoading(true);
         try {
             // Fetch all ledgers with their groups
-            const { data: ledgers, error } = await supabase
+            const { data: ledgers, error: ledgersError } = await supabase
                 .from('ledgers')
-                .select('*')
+                .select('id, name, group_name, opening_balance')
                 .eq('company_id', selectedCompany.id);
 
-            if (error) throw error;
+            if (ledgersError) {
+                console.error('Ledgers error:', ledgersError);
+            }
 
-            // Define revenue groups (Sales, Direct Income)
-            const revenueGroups = ['Sales Accounts', 'Direct Incomes', 'Indirect Incomes', 'Income (Direct)', 'Income (Indirect)'];
-            const expenseGroups = ['Purchase Accounts', 'Direct Expenses', 'Indirect Expenses', 'Expenses (Direct)', 'Expenses (Indirect)', 'Manufacturing Expenses'];
-
-            // Fetch voucher data for P&L calculation
-            const { data: vouchers } = await supabase
+            // Fetch all vouchers in date range to get their IDs
+            const { data: vouchers, error: vouchersError } = await supabase
                 .from('vouchers')
-                .select('*')
+                .select('id, voucher_type, voucher_date, total_amount, party_name')
                 .eq('company_id', selectedCompany.id)
-                .gte('voucher_date', fyDateRange.start)
-                .lte('voucher_date', fyDateRange.end)
-                .eq('is_deleted', false);
+                .gte('voucher_date', dateRange.from)
+                .lte('voucher_date', dateRange.to);
 
-            // Calculate revenue from sales vouchers
-            const salesVouchers = (vouchers || []).filter((v: any) =>
-                v.voucher_type === 'Sales' || v.voucher_type === 'Receipt'
-            );
-            const totalSales = salesVouchers.reduce((sum: number, v: any) =>
-                sum + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0
-            );
+            if (vouchersError) {
+                console.error('Vouchers error:', vouchersError);
+            }
 
-            // Calculate purchases/expenses from purchase vouchers
-            const purchaseVouchers = (vouchers || []).filter((v: any) =>
-                v.voucher_type === 'Purchase' || v.voucher_type === 'Payment'
-            );
-            const totalPurchases = purchaseVouchers.reduce((sum: number, v: any) =>
-                sum + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0
-            );
+            const voucherIds = (vouchers || []).map(v => v.id);
 
-            // Group ledgers by parent
-            const revenueData: LedgerGroup[] = [];
-            const expenseData: LedgerGroup[] = [];
+            // Fetch ledger entries only for vouchers in date range
+            let ledgerEntries: any[] = [];
+            if (voucherIds.length > 0) {
+                const { data: entries, error: entriesError } = await supabase
+                    .from('voucher_ledger_entries')
+                    .select('ledger_name, amount, voucher_id')
+                    .in('voucher_id', voucherIds);
 
-            // Process ledgers into groups
-            const ledgersByParent: Record<string, { name: string; balance: number }[]> = {};
-            (ledgers || []).forEach((ledger: any) => {
-                const parent = ledger.parent || ledger.ledger_type || 'Other';
-                if (!ledgersByParent[parent]) ledgersByParent[parent] = [];
-                ledgersByParent[parent].push({
-                    name: ledger.name,
-                    balance: Math.abs(Number(ledger.current_balance) || 0)
-                });
+                if (entriesError) {
+                    console.error('Ledger entries error:', entriesError);
+                } else {
+                    ledgerEntries = entries || [];
+                }
+            }
+
+            // Calculate ledger balances
+            const ledgerBalances: Record<string, number> = {};
+            ledgers?.forEach(l => {
+                ledgerBalances[l.name] = Number(l.opening_balance) || 0;
             });
 
-            // Categorize into revenue and expenses
-            Object.entries(ledgersByParent).forEach(([parent, ledgerList]) => {
-                const groupTotal = ledgerList.reduce((sum, l) => sum + l.balance, 0);
-                const group: LedgerGroup = { name: parent, ledgers: ledgerList, total: groupTotal };
-
-                if (revenueGroups.some(rg => parent.toLowerCase().includes(rg.toLowerCase()))) {
-                    revenueData.push(group);
-                } else if (expenseGroups.some(eg => parent.toLowerCase().includes(eg.toLowerCase()))) {
-                    expenseData.push(group);
+            ledgerEntries.forEach(e => {
+                if (ledgerBalances[e.ledger_name] !== undefined) {
+                    ledgerBalances[e.ledger_name] += Number(e.amount) || 0;
                 }
             });
 
-            // Use voucher data for accurate totals
-            const totalRevenue = totalSales || revenueData.reduce((sum, g) => sum + g.total, 0);
-            const totalExpenses = totalPurchases || expenseData.reduce((sum, g) => sum + g.total, 0);
-            const grossProfit = totalRevenue - totalPurchases;
-            const netProfit = totalRevenue - totalExpenses;
-            const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+            // Group ledgers by P&L categories
+            const groupMapping: Record<string, string> = {
+                'Sales Accounts': 'income',
+                'Direct Incomes': 'income',
+                'Indirect Incomes': 'income',
+                'Purchase Accounts': 'expense',
+                'Direct Expenses': 'expense',
+                'Indirect Expenses': 'expense',
+                'Stock-in-Hand': 'stock'
+            };
 
-            setPnlData({
-                revenue: revenueData,
-                expenses: expenseData,
-                totalRevenue,
-                totalExpenses,
-                grossProfit,
-                netProfit,
-                profitMargin
+            const plData: any = {
+                // Left Side (Expenses)
+                openingStock: 0,
+                purchaseAccounts: { total: 0, ledgers: [] },
+                directExpenses: { total: 0, ledgers: [] },
+                grossProfitCo: 0,
+                indirectExpenses: { total: 0, ledgers: [] },
+                nettProfit: 0,
+
+                // Right Side (Income)
+                salesAccounts: { total: 0, ledgers: [] },
+                directIncomes: { total: 0, ledgers: [] },
+                closingStock: 0,
+                grossProfitBf: 0,
+                indirectIncomes: { total: 0, ledgers: [] },
+                nettLoss: 0
+            };
+
+            // Get stock values from stock_items
+            const { data: stockItems, error: stockError } = await supabase
+                .from('stock_items')
+                .select('name, opening_balance, opening_value, closing_balance, closing_value')
+                .eq('company_id', selectedCompany.id);
+
+            if (stockError) {
+                console.error('Stock items error:', stockError);
+            }
+
+            stockItems?.forEach(item => {
+                plData.openingStock += Number(item.opening_value) || 0;
+                plData.closingStock += Number(item.closing_value) || 0;
             });
+
+            // Categorize ledgers
+            ledgers?.forEach(l => {
+                const balance = ledgerBalances[l.name] || 0;
+                const absBalance = Math.abs(balance);
+
+                switch (l.group_name) {
+                    case 'Sales Accounts':
+                        plData.salesAccounts.total += absBalance;
+                        plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                    case 'Direct Incomes':
+                        plData.directIncomes.total += absBalance;
+                        plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                    case 'Indirect Incomes':
+                        plData.indirectIncomes.total += absBalance;
+                        plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                    case 'Purchase Accounts':
+                        plData.purchaseAccounts.total += absBalance;
+                        plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                    case 'Direct Expenses':
+                        plData.directExpenses.total += absBalance;
+                        plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                    case 'Indirect Expenses':
+                        plData.indirectExpenses.total += absBalance;
+                        plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                        break;
+                }
+            });
+
+            // Calculate Gross Profit
+            const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
+            const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
+
+            if (tradingCredit > tradingDebit) {
+                plData.grossProfitCo = tradingCredit - tradingDebit;
+                plData.grossProfitBf = plData.grossProfitCo;
+            } else {
+                plData.grossLossCo = tradingDebit - tradingCredit;
+                plData.grossLossBf = plData.grossLossCo;
+            }
+
+            // Calculate Net Profit
+            const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
+            const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
+
+            if (plCredit > plDebit) {
+                plData.nettProfit = plCredit - plDebit;
+            } else {
+                plData.nettLoss = plDebit - plCredit;
+            }
+
+            // Calculate totals for balancing
+            plData.tradingDebitTotal = tradingDebit + (plData.grossProfitCo || 0);
+            plData.tradingCreditTotal = tradingCredit + (plData.grossLossCo || 0);
+            plData.plDebitTotal = plDebit + (plData.nettProfit || 0);
+            plData.plCreditTotal = plCredit + (plData.nettLoss || 0);
+
+            setData(plData);
         } catch (error) {
             console.error('Error loading P&L data:', error);
+            toast.error('Failed to load Profit & Loss');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const toggleGroup = (groupName: string) => {
-        setExpandedGroups(prev =>
-            prev.includes(groupName)
-                ? prev.filter(g => g !== groupName)
-                : [...prev, groupName]
+        setExpandedGroups(prev => ({
+            ...prev,
+            [groupName]: !prev[groupName]
+        }));
+    };
+
+    const navigateToLedger = (ledgerId: string) => {
+        navigate(`/ledgers/${ledgerId}`);
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="text-center">
+                    <Spinner size="lg" />
+                    <p className="mt-4 text-sm text-[var(--text-muted)]">Loading Profit & Loss...</p>
+                </div>
+            </div>
         );
-    };
-
-    const formatCurrency = (amount: number) =>
-        new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount || 0);
-
-    const exportPnL = () => {
-        if (!pnlData) return;
-        const exportData = {
-            company: selectedCompany.name,
-            financialYear: selectedFy,
-            generatedAt: new Date().toISOString(),
-            ...pnlData
-        };
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ProfitLoss_${selectedFy.replace(' ', '_')}_${selectedCompany.name}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    if (!selectedCompany) return null;
+    }
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-24">
-            {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)] uppercase tracking-tighter">Profit & Loss</h1>
-                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-1">{selectedCompany.name}</p>
+        <div className="min-h-screen bg-[var(--background)]">
+            {/* Tally-style Header */}
+            <div className="bg-gradient-to-r from-[#1e3a8a] to-[#1e40af] text-white">
+                <div className="max-w-7xl mx-auto px-4 py-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h1 className="text-xl font-black tracking-tight">Profit & Loss A/c</h1>
+                            <p className="text-blue-200 text-sm">{selectedCompany?.name} - (from {format(new Date(selectedCompany?.fy_start || new Date()), 'd-MMM-yy')})</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
+                                <Calendar size={16} />
+                                <input
+                                    type="date"
+                                    value={dateRange.from}
+                                    onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                                    className="bg-transparent text-sm outline-none w-28"
+                                />
+                                <span className="text-blue-200">to</span>
+                                <input
+                                    type="date"
+                                    value={dateRange.to}
+                                    onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                                    className="bg-transparent text-sm outline-none w-28"
+                                />
+                            </div>
+                            <button
+                                onClick={() => loadPLData()}
+                                className="p-2 bg-white/10 rounded-lg hover:bg-white/20"
+                            >
+                                <RefreshCw size={16} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <button
-                    onClick={exportPnL}
-                    disabled={!pnlData || loading}
-                    className="px-6 py-3 bg-[var(--primary)] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-50 hover:scale-105 transition-transform"
-                >
-                    <Download size={16} /> Export Report
-                </button>
-            </header>
+            </div>
 
-            {/* FY Filter */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            {/* Period Bar */}
+            <div className="bg-[#1e3a5f] text-white text-center py-2 text-sm font-bold">
+                {format(new Date(dateRange.from), 'd-MMM-yy')} to {format(new Date(dateRange.to), 'd-MMM-yy')}
+            </div>
 
-            <AnimatePresence mode="wait">
-                {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24">
-                        <Spinner size="md" />
-                    </div>
-                ) : pnlData ? (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="space-y-6"
-                    >
-                        {/* Key Metrics Cards */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 p-6 rounded-3xl border border-emerald-500/30">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <TrendingUp size={18} className="text-emerald-500" />
-                                    <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Total Revenue</span>
-                                </div>
-                                <p className="text-2xl font-black text-emerald-400">{formatCurrency(pnlData.totalRevenue)}</p>
-                            </div>
+            {/* T-Account Layout */}
+            <div className="max-w-7xl mx-auto p-4">
+                <div className="grid md:grid-cols-2 gap-0 border border-[var(--border)] rounded-xl overflow-hidden bg-[var(--surface)]">
 
-                            <div className="bg-gradient-to-br from-rose-500/20 to-rose-600/10 p-6 rounded-3xl border border-rose-500/30">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <TrendingDown size={18} className="text-rose-500" />
-                                    <span className="text-[8px] font-black text-rose-500 uppercase tracking-widest">Total Expenses</span>
-                                </div>
-                                <p className="text-2xl font-black text-rose-400">{formatCurrency(pnlData.totalExpenses)}</p>
-                            </div>
-
-                            <div className={`bg-gradient-to-br ${pnlData.netProfit >= 0 ? 'from-blue-500/20 to-blue-600/10 border-blue-500/30' : 'from-orange-500/20 to-orange-600/10 border-orange-500/30'} p-6 rounded-3xl border`}>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <DollarSign size={18} className={pnlData.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'} />
-                                    <span className={`text-[8px] font-black uppercase tracking-widest ${pnlData.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`}>
-                                        Net {pnlData.netProfit >= 0 ? 'Profit' : 'Loss'}
-                                    </span>
-                                </div>
-                                <p className={`text-2xl font-black ${pnlData.netProfit >= 0 ? 'text-blue-400' : 'text-orange-400'}`}>
-                                    {formatCurrency(Math.abs(pnlData.netProfit))}
-                                </p>
-                            </div>
-
-                            <div className="bg-gradient-to-br from-violet-500/20 to-violet-600/10 p-6 rounded-3xl border border-violet-500/30">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Percent size={18} className="text-violet-500" />
-                                    <span className="text-[8px] font-black text-violet-500 uppercase tracking-widest">Profit Margin</span>
-                                </div>
-                                <p className="text-2xl font-black text-violet-400">{pnlData.profitMargin.toFixed(1)}%</p>
-                            </div>
+                    {/* LEFT SIDE - Expenses/Debit */}
+                    <div className="border-r border-[var(--border)]">
+                        {/* Header */}
+                        <div className="bg-[var(--surface-variant)] px-4 py-3 border-b border-[var(--border)] flex justify-between">
+                            <span className="font-black text-sm text-[var(--on-surface)] uppercase tracking-wider">Particulars</span>
+                            <span className="font-black text-sm text-[var(--on-surface)] uppercase tracking-wider">Amount (₹)</span>
                         </div>
 
-                        {/* Visual P&L Summary Bar */}
-                        <div className="bg-[var(--surface-variant)] p-6 rounded-3xl border border-[var(--border)]">
-                            <h3 className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Visual Summary</h3>
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1">
-                                    <div className="h-8 bg-[var(--surface)] rounded-xl overflow-hidden flex">
-                                        <div
-                                            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 flex items-center justify-center"
-                                            style={{ width: `${Math.min((pnlData.totalRevenue / (pnlData.totalRevenue + pnlData.totalExpenses)) * 100, 100)}%` }}
-                                        >
-                                            <span className="text-[8px] font-black text-white uppercase">Revenue</span>
-                                        </div>
-                                        <div
-                                            className="h-full bg-gradient-to-r from-rose-400 to-rose-500 flex items-center justify-center"
-                                            style={{ width: `${Math.min((pnlData.totalExpenses / (pnlData.totalRevenue + pnlData.totalExpenses)) * 100, 100)}%` }}
-                                        >
-                                            <span className="text-[8px] font-black text-white uppercase">Expenses</span>
-                                        </div>
+                        {/* Trading Account - Debit Side */}
+                        <div className="border-b-2 border-[var(--border)]">
+                            {/* Opening Stock */}
+                            <PLRow
+                                label="Opening Stock"
+                                amount={data?.openingStock || 0}
+                                onClick={() => navigate('/stock')}
+                            />
+
+                            {/* Purchase Accounts */}
+                            <PLRow
+                                label="Purchase Accounts"
+                                amount={data?.purchaseAccounts?.total || 0}
+                                isExpanded={expandedGroups['purchase']}
+                                onClick={() => toggleGroup('purchase')}
+                                children={data?.purchaseAccounts?.ledgers}
+                            />
+                            {expandedGroups['purchase'] && data?.purchaseAccounts?.ledgers?.map((l: any) => (
+                                <PLRow
+                                    key={l.id}
+                                    label={l.name}
+                                    amount={l.amount}
+                                    indent={1}
+                                    onClick={() => navigateToLedger(l.id)}
+                                />
+                            ))}
+
+                            {/* Direct Expenses */}
+                            {data?.directExpenses?.total > 0 && (
+                                <>
+                                    <PLRow
+                                        label="Direct Expenses"
+                                        amount={data?.directExpenses?.total || 0}
+                                        isExpanded={expandedGroups['directExp']}
+                                        onClick={() => toggleGroup('directExp')}
+                                        children={data?.directExpenses?.ledgers}
+                                    />
+                                    {expandedGroups['directExp'] && data?.directExpenses?.ledgers?.map((l: any) => (
+                                        <PLRow
+                                            key={l.id}
+                                            label={l.name}
+                                            amount={l.amount}
+                                            indent={1}
+                                            onClick={() => navigateToLedger(l.id)}
+                                        />
+                                    ))}
+                                </>
+                            )}
+
+                            {/* Gross Profit c/o */}
+                            {(data?.grossProfitCo || 0) > 0 && (
+                                <PLRow
+                                    label="Gross Profit c/o"
+                                    amount={data?.grossProfitCo || 0}
+                                    isProfit
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* Trading Total */}
+                            <PLRow
+                                label=""
+                                amount={data?.tradingDebitTotal || 0}
+                                isSubtotal
+                                isClickable={false}
+                            />
+                        </div>
+
+                        {/* P&L Account - Debit Side */}
+                        <div>
+                            {/* Indirect Expenses */}
+                            <PLRow
+                                label="Indirect Expenses"
+                                amount={data?.indirectExpenses?.total || 0}
+                                isExpanded={expandedGroups['indirectExp']}
+                                onClick={() => toggleGroup('indirectExp')}
+                                children={data?.indirectExpenses?.ledgers}
+                            />
+                            {expandedGroups['indirectExp'] && data?.indirectExpenses?.ledgers?.map((l: any) => (
+                                <PLRow
+                                    key={l.id}
+                                    label={l.name}
+                                    amount={l.amount}
+                                    indent={1}
+                                    onClick={() => navigateToLedger(l.id)}
+                                />
+                            ))}
+
+                            {/* Gross Loss b/f */}
+                            {(data?.grossLossBf || 0) > 0 && (
+                                <PLRow
+                                    label="Gross Loss b/f"
+                                    amount={data?.grossLossBf || 0}
+                                    isLoss
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* Net Profit */}
+                            {(data?.nettProfit || 0) > 0 && (
+                                <PLRow
+                                    label="Nett Profit"
+                                    amount={data?.nettProfit || 0}
+                                    isProfit
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* P&L Total */}
+                            <PLRow
+                                label=""
+                                amount={data?.plDebitTotal || 0}
+                                isSubtotal
+                                isClickable={false}
+                            />
+                        </div>
+                    </div>
+
+                    {/* RIGHT SIDE - Income/Credit */}
+                    <div>
+                        {/* Header */}
+                        <div className="bg-[var(--surface-variant)] px-4 py-3 border-b border-[var(--border)] flex justify-between">
+                            <span className="font-black text-sm text-[var(--on-surface)] uppercase tracking-wider">Particulars</span>
+                            <span className="font-black text-sm text-[var(--on-surface)] uppercase tracking-wider">Amount (₹)</span>
+                        </div>
+
+                        {/* Trading Account - Credit Side */}
+                        <div className="border-b-2 border-[var(--border)]">
+                            {/* Sales Accounts */}
+                            <PLRow
+                                label="Sales Accounts"
+                                amount={data?.salesAccounts?.total || 0}
+                                isExpanded={expandedGroups['sales']}
+                                onClick={() => toggleGroup('sales')}
+                                children={data?.salesAccounts?.ledgers}
+                            />
+                            {expandedGroups['sales'] && data?.salesAccounts?.ledgers?.map((l: any) => (
+                                <PLRow
+                                    key={l.id}
+                                    label={l.name}
+                                    amount={l.amount}
+                                    indent={1}
+                                    onClick={() => navigateToLedger(l.id)}
+                                />
+                            ))}
+
+                            {/* Direct Incomes */}
+                            {data?.directIncomes?.total > 0 && (
+                                <>
+                                    <PLRow
+                                        label="Direct Incomes"
+                                        amount={data?.directIncomes?.total || 0}
+                                        isExpanded={expandedGroups['directInc']}
+                                        onClick={() => toggleGroup('directInc')}
+                                        children={data?.directIncomes?.ledgers}
+                                    />
+                                    {expandedGroups['directInc'] && data?.directIncomes?.ledgers?.map((l: any) => (
+                                        <PLRow
+                                            key={l.id}
+                                            label={l.name}
+                                            amount={l.amount}
+                                            indent={1}
+                                            onClick={() => navigateToLedger(l.id)}
+                                        />
+                                    ))}
+                                </>
+                            )}
+
+                            {/* Closing Stock */}
+                            <PLRow
+                                label="Closing Stock"
+                                amount={data?.closingStock || 0}
+                                onClick={() => navigate('/stock')}
+                            />
+
+                            {/* Gross Loss c/o */}
+                            {(data?.grossLossCo || 0) > 0 && (
+                                <PLRow
+                                    label="Gross Loss c/o"
+                                    amount={data?.grossLossCo || 0}
+                                    isLoss
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* Trading Total */}
+                            <PLRow
+                                label=""
+                                amount={data?.tradingCreditTotal || 0}
+                                isSubtotal
+                                isClickable={false}
+                            />
+                        </div>
+
+                        {/* P&L Account - Credit Side */}
+                        <div>
+                            {/* Gross Profit b/f */}
+                            {(data?.grossProfitBf || 0) > 0 && (
+                                <PLRow
+                                    label="Gross Profit b/f"
+                                    amount={data?.grossProfitBf || 0}
+                                    isProfit
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* Indirect Incomes */}
+                            {data?.indirectIncomes?.total > 0 && (
+                                <>
+                                    <PLRow
+                                        label="Indirect Incomes"
+                                        amount={data?.indirectIncomes?.total || 0}
+                                        isExpanded={expandedGroups['indirectInc']}
+                                        onClick={() => toggleGroup('indirectInc')}
+                                        children={data?.indirectIncomes?.ledgers}
+                                    />
+                                    {expandedGroups['indirectInc'] && data?.indirectIncomes?.ledgers?.map((l: any) => (
+                                        <PLRow
+                                            key={l.id}
+                                            label={l.name}
+                                            amount={l.amount}
+                                            indent={1}
+                                            onClick={() => navigateToLedger(l.id)}
+                                        />
+                                    ))}
+                                </>
+                            )}
+
+                            {/* Net Loss */}
+                            {(data?.nettLoss || 0) > 0 && (
+                                <PLRow
+                                    label="Nett Loss"
+                                    amount={data?.nettLoss || 0}
+                                    isLoss
+                                    isClickable={false}
+                                />
+                            )}
+
+                            {/* P&L Total */}
+                            <PLRow
+                                label=""
+                                amount={data?.plCreditTotal || 0}
+                                isSubtotal
+                                isClickable={false}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer - Grand Total */}
+                <div className="mt-4 bg-gradient-to-r from-[#1e3a8a] to-[#1e40af] text-white rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            {(data?.nettProfit || 0) > 0 ? (
+                                <>
+                                    <TrendingUp size={24} className="text-emerald-400" />
+                                    <div>
+                                        <p className="text-sm text-blue-200">Net Profit</p>
+                                        <p className="text-2xl font-black text-emerald-400">₹{formatCurrency(data?.nettProfit || 0)}</p>
                                     </div>
-                                </div>
-                                <div className={`px-4 py-2 rounded-xl ${pnlData.netProfit >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                                    {pnlData.netProfit >= 0 ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
-                                </div>
-                            </div>
+                                </>
+                            ) : (
+                                <>
+                                    <TrendingDown size={24} className="text-red-400" />
+                                    <div>
+                                        <p className="text-sm text-blue-200">Net Loss</p>
+                                        <p className="text-2xl font-black text-red-400">₹{formatCurrency(data?.nettLoss || 0)}</p>
+                                    </div>
+                                </>
+                            )}
                         </div>
-
-                        {/* Detailed P&L Statement */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Revenue Section */}
-                            <GlassCard className="p-6">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-sm font-black text-emerald-500 uppercase tracking-tight flex items-center gap-2">
-                                        <TrendingUp size={18} /> Revenue / Income
-                                    </h3>
-                                    <span className="text-lg font-black text-emerald-400">{formatCurrency(pnlData.totalRevenue)}</span>
-                                </div>
-                                <div className="space-y-2">
-                                    {pnlData.revenue.length > 0 ? pnlData.revenue.map((group, i) => (
-                                        <div key={i} className="bg-[var(--surface-variant)]/50 rounded-xl overflow-hidden">
-                                            <button
-                                                onClick={() => toggleGroup(group.name)}
-                                                className="w-full px-4 py-3 flex justify-between items-center hover:bg-[var(--surface-active)] transition-colors"
-                                            >
-                                                <span className="text-xs font-bold text-[var(--on-surface)]">{group.name}</span>
-                                                <span className="text-xs font-black text-emerald-400">{formatCurrency(group.total)}</span>
-                                            </button>
-                                            {expandedGroups.includes(group.name) && (
-                                                <div className="px-4 pb-3 space-y-1">
-                                                    {group.ledgers.map((ledger, j) => (
-                                                        <div key={j} className="flex justify-between text-[10px] py-1 border-t border-[var(--border)]/50">
-                                                            <span className="text-[var(--text-muted)]">{ledger.name}</span>
-                                                            <span className="font-bold">{formatCurrency(ledger.balance)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )) : (
-                                        <div className="text-center py-8 text-[var(--text-muted)] text-xs">
-                                            Revenue calculated from Sales vouchers
-                                        </div>
-                                    )}
-                                </div>
-                            </GlassCard>
-
-                            {/* Expenses Section */}
-                            <GlassCard className="p-6">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-sm font-black text-rose-500 uppercase tracking-tight flex items-center gap-2">
-                                        <TrendingDown size={18} /> Expenses / Costs
-                                    </h3>
-                                    <span className="text-lg font-black text-rose-400">{formatCurrency(pnlData.totalExpenses)}</span>
-                                </div>
-                                <div className="space-y-2">
-                                    {pnlData.expenses.length > 0 ? pnlData.expenses.map((group, i) => (
-                                        <div key={i} className="bg-[var(--surface-variant)]/50 rounded-xl overflow-hidden">
-                                            <button
-                                                onClick={() => toggleGroup(group.name)}
-                                                className="w-full px-4 py-3 flex justify-between items-center hover:bg-[var(--surface-active)] transition-colors"
-                                            >
-                                                <span className="text-xs font-bold text-[var(--on-surface)]">{group.name}</span>
-                                                <span className="text-xs font-black text-rose-400">{formatCurrency(group.total)}</span>
-                                            </button>
-                                            {expandedGroups.includes(group.name) && (
-                                                <div className="px-4 pb-3 space-y-1">
-                                                    {group.ledgers.map((ledger, j) => (
-                                                        <div key={j} className="flex justify-between text-[10px] py-1 border-t border-[var(--border)]/50">
-                                                            <span className="text-[var(--text-muted)]">{ledger.name}</span>
-                                                            <span className="font-bold">{formatCurrency(ledger.balance)}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )) : (
-                                        <div className="text-center py-8 text-[var(--text-muted)] text-xs">
-                                            Expenses calculated from Purchase vouchers
-                                        </div>
-                                    )}
-                                </div>
-                            </GlassCard>
-                        </div>
-
-                        {/* Bottom Summary */}
-                        <div className={`bg-gradient-to-r ${pnlData.netProfit >= 0 ? 'from-emerald-500 to-teal-600' : 'from-rose-500 to-orange-600'} p-8 rounded-[32px] text-white shadow-2xl`}>
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                                <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">
-                                        {selectedFy} Statement Result
-                                    </p>
-                                    <h2 className="text-3xl font-black">
-                                        {pnlData.netProfit >= 0 ? 'NET PROFIT' : 'NET LOSS'}
-                                    </h2>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-4xl font-black">{formatCurrency(Math.abs(pnlData.netProfit))}</p>
-                                    <p className="text-sm font-bold opacity-80 mt-1">
-                                        {pnlData.profitMargin >= 0 ? '+' : ''}{pnlData.profitMargin.toFixed(2)}% margin
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </motion.div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center py-24">
-                        <BarChart3 size={48} className="text-[var(--text-muted)] opacity-30 mb-4" />
-                        <h3 className="text-lg font-black text-[var(--on-surface)] uppercase">No Data</h3>
-                        <p className="text-sm text-[var(--text-muted)]">No financial data found for this period</p>
+                        <button className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20 flex items-center gap-2">
+                            <Download size={16} />
+                            Export
+                        </button>
                     </div>
-                )}
-            </AnimatePresence>
+                </div>
+            </div>
         </div>
     );
 }

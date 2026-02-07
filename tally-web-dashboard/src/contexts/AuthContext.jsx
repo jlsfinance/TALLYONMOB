@@ -126,6 +126,11 @@ export const AuthProvider = ({ children }) => {
         else localStorage.removeItem('appMode');
     };
 
+    const signInWithGoogle = async () => {
+        const { data, error } = await auth.signInWithGoogle();
+        return { data, error };
+    };
+
     const value = {
         user,
         companies,
@@ -136,6 +141,7 @@ export const AuthProvider = ({ children }) => {
         signIn,
         signUp,
         signOut,
+        signInWithGoogle,
         selectCompany,
         deleteCompany,
         refreshCompanies: loadCompanies

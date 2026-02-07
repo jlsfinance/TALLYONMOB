@@ -26,6 +26,22 @@ export const auth = {
         return { data, error };
     },
 
+    // Google OAuth Login
+    signInWithGoogle: async () => {
+        const redirectUrl = window.location.origin + '/auth/callback';
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: redirectUrl,
+                queryParams: {
+                    access_type: 'offline',
+                    prompt: 'consent'
+                }
+            }
+        });
+        return { data, error };
+    },
+
     signOut: async () => {
         const { error } = await supabase.auth.signOut();
         return { error };

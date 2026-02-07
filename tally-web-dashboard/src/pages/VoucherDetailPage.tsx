@@ -152,25 +152,9 @@ export default function VoucherDetailPage() {
         window.open(`https://wa.me/?text=${text}`, '_blank');
     };
 
-    const handleDownloadPDF = async () => {
-        if (generatingPdf) return;
-        setGeneratingPdf(true);
-        const toastId = toast.loading('Generating Secure PDF...');
-
-        try {
-            // Give time for loader to show and UI to settle
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            // Trigger print which is the safest and most high-fidelity
-            window.print();
-
-            toast.success('PDF Ready to Print/Save', { id: toastId });
-        } catch (error) {
-            console.error('PDF Error:', error);
-            toast.error('Unable to generate PDF. Please try again.', { id: toastId });
-        } finally {
-            setGeneratingPdf(false);
-        }
+    const handleDownloadPDF = () => {
+        // Navigate to the proper PDF page which uses jsPDF for professional PDF generation
+        navigate(`/invoice/${voucherId}`);
     };
 
     const handleSync = async () => {
