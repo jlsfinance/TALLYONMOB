@@ -23,6 +23,8 @@ namespace TallySyncApp.Services
         private readonly string _tallyUrl;
         private readonly int _timeout;
 
+        public event EventHandler<string>? LogReceived;
+
         public TallyConnector(string host = "127.0.0.1", int port = 9000, int timeoutSeconds = 300)
         {
             _tallyUrl = $"http://{host}:{port}";
@@ -33,6 +35,12 @@ namespace TallySyncApp.Services
                 Timeout = TimeSpan.FromSeconds(_timeout)
             };
             _httpClient.DefaultRequestHeaders.Add("Accept", "text/xml");
+        }
+        
+        private void Log(string message)
+        {
+            Console.WriteLine(message);
+            LogReceived?.Invoke(this, message);
         }
 
         /// <summary>
@@ -232,20 +240,41 @@ namespace TallySyncApp.Services
 
                 // Save for debugging if needed
                 File.WriteAllText("tally_response.xml", doc.ToString());
+                // Using Log method if available, otherwise fallback to Console
+                Log("🔍 Tally Response received. Checking for companies...");
 
                 var companies = new List<Company>();
                 
                 // Try to find any tag that looks like a company record
                 // Tally often wraps these in <COMPANY> or <COMPANYCOLLECTION> tags
-                var companyElements = doc.Descendants().Where(x => x.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase));
+                var companyElements = doc.Descendants().Where(x => x.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase)).ToList();
                 
+                Log($"🔍 Found {companyElements.Count} potential company elements in XML.");
+
                 foreach (var comp in companyElements)
                 {
                     string? name = comp.Element("NAME")?.Value ?? comp.Attribute("NAME")?.Value ?? comp.Value;
-                    if (string.IsNullOrEmpty(name) || name.Length < 2) continue;
-                    if (name.Contains("Report") || name.Contains("Error") || name.Contains("\n")) continue;
+                    
+                    if (string.IsNullOrEmpty(name)) 
+                    {
+                        Log("   ⚠️ Skipping empty company name element");
+                        continue;
+                    }
+
+                    if (name.Length < 2)
+                    {
+                         Log($"   ⚠️ Skipping too short name: '{name}'");
+                         continue;
+                    }
+
+                    if (name.Contains("Report") || name.Contains("Error") || name.Contains("\n")) 
+                    {
+                        Log($"   ⚠️ Skipping reserved keyword/invalid char in: '{name}'");
+                        continue;
+                    }
 
                     name = name.Trim();
+                    Log($"   ✅ Found Company: '{name}'");
                     
                     // IMPORTANT: Must match CleanCompanyId() logic exactly!
                     // Strip suffixes like " - - (from 1-Apr-24)" before sanitizing
@@ -259,8 +288,15 @@ namespace TallySyncApp.Services
                             Id = sanitizedId,
                             Name = name
                         });
+                        Log($"   Added Company: '{name}' (ID: {sanitizedId})");
+                    }
+                    else
+                    {
+                         Log($"   ⚠️ Skipping duplicate: '{name}'");
                     }
                 }
+
+                Log($"🔍 Returning {companies.Count} valid companies to SyncManager.");
 
                 // If collection query failed, try the old active company method as fallback
                 if (companies.Count == 0)
@@ -273,7 +309,7 @@ namespace TallySyncApp.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Company list error: {ex.Message}");
+                Log($"Company list error: {ex.Message}");
                 return new List<Company>();
             }
         }

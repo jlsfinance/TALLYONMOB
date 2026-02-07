@@ -39,102 +39,105 @@ export default function VoucherDetailPage() {
         setLoading(true);
         try {
             const decodedId = decodeURIComponent(voucherId!);
-            const { data: vData } = await supabase
+            console.log('Loading voucher with id:', decodedId);
+
+            // Find voucher by id (primary key)
+            const { data: vData, error: vError } = await supabase
                 .from('vouchers')
                 .select('*')
-                .eq('voucher_id', decodedId)
+                .eq('id', decodedId)
                 .single();
 
-            if (!vData) {
-                const { data: vDataById } = await supabase
-                    .from('vouchers')
-                    .select('*')
-                    .eq('id', decodedId)
-                    .single();
-
-                if (vDataById) setVoucher(vDataById);
-                else throw new Error('Voucher not found');
-            } else {
-                setVoucher(vData);
+            if (vError || !vData) {
+                console.error('Voucher query error:', vError);
+                throw new Error('Voucher not found');
             }
 
-            const activeVoucher = vData || voucher;
-            if (activeVoucher && (activeVoucher.voucher_type === 'Sales' || activeVoucher.voucher_type === 'Purchase')) {
-                const tableName = activeVoucher.voucher_type === 'Sales' ? 'sales' : 'purchases';
-                const itemsTable = activeVoucher.voucher_type === 'Sales' ? 'sales_items' : 'purchase_items';
-                const parentKey = activeVoucher.voucher_type === 'Sales' ? 'sale_id' : 'purchase_id';
+            setVoucher(vData);
 
-                let { data: parentData } = await supabase
-                    .from(tableName)
-                    .select('*')
-                    .eq('voucher_id', activeVoucher.voucher_id)
-                    .single();
+            // Fetch related entries from voucher_stock_entries
+            const { data: stockEntries, error: stockError } = await supabase
+                .from('voucher_stock_entries')
+                .select('*')
+                .eq('voucher_id', vData.id);
 
-                if (!parentData) {
-                    parentData = {
-                        id: 'synthetic',
-                        net_amount: activeVoucher.total_amount,
-                        gross_amount: activeVoucher.total_amount,
-                        party_name: activeVoucher.party_name,
-                        voucher_number: activeVoucher.voucher_number,
-                        voucher_date: activeVoucher.voucher_date
-                    };
-                }
+            if (stockError) {
+                console.log('Stock entries fetch error (table may not exist):', stockError.message);
+            }
 
-                let itemsData = [];
-                if (parentData.id !== 'synthetic') {
-                    const { data: iData } = await supabase
-                        .from(itemsTable)
-                        .select('*')
-                        .eq(parentKey, parentData.id);
-                    itemsData = iData || [];
-                }
+            // Fetch related ledger entries
+            const { data: ledgerEntries, error: ledgerError } = await supabase
+                .from('voucher_ledger_entries')
+                .select('*')
+                .eq('voucher_id', vData.id);
 
-                // Safely fetch stock items for additional metadata lookup
-                const { data: stockItems } = await supabase
-                    .from('stock_items')
-                    .select('name, hsn_code, base_unit')
-                    .eq('company_id', selectedCompany.id);
+            if (ledgerError) {
+                console.log('Ledger entries fetch error:', ledgerError.message);
+            }
 
-                const stockLookup: Record<string, any> = {};
-                if (stockItems) {
-                    stockItems.forEach((item: any) => {
-                        stockLookup[item.name] = item;
-                    });
-                }
+            // Fetch stock items for metadata lookup
+            const { data: stockItems } = await supabase
+                .from('stock_items')
+                .select('name, hsn_code, unit')
+                .eq('company_id', selectedCompany.id);
 
-                // Determine which data source to use for items
-                let rawEntries = itemsData.length > 0 ? itemsData : (activeVoucher.inventory_entries || []);
-
-                // Safety check for stringified JSON (fallback for older sync versions)
-                if (typeof rawEntries === 'string') {
-                    try {
-                        rawEntries = JSON.parse(rawEntries);
-                    } catch (e) {
-                        rawEntries = [];
-                    }
-                }
-
-                const enrichedItems = (Array.isArray(rawEntries) ? rawEntries : []).map((item: any) => {
-                    const itemName = item.stock_item_name || item.name || 'Unknown';
-                    const stockData = stockLookup[itemName] || {};
-
-                    return {
-                        ...item,
-                        stock_item_name: itemName,
-                        hsn_code: item.hsn_code || item.hsn || stockData.hsn_code || '-',
-                        unit: item.unit || item.base_unit || stockData.base_unit || 'pcs',
-                        discount: item.discount_percent || item.discount_amount || 0,
-                        amount: item.amount || (item.quantity * item.rate) || 0
-                    };
+            const stockLookup: Record<string, any> = {};
+            if (stockItems) {
+                stockItems.forEach((item: any) => {
+                    stockLookup[item.name] = item;
                 });
-
-                if (activeVoucher.voucher_type === 'Sales') {
-                    setSaleData({ ...parentData, sales_items: enrichedItems });
-                } else {
-                    setPurchaseData({ ...parentData, purchase_items: enrichedItems });
-                }
             }
+
+            // Use voucher_stock_entries if available, otherwise try raw_data.inventory_entries
+            let inventoryItems = stockEntries || [];
+
+            // Fallback: Check raw_data for inventory entries (when voucher_stock_entries is empty)
+            if (inventoryItems.length === 0 && vData.raw_data?.inventory_entries) {
+                console.log('Using raw_data.inventory_entries as fallback');
+                inventoryItems = vData.raw_data.inventory_entries;
+            }
+
+            // Fallback: Check direct inventory_entries on voucher
+            if (inventoryItems.length === 0 && vData.inventory_entries) {
+                console.log('Using voucher.inventory_entries as fallback');
+                inventoryItems = vData.inventory_entries;
+            }
+
+            console.log(`Voucher ${vData.voucher_number}: Found ${inventoryItems.length} items`);
+
+            // Enrich items with HSN and unit
+            const enrichedItems = (inventoryItems).map((item: any) => {
+                const itemName = item.item_name || item.stock_item_name || item.StockItemName || 'Unknown';
+                const stockData = stockLookup[itemName] || {};
+
+                return {
+                    ...item,
+                    stock_item_name: itemName,
+                    hsn_code: item.hsn_code || item.HsnCode || stockData.hsn_code || '-',
+                    unit: item.unit || item.Unit || stockData.unit || 'pcs',
+                    quantity: item.quantity || item.Quantity || 0,
+                    rate: item.rate || item.Rate || 0,
+                    discount: item.discount_percent || item.DiscountPercent || item.discount_amount || 0,
+                    amount: item.amount || item.Amount || ((item.quantity || item.Quantity || 0) * (item.rate || item.Rate || 0)) || 0
+                };
+            });
+
+            // Create sale/purchase data based on voucher type
+            const baseData = {
+                id: vData.id,
+                net_amount: Math.abs(Number(vData.grand_total) || Number(vData.total_amount) || 0),
+                gross_amount: Math.abs(Number(vData.grand_total) || Number(vData.total_amount) || 0),
+                party_name: vData.party_name,
+                voucher_number: vData.voucher_number,
+                voucher_date: vData.voucher_date
+            };
+
+            if (vData.voucher_type === 'Sales') {
+                setSaleData({ ...baseData, sales_items: enrichedItems });
+            } else if (vData.voucher_type === 'Purchase') {
+                setPurchaseData({ ...baseData, purchase_items: enrichedItems });
+            }
+
         } catch (error) {
             console.error('Error loading voucher:', error);
             toast.error('Failed to load bill details');
@@ -375,7 +378,7 @@ export default function VoucherDetailPage() {
                         {generatingPdf ? 'Working...' : 'Get PDF'}
                     </button>
                     <button
-                        onClick={() => navigate(`/edit-invoice/${voucher.voucher_id}`)}
+                        onClick={() => navigate(`/edit-invoice/${voucher.id}`)}
                         className="h-14 w-14 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-[20px] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-active)] transition-all active:scale-95"
                     >
                         <Edit size={20} />

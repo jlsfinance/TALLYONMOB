@@ -3,13 +3,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import {
-    ArrowLeft, Phone, Mail, MapPin, FileText, Receipt,
+    ArrowLeft, Phone, Plus, Share2, Bell, FileText, Receipt,
     MessageCircle, Calendar, Printer, TrendingUp, TrendingDown,
-    ArrowUpRight, ArrowDownLeft, Filter, Download
+    ChevronRight, Package, ShoppingCart, CreditCard, Wallet,
+    Edit3, Send, Clock
 } from 'lucide-react';
-import { GlassCard, MetricCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
-import { format, startOfYear, startOfMonth, subMonths, isBefore, parseISO } from 'date-fns';
+import { GlassCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
+import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const formatCurrency = (amount: number) => {
     const val = Math.abs(amount || 0);
@@ -20,11 +22,69 @@ const formatCurrency = (amount: number) => {
     }).format(val);
 };
 
+const formatShortCurrency = (amount: number) => {
+    return '₹ ' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.abs(amount || 0));
+};
+
 const getFYStart = () => {
     const now = new Date();
     const year = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
     return new Date(year, 3, 1).toISOString().split('T')[0];
 };
+
+// Action Button Component
+const ActionButton = ({ icon, label, onClick, color = 'primary' }: { icon: React.ReactNode; label: string; onClick?: () => void; color?: string }) => {
+    const colors: Record<string, string> = {
+        primary: 'text-[var(--primary)]',
+        success: 'text-emerald-500',
+        warning: 'text-amber-500',
+        error: 'text-rose-500',
+    };
+    return (
+        <button onClick={onClick} className="flex flex-col items-center gap-1.5 p-3 min-w-[72px] group">
+            <div className={`w-10 h-10 rounded-full bg-[var(--surface-variant)] border border-[var(--border)] flex items-center justify-center ${colors[color]} group-active:scale-90 transition-all`}>
+                {icon}
+            </div>
+            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wide">{label}</span>
+        </button>
+    );
+};
+
+// Summary Row Component
+const SummaryRow = ({
+    label,
+    value,
+    onClick,
+    hasArrow = true,
+    valueColor = 'default'
+}: {
+    label: string;
+    value: string | number;
+    onClick?: () => void;
+    hasArrow?: boolean;
+    valueColor?: 'default' | 'success' | 'error'
+}) => {
+    const colorClass = valueColor === 'success' ? 'text-emerald-500' : valueColor === 'error' ? 'text-rose-500' : 'text-[var(--on-surface)]';
+    return (
+        <button
+            onClick={onClick}
+            className="w-full flex items-center justify-between px-4 py-4 hover:bg-[var(--surface-hover)] active:bg-[var(--surface-active)] transition-colors border-b border-[var(--border)] last:border-0"
+        >
+            <span className="text-sm font-bold text-[var(--on-surface)]">{label}</span>
+            <div className="flex items-center gap-2">
+                <span className={`text-sm font-black ${colorClass}`}>{value}</span>
+                {hasArrow && <ChevronRight size={16} className="text-[var(--text-muted)]" />}
+            </div>
+        </button>
+    );
+};
+
+// Section Header Component
+const SectionHeader = ({ title }: { title: string }) => (
+    <div className="px-4 py-2.5 bg-[var(--surface-variant)]/50">
+        <span className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">{title}</span>
+    </div>
+);
 
 export default function LedgerDetailPage() {
     const { id } = useParams();
@@ -33,18 +93,24 @@ export default function LedgerDetailPage() {
     const [ledger, setLedger] = useState<any>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'transactions' | 'info'>('transactions');
+    const [activeTab, setActiveTab] = useState<'ledger' | 'summary' | 'notes'>('ledger');
     const [fromDate, setFromDate] = useState(getFYStart());
     const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
     const [openingBalance, setOpeningBalance] = useState(0);
+    const [notes, setNotes] = useState('');
+    const [noteInput, setNoteInput] = useState('');
+
+    // Summary data
+    const [voucherSummary, setVoucherSummary] = useState<Record<string, number>>({});
+    const [itemsSold, setItemsSold] = useState<any[]>([]);
+    const [itemsPurchased, setItemsPurchased] = useState<any[]>([]);
+
     const [summary, setSummary] = useState({
         totalDebit: 0,
         totalCredit: 0,
         netAmount: 0,
         count: 0
     });
-
-    const printRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (id && selectedCompany) loadLedgerDetails();
@@ -64,7 +130,6 @@ export default function LedgerDetailPage() {
             setLedger(ledgerData);
 
             // 2. Calculate Dynamic Opening Balance
-            // Opening = Initial Tally Opening + All transactions before fromDate
             const { data: beforeVouchers } = await supabase
                 .from('vouchers')
                 .select('voucher_type, total_amount')
@@ -76,7 +141,6 @@ export default function LedgerDetailPage() {
 
             (beforeVouchers || []).forEach(v => {
                 const amount = Math.abs(Number(v.total_amount) || 0);
-                // Unified logic for Dr/Cr
                 const vType = v.voucher_type;
                 const isDebit = ['Sales', 'Payment', 'Debit Note'].includes(vType);
                 const isCredit = ['Purchase', 'Receipt', 'Credit Note'].includes(vType);
@@ -95,12 +159,13 @@ export default function LedgerDetailPage() {
                 .eq('party_name', ledgerData.name)
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
-                .order('voucher_date', { ascending: true });
+                .order('voucher_date', { ascending: false });
 
-            // 4. Process Running Balance
+            // 4. Process Running Balance & Voucher Summary
             let running = dynamicOpening;
             let totalDr = 0;
             let totalCr = 0;
+            const voucherTotals: Record<string, number> = {};
 
             const processed = (rangeVouchers || []).map(v => {
                 const amount = Math.abs(Number(v.total_amount) || 0);
@@ -114,21 +179,58 @@ export default function LedgerDetailPage() {
                 totalCr += creditAmt;
                 running = running + debitAmt - creditAmt;
 
+                // Voucher type summary
+                voucherTotals[v.voucher_type] = (voucherTotals[v.voucher_type] || 0) + amount;
+
                 return {
                     ...v,
                     debit: debitAmt,
                     credit: creditAmt,
                     balance: running
                 };
-            });
+            }).reverse();
 
             setTransactions(processed);
+            setVoucherSummary(voucherTotals);
             setSummary({
                 totalDebit: totalDr,
                 totalCredit: totalCr,
                 netAmount: running,
                 count: processed.length
             });
+
+            // 5. Fetch stock entries for items summary
+            const voucherIds = (rangeVouchers || []).map(v => v.id);
+            if (voucherIds.length > 0) {
+                const { data: stockEntries } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*, vouchers!inner(voucher_type, party_name)')
+                    .in('voucher_id', voucherIds);
+
+                // Group by sold/purchased
+                const soldItems: Record<string, any> = {};
+                const purchasedItems: Record<string, any> = {};
+
+                (stockEntries || []).forEach((entry: any) => {
+                    const vType = entry.vouchers?.voucher_type;
+                    const itemName = entry.stock_item_name || 'Unknown Item';
+                    const qty = Number(entry.quantity) || 0;
+                    const amt = Math.abs(Number(entry.amount)) || 0;
+
+                    if (vType === 'Sales') {
+                        if (!soldItems[itemName]) soldItems[itemName] = { name: itemName, quantity: 0, amount: 0 };
+                        soldItems[itemName].quantity += qty;
+                        soldItems[itemName].amount += amt;
+                    } else if (vType === 'Purchase') {
+                        if (!purchasedItems[itemName]) purchasedItems[itemName] = { name: itemName, quantity: 0, amount: 0 };
+                        purchasedItems[itemName].quantity += qty;
+                        purchasedItems[itemName].amount += amt;
+                    }
+                });
+
+                setItemsSold(Object.values(soldItems));
+                setItemsPurchased(Object.values(purchasedItems));
+            }
 
         } catch (error: any) {
             console.error('Error loading ledger:', error);
@@ -138,139 +240,52 @@ export default function LedgerDetailPage() {
         }
     };
 
+    const handleCall = () => {
+        if (ledger?.phone) {
+            window.open(`tel:${ledger.phone}`, '_self');
+        } else {
+            toast.error('Phone number not available');
+        }
+    };
+
     const handleWhatsApp = () => {
         if (ledger?.phone) {
             const message = `Hello ${ledger.name}, your balance as on ${format(parseISO(toDate), 'dd MMM yyyy')} is ${formatCurrency(summary.netAmount)} ${summary.netAmount >= 0 ? 'Dr' : 'Cr'}.`;
             window.open(`https://wa.me/91${ledger.phone}?text=${encodeURIComponent(message)}`, '_blank');
+        } else {
+            toast.error('Phone number not available');
         }
     };
 
-    const handlePrint = () => {
-        if (!ledger || transactions.length === 0) return;
+    const handleShareLedger = () => {
+        const shareText = `${ledger.name}\nClosing Balance: ${formatCurrency(summary.netAmount)} ${summary.netAmount >= 0 ? 'Dr' : 'Cr'}\nAs on ${format(parseISO(toDate), 'dd MMM yyyy')}`;
 
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (navigator.share) {
+            navigator.share({ title: `${ledger.name} - Ledger Statement`, text: shareText });
+        } else {
+            navigator.clipboard.writeText(shareText);
+            toast.success('Copied to clipboard');
+        }
+    };
 
-        const html = `
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <title>Ledger Statement - ${ledger.name}</title>
-                    <style>
-                        body { font-family: 'Inter', sans-serif; padding: 40px; color: #1a1a1a; font-size: 11px; }
-                        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 20px; }
-                        .company-name { font-size: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
-                        .ledger-name { font-size: 16px; font-weight: 700; margin-top: 5px; color: #333; }
-                        .period { font-size: 11px; color: #666; margin-top: 5px; font-weight: 600; }
-                        
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                        th { background: #f8f9fa; border: 1px solid #000; padding: 10px 8px; text-transform: uppercase; font-size: 10px; font-weight: 800; text-align: left; }
-                        td { border: 1px solid #000; padding: 8px; vertical-align: top; }
-                        
-                        .text-right { text-align: right; }
-                        .font-bold { font-weight: 700; }
-                        .font-black { font-weight: 900; }
-                        
-                        .summary-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; border: 1px solid #000; padding: 15px; }
-                        .summary-item { text-align: center; }
-                        .summary-label { font-size: 9px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 4px; }
-                        .summary-value { font-size: 14px; font-weight: 800; }
-                        
-                        .opening-row { background: #f0f7ff; }
-                        .closing-row { background: #fffbeb; font-weight: 800; }
-                        
-                        @media print {
-                            body { padding: 0; }
-                            @page { margin: 1cm; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <div class="company-name">${selectedCompany.name}</div>
-                        <div class="ledger-name">Ledger: ${ledger.name}</div>
-                        <div class="period">Period: ${format(parseISO(fromDate), 'dd MMM yyyy')} to ${format(parseISO(toDate), 'dd MMM yyyy')}</div>
-                    </div>
+    const handleSetReminder = () => {
+        toast.success('Reminder feature coming soon!');
+    };
 
-                    <div class="summary-grid">
-                        <div class="summary-item">
-                            <div class="summary-label">Opening Balance</div>
-                            <div class="summary-value">${formatCurrency(openingBalance)} ${openingBalance >= 0 ? 'Dr' : 'Cr'}</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-label">Total Debit</div>
-                            <div class="summary-value">${formatCurrency(summary.totalDebit)}</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-label">Total Credit</div>
-                            <div class="summary-value">${formatCurrency(summary.totalCredit)}</div>
-                        </div>
-                        <div class="summary-item">
-                            <div class="summary-label">Closing Balance</div>
-                            <div class="summary-value">${formatCurrency(summary.netAmount)} ${summary.netAmount >= 0 ? 'Dr' : 'Cr'}</div>
-                        </div>
-                    </div>
-
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width: 12%">Date</th>
-                                <th>Particulars</th>
-                                <th style="width: 15%" class="text-right">Debit (₹)</th>
-                                <th style="width: 15%" class="text-right">Credit (₹)</th>
-                                <th style="width: 15%" class="text-right">Balance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr class="opening-row font-bold">
-                                <td>${format(parseISO(fromDate), 'dd-MM-yy')}</td>
-                                <td>Opening Balance (B/F)</td>
-                                <td class="text-right">-</td>
-                                <td class="text-right">-</td>
-                                <td class="text-right">${formatCurrency(openingBalance)} ${openingBalance >= 0 ? 'Dr' : 'Cr'}</td>
-                            </tr>
-                            ${transactions.map(v => `
-                                <tr>
-                                    <td>${format(new Date(v.voucher_date), 'dd-MM-yy')}</td>
-                                    <td>
-                                        <div class="font-bold">${v.voucher_type} #${v.voucher_number || '---'}</div>
-                                        ${v.narration ? `<div style="font-size: 9px; color: #666; margin-top: 2px;">${v.narration}</div>` : ''}
-                                    </td>
-                                    <td class="text-right">${v.debit > 0 ? formatCurrency(v.debit) : '-'}</td>
-                                    <td class="text-right">${v.credit > 0 ? formatCurrency(v.credit) : '-'}</td>
-                                    <td class="text-right">${formatCurrency(v.balance)} ${v.balance >= 0 ? 'Dr' : 'Cr'}</td>
-                                </tr>
-                            `).join('')}
-                            <tr class="closing-row">
-                                <td colspan="2" class="text-right">Period Totals / Closing Balance</td>
-                                <td class="text-right">${formatCurrency(summary.totalDebit)}</td>
-                                <td class="text-right">${formatCurrency(summary.totalCredit)}</td>
-                                <td class="text-right">${formatCurrency(summary.netAmount)} ${summary.netAmount >= 0 ? 'Dr' : 'Cr'}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div style="margin-top: 40px; font-size: 9px; color: #999; text-align: center;">
-                        Generated via BillBook App on ${format(new Date(), 'dd MMM yyyy HH:mm')}
-                    </div>
-                </body>
-            </html>
-        `;
-
-        printWindow.document.write(html);
-        printWindow.document.close();
-        // Wait for fonts/styles to load then print
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 500);
+    const handleAddNote = () => {
+        if (noteInput.trim()) {
+            const newNote = `${format(new Date(), 'dd MMM yyyy HH:mm')}: ${noteInput}`;
+            setNotes(prev => prev ? `${prev}\n${newNote}` : newNote);
+            setNoteInput('');
+            toast.success('Note added');
+        }
     };
 
     if (loading && !ledger) {
         return (
             <div className="flex flex-col items-center justify-center py-32 space-y-4">
                 <Spinner size="lg" />
-                <p className="text-[var(--text-muted)] animate-pulse uppercase text-[10px] font-black tracking-widest">Crunching Ledger Data...</p>
+                <p className="text-[var(--text-muted)] animate-pulse uppercase text-[10px] font-black tracking-widest">Loading Party...</p>
             </div>
         );
     }
@@ -279,287 +294,269 @@ export default function LedgerDetailPage() {
         return (
             <div className="text-center py-20 text-gray-500">
                 <FileText size={48} className="mx-auto mb-4 opacity-30" />
-                <p className="font-medium">Ledger not found</p>
+                <p className="font-medium">Party not found</p>
                 <button onClick={() => navigate('/ledgers')} className="mt-4 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10">
-                    ← Back to Ledgers
+                    ← Back to Parties
                 </button>
             </div>
         );
     }
 
-    const isDebit = ledger.closing_balance > 0;
+    const closingBalance = summary.netAmount;
 
     return (
-        <div className="space-y-6 pb-24 max-w-7xl mx-auto">
-            {/* Action Bar */}
-            <div className="flex items-center justify-between sticky top-0 z-30 bg-[var(--background)]/80 backdrop-blur-xl py-4 border-b border-[var(--border)] -mx-4 px-4 sm:mx-0 sm:px-0">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/ledgers')} className="p-2 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h1 className="text-lg font-black text-[var(--on-surface)] truncate max-w-[200px] sm:max-w-none uppercase tracking-tighter">{ledger.name}</h1>
-                        <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{ledger.parent_group}</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={handlePrint} icon={<Printer size={16} />} size="sm">
-                        Print
-                    </Button>
-                    <Button variant="glow" onClick={handleWhatsApp} icon={<MessageCircle size={16} />} size="sm">
-                        Share
-                    </Button>
-                </div>
-            </div>
-
-            <GlassCard className="p-4 border-b border-[var(--border)]">
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                    <div className="flex-1 flex items-center gap-3 w-full">
-                        <div className="flex-1 relative group">
-                            <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)] group-focus-within:scale-110 transition-transform" />
-                            <input
-                                type="date"
-                                value={fromDate}
-                                onChange={(e) => setFromDate(e.target.value)}
-                                className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-2.5 pl-10 pr-3 text-[11px] font-black text-[var(--on-surface)] focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] focus:outline-none transition-all"
-                            />
-                            <div className="absolute -top-2 left-3 px-2 bg-[var(--background)] text-[8px] font-black text-[var(--primary)] uppercase tracking-tighter rounded-full border border-[var(--border)]">From Date</div>
-                        </div>
-                        <div className="text-[var(--text-muted)] font-black opacity-30 px-1">→</div>
-                        <div className="flex-1 relative group">
-                            <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)] group-focus-within:scale-110 transition-transform" />
-                            <input
-                                type="date"
-                                value={toDate}
-                                onChange={(e) => setToDate(e.target.value)}
-                                className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-2.5 pl-10 pr-3 text-[11px] font-black text-[var(--on-surface)] focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] focus:outline-none transition-all"
-                            />
-                            <div className="absolute -top-2 left-3 px-2 bg-[var(--background)] text-[8px] font-black text-[var(--primary)] uppercase tracking-tighter rounded-full border border-[var(--border)]">To Date</div>
+        <div className="min-h-screen bg-[var(--background)] pb-24 max-w-2xl mx-auto">
+            {/* Header */}
+            <div className="sticky top-0 z-40 bg-[var(--surface)] border-b border-[var(--border)]">
+                {/* Top Row */}
+                <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => navigate('/ledgers')} className="p-2 -ml-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="text-base font-black text-[var(--on-surface)] line-clamp-1">{ledger.name}</h1>
+                            <p className="text-[10px] font-bold text-[var(--text-muted)]">
+                                Closing Balance: <span className={closingBalance >= 0 ? 'text-emerald-500' : 'text-rose-500'}>{formatShortCurrency(closingBalance)}</span>
+                            </p>
                         </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => {
-                        setFromDate(getFYStart());
-                        setToDate(new Date().toISOString().split('T')[0]);
-                    }}>Reset</Button>
+                    <div className="flex items-center gap-1">
+                        <button className="p-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]">
+                            <Printer size={18} />
+                        </button>
+                        <button onClick={handleCall} className="p-2 rounded-xl bg-emerald-500 text-white">
+                            <Phone size={18} />
+                        </button>
+                    </div>
                 </div>
-            </GlassCard>
 
-            {/* Dynamic Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <GlassCard className="p-4 border-l-4 border-blue-500 relative overflow-hidden group">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500 opacity-[0.05] rounded-full blur-xl group-hover:scale-150 transition-transform" />
-                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                        Opening
-                    </p>
-                    <div className="flex items-baseline gap-1">
-                        <p className={`text-xl font-black ${openingBalance >= 0 ? 'text-blue-500' : 'text-red-500'} tracking-tighter`}>
-                            {formatCurrency(openingBalance)}
-                        </p>
-                        <span className="text-[9px] font-black text-[var(--text-muted)] opacity-50 uppercase">{openingBalance >= 0 ? 'Dr' : 'Cr'}</span>
-                    </div>
-                </GlassCard>
+                {/* Action Buttons Row */}
+                <div className="flex items-center justify-around px-2 py-2 border-t border-[var(--border)]/50">
+                    <ActionButton icon={<Phone size={18} />} label="Call" onClick={handleCall} color="error" />
+                    <ActionButton icon={<Plus size={18} />} label="Create Entry" onClick={() => navigate('/create-invoice')} />
+                    <ActionButton icon={<MessageCircle size={18} />} label="Share Ledger" onClick={handleWhatsApp} color="success" />
+                    <ActionButton icon={<Bell size={18} />} label="Set Reminder" onClick={handleSetReminder} color="warning" />
+                </div>
 
-                <MetricCard
-                    title="Total Debit"
-                    value={formatCurrency(summary.totalDebit)}
-                    icon={<TrendingUp size={16} />}
-                    color="success"
-                    subtitle={`${summary.count} entries`}
-                />
-
-                <MetricCard
-                    title="Total Credit"
-                    value={formatCurrency(summary.totalCredit)}
-                    icon={<TrendingDown size={16} />}
-                    color="warning"
-                />
-
-                <GlassCard className={`p-4 border-l-4 ${summary.netAmount >= 0 ? 'border-emerald-500' : 'border-red-500'} relative overflow-hidden group`}>
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500 opacity-[0.05] rounded-full blur-xl group-hover:scale-150 transition-transform" />
-                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Closing
-                    </p>
-                    <div className="flex items-baseline gap-1">
-                        <p className={`text-xl font-black ${summary.netAmount >= 0 ? 'text-emerald-500' : 'text-red-500'} tracking-tighter`}>
-                            {formatCurrency(summary.netAmount)}
-                        </p>
-                        <span className="text-[9px] font-black text-[var(--text-muted)] opacity-50 uppercase">{summary.netAmount >= 0 ? 'Dr' : 'Cr'}</span>
-                    </div>
-                    <p className="text-[7px] font-bold text-[var(--text-muted)] uppercase mt-1 opacity-60">
-                        {summary.netAmount >= 0 ? 'Account Receivable' : 'Account Payable'}
-                    </p>
-                </GlassCard>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex gap-2 border-b border-[var(--border)] overflow-x-auto scrollbar-hide">
-                {[
-                    { id: 'transactions', label: 'Ledger Statement', icon: <FileText size={14} /> },
-                    { id: 'info', label: 'Company Info', icon: <MapPin size={14} /> }
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap
-                            ${activeTab === tab.id ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}
-                        `}
-                    >
-                        {tab.icon}
-                        {tab.label}
-                    </button>
-                ))}
+                {/* Tabs */}
+                <div className="flex border-t border-[var(--border)]">
+                    {[
+                        { id: 'ledger', label: 'Ledger' },
+                        { id: 'summary', label: 'Summary' },
+                        { id: 'notes', label: `Notes (${notes ? notes.split('\n').length : 0})` }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`flex-1 py-3 text-[11px] font-black uppercase tracking-wide transition-all relative
+                                ${activeTab === tab.id
+                                    ? 'text-white bg-emerald-500'
+                                    : 'text-[var(--text-muted)] bg-[var(--surface-variant)] hover:bg-[var(--surface-active)]'
+                                }
+                            `}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Tab Content */}
-            {activeTab === 'transactions' && (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <GlassCard padding="none" className="overflow-hidden">
-                        {loading ? (
-                            <div className="py-20 flex justify-center"><Spinner /></div>
-                        ) : transactions.length === 0 ? (
-                            <div className="py-20 flex flex-col items-center text-[var(--text-muted)] opacity-50">
-                                <Receipt size={48} className="mb-4" />
-                                <p className="text-[10px] font-black uppercase tracking-[2px]">No transactions in this range</p>
+            <AnimatePresence mode="wait">
+                {/* LEDGER TAB */}
+                {activeTab === 'ledger' && (
+                    <motion.div
+                        key="ledger"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="p-4 space-y-4"
+                    >
+                        {/* Opening/Closing Balance Cards */}
+                        <div className="flex gap-3">
+                            <div className="flex-1 bg-[var(--surface)] rounded-2xl p-4 border border-[var(--border)]">
+                                <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Opening Balance</p>
+                                <p className={`text-lg font-black ${openingBalance >= 0 ? 'text-[var(--on-surface)]' : 'text-rose-500'}`}>
+                                    {formatShortCurrency(openingBalance)}
+                                </p>
                             </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-[var(--surface-variant)]/50">
-                                        <tr>
-                                            <th className="px-4 py-4 text-left text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">Date</th>
-                                            <th className="px-4 py-4 text-left text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">Voucher Details</th>
-                                            <th className="px-4 py-4 text-right text-[9px] font-black uppercase tracking-widest text-emerald-500">Debit (Dr)</th>
-                                            <th className="px-4 py-4 text-right text-[9px] font-black uppercase tracking-widest text-red-500">Credit (Cr)</th>
-                                            <th className="px-4 py-4 text-right text-[9px] font-black uppercase tracking-widest text-[var(--on-surface)]">Balance</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-[var(--border)]">
-                                        {/* Dynamic Opening Balance Row */}
-                                        <tr className="bg-blue-500/5">
-                                            <td className="px-4 py-3 text-[10px] font-bold text-[var(--text-muted)]">{format(parseISO(fromDate), 'dd MMM yyyy')}</td>
-                                            <td className="px-4 py-3">
-                                                <div className="text-[10px] font-black uppercase tracking-tight">Opening Balance (B/F)</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right">-</td>
-                                            <td className="px-4 py-3 text-right">-</td>
-                                            <td className="px-4 py-3 text-right">
-                                                <div className={`text-[11px] font-black ${openingBalance >= 0 ? 'text-blue-500' : 'text-red-500'}`}>
-                                                    {formatCurrency(openingBalance)} {openingBalance >= 0 ? 'Dr' : 'Cr'}
-                                                </div>
-                                            </td>
-                                        </tr>
-
-                                        {transactions.map((v, idx) => (
-                                            <tr
-                                                key={v.voucher_id || idx}
-                                                className="hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
-                                                onClick={() => navigate(`/vouchers/${v.voucher_id || v.id}`)}
-                                            >
-                                                <td className="px-4 py-4">
-                                                    <div className="text-[11px] font-bold text-[var(--on-surface)]">
-                                                        {format(new Date(v.voucher_date), 'dd MMM')}
-                                                    </div>
-                                                    <div className="text-[9px] text-[var(--text-muted)]">
-                                                        {format(new Date(v.voucher_date), 'yyyy')}
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <Badge variant={v.debit > 0 ? 'info' : 'warning'} className="text-[7px] font-black uppercase py-0 px-1.5 h-4">
-                                                            {v.voucher_type}
-                                                        </Badge>
-                                                        <span className="text-[10px] font-black text-[var(--primary)] uppercase tracking-wider">#{v.voucher_number || '---'}</span>
-                                                    </div>
-                                                    {v.narration && (
-                                                        <p className="text-[9px] text-[var(--text-muted)] line-clamp-1 italic">{v.narration}</p>
-                                                    )}
-                                                </td>
-                                                <td className={`px-4 py-4 text-right font-mono text-xs font-bold ${v.debit > 0 ? 'text-emerald-500' : 'text-[var(--text-muted)]/30'}`}>
-                                                    {v.debit > 0 ? formatCurrency(v.debit) : '-'}
-                                                </td>
-                                                <td className={`px-4 py-4 text-right font-mono text-xs font-bold ${v.credit > 0 ? 'text-red-500' : 'text-[var(--text-muted)]/30'}`}>
-                                                    {v.credit > 0 ? formatCurrency(v.credit) : '-'}
-                                                </td>
-                                                <td className="px-4 py-4 text-right">
-                                                    <div className={`text-[11px] font-black ${v.balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                        {formatCurrency(v.balance)} {v.balance >= 0 ? 'Dr' : 'Cr'}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-
-                                        {/* Dynamic Totals / Closing Row */}
-                                        <tr className="bg-[var(--surface-variant)]/30 border-t-2 border-[var(--border)]">
-                                            <td colSpan={2} className="px-4 py-5 text-right text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">
-                                                Period Totals & Closing
-                                            </td>
-                                            <td className="px-4 py-5 text-right text-xs font-black text-emerald-500 border-x border-[var(--border)]/20">
-                                                {formatCurrency(summary.totalDebit)}
-                                            </td>
-                                            <td className="px-4 py-5 text-right text-xs font-black text-red-500 border-r border-[var(--border)]/20">
-                                                {formatCurrency(summary.totalCredit)}
-                                            </td>
-                                            <td className="px-4 py-5 text-right">
-                                                <div className={`text-base font-black ${summary.netAmount >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                    {formatCurrency(summary.netAmount)} {summary.netAmount >= 0 ? 'Dr' : 'Cr'}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div className="flex-1 bg-[var(--surface)] rounded-2xl p-4 border border-[var(--border)]">
+                                <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Closing Balance</p>
+                                <p className={`text-lg font-black ${closingBalance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                    {formatShortCurrency(closingBalance)}
+                                </p>
                             </div>
-                        )}
-                    </GlassCard>
+                        </div>
+
+                        {/* Transactions List */}
+                        <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
+                            {loading ? (
+                                <div className="py-16 flex justify-center"><Spinner /></div>
+                            ) : transactions.length === 0 ? (
+                                <div className="py-16 flex flex-col items-center text-[var(--text-muted)]">
+                                    <Receipt size={40} className="mb-3 opacity-30" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest">No transactions</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-[var(--border)]">
+                                    {transactions.map((v, idx) => (
+                                        <button
+                                            key={v.id || idx}
+                                            onClick={() => navigate(`/vouchers/${v.id || v.voucher_id}`)}
+                                            className="w-full flex items-center justify-between px-4 py-4 hover:bg-[var(--surface-hover)] active:bg-[var(--surface-active)] transition-colors text-left"
+                                        >
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-sm font-black text-[var(--on-surface)]">{v.voucher_number || '---'}</span>
+                                                </div>
+                                                <p className="text-[10px] text-[var(--text-muted)]">
+                                                    {format(new Date(v.voucher_date), 'dd MMM yy')} | {v.voucher_type}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-sm font-black ${v.credit > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                    ₹ {new Intl.NumberFormat('en-IN').format(Math.abs(v.credit || v.debit || 0))}
+                                                </p>
+                                                <ChevronRight size={14} className="text-[var(--text-muted)] ml-auto" />
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* SUMMARY TAB */}
+                {activeTab === 'summary' && (
+                    <motion.div
+                        key="summary"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                    >
+                        {/* Voucher Summary Section */}
+                        <div className="bg-[var(--surface)] border-b border-[var(--border)]">
+                            <SectionHeader title="Vouchers" />
+                            {Object.keys(voucherSummary).length === 0 ? (
+                                <div className="px-4 py-8 text-center text-[var(--text-muted)] text-sm">No vouchers found</div>
+                            ) : (
+                                Object.entries(voucherSummary).map(([type, amount]) => (
+                                    <SummaryRow
+                                        key={type}
+                                        label={type}
+                                        value={formatShortCurrency(amount)}
+                                        onClick={() => navigate(`/vouchers?party=${encodeURIComponent(ledger.name)}&type=${type}`)}
+                                    />
+                                ))
+                            )}
+                        </div>
+
+                        {/* Items Sold Section */}
+                        <div className="bg-[var(--surface)] border-b border-[var(--border)] mt-2">
+                            <SectionHeader title="Items" />
+                            <SummaryRow
+                                label="Sold"
+                                value={itemsSold.length > 0 ? `${itemsSold.length} items` : '-'}
+                                onClick={() => { }}
+                                hasArrow={itemsSold.length > 0}
+                            />
+                            <SummaryRow
+                                label="Purchase"
+                                value={itemsPurchased.length > 0 ? `${itemsPurchased.length} items` : '-'}
+                                onClick={() => { }}
+                                hasArrow={itemsPurchased.length > 0}
+                            />
+                        </div>
+
+                        {/* Party Info Section */}
+                        <div className="bg-[var(--surface)] mt-2">
+                            <SectionHeader title="Party Details" />
+                            <div className="px-4 py-4 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-[var(--text-muted)]">Phone</span>
+                                    <span className="text-xs font-bold text-[var(--on-surface)]">{ledger.phone || '-'}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-[var(--text-muted)]">GSTIN</span>
+                                    <span className="text-xs font-bold text-[var(--on-surface)] font-mono">{ledger.gstin || '-'}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-[var(--text-muted)]">State</span>
+                                    <span className="text-xs font-bold text-[var(--on-surface)]">{ledger.state || '-'}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs text-[var(--text-muted)]">Credit Days</span>
+                                    <span className="text-xs font-bold text-[var(--on-surface)]">{ledger.credit_days || 0} days</span>
+                                </div>
+                                {ledger.address && (
+                                    <div>
+                                        <span className="text-xs text-[var(--text-muted)] block mb-1">Address</span>
+                                        <span className="text-xs font-bold text-[var(--on-surface)]">{ledger.address}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* NOTES TAB */}
+                {activeTab === 'notes' && (
+                    <motion.div
+                        key="notes"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="p-4 space-y-4"
+                    >
+                        {/* Existing Notes */}
+                        <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] overflow-hidden min-h-[200px]">
+                            {notes ? (
+                                <div className="p-4 space-y-3">
+                                    {notes.split('\n').map((note, i) => (
+                                        <div key={i} className="p-3 bg-[var(--surface-variant)] rounded-xl">
+                                            <p className="text-xs text-[var(--on-surface)]">{note}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+                                    <Edit3 size={32} className="mb-3 opacity-30" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest">No notes yet</p>
+                                    <p className="text-[10px] mt-1 opacity-60">Add a note below</p>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Floating Note Input (for Notes Tab) */}
+            {activeTab === 'notes' && (
+                <div className="fixed bottom-20 left-0 right-0 p-4 bg-[var(--surface)] border-t border-[var(--border)] max-w-2xl mx-auto">
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="text"
+                            value={noteInput}
+                            onChange={(e) => setNoteInput(e.target.value)}
+                            placeholder="Enter Notes"
+                            className="flex-1 bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl px-4 py-3 text-sm text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+                        />
+                        <button
+                            onClick={handleAddNote}
+                            disabled={!noteInput.trim()}
+                            className="px-5 py-3 bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider disabled:opacity-50 active:scale-95 transition-transform"
+                        >
+                            Add
+                        </button>
+                    </div>
                 </div>
             )}
 
-            {activeTab === 'info' && (
-                <GlassCard className="p-6 animate-in fade-in duration-300">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        <div>
-                            <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" /> GST Details
-                            </p>
-                            <p className="text-sm font-black text-[var(--on-surface)] font-mono tracking-wider">{ledger.gstin || 'NOT REGISTERED'}</p>
-                            <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase mt-1">PAN: {ledger.pan || '---'}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--info)]" /> Credit Terms
-                            </p>
-                            <p className="text-sm font-black text-[var(--on-surface)]">{ledger.credit_days || 0} DAYS</p>
-                            <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase mt-1">Limit: {formatCurrency(ledger.credit_limit || 0)}</p>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--warning)]" /> Location
-                            </p>
-                            <p className="text-sm font-black text-[var(--on-surface)] uppercase">{ledger.state || 'UNKNOWN'}</p>
-                            <p className="text-[10px] font-bold text-[var(--text-muted)] mt-1 line-clamp-2">{ledger.address || 'No address provided'}</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-10 pt-6 border-t border-[var(--border)] flex flex-wrap gap-4">
-                        {ledger.phone && (
-                            <a href={`tel:${ledger.phone}`} className="flex items-center gap-3 px-6 py-3 bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl text-[var(--on-surface)] hover:bg-[var(--primary-glow)] transition-all group">
-                                <Phone size={16} className="text-[var(--primary)] group-hover:scale-110 transition-transform" />
-                                <span className="text-xs font-black">{ledger.phone}</span>
-                            </a>
-                        )}
-                        {ledger.email && (
-                            <a href={`mailto:${ledger.email}`} className="flex items-center gap-3 px-6 py-3 bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl text-[var(--on-surface)] hover:bg-[var(--info-glow)] transition-all group">
-                                <Mail size={16} className="text-[var(--info)] group-hover:scale-110 transition-transform" />
-                                <span className="text-xs font-black uppercase text-ellipsis overflow-hidden">{ledger.email}</span>
-                            </a>
-                        )}
-                    </div>
-                </GlassCard>
-            )}
-
-            {/* Sticky Mobile Share */}
-            <div className="fixed bottom-24 right-6 sm:hidden z-50">
+            {/* Floating WhatsApp Button */}
+            <div className="fixed bottom-24 right-4 z-50 md:hidden">
                 <button
                     onClick={handleWhatsApp}
                     className="w-14 h-14 rounded-full bg-emerald-500 shadow-2xl shadow-emerald-500/40 flex items-center justify-center text-white active:scale-90 transition-transform"

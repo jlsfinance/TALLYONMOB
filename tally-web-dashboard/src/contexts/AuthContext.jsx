@@ -16,15 +16,22 @@ export const AuthProvider = ({ children }) => {
         // Check initial session
         checkSession();
 
-        // Listen for auth changes
+        // Listen for auth changes with error handling
         const { data: { subscription } } = auth.onAuthStateChange((event, session) => {
-            if (session?.user) {
-                setUser(session.user);
-                loadCompanies();
-            } else {
+            if (event === 'TOKEN_REFRESHED') {
+                console.log('Token refreshed successfully');
+            }
+
+            if (event === 'SIGNED_OUT' || !session) {
                 setUser(null);
                 setCompanies([]);
                 setSelectedCompany(null);
+                return;
+            }
+
+            if (session?.user) {
+                setUser(session.user);
+                loadCompanies();
             }
         });
 
@@ -34,12 +41,23 @@ export const AuthProvider = ({ children }) => {
     const checkSession = async () => {
         try {
             const session = await auth.getSession();
-            if (session?.user) {
+            // auth.getSession returns the session object directly
+            if (session) {
                 setUser(session.user);
                 await loadCompanies();
             }
         } catch (error) {
-            console.error('Session check error:', error);
+            // Handle refresh token errors - sign out user to clear invalid tokens
+            if (error?.message?.includes('Refresh Token') || error?.code === 'PGRST301') {
+                console.log('Session expired, signing out...');
+                await auth.signOut();
+                setUser(null);
+                setCompanies([]);
+                setSelectedCompany(null);
+                localStorage.removeItem('selectedCompanyId');
+            } else {
+                console.error('Session check error:', error);
+            }
         } finally {
             setLoading(false);
         }

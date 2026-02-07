@@ -15,7 +15,16 @@ export default function SalesPage() {
     const [sales, setSales] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+
+    // Calculate current FY dynamically (FY starts in April)
+    const getCurrentFy = () => {
+        const now = new Date();
+        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = (currentYear + 1).toString().slice(2);
+        return `FY ${currentYear}-${endYear}`;
+    };
+
+    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [fromDate, setFromDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
     const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
     const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
@@ -137,7 +146,7 @@ export default function SalesPage() {
                                 date={sale.voucher_date}
                                 amount={sale.total_amount}
                                 status={sale.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(sale.voucher_id)}`)}
+                                onClick={() => navigate(`/vouchers/${encodeURIComponent(sale.id)}`)}
                             />
                         ))}
                     </div>

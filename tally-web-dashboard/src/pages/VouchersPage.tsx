@@ -22,7 +22,16 @@ export default function VouchersPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
-    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+
+    // Calculate current FY dynamically (FY starts in April)
+    const getCurrentFy = () => {
+        const now = new Date();
+        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = (currentYear + 1).toString().slice(2);
+        return `FY ${currentYear}-${endYear}`;
+    };
+
+    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
     const voucherTypes = [
@@ -53,11 +62,31 @@ export default function VouchersPage() {
         return months.reverse(); // Show latest months first
     }, [selectedFy]);
 
+    // Auto-select the most recent month that has vouchers
     useEffect(() => {
-        if (monthsInFy.length > 0) {
+        const findMonthWithVouchers = async () => {
+            if (!selectedCompany || monthsInFy.length === 0) return;
+
+            // Check each month starting from most recent to find one with vouchers
+            for (const month of monthsInFy) {
+                const { count } = await supabase
+                    .from('vouchers')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('company_id', selectedCompany.id)
+                    .gte('voucher_date', month.start)
+                    .lte('voucher_date', month.end);
+
+                if (count && count > 0) {
+                    setSelectedMonth(month.key);
+                    return;
+                }
+            }
+            // Fallback to first month if none have vouchers
             setSelectedMonth(monthsInFy[0].key);
-        }
-    }, [monthsInFy]);
+        };
+
+        findMonthWithVouchers();
+    }, [monthsInFy, selectedCompany]);
 
     useEffect(() => {
         if (selectedMonth && selectedCompany) loadVouchers();
@@ -68,21 +97,30 @@ export default function VouchersPage() {
         const monthObj = monthsInFy.find(m => m.key === selectedMonth);
         if (!monthObj) return;
 
-        let query = supabase.from('vouchers')
-            .select('*')
-            .eq('company_id', selectedCompany.id)
-            .gte('voucher_date', monthObj.start)
-            .lte('voucher_date', monthObj.end)
-            .order('voucher_date', { ascending: false })
-            .limit(1000);
+        try {
+            let query = supabase.from('vouchers')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .gte('voucher_date', monthObj.start)
+                .lte('voucher_date', monthObj.end)
+                .order('voucher_date', { ascending: false })
+                .limit(1000);
 
-        if (selectedType !== 'all') {
-            query = query.eq('voucher_type', selectedType);
+            if (selectedType !== 'all') {
+                query = query.eq('voucher_type', selectedType);
+            }
+
+            const { data, error } = await query;
+            if (error) {
+                console.error('Error loading vouchers:', error);
+            }
+            setVouchers(data || []);
+        } catch (err) {
+            console.error('Failed to load vouchers:', err);
+            setVouchers([]);
+        } finally {
+            setLoading(false);
         }
-
-        const { data } = await query;
-        setVouchers(data || []);
-        setLoading(false);
     };
 
     const filteredVouchers = vouchers.filter(v =>
@@ -179,12 +217,12 @@ export default function VouchersPage() {
                             <TransactionCard
                                 key={v.voucher_id || v.id || idx}
                                 type={v.voucher_type}
-                                partyName={v.party_name}
+                                partyName={v.party_name || (v.voucher_type + ' #' + v.voucher_number)}
                                 voucherNumber={v.voucher_number}
                                 date={v.voucher_date}
                                 amount={Number(v.total_amount) || 0}
                                 status={v.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(v.voucher_id || v.id)}`)}
+                                onClick={() => navigate(`/vouchers/${encodeURIComponent(v.id)}`)}
                             />
                         ))}
                     </div>

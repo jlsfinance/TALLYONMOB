@@ -29,25 +29,29 @@ export default function BillingDashboard() {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            // Fetch today's sales
+            // Fetch today's sales from vouchers
             const { data: sales } = await supabase
-                .from('sales')
-                .select('net_amount')
+                .from('vouchers')
+                .select('total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', today.toISOString());
+                .eq('voucher_type', 'Sales')
+                .eq('is_deleted', false)
+                .gte('voucher_date', format(today, 'yyyy-MM-dd'));
 
-            const total = sales?.reduce((acc: number, sale: any) => acc + (sale.net_amount || 0), 0) || 0;
+            const total = sales?.reduce((acc: number, sale: any) => acc + Math.abs(Number(sale.grand_total) || Number(sale.total_amount) || 0), 0) || 0;
             setTodayStats({
                 amount: total,
                 count: sales?.length || 0
             });
 
-            // Recent Invoices
+            // Recent Invoices (Sales vouchers)
             const { data: recent } = await supabase
-                .from('sales')
+                .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
-                .order('created_at', { ascending: false })
+                .eq('voucher_type', 'Sales')
+                .eq('is_deleted', false)
+                .order('voucher_date', { ascending: false })
                 .limit(5);
 
             setRecentInvoices(recent || []);
@@ -57,7 +61,7 @@ export default function BillingDashboard() {
                 .from('stock_items')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
-                .lt('closing_balance', 10)
+                .lt('current_stock', 10)
                 .limit(4);
 
             setLowStock(stock || []);
@@ -159,19 +163,19 @@ export default function BillingDashboard() {
                         ) : (
                             <div className="divide-y divide-[var(--border)]">
                                 {recentInvoices.map((inv) => (
-                                    <Link key={inv.id} to={`/sales/${inv.id}`} className="block hover:bg-[var(--surface-variant)] transition-all group">
+                                    <Link key={inv.id} to={`/vouchers/${inv.id}`} className="block hover:bg-[var(--surface-variant)] transition-all group">
                                         <div className="flex items-center justify-between p-5">
                                             <div className="flex items-center gap-4">
-                                                <Avatar name={inv.party_ledger_name} size="sm" />
+                                                <Avatar name={inv.party_name || 'Unknown'} size="sm" />
                                                 <div>
-                                                    <p className="text-sm font-black text-[var(--on-surface)] tracking-tight group-hover:text-[var(--primary)] transition-colors">{inv.party_ledger_name}</p>
+                                                    <p className="text-sm font-black text-[var(--on-surface)] tracking-tight group-hover:text-[var(--primary)] transition-colors">{inv.party_name || 'Unknown Party'}</p>
                                                     <p className="text-[10px] text-[var(--text-muted)] uppercase font-black tracking-widest leading-none mt-1.5 opacity-80">
-                                                        #{inv.invoice_number} • {format(new Date(inv.invoice_date), 'd MMM, yyyy')}
+                                                        #{inv.voucher_number} • {format(new Date(inv.voucher_date), 'd MMM, yyyy')}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-sm font-black text-[var(--on-surface)]">{formatCurrency(inv.net_amount)}</p>
+                                                <p className="text-sm font-black text-[var(--on-surface)]">{formatCurrency(Math.abs(Number(inv.grand_total) || Number(inv.total_amount) || 0))}</p>
                                                 <Badge variant="success" className="mt-1 bg-[var(--success-bg)] text-[var(--success)] border-none text-[8px] px-1.5 py-0">
                                                     SYNCED
                                                 </Badge>
@@ -199,7 +203,7 @@ export default function BillingDashboard() {
                                     <div key={item.id} className="flex items-center justify-between group">
                                         <div>
                                             <p className="text-sm font-black text-[var(--on-surface)] tracking-tight">{item.name}</p>
-                                            <p className="text-[10px] text-[var(--error)] font-black uppercase tracking-widest mt-0.5">Only {item.closing_balance} {item.base_unit} left</p>
+                                            <p className="text-[10px] text-[var(--error)] font-black uppercase tracking-widest mt-0.5">Only {item.current_stock} {item.unit} left</p>
                                         </div>
                                         <Button size="sm" className="bg-[var(--error)]/10 text-[var(--error)] border-[var(--error)]/20 hover:bg-[var(--error)] hover:text-white transition-all text-[10px] font-black uppercase tracking-widest px-3 py-1.5 h-auto" onClick={() => navigate('/stock')}>
                                             RESTOCK

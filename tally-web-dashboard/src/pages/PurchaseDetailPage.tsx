@@ -19,26 +19,70 @@ export default function PurchaseDetailPage() {
 
     const loadPurchase = async () => {
         try {
-            const { data: purchaseData } = await supabase
-                .from('purchases')
+            // Try to find by id in vouchers table with type Purchase
+            let { data: voucherData } = await supabase
+                .from('vouchers')
                 .select('*')
-                .eq('voucher_id', id)
+                .eq('id', id)
                 .single();
 
-            if (purchaseData) {
-                const { data: itemsData } = await supabase.from('purchase_items').select('*').eq('purchase_id', purchaseData.id);
-                const { data: stockItems } = await supabase.from('stock_items').select('name, hsn_code, base_unit').eq('company_id', purchaseData.company_id);
+            if (!voucherData && id) {
+                // Try by voucher_id field
+                const { data: fallback } = await supabase
+                    .from('vouchers')
+                    .select('*')
+                    .eq('voucher_id', id)
+                    .single();
+                voucherData = fallback;
+            }
+
+            if (voucherData) {
+                // Map voucher fields to purchase format
+                const purchaseData: any = {
+                    ...voucherData,
+                    invoice_number: voucherData.voucher_number,
+                    invoice_date: voucherData.voucher_date,
+                    party_ledger_name: voucherData.party_name,
+                    net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    gross_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
+                    party_gstin: voucherData.party_gstin || '',
+                    cgst_amount: Number(voucherData.cgst_amount) || 0,
+                    sgst_amount: Number(voucherData.sgst_amount) || 0,
+                    igst_amount: Number(voucherData.igst_amount) || 0,
+                    discount_amount: Number(voucherData.discount_amount) || 0,
+                    narration: voucherData.narration || ''
+                };
+
+                // Fetch voucher_stock_entries for line items
+                const { data: stockEntries } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*')
+                    .eq('voucher_id', voucherData.id);
+
+                // Get stock items lookup
+                const { data: stockItems } = await supabase
+                    .from('stock_items')
+                    .select('name, hsn_code, unit')
+                    .eq('company_id', voucherData.company_id);
 
                 const stockLookup: any = {};
                 stockItems?.forEach((item: any) => { stockLookup[item.name] = item; });
 
-                purchaseData.purchase_items = (itemsData || []).map((item: any) => ({
+                // Map entries to items format
+                purchaseData.purchase_items = (stockEntries || []).map((item: any) => ({
                     ...item,
-                    hsn_code: item.hsn_code || stockLookup[item.stock_item_name]?.hsn_code || '-',
-                    unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
+                    stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
+                    hsn_code: item.hsn_code || stockLookup[item.item_name]?.hsn_code || '-',
+                    unit: item.unit || stockLookup[item.item_name]?.unit || '',
+                    quantity: item.quantity || item.billed_qty || 0,
+                    rate: item.rate || item.unit_price || 0,
+                    amount: item.amount || (item.quantity * item.rate) || 0
                 }));
 
                 setPurchase(purchaseData);
+            } else {
+                setPurchase(null);
             }
         } catch (err) {
             console.error('Error loading purchase:', err);

@@ -29,6 +29,8 @@ import InvoicePDFPage from './pages/InvoicePDFPage';
 import CreateInvoicePage from './pages/CreateInvoicePage';
 import Dashboard3DPage from './pages/Dashboard3DPage';
 import LandingPage3D from './pages/LandingPage3D';
+import ProfitLossPage from './pages/ProfitLossPage';
+import BalanceSheetPage from './pages/BalanceSheetPage';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -126,6 +128,8 @@ function App() {
                                             <Route path="/aging-report" element={<AgingReportPage />} />
                                             <Route path="/sales-dashboard" element={<SalesDashboardPage />} />
                                             <Route path="/invoice/:id" element={<InvoicePDFPage />} />
+                                            <Route path="/profit-loss" element={<ProfitLossPage />} />
+                                            <Route path="/balance-sheet" element={<BalanceSheetPage />} />
                                         </Routes>
                                     </AppLayout>
                                 </ProtectedRoute>

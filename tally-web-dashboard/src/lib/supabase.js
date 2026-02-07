@@ -66,20 +66,20 @@ export const companyApi = {
     },
 
     getSummary: async (companyId) => {
-        const [ledgers, vouchers, sales, purchases, stock] = await Promise.all([
+        const [ledgers, vouchers, salesVouchers, purchaseVouchers, stockItems] = await Promise.all([
             supabase.from('ledgers').select('id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('vouchers').select('voucher_id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('sales').select('net_amount').eq('company_id', companyId),
-            supabase.from('purchases').select('net_amount').eq('company_id', companyId),
-            supabase.from('stock').select('id', { count: 'exact' }).eq('company_id', companyId)
+            supabase.from('vouchers').select('id', { count: 'exact' }).eq('company_id', companyId),
+            supabase.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Sales').eq('is_deleted', false),
+            supabase.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Purchase').eq('is_deleted', false),
+            supabase.from('stock_items').select('id', { count: 'exact' }).eq('company_id', companyId)
         ]);
 
         return {
             ledgerCount: ledgers.count || 0,
             voucherCount: vouchers.count || 0,
-            stockCount: stock.count || 0,
-            totalSales: sales.data?.reduce((sum, s) => sum + (s.net_amount || 0), 0) || 0,
-            totalPurchases: purchases.data?.reduce((sum, p) => sum + (p.net_amount || 0), 0) || 0
+            stockCount: stockItems.count || 0,
+            totalSales: salesVouchers.data?.reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0) || 0,
+            totalPurchases: purchaseVouchers.data?.reduce((sum, p) => sum + Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0), 0) || 0
         };
     },
 
@@ -88,15 +88,12 @@ export const companyApi = {
         try {
             // Delete in order (children first, then parents)
             const tables = [
-                'sales_items',
-                'purchase_items',
-                'sales',
-                'purchases',
+                'voucher_stock_entries',
+                'voucher_ledger_entries',
                 'vouchers',
                 'ledgers',
-                'stock',
-                'sync_metadata',
-                'pending_transactions',
+                'stock_items',
+                'sync_history',
                 'companies'
             ];
 
@@ -206,7 +203,7 @@ export const ledgerApi = {
             .order('name');
 
         if (parentGroup) {
-            query = query.eq('parent_group', parentGroup);
+            query = query.eq('parent', parentGroup);
         }
 
         const { data, error } = await query.limit(100000); // Removed limit (practical max)
@@ -225,11 +222,11 @@ export const ledgerApi = {
     getGroups: async (companyId) => {
         const { data, error } = await supabase
             .from('ledgers')
-            .select('parent_group')
+            .select('parent')
             .eq('company_id', companyId)
-            .not('parent_group', 'is', null);
+            .not('parent', 'is', null);
 
-        const uniqueGroups = [...new Set(data?.map(l => l.parent_group) || [])];
+        const uniqueGroups = [...new Set(data?.map(l => l.parent) || [])];
         return { data: uniqueGroups, error };
     },
 
@@ -274,11 +271,32 @@ export const voucherApi = {
     },
 
     getById: async (id) => {
-        const { data, error } = await supabase
+        // First try by id, then by voucher_id
+        let { data, error } = await supabase
             .from('vouchers')
-            .select('*, voucher_entries(*)')
-            .eq('voucher_id', id)
+            .select('*')
+            .eq('id', id)
             .single();
+
+        if (!data) {
+            const fallback = await supabase
+                .from('vouchers')
+                .select('*')
+                .eq('voucher_id', id)
+                .single();
+            data = fallback.data;
+            error = fallback.error;
+        }
+
+        // Fetch related entries
+        if (data) {
+            const [ledgerEntries, stockEntries] = await Promise.all([
+                supabase.from('voucher_ledger_entries').select('*').eq('voucher_id', data.id),
+                supabase.from('voucher_stock_entries').select('*').eq('voucher_id', data.id)
+            ]);
+            data.ledger_entries = ledgerEntries.data || [];
+            data.stock_entries = stockEntries.data || [];
+        }
         return { data, error };
     },
 
@@ -316,76 +334,94 @@ export const masterApi = {
     }
 };
 
-// Sales API
+// Sales API (using vouchers table with voucher_type filter)
 export const salesApi = {
     list: async (companyId, { fromDate, toDate, party } = {}) => {
         let query = supabase
-            .from('sales')
+            .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
-            .order('invoice_date', { ascending: false });
+            .eq('voucher_type', 'Sales')
+            .eq('is_deleted', false)
+            .order('voucher_date', { ascending: false });
 
-        if (fromDate) query = query.gte('invoice_date', fromDate);
-        if (toDate) query = query.lte('invoice_date', toDate);
-        if (party) query = query.ilike('party_ledger_name', `%${party}%`);
+        if (fromDate) query = query.gte('voucher_date', fromDate);
+        if (toDate) query = query.lte('voucher_date', toDate);
+        if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query.limit(100000); // Removed limit
+        const { data, error } = await query.limit(100000);
         return { data, error };
     },
 
     getById: async (id) => {
-        // Fetch sales record
+        // Fetch voucher record
         const { data, error } = await supabase
-            .from('sales')
+            .from('vouchers')
             .select('*')
             .eq('id', id)
             .single();
 
         if (data) {
-            // Fetch sales_items separately (FK join was failing with 400)
-            const { data: itemsData } = await supabase
-                .from('sales_items')
+            // Fetch voucher_ledger_entries
+            const { data: ledgerEntries } = await supabase
+                .from('voucher_ledger_entries')
                 .select('*')
-                .eq('sale_id', id);
-            data.sales_items = itemsData || [];
+                .eq('voucher_id', id);
+            data.ledger_entries = ledgerEntries || [];
+
+            // Fetch voucher_stock_entries
+            const { data: stockEntries } = await supabase
+                .from('voucher_stock_entries')
+                .select('*')
+                .eq('voucher_id', id);
+            data.stock_entries = stockEntries || [];
         }
 
         return { data, error };
     }
 };
 
-// Purchases API
+// Purchases API (using vouchers table with voucher_type filter)
 export const purchasesApi = {
     list: async (companyId, { fromDate, toDate, party } = {}) => {
         let query = supabase
-            .from('purchases')
+            .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
-            .order('invoice_date', { ascending: false });
+            .eq('voucher_type', 'Purchase')
+            .eq('is_deleted', false)
+            .order('voucher_date', { ascending: false });
 
-        if (fromDate) query = query.gte('invoice_date', fromDate);
-        if (toDate) query = query.lte('invoice_date', toDate);
-        if (party) query = query.ilike('party_ledger_name', `%${party}%`);
+        if (fromDate) query = query.gte('voucher_date', fromDate);
+        if (toDate) query = query.lte('voucher_date', toDate);
+        if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query.limit(100000); // Removed limit
+        const { data, error } = await query.limit(100000);
         return { data, error };
     },
 
     getById: async (id) => {
-        // Fetch purchase record
+        // Fetch voucher record
         const { data, error } = await supabase
-            .from('purchases')
+            .from('vouchers')
             .select('*')
             .eq('id', id)
             .single();
 
         if (data) {
-            // Fetch purchase_items separately (FK join was failing with 400)
-            const { data: itemsData } = await supabase
-                .from('purchase_items')
+            // Fetch voucher_ledger_entries
+            const { data: ledgerEntries } = await supabase
+                .from('voucher_ledger_entries')
                 .select('*')
-                .eq('purchase_id', id);
-            data.purchase_items = itemsData || [];
+                .eq('voucher_id', id);
+            data.ledger_entries = ledgerEntries || [];
+
+            // Fetch voucher_stock_entries
+            const { data: stockEntries } = await supabase
+                .from('voucher_stock_entries')
+                .select('*')
+                .eq('voucher_id', id);
+            data.stock_entries = stockEntries || [];
         }
 
         return { data, error };
@@ -396,7 +432,7 @@ export const purchasesApi = {
 export const stockApi = {
     list: async (companyId, stockGroup = null) => {
         let query = supabase
-            .from('stock')
+            .from('stock_items')
             .select('*')
             .eq('company_id', companyId)
             .order('name');
@@ -412,7 +448,7 @@ export const stockApi = {
 
     getById: async (id) => {
         const { data, error } = await supabase
-            .from('stock')
+            .from('stock_items')
             .select('*')
             .eq('id', id)
             .single();
@@ -421,7 +457,7 @@ export const stockApi = {
 
     getGroups: async (companyId) => {
         const { data, error } = await supabase
-            .from('stock')
+            .from('stock_items')
             .select('stock_group')
             .eq('company_id', companyId)
             .not('stock_group', 'is', null);
@@ -447,28 +483,32 @@ export const reportsApi = {
 
     getSalesSummary: async (companyId, fromDate, toDate) => {
         const { data, error } = await supabase
-            .from('sales')
-            .select('invoice_date, net_amount, party_ledger_name')
+            .from('vouchers')
+            .select('voucher_date, total_amount, grand_total, party_name')
             .eq('company_id', companyId)
-            .gte('invoice_date', fromDate)
-            .lte('invoice_date', toDate);
+            .eq('voucher_type', 'Sales')
+            .eq('is_deleted', false)
+            .gte('voucher_date', fromDate)
+            .lte('voucher_date', toDate);
         return { data, error };
     },
 
     getPurchaseSummary: async (companyId, fromDate, toDate) => {
         const { data, error } = await supabase
-            .from('purchases')
-            .select('invoice_date, net_amount, party_ledger_name')
+            .from('vouchers')
+            .select('voucher_date, total_amount, grand_total, party_name')
             .eq('company_id', companyId)
-            .gte('invoice_date', fromDate)
-            .lte('invoice_date', toDate);
+            .eq('voucher_type', 'Purchase')
+            .eq('is_deleted', false)
+            .gte('voucher_date', fromDate)
+            .lte('voucher_date', toDate);
         return { data, error };
     },
 
     getStockSummary: async (companyId) => {
         const { data, error } = await supabase
-            .from('stock')
-            .select('name, stock_group, closing_balance, closing_value, base_unit')
+            .from('stock_items')
+            .select('name, unit, opening_stock, current_stock, rate')
             .eq('company_id', companyId)
             .order('name');
         return { data, error };
@@ -515,27 +555,15 @@ export const syncHistoryApi = {
 
             // Delete vouchers from this sync batch
             if (sync?.voucher_ids && sync.voucher_ids.length > 0) {
-                // Delete related sales_items first
+                // Delete related voucher_ledger_entries first
                 await supabase
-                    .from('sales_items')
+                    .from('voucher_ledger_entries')
                     .delete()
                     .in('voucher_id', sync.voucher_ids);
 
-                // Delete related purchase_items
+                // Delete related voucher_stock_entries
                 await supabase
-                    .from('purchase_items')
-                    .delete()
-                    .in('voucher_id', sync.voucher_ids);
-
-                // Delete sales
-                await supabase
-                    .from('sales')
-                    .delete()
-                    .in('voucher_id', sync.voucher_ids);
-
-                // Delete purchases
-                await supabase
-                    .from('purchases')
+                    .from('voucher_stock_entries')
                     .delete()
                     .in('voucher_id', sync.voucher_ids);
 
@@ -543,7 +571,7 @@ export const syncHistoryApi = {
                 await supabase
                     .from('vouchers')
                     .delete()
-                    .in('voucher_id', sync.voucher_ids);
+                    .in('id', sync.voucher_ids);
             }
 
             // Delete the sync history record

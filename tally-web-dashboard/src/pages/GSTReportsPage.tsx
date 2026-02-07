@@ -8,11 +8,29 @@ import { GlassCard, MetricCard, Badge, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
 
+// Helper component for empty states
+const EmptyState = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="text-[var(--text-muted)] opacity-30 mb-4">{icon}</div>
+        <h3 className="text-lg font-black text-[var(--on-surface)] uppercase tracking-tight">{title}</h3>
+        <p className="text-sm text-[var(--text-muted)] mt-1">{description}</p>
+    </div>
+);
+
 export default function GSTReportsPage() {
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
     const [loading, setLoading] = useState(true);
-    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+
+    // Calculate current FY dynamically (FY starts in April)
+    const getCurrentFy = () => {
+        const now = new Date();
+        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = (currentYear + 1).toString().slice(2);
+        return `FY ${currentYear}-${endYear}`;
+    };
+
+    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [period, setPeriod] = useState(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -53,27 +71,66 @@ export default function GSTReportsPage() {
         try {
             const { start, end } = getDateRange();
 
-            const { data: sales } = await supabase
-                .from('sales')
+            // Fetch sales vouchers
+            const { data: salesVouchers } = await supabase
+                .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', start)
-                .lte('invoice_date', end)
-                .eq('is_cancelled', false);
+                .eq('voucher_type', 'Sales')
+                .gte('voucher_date', start)
+                .lte('voucher_date', end)
+                .eq('is_deleted', false);
 
-            if (sales?.length) {
-                const saleIds = sales.map((s: any) => s.id);
-                const { data: allItems } = await supabase.from('sales_items').select('*').in('sale_id', saleIds);
-                sales.forEach((sale: any) => { sale.sales_items = (allItems || []).filter((item: any) => item.sale_id === sale.id); });
-            }
+            // Fetch stock entries for all vouchers
+            const voucherIds = (salesVouchers || []).map((v: any) => v.id);
+            const { data: stockEntries } = await supabase
+                .from('voucher_stock_entries')
+                .select('*')
+                .in('voucher_id', voucherIds);
 
-            const { data: purchases } = await supabase
-                .from('purchases')
+            // Group stock entries by voucher_id
+            const entriesByVoucher = (stockEntries || []).reduce((acc: any, entry: any) => {
+                if (!acc[entry.voucher_id]) acc[entry.voucher_id] = [];
+                acc[entry.voucher_id].push(entry);
+                return acc;
+            }, {});
+
+            // Map vouchers with their stock entries
+            const sales = (salesVouchers || []).map((s: any) => ({
+                ...s,
+                invoice_number: s.voucher_number,
+                invoice_date: s.voucher_date,
+                party_ledger_name: s.party_name,
+                party_gstin: s.party_gstin || '',
+                net_amount: Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0),
+                taxable_amount: Math.abs(Number(s.taxable_value) || Number(s.total_amount) || 0),
+                cgst_amount: Number(s.cgst_amount) || 0,
+                sgst_amount: Number(s.sgst_amount) || 0,
+                igst_amount: Number(s.igst_amount) || 0,
+                cess_amount: Number(s.cess_amount) || 0,
+                place_of_supply: s.place_of_supply || '',
+                stock_entries: entriesByVoucher[s.id] || []
+            }));
+
+            // Fetch purchase vouchers
+            const { data: purchaseVouchers } = await supabase
+                .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', start)
-                .lte('invoice_date', end)
-                .eq('is_cancelled', false);
+                .eq('voucher_type', 'Purchase')
+                .gte('voucher_date', start)
+                .lte('voucher_date', end)
+                .eq('is_deleted', false);
+
+            const purchases = (purchaseVouchers || []).map((p: any) => ({
+                ...p,
+                net_amount: Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0),
+                taxable_amount: Math.abs(Number(p.taxable_value) || Number(p.total_amount) || 0),
+                cgst_amount: Number(p.cgst_amount) || 0,
+                sgst_amount: Number(p.sgst_amount) || 0,
+                igst_amount: Number(p.igst_amount) || 0,
+                cess_amount: Number(p.cess_amount) || 0
+            }));
 
             const processed = processGSTData(sales || [], purchases || []);
             setReportData(processed);
@@ -97,12 +154,14 @@ export default function GSTReportsPage() {
 
         const hsnMap = new Map();
         sales.forEach((sale: any) => {
-            (sale.sales_items || []).forEach((item: any) => {
+            (sale.stock_entries || []).forEach((item: any) => {
                 const hsn = item.hsn_code || 'N/A';
-                if (!hsnMap.has(hsn)) hsnMap.set(hsn, { hsn, description: item.item_name || '', uqc: item.unit || 'NOS', quantity: 0, taxableValue: 0, cgst: 0, sgst: 0, igst: 0, totalValue: 0 });
+                if (!hsnMap.has(hsn)) hsnMap.set(hsn, { hsn, description: item.stock_item_name || '', uqc: item.unit || 'NOS', quantity: 0, taxableValue: 0, cgst: 0, sgst: 0, igst: 0, totalValue: 0 });
                 const entry = hsnMap.get(hsn);
-                entry.quantity += item.quantity || 0; entry.taxableValue += item.taxable_amount || item.amount || 0;
-                entry.cgst += item.cgst_amount || 0; entry.sgst += item.sgst_amount || 0; entry.igst += item.igst_amount || 0; entry.totalValue += item.total_amount || item.amount || 0;
+                entry.quantity += item.quantity || 0;
+                entry.taxableValue += item.amount || 0;
+                entry.totalValue += item.amount || 0;
+                // Note: GST breakdown per line item may need to be calculated from voucher-level GST
             });
         });
 

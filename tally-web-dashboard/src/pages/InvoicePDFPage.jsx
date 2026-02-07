@@ -25,30 +25,57 @@ export default function InvoicePDFPage() {
     const loadInvoice = async () => {
         setLoading(true);
         try {
-            // Get sales invoice
-            const { data: sale, error: saleError } = await supabase
-                .from('sales')
+            // Get voucher data instead of sales
+            let { data: voucherData, error: voucherError } = await supabase
+                .from('vouchers')
                 .select('*')
-                .eq('voucher_id', id)
+                .eq('id', id)
                 .single();
 
-            console.log('📄 PDF - Sale loaded:', sale, saleError);
-            setInvoice(sale);
-
-            if (sale) {
-                // Get line items using sale_id (NOT voucher_id!)
-                const { data: saleItems, error: itemsError } = await supabase
-                    .from('sales_items')
+            if (!voucherData) {
+                // Try by voucher_id field
+                const { data: fallback } = await supabase
+                    .from('vouchers')
                     .select('*')
-                    .eq('sale_id', sale.id);
+                    .eq('voucher_id', id)
+                    .single();
+                voucherData = fallback;
+            }
 
-                console.log('📄 PDF - Items loaded:', saleItems, itemsError);
+            console.log('📄 PDF - Voucher loaded:', voucherData, voucherError);
+
+            if (voucherData) {
+                // Map voucher to invoice format
+                const sale = {
+                    ...voucherData,
+                    invoice_number: voucherData.voucher_number,
+                    invoice_date: voucherData.voucher_date,
+                    party_ledger_name: voucherData.party_name,
+                    party_gstin: voucherData.party_gstin || '',
+                    party_address: voucherData.party_address || '',
+                    place_of_supply: voucherData.place_of_supply || 'Same State',
+                    net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
+                    cgst_amount: Number(voucherData.cgst_amount) || 0,
+                    sgst_amount: Number(voucherData.sgst_amount) || 0,
+                    igst_amount: Number(voucherData.igst_amount) || 0,
+                    round_off: Number(voucherData.round_off) || 0
+                };
+                setInvoice(sale);
+
+                // Get stock entries for line items
+                const { data: stockEntries, error: itemsError } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*')
+                    .eq('voucher_id', voucherData.id);
+
+                console.log('📄 PDF - Stock entries loaded:', stockEntries, itemsError);
 
                 // Get stock items to enrich HSN and unit data
                 const { data: stockItems } = await supabase
                     .from('stock_items')
-                    .select('name, hsn_code, base_unit')
-                    .eq('company_id', sale.company_id);
+                    .select('name, hsn_code, unit')
+                    .eq('company_id', voucherData.company_id);
 
                 // Create lookup map
                 const stockLookup = {};
@@ -57,10 +84,14 @@ export default function InvoicePDFPage() {
                 });
 
                 // Enrich items with HSN and unit from stock master
-                const enrichedItems = (saleItems || []).map(item => ({
+                const enrichedItems = (stockEntries || []).map(item => ({
                     ...item,
-                    hsn_code: item.hsn_code || stockLookup[item.stock_item_name]?.hsn_code || '-',
-                    unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
+                    stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
+                    hsn_code: item.hsn_code || stockLookup[item.item_name]?.hsn_code || '-',
+                    unit: item.unit || stockLookup[item.item_name]?.unit || '',
+                    quantity: item.quantity || item.billed_qty || 0,
+                    rate: item.rate || item.unit_price || 0,
+                    amount: item.amount || ((item.quantity || 0) * (item.rate || 0)) || 0
                 }));
 
                 console.log('📄 PDF - Enriched items:', enrichedItems);

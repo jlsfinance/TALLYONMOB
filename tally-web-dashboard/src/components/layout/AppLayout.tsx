@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
-    Box, RefreshCw, Bell, ChevronDown
+    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale
 } from 'lucide-react';
 import { Button } from '@/components/ui/GlassUI';
 
@@ -59,6 +59,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
         { to: '/purchases', icon: <Package size={20} />, label: 'Purchases' },
         { to: '/stock', icon: <Box size={20} />, label: 'Stock Summary' },
+        { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
+        { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
         { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Reports' },
     ];
 
@@ -68,6 +70,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { to: '/sales', icon: <FileText size={20} />, label: 'Recent Invoices' },
         { to: '/ledgers', icon: <Users size={20} />, label: 'Customers' },
         { to: '/stock', icon: <Box size={20} />, label: 'Inventory' },
+        { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
+        { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
         { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Filing' },
     ];
 

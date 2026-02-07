@@ -88,111 +88,82 @@ export default function DashboardPage() {
             let receivables = 0;
             let payables = 0;
 
-            const { data: rpcStats, error: rpcError } = await supabase.rpc('get_dashboard_stats', {
-                p_company_id: selectedCompany.id,
-                p_start_date: from,
-                p_end_date: to
+            // Fetch Sales vouchers
+            const { data: vSales } = await supabase
+                .from('vouchers')
+                .select('total_amount, grand_total, voucher_date')
+                .eq('company_id', selectedCompany.id)
+                .eq('voucher_type', 'Sales')
+                .gte('voucher_date', from)
+                .lte('voucher_date', to)
+                .eq('is_deleted', false)
+                .limit(50000);
+
+            // Fetch Purchase vouchers
+            const { data: vPurchases } = await supabase
+                .from('vouchers')
+                .select('total_amount, grand_total, voucher_date')
+                .eq('company_id', selectedCompany.id)
+                .eq('voucher_type', 'Purchase')
+                .gte('voucher_date', from)
+                .lte('voucher_date', to)
+                .eq('is_deleted', false)
+                .limit(50000);
+
+            const sData = vSales || [];
+            const pData = vPurchases || [];
+            sales = sData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+            purchases = pData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+            salesCount = sData.length;
+            purchaseCount = pData.length;
+
+            // Fetch Receivables from Sundry Debtors ledgers
+            const { data: debtorLedgers } = await supabase
+                .from('ledgers')
+                .select('current_balance')
+                .eq('company_id', selectedCompany.id)
+                .eq('parent', 'Sundry Debtors');
+            receivables = (debtorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
+
+            // Fetch Payables from Sundry Creditors ledgers
+            const { data: creditorLedgers } = await supabase
+                .from('ledgers')
+                .select('current_balance')
+                .eq('company_id', selectedCompany.id)
+                .eq('parent', 'Sundry Creditors');
+            payables = (creditorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
+
+
+            // Calculate KPI Ratios
+            const { data: vReceipts } = await supabase
+                .from('vouchers')
+                .select('total_amount')
+                .eq('company_id', selectedCompany.id)
+                .eq('voucher_type', 'Receipt')
+                .gte('voucher_date', from)
+                .lte('voucher_date', to)
+                .eq('is_deleted', false);
+
+            const receipts = (vReceipts || []).reduce((sum, v) => sum + Math.abs(Number(v.total_amount) || 0), 0);
+            const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
+            const expenseRate = sales > 0 ? (purchases / sales) * 100 : 0;
+            const profitMargin = sales > 0 ? ((sales - purchases) / sales) * 100 : 0;
+
+            setKpiRatios({
+                collection: Math.min(collectionRate, 100),
+                expense: Math.min(expenseRate, 100),
+                profit: profitMargin
             });
 
-            if (!rpcError && rpcStats) {
-                sales = rpcStats.sales_gross || 0;
-                purchases = rpcStats.purchases_gross || 0;
-                salesCount = rpcStats.sales_count || 0;
-                purchaseCount = rpcStats.purchases_count || 0;
-                receivables = rpcStats.receivables || 0;
-                payables = rpcStats.payables || 0;
-
-                const receipts = rpcStats.receipts_total || 0;
-                const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
-                const expenseRate = sales > 0 ? (purchases / sales) * 100 : 0;
-                const netProfit = sales - purchases;
-                const profitMargin = sales > 0 ? (netProfit / sales) * 100 : 0;
-
-                setKpiRatios({
-                    collection: Math.min(collectionRate, 100),
-                    expense: Math.min(expenseRate, 100),
-                    profit: profitMargin
-                });
-
-                try {
-                    const today = new Date();
-                    const lastMonth = subMonths(today, 1);
-                    const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
-                    const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
-
-                    const { data: lmData } = await supabase.rpc('get_dashboard_stats', {
-                        p_company_id: selectedCompany.id,
-                        p_start_date: lmStart,
-                        p_end_date: lmEnd
-                    });
-
-                    if (lmData) {
-                        const pastSales = lmData.sales_gross || 0;
-                        if (pastSales > 0) {
-                            const diff = ((sales - pastSales) / pastSales) * 100;
-                            setSalesTrend({
-                                value: Math.abs(Math.round(diff * 10) / 10),
-                                direction: diff >= 0 ? 'up' : 'down'
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.error("Trend calculation failed", e);
-                }
-            } else {
-                const { data: vSales } = await supabase
-                    .from('sales')
-                    .select('gross_amount, invoice_date')
-                    .eq('company_id', selectedCompany.id)
-                    .gte('invoice_date', from)
-                    .lte('invoice_date', to)
-                    .eq('is_cancelled', false)
-                    .limit(50000);
-
-                const { data: vPurchases } = await supabase
-                    .from('purchases')
-                    .select('gross_amount, invoice_date')
-                    .eq('company_id', selectedCompany.id)
-                    .gte('invoice_date', from)
-                    .lte('invoice_date', to)
-                    .eq('is_cancelled', false)
-                    .limit(50000);
-
-                const sData = vSales || [];
-                const pData = vPurchases || [];
-                sales = sData.reduce((s, v) => s + (Number(v.gross_amount) || 0), 0);
-                purchases = pData.reduce((s, v) => s + (Number(v.gross_amount) || 0), 0);
-                salesCount = sData.length;
-                purchaseCount = pData.length;
-
-                // Improved Fallback: Fetch Receipts for Collection Rate
-                const { data: vReceipts } = await supabase
-                    .from('vouchers')
-                    .select('total_amount')
-                    .eq('company_id', selectedCompany.id)
-                    .eq('voucher_type', 'Receipt')
-                    .gte('voucher_date', from)
-                    .lte('voucher_date', to);
-
-                const receipts = (vReceipts || []).reduce((sum, v) => sum + Math.abs(Number(v.total_amount) || 0), 0);
-                const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
-                const expenseRate = sales > 0 ? (purchases / sales) * 100 : 0;
-                const profitMargin = sales > 0 ? ((sales - purchases) / sales) * 100 : 0;
-
-                setKpiRatios({
-                    collection: Math.min(collectionRate, 100),
-                    expense: Math.min(expenseRate, 100),
-                    profit: profitMargin
-                });
-            }
-
+            // Fetch 6-month trend data from vouchers
             const sixMonthsAgo = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
             const { data: trendData } = await supabase
-                .from('sales')
-                .select('gross_amount, invoice_date')
+                .from('vouchers')
+                .select('total_amount, grand_total, voucher_date')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', sixMonthsAgo)
-                .eq('is_cancelled', false)
+                .eq('voucher_type', 'Sales')
+                .gte('voucher_date', sixMonthsAgo)
+                .eq('is_deleted', false)
                 .limit(10000);
 
             const monthlyData: any[] = [];
@@ -202,8 +173,8 @@ export default function DashboardPage() {
                 const me = format(endOfMonthDate(month), 'yyyy-MM-dd');
 
                 const monthSales = (trendData || [])
-                    .filter(s => s.invoice_date >= ms && s.invoice_date <= me)
-                    .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
+                    .filter(s => s.voucher_date >= ms && s.voucher_date <= me)
+                    .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
                 monthlyData.push({
                     label: format(month, 'MMM'),
@@ -212,14 +183,44 @@ export default function DashboardPage() {
             }
             setMonthlySales(monthlyData);
 
+            // Today's sales
             const todayStr = format(new Date(), 'yyyy-MM-dd');
             const { data: tSales } = await supabase
-                .from('sales')
-                .select('gross_amount')
+                .from('vouchers')
+                .select('total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
-                .eq('invoice_date', todayStr)
-                .eq('is_cancelled', false);
-            setTodaySales((tSales || []).reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0));
+                .eq('voucher_type', 'Sales')
+                .eq('voucher_date', todayStr)
+                .eq('is_deleted', false);
+            setTodaySales((tSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
+
+            // Calculate sales trend (current vs last month)
+            try {
+                const today = new Date();
+                const lastMonth = subMonths(today, 1);
+                const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
+                const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
+
+                const { data: lmSales } = await supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .gte('voucher_date', lmStart)
+                    .lte('voucher_date', lmEnd)
+                    .eq('is_deleted', false);
+
+                const pastSales = (lmSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
+                if (pastSales > 0) {
+                    const diff = ((sales - pastSales) / pastSales) * 100;
+                    setSalesTrend({
+                        value: Math.abs(Math.round(diff * 10) / 10),
+                        direction: diff >= 0 ? 'up' : 'down'
+                    });
+                }
+            } catch (e) {
+                console.error("Trend calculation failed", e);
+            }
 
             const { data: recent } = await supabase
                 .from('vouchers')
@@ -385,12 +386,12 @@ export default function DashboardPage() {
                                     <EmptyState icon={<Activity />} title="No data" />
                                 ) : (
                                     <div className="divide-y divide-[var(--dividers)]">
-                                        {recentVouchers.map((v) => (
-                                            <Link key={v.voucher_id} to={`/vouchers/${encodeURIComponent(v.voucher_id)}`} className="block hover:bg-[var(--surface-hover)] transition-colors">
+                                        {recentVouchers.map((v, idx) => (
+                                            <Link key={v.id || v.voucher_id || idx} to={`/vouchers/${encodeURIComponent(v.id || v.voucher_id)}`} className="block hover:bg-[var(--surface-hover)] transition-colors">
                                                 <div className="flex items-center gap-3 p-3">
-                                                    <Avatar name={v.party_name || '?'} size="sm" color={v.voucher_type === 'Sales' ? 'success' : v.voucher_type === 'Purchase' ? 'warning' : 'default'} />
+                                                    <Avatar name={v.party_name || v.voucher_type || '?'} size="sm" color={v.voucher_type === 'Sales' ? 'success' : v.voucher_type === 'Purchase' ? 'warning' : 'default'} />
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[11px] font-bold text-[var(--on-surface)] truncate">{v.party_name}</p>
+                                                        <p className="text-[11px] font-bold text-[var(--on-surface)] truncate">{v.party_name || v.voucher_type + ' #' + v.voucher_number || 'Unknown Party'}</p>
                                                         <p className="text-[9px] text-[var(--text-muted)] uppercase">{v.voucher_type} • {format(new Date(v.voucher_date), 'd MMM')}</p>
                                                     </div>
                                                     <div className="text-right whitespace-nowrap">

@@ -102,6 +102,9 @@ namespace TallySyncApp.Services
                 _settings.TallySettings.Port,
                 _settings.TallySettings.TimeoutSeconds
             );
+            
+            // Wire up Tally logs to UI
+            _tallyConnector.LogReceived += (s, msg) => AddLog(msg);
 
             // Use Supabase URL and Key from AuthSettings
             string supabaseUrl = _settings.AuthSettings.SupabaseUrl;
@@ -162,6 +165,11 @@ namespace TallySyncApp.Services
             if (!serverResult.Success)
             {
                 errors.AppendLine($"Cloud: {serverResult.Message}");
+                AddLog($"❌ Cloud Connection Failed: {serverResult.Message}");
+            }
+            else 
+            {
+                 // AddLog("✅ Cloud Connected"); // Optional: prevent spam
             }
 
             // Update UI State
@@ -246,6 +254,9 @@ namespace TallySyncApp.Services
 
             _cancellationTokenSource = new CancellationTokenSource();
 
+            // FIX: Mark first run complete when user explicitly starts auto-sync
+            _isFirstRun = false;
+
             _syncTimer = new System.Timers.Timer(_settings.SyncSettings.SyncIntervalMinutes * 60 * 1000);
             _syncTimer.Elapsed += async (s, e) => await RunSyncAsync();
             _syncTimer.AutoReset = true;
@@ -256,6 +267,13 @@ namespace TallySyncApp.Services
             UpdateStatus(SyncState.Idle, $"Auto-sync every {_settings.SyncSettings.SyncIntervalMinutes} minutes");
 
             Console.WriteLine($"Background sync started (interval: {_settings.SyncSettings.SyncIntervalMinutes} min)");
+
+            // FIX: Trigger immediate first sync when auto-sync is started
+            _ = Task.Run(async () => 
+            {
+                await Task.Delay(2000); // Small delay to let UI update
+                await RunSyncAsync(isManual: false, forceResync: false);
+            });
         }
 
         /// <summary>
@@ -286,21 +304,16 @@ namespace TallySyncApp.Services
         /// </summary>
         private async Task RunSyncAsync(bool isManual = false, bool forceResync = false)
         {
-            // FIX 1: Startup Guard - Skip auto-sync on first run to keep Tally stable at startup
-            if (!isManual && _isFirstRun)
-            {
-                AddLog("⏸ Auto-sync skipped at startup (Wait for manual sync)");
-                _isFirstRun = false; 
-                return;
-            }
+            AddLog($"🚀 Sync requested (Manual: {isManual}, Force: {forceResync})");
 
             // FIX 4: Hard Lock + isSyncing flag
             lock (_syncLock)
             {
                 if (_isSyncing)
                 {
-                    Console.WriteLine("Sync already in progress, skipping...");
-                    return;
+                     AddLog("⚠️ Sync already in progress, skipping request.");
+                     Console.WriteLine("Sync already in progress, skipping...");
+                     return;
                 }
                 _isSyncing = true;
             }
@@ -309,19 +322,30 @@ namespace TallySyncApp.Services
             try
             {
                 // Test connections first
+                // Test connections first
+                AddLog("🔄 Testing connections...");
                 var (tallyOk, serverOk, error) = await TestConnectionsAsync();
                 if (!tallyOk)
                 {
+                    AddLog("❌ Tally not available. Ensure Tally Prime is open and running on localhost.");
                     Console.WriteLine("Tally not available, skipping sync");
                     return;
                 }
 
                 // 1. Get ALL Open Companies from Tally
+                AddLog("🔍 Fetching open companies from Tally...");
                 var companies = await _tallyConnector!.GetOpenCompaniesAsync();
                 
+                AddLog($"🔍 Found {companies.Count} companies in Tally.");
+                foreach (var c in companies)
+                {
+                     AddLog($"   🏢 Discovered: {c.Name} (ID: {c.Id})");
+                }
+
                 if (companies.Count == 0)
                 {
                     UpdateStatus(SyncState.Idle, "No open companies found in Tally");
+                    AddLog("❌ No companies returned by Tally. Check if Tally is open and companies are loaded.");
                     return;
                 }
 
@@ -374,12 +398,19 @@ namespace TallySyncApp.Services
                             if (!string.IsNullOrEmpty(App.AuthService?.CurrentSession?.UserId))
                             {
                                 CurrentCompany.OwnerId = App.AuthService.CurrentSession.UserId;
+                                AddLog($"👤 Assigned Owner ID: {CurrentCompany.OwnerId} to {CurrentCompany.Name}");
+                            }
+                            else
+                            {
+                                AddLog($"⚠️ Warning: No Owner ID assigned. Company might not be visible on website if RLS is enabled.");
                             }
                             
                             var compResult = await _apiClient!.SyncCompanyAsync(CurrentCompany);
                             if (compResult.Success)
                             {
                                 SyncLogger.Log($"✅ Company metadata synced: {company.Name}");
+                                AddLog($"✅ Company registered in Cloud: {company.Name} (ID: {company.Id})");
+
                                 if (company.FinancialYearStart != null)
                                 {
                                     AddLog($"📅 Financial Year: {company.FinancialYearStart:dd-MMM-yyyy} to {company.FinancialYearEnd:dd-MMM-yyyy}");
@@ -387,8 +418,16 @@ namespace TallySyncApp.Services
                             }
                             else 
                             {
+                                // FULL ERROR OUTPUT FOR DEBUGGING
+                                Console.WriteLine($"=== COMPANY SYNC ERROR ===");
+                                Console.WriteLine($"Company: {company.Name}");
+                                Console.WriteLine($"Company ID: {company.Id}");
+                                Console.WriteLine($"Owner ID: {CurrentCompany.OwnerId}");
+                                Console.WriteLine($"Error: {compResult.Error}");
+                                Console.WriteLine($"===========================");
+                                
+                                AddLog($"❌ Company registration FAILED: {compResult.Error}");
                                 SyncLogger.Log($"⚠️ Company sync warning: {compResult.Error}");
-                                Console.WriteLine($"⚠️ Company sync warning: {compResult.Error}");
                             }
                         }
 
@@ -451,6 +490,7 @@ namespace TallySyncApp.Services
                         if (stockItems.Any())
                         {
                              await UploadListAsync("stock_items", stockItems, "id");
+                             stockSynced = stockItems.Count;
                              AddLog($"📦 Synced {stockItems.Count} Stock Items");
                         }
 
@@ -472,7 +512,13 @@ namespace TallySyncApp.Services
                             UpdateStatus(SyncState.Syncing, "First Sync: Fetching all ledgers...");
                             
                             // Sync ALL ledgers first (reference data)
-                            await SyncDataTypeAsync("ledgers", async () => await _tallyConnector!.GetLedgersAsync(company.Name));
+                            var allLedgers = await _tallyConnector!.GetLedgersAsync(company.Name);
+                            if (allLedgers.Count > 0)
+                            {
+                                await UploadListAsync("ledgers", allLedgers, "id");
+                                ledgersSynced += allLedgers.Count;
+                                AddLog($"✅ Synced {allLedgers.Count} historical ledgers");
+                            }
 
                             // FIX 3: Voucher sync protected by EnableVoucherSync flag
                             if (!_settings.SyncSettings.EnableVoucherSync && !forceResync)
@@ -517,8 +563,16 @@ namespace TallySyncApp.Services
                                         totalVouchersFound += allVouchers.Count;
                                         
                                         // 1. Upload all vouchers (General list)
-                                        await UploadListAsync("vouchers", allVouchers, "voucher_id");
+                                        await UploadListAsync("vouchers", allVouchers, "id");
+                                        vouchersSynced += allVouchers.Count;
                                         AddLog($"✅ {allVouchers.Count} vouchers ({rangeDisplay})");
+                                        
+                                        // 2. Sync voucher line items (ledger entries and stock entries)
+                                        var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, allVouchers);
+                                        if (ledgerEntries > 0 || stockEntries > 0)
+                                        {
+                                            AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
+                                        }
 
                                         // 2. Extract Sales Locally (No extra Tally call)
                                         var salesVouchers = allVouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -538,6 +592,7 @@ namespace TallySyncApp.Services
                                                 narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
                                             }).ToList();
                                             await UploadListAsync("sales", salesFlat, "id");
+                                            salesSynced += salesVouchers.Count;
 
                                             var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
                                             if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
@@ -562,6 +617,7 @@ namespace TallySyncApp.Services
                                                 master_id = p.MasterId, alter_id = p.AlterId
                                             }).ToList();
                                             await UploadListAsync("purchases", purchasesFlat, "id");
+                                            purchasesSynced += purchaseVouchers.Count;
 
                                             var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
                                             if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
@@ -632,6 +688,7 @@ namespace TallySyncApp.Services
                             if (finalLedgers.Count > 0)
                             {
                                 await UploadListAsync("ledgers", finalLedgers, "id");
+                                ledgersSynced += finalLedgers.Count;
                                 AddLog($"📝 Updated {finalLedgers.Count} modified ledgers");
                                 foreach (var l in finalLedgers.Take(3))
                                 {
@@ -648,8 +705,16 @@ namespace TallySyncApp.Services
                             // Use 'finalVouchers' instead of 'modifiedVouchers'
                             if (finalVouchers.Count > 0)
                             {
-                                await UploadListAsync("vouchers", finalVouchers, "voucher_id");
+                                await UploadListAsync("vouchers", finalVouchers, "id");
+                                vouchersSynced += finalVouchers.Count;
                                 AddLog($"📝 Synced {finalVouchers.Count} modified vouchers");
+                                
+                                // Sync voucher line items (ledger entries and stock entries)
+                                var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, finalVouchers);
+                                if (ledgerEntries > 0 || stockEntries > 0)
+                                {
+                                    AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
+                                }
                                 
                                 
                                 // Show sample of what was modified
@@ -783,6 +848,21 @@ namespace TallySyncApp.Services
                                     
                         /* Orphaned code removed */
 
+                        // =====  SYNC SUMMARY =====
+                        AddLog($"");
+                        AddLog($"═══════════════════════════════════════════════════");
+                        AddLog($"📊 SYNC SUMMARY - {company.Name}");
+                        AddLog($"═══════════════════════════════════════════════════");
+                        AddLog($"   📦 Stock Items:  {stockSynced}");
+                        AddLog($"   📒 Ledgers:      {ledgersSynced}");
+                        AddLog($"   📄 Vouchers:     {vouchersSynced}");
+                        AddLog($"   💰 Sales:        {salesSynced}");
+                        AddLog($"   🛒 Purchases:    {purchasesSynced}");
+                        AddLog($"───────────────────────────────────────────────────");
+                        AddLog($"   ✅ Total:        {stockSynced + ledgersSynced + vouchersSynced + salesSynced + purchasesSynced}");
+                        AddLog($"═══════════════════════════════════════════════════");
+                        AddLog($"");
+
                         // ===== UPDATE SYNC HISTORY =====
                         if (!string.IsNullOrEmpty(syncHistoryId))
                         {
@@ -832,16 +912,18 @@ namespace TallySyncApp.Services
             }
             catch (Exception ex)
             {
+                AddLog($"🔥 CRITICAL SYNC FAILURE: {ex.Message}");
                 Console.WriteLine($"Sync failed: {ex.Message}");
-                UpdateStatus(SyncState.Error, "Sync failed", ex.Message);
+                UpdateStatus(SyncState.Error, "Sync crashed", ex.Message);
             }
             finally
             {
+                overallStopwatch.Stop();
+                AddLog($"🏁 Sync session ended. Duration: {overallStopwatch.Elapsed:mm\\:ss}");
                 lock (_syncLock)
                 {
                     _isSyncing = false;
                 }
-                overallStopwatch.Stop();
             }
         }
 
@@ -941,7 +1023,7 @@ namespace TallySyncApp.Services
                         var data = JsonConvert.DeserializeObject<List<Voucher>>(item.JsonData);
                         if (data != null && data.Count > 0)
                         {
-                            success = await ProcessTypedBatch(item, data, "voucher_id");
+                            success = await ProcessTypedBatch(item, data, "id");
                         }
                     }
                     else if (item.DataType.Contains("ledger"))

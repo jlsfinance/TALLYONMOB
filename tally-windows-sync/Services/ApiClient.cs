@@ -65,23 +65,24 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<(bool Success, string? Message)> TestConnectionAsync()
         {
+            string url = $"{_supabaseUrl}/rest/v1/companies?select=count&limit=0";
             try
             {
                 AddAuthHeader();
                 // Simple health check: Try to fetch count of companies (limit 0)
                 // This validates URL and Key
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/rest/v1/companies?select=count&limit=0");
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
                 var response = await _httpClient.SendAsync(request);
 
                 if (response.IsSuccessStatusCode)
                 {
                     return (true, "Connected to Supabase successfully");
                 }
-                return (false, $"Supabase error: {response.StatusCode}");
+                return (false, $"Supabase error: {response.StatusCode} ({url})");
             }
             catch (Exception ex)
             {
-                return (false, $"Connection error: {ex.Message}");
+                return (false, $"Connection error to {url}: {ex.Message}");
             }
         }
 
@@ -90,11 +91,32 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<ApiResponse<object>> SyncCompanyAsync(Company company)
         {
-            // Add required metadata
-            // Note: company.Id must be set
-            if (string.IsNullOrEmpty(company.Id)) company.Id = Guid.NewGuid().ToString();
+            // ACTUAL SUPABASE SCHEMA: id UUID, name TEXT (UNIQUE), gstin, address, phone, email
+            // Generate deterministic UUID from Tally company name/id
+            string companyUuid;
+            if (Guid.TryParse(company.Id, out var existingGuid))
+            {
+                companyUuid = existingGuid.ToString();
+            }
+            else
+            {
+                // Generate deterministic UUID from company ID or name
+                companyUuid = GenerateDeterministicGuid(company.Id ?? company.Name).ToString();
+            }
 
-            return await UpsertAsync<object>("companies", new List<Company> { company }, "id");
+            var companyData = new Dictionary<string, object?>
+            {
+                ["id"] = companyUuid,
+                ["name"] = company.Name,
+                ["address"] = company.Address,
+                ["phone"] = company.Phone,
+                ["email"] = company.Email
+            };
+
+            // Store the UUID back for other operations
+            company.Id = companyUuid;
+
+            return await UpsertAsync<object>("companies", new List<Dictionary<string, object?>> { companyData }, "id");
         }
 
         /// <summary>
@@ -115,11 +137,16 @@ namespace TallySyncApp.Services
             else if (tableName.Contains("ledgers")) tableName = "ledgers";
             else if (tableName.Contains("stock")) tableName = "stock_items";
             
-            // Safety Check regarding Vouchers PK
-            if ((tableName == "vouchers" || dataType.ToLower().Contains("voucher")) && onConflict != "voucher_id")
+            // Convert company_id to UUID if it's a string name
+            string companyUuid;
+            if (Guid.TryParse(companyId, out var existingGuid))
             {
-                SyncLogger.Log($"🚨 FATAL: Attempted to sync Vouchers with wrong PK: {onConflict}");
-                throw new Exception("FATAL: Voucher sync called with wrong PK ('id'). Must be 'voucher_id'.");
+                companyUuid = existingGuid.ToString();
+            }
+            else
+            {
+                // Generate deterministic UUID from company name/id string
+                companyUuid = GenerateDeterministicGuid(companyId).ToString();
             }
 
             // Explicit Log for Debugging
@@ -133,50 +160,128 @@ namespace TallySyncApp.Services
                 var dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
                 if (dict != null)
                 {
-                    dict["company_id"] = companyId;
+                    dict["company_id"] = companyUuid;
                     
-                    // Handle Vouchers, Sales, and Purchases specifically to match Supabase schema
-                    if (tableName == "vouchers" || tableName == "sales" || tableName == "purchases")
+                    // =============================================
+                    // VOUCHERS TABLE MAPPING
+                    // Schema: id, company_id, voucher_number, voucher_type, voucher_date, party_name, 
+                    //         party_ledger_id, narration, total_amount, grand_total, master_id, alter_id
+                    // =============================================
+                    if (tableName == "vouchers")
                     {
-                        // Map C# properties to SQL columns if they differ
-                        if (dict.ContainsKey("voucher_date")) 
-                        {
-                            dict["vch_date"] = dict["voucher_date"];
-                            if (tableName == "sales" || tableName == "purchases") dict["invoice_date"] = dict["voucher_date"];
-                        }
+                        // Keep voucher_date as-is (correct column name)
+                        // Keep total_amount as-is (correct column name)
+                        // Keep party_name as-is (correct column name)
                         
-                        if (dict.ContainsKey("total_amount")) 
-                        {
-                            dict["amount"] = dict["total_amount"];
-                            if (tableName == "sales" || tableName == "purchases") dict["net_amount"] = dict["total_amount"];
-                        }
-                        
-                        if (dict.ContainsKey("party_name")) 
-                        {
-                            dict["party_ledger_name"] = dict["party_name"];
-                        }
-                        
-                        if (dict.ContainsKey("voucher_number"))
-                        {
-                            if (tableName == "sales" || tableName == "purchases") dict["invoice_number"] = dict["voucher_number"];
-                        }
-                        
-                        // Move extra fields to raw_data to avoid PostgREST errors
-                        var rawData = new Dictionary<string, object>();
-                        if (dict.ContainsKey("ledger_entries")) rawData["ledger_entries"] = dict["ledger_entries"];
-                        if (dict.ContainsKey("inventory_entries")) rawData["inventory_entries"] = dict["inventory_entries"];
-                        
-                        dict["raw_data"] = rawData;
-                        
-                        // Remove fields that are not in the SQL schema
+                        // Remove nested data - will be synced separately to voucher_ledger_entries/voucher_stock_entries
                         dict.Remove("ledger_entries");
                         dict.Remove("inventory_entries");
-                        dict.Remove("voucher_date");
-                        dict.Remove("total_amount");
-                        dict.Remove("party_name");
                         
-                        // Ensure ID is set correctly for on_conflict
-                        if (dict.ContainsKey("voucher_id")) dict["id"] = dict["voucher_id"];
+                        // Generate deterministic UUID from voucher_id string
+                        // This allows upsert to work correctly while maintaining UUID type in Supabase
+                        if (dict.ContainsKey("voucher_id"))
+                        {
+                            string voucherId = dict["voucher_id"]?.ToString() ?? Guid.NewGuid().ToString();
+                            dict["id"] = GenerateDeterministicGuid(voucherId).ToString();
+                        }
+                        dict.Remove("voucher_id"); // Remove the string version
+                    }
+                    // =============================================
+                    // LEDGERS TABLE MAPPING
+                    // Schema: id, company_id, name, parent, ledger_type, opening_balance, current_balance,
+                    //         gstin, email, phone, pan, master_id, alter_id
+                    // =============================================
+                    else if (tableName == "ledgers")
+                    {
+                        // Map parent_group -> parent (C# model uses ParentGroup, table uses parent)
+                        if (dict.ContainsKey("parent_group"))
+                        {
+                            dict["parent"] = dict["parent_group"];
+                            dict.Remove("parent_group");
+                        }
+                        
+                        // Map ledger_group -> ledger_type
+                        if (dict.ContainsKey("ledger_group"))
+                        {
+                            dict["ledger_type"] = dict["ledger_group"];
+                            dict.Remove("ledger_group");
+                        }
+                        
+                        // Map closing_balance -> current_balance
+                        if (dict.ContainsKey("closing_balance"))
+                        {
+                            dict["current_balance"] = dict["closing_balance"];
+                            dict.Remove("closing_balance");
+                        }
+                        
+                        // Ensure ID is a valid UUID (Tally GUIDs may not be valid UUIDs)
+                        if (dict.ContainsKey("id"))
+                        {
+                            string ledgerId = dict["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                            // If it's not a valid UUID, generate deterministic one
+                            if (!Guid.TryParse(ledgerId, out _))
+                            {
+                                dict["id"] = GenerateDeterministicGuid(ledgerId).ToString();
+                            }
+                        }
+                        
+                        // Remove unsupported columns
+                        dict.Remove("alias");
+                        dict.Remove("credit_period");
+                        dict.Remove("credit_limit");
+                        dict.Remove("address");
+                    }
+                    // =============================================
+                    // STOCK ITEMS TABLE MAPPING
+                    // Schema: id, company_id, name, unit, opening_stock, current_stock, rate,
+                    //         master_id, alter_id, stock_group, hsn_code, gst_rate
+                    // =============================================
+                    else if (tableName == "stock_items")
+                    {
+                        // Map base_unit -> unit
+                        if (dict.ContainsKey("base_unit"))
+                        {
+                            dict["unit"] = dict["base_unit"];
+                            dict.Remove("base_unit");
+                        }
+                        
+                        // Map opening_balance -> opening_stock
+                        if (dict.ContainsKey("opening_balance"))
+                        {
+                            dict["opening_stock"] = dict["opening_balance"];
+                            dict.Remove("opening_balance");
+                        }
+                        
+                        // Map closing_balance -> current_stock
+                        if (dict.ContainsKey("closing_balance"))
+                        {
+                            dict["current_stock"] = dict["closing_balance"];
+                            dict.Remove("closing_balance");
+                        }
+                        
+                        // Keep: stock_group, hsn_code, gst_rate (already match schema)
+                        // Note: hsn_code uses snake_case which matches both model and DB
+                        
+                        // Ensure ID is a valid UUID (Tally GUIDs may not be valid UUIDs)
+                        if (dict.ContainsKey("id"))
+                        {
+                            string stockId = dict["id"]?.ToString() ?? Guid.NewGuid().ToString();
+                            // If it's not a valid UUID, generate deterministic one
+                            if (!Guid.TryParse(stockId, out _))
+                            {
+                                dict["id"] = GenerateDeterministicGuid(stockId).ToString();
+                            }
+                        }
+                        
+                        // Remove unsupported columns
+                        dict.Remove("alias");
+                        dict.Remove("stock_category");
+                        dict.Remove("opening_value");
+                        dict.Remove("inward_quantity");
+                        dict.Remove("inward_value");
+                        dict.Remove("outward_quantity");
+                        dict.Remove("outward_value");
+                        dict.Remove("closing_value");
                     }
                     
                     itemsWithCompanyId.Add(dict);
@@ -199,6 +304,109 @@ namespace TallySyncApp.Services
                     Failed = result.Success ? 0 : data.Count
                 }
             };
+        }
+
+        /// <summary>
+        /// Sync voucher line items (ledger entries and stock/inventory entries) to their respective tables
+        /// </summary>
+        public async Task<(int LedgerEntriesSynced, int StockEntriesSynced)> SyncVoucherEntriesAsync(
+            string companyId, 
+            List<Voucher> vouchers)
+        {
+            int ledgerEntriesSynced = 0;
+            int stockEntriesSynced = 0;
+            
+            try
+            {
+                // Convert company_id to UUID if it's a string name
+                string companyUuid;
+                if (Guid.TryParse(companyId, out var existingGuid))
+                {
+                    companyUuid = existingGuid.ToString();
+                }
+                else
+                {
+                    companyUuid = GenerateDeterministicGuid(companyId).ToString();
+                }
+
+                // 1. Extract and sync Ledger Entries to voucher_ledger_entries
+                var allLedgerEntries = new List<Dictionary<string, object>>();
+                foreach (var voucher in vouchers)
+                {
+                    if (voucher.LedgerEntries != null && voucher.LedgerEntries.Count > 0)
+                    {
+                        int ledgerIdx = 0;
+                        foreach (var entry in voucher.LedgerEntries)
+                        {
+                            // Generate deterministic ID from voucher+ledger+index for uniqueness
+                            string entryKey = $"{voucher.VoucherId}|ledger|{entry.LedgerName}|{ledgerIdx}";
+                            allLedgerEntries.Add(new Dictionary<string, object>
+                            {
+                                ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
+                                ["company_id"] = companyUuid,
+                                ["voucher_id"] = GenerateDeterministicGuid(voucher.VoucherId).ToString(),
+                                ["ledger_name"] = entry.LedgerName ?? "",
+                                ["amount"] = entry.Amount,
+                                ["is_debit"] = entry.IsDebit
+                            });
+                            ledgerIdx++;
+                        }
+                    }
+                }
+                
+                if (allLedgerEntries.Count > 0)
+                {
+                    SyncLogger.Log($"📝 Syncing {allLedgerEntries.Count} voucher ledger entries...");
+                    var ledgerResult = await UpsertAsync<object>("voucher_ledger_entries", allLedgerEntries, "id");
+                    if (ledgerResult.Success) ledgerEntriesSynced = allLedgerEntries.Count;
+                    else SyncLogger.Log($"⚠️ Ledger entries sync failed: {ledgerResult.Error}");
+                }
+                
+                // 2. Extract and sync Inventory/Stock Entries to voucher_stock_entries
+                var allStockEntries = new List<Dictionary<string, object>>();
+                foreach (var voucher in vouchers)
+                {
+                    if (voucher.InventoryEntries != null && voucher.InventoryEntries.Count > 0)
+                    {
+                        int stockIdx = 0;
+                        foreach (var entry in voucher.InventoryEntries)
+                        {
+                            bool isInward = voucher.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase);
+                            
+                            // Generate deterministic ID from voucher+item+index for uniqueness
+                            string entryKey = $"{voucher.VoucherId}|stock|{entry.StockItemName}|{stockIdx}";
+                            allStockEntries.Add(new Dictionary<string, object>
+                            {
+                                ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
+                                ["company_id"] = companyUuid,
+                                ["voucher_id"] = GenerateDeterministicGuid(voucher.VoucherId).ToString(),
+                                ["stock_item_name"] = entry.StockItemName ?? "",
+                                ["quantity"] = entry.Quantity,
+                                ["rate"] = entry.Rate,
+                                ["amount"] = entry.Amount,
+                                ["unit"] = entry.Unit ?? "",
+                                ["hsn_code"] = entry.HsnCode ?? "",
+                                ["is_inward"] = isInward
+                            });
+                            stockIdx++;
+                        }
+                    }
+                }
+                
+                if (allStockEntries.Count > 0)
+                {
+                    SyncLogger.Log($"📦 Syncing {allStockEntries.Count} voucher stock entries...");
+                    var stockResult = await UpsertAsync<object>("voucher_stock_entries", allStockEntries, "id");
+                    if (stockResult.Success) stockEntriesSynced = allStockEntries.Count;
+                    else SyncLogger.Log($"⚠️ Stock entries sync failed: {stockResult.Error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"❌ SyncVoucherEntriesAsync error: {ex.Message}");
+            }
+            
+            return (ledgerEntriesSynced, stockEntriesSynced);
         }
 
         /// <summary>
@@ -321,6 +529,12 @@ namespace TallySyncApp.Services
                 if (table == "vouchers") 
                 {
                     SyncLogger.Log($"DEBUG UPLOAD VOUCHERS: {json}");
+                }
+                
+                // DEBUG: Print JSON for Companies to catch registration issues
+                if (table == "companies") 
+                {
+                    SyncLogger.Log($"DEBUG UPLOAD COMPANY: {json}");
                 }
 
                 var response = await _httpClient.PostAsync(url, content);
@@ -672,6 +886,19 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 SyncLogger.Log($"⚠️ FailRunningSyncsAsync error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Generate a deterministic GUID from a string using MD5 hash
+        /// This ensures the same input always produces the same UUID
+        /// </summary>
+        private static Guid GenerateDeterministicGuid(string input)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+                return new Guid(hash);
             }
         }
 

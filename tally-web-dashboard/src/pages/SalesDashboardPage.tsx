@@ -12,7 +12,16 @@ export default function SalesDashboardPage() {
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
     const [loading, setLoading] = useState(true);
-    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+
+    // Calculate current FY dynamically (FY starts in April)
+    const getCurrentFy = () => {
+        const now = new Date();
+        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = (currentYear + 1).toString().slice(2);
+        return `FY ${currentYear}-${endYear}`;
+    };
+
+    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [period, setPeriod] = useState('thisYear');
     const [salesData, setSalesData] = useState<any>(null);
     const [topCustomers, setTopCustomers] = useState<any[]>([]);

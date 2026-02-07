@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS companies (
     financial_year_start DATE,
     financial_year_end DATE,
     currency_symbol TEXT DEFAULT '₹',
+    owner_id UUID REFERENCES auth.users(id),      -- Owner user for RLS
     sync_api_key TEXT UNIQUE,                     -- Unique API key per company
     sync_api_key_hash TEXT,                       -- SHA-256 hash for verification
     is_active BOOLEAN DEFAULT true,

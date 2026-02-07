@@ -19,77 +19,73 @@ export default function InvoiceDetailPage() {
 
     const loadInvoice = async () => {
         try {
-            // First try to find by voucher_id or id
-            let { data: salesData } = await supabase
-                .from('sales')
+            // First try to find by id or voucher_id in vouchers table
+            let { data: voucherData } = await supabase
+                .from('vouchers')
                 .select('*')
-                .eq('voucher_id', id)
+                .eq('id', id)
                 .single();
 
-            if (!salesData && id) {
+            if (!voucherData && id) {
+                // Try by voucher_id field
                 const { data: fallback } = await supabase
-                    .from('sales')
+                    .from('vouchers')
                     .select('*')
-                    .eq('id', id)
+                    .eq('voucher_id', id)
                     .single();
-                salesData = fallback;
+                voucherData = fallback;
             }
 
-            if (salesData) {
-                const { data: itemsData } = await supabase.from('sales_items').select('*').eq('sale_id', salesData.id);
-                const { data: stockItems } = await supabase.from('stock_items').select('name, hsn_code, base_unit').eq('company_id', salesData.company_id);
+            if (voucherData) {
+                // Map voucher fields to invoice format
+                const salesData: any = {
+                    ...voucherData,
+                    invoice_number: voucherData.voucher_number,
+                    invoice_date: voucherData.voucher_date,
+                    party_ledger_name: voucherData.party_name,
+                    net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    gross_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
+                    party_gstin: voucherData.party_gstin || '',
+                    place_of_supply: voucherData.place_of_supply || '',
+                    cgst_amount: Number(voucherData.cgst_amount) || 0,
+                    sgst_amount: Number(voucherData.sgst_amount) || 0,
+                    igst_amount: Number(voucherData.igst_amount) || 0,
+                    round_off: Number(voucherData.round_off) || 0,
+                    narration: voucherData.narration || '',
+                    voucher_id: voucherData.voucher_id || voucherData.id
+                };
+
+                // Fetch voucher_stock_entries
+                const { data: stockEntries } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*')
+                    .eq('voucher_id', voucherData.id);
+
+                // Get stock items lookup
+                const { data: stockItems } = await supabase
+                    .from('stock_items')
+                    .select('name, hsn_code, unit')
+                    .eq('company_id', voucherData.company_id);
 
                 const stockLookup: any = {};
                 stockItems?.forEach((item: any) => { stockLookup[item.name] = item; });
 
-                let finalItems = [];
-                if (itemsData && itemsData.length > 0) {
-                    finalItems = itemsData.map((item: any) => ({
-                        ...item,
-                        hsn_code: item.hsn_code || stockLookup[item.stock_item_name]?.hsn_code || '-',
-                        unit: item.unit || stockLookup[item.stock_item_name]?.base_unit || ''
-                    }));
-                } else {
-                    // Fallback to vouchers table
-                    const { data: vData } = await supabase.from('vouchers').select('inventory_entries').eq('voucher_id', salesData.voucher_id).single();
-                    let rawEntries = vData?.inventory_entries || [];
+                // Map entries to items format
+                const finalItems = (stockEntries || []).map((item: any, idx: number) => ({
+                    ...item,
+                    stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
+                    hsn_code: item.hsn_code || stockLookup[item.item_name]?.hsn_code || '-',
+                    unit: item.unit || stockLookup[item.item_name]?.unit || '',
+                    quantity: item.quantity || item.billed_qty || 0,
+                    rate: item.rate || item.unit_price || 0,
+                    amount: item.amount || (item.quantity * item.rate) || 0
+                }));
 
-                    // Safety check for stringified JSON
-                    if (typeof rawEntries === 'string') {
-                        try { rawEntries = JSON.parse(rawEntries); } catch (e) { rawEntries = []; }
-                    }
-
-                    if (Array.isArray(rawEntries)) {
-                        finalItems = rawEntries.map((item: any) => ({
-                            ...item,
-                            stock_item_name: item.stock_item_name || item.name || 'Unknown',
-                            hsn_code: item.hsn_code || item.hsn || stockLookup[item.stock_item_name || item.name]?.hsn_code || '-',
-                            unit: item.unit || item.base_unit || stockLookup[item.stock_item_name || item.name]?.base_unit || ''
-                        }));
-                    }
-                }
                 salesData.sales_items = finalItems;
                 setInvoice(salesData);
             } else {
-                // Last ditch effort: try the API wrapper if it exists (though supabase direct is better)
-                try {
-                    const { data } = await salesApi.getById(id!);
-                    setInvoice(data);
-                } catch (e) {
-                    // If still no invoice, try fetching directly from vouchers and synthesize
-                    const { data: vRecord } = await supabase.from('vouchers').select('*').eq('voucher_id', id).single();
-                    if (vRecord) {
-                        const synthesized = {
-                            invoice_number: vRecord.voucher_number || '---',
-                            invoice_date: vRecord.voucher_date,
-                            party_ledger_name: vRecord.party_name,
-                            net_amount: vRecord.total_amount,
-                            gross_amount: vRecord.total_amount,
-                            sales_items: Array.isArray(vRecord.inventory_entries) ? vRecord.inventory_entries : []
-                        };
-                        setInvoice(synthesized);
-                    }
-                }
+                setInvoice(null);
             }
         } catch (err) {
             console.error('Error loading invoice:', err);

@@ -21,7 +21,16 @@ export default function LedgersPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState(searchParams.get('group') || 'all');
-    const [selectedFy, setSelectedFy] = useState('FY 2024-25');
+
+    // Calculate current FY dynamically (FY starts in April)
+    const getCurrentFy = () => {
+        const now = new Date();
+        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const endYear = (currentYear + 1).toString().slice(2);
+        return `FY ${currentYear}-${endYear}`;
+    };
+
+    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [stats, setStats] = useState({ total: 0, debit: 0, credit: 0, count: 0 });
     const [partyTransactions, setPartyTransactions] = useState<Record<string, any[]>>({});
 
@@ -48,8 +57,8 @@ export default function LedgersPage() {
 
             let sortedData = data || [];
 
-            const debitTotal = sortedData.filter((l: any) => (l.closing_balance || 0) > 0).reduce((s: number, l: any) => s + (l.closing_balance || 0), 0);
-            const creditTotal = sortedData.filter((l: any) => (l.closing_balance || 0) < 0).reduce((s: number, l: any) => s + Math.abs(l.closing_balance || 0), 0);
+            const debitTotal = sortedData.filter((l: any) => (l.current_balance || 0) > 0).reduce((s: number, l: any) => s + (l.current_balance || 0), 0);
+            const creditTotal = sortedData.filter((l: any) => (l.current_balance || 0) < 0).reduce((s: number, l: any) => s + Math.abs(l.current_balance || 0), 0);
 
             setStats({
                 total: debitTotal - creditTotal,
@@ -161,7 +170,7 @@ export default function LedgersPage() {
             ) : (
                 <div className="grid grid-cols-1 gap-3">
                     {filteredLedgers.map((ledger: any, idx) => {
-                        const bal = formatCurrency(ledger.closing_balance);
+                        const bal = formatCurrency(ledger.current_balance);
                         const transactions = partyTransactions[ledger.name] || [];
 
                         return (
@@ -175,13 +184,13 @@ export default function LedgersPage() {
                                 <div className="p-4" onClick={() => navigate(`/ledgers/${ledger.id}`)}>
                                     <div className="flex justify-between items-start gap-3">
                                         <div className="min-w-0 flex-1">
-                                            <h3 className="text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-1">{ledger.name}</h3>
+                                            <h3 className="text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-1">{ledger.name || `Ledger (${ledger.parent || 'Unknown Group'})`}</h3>
                                             {/* Prominent Balance Below Name */}
                                             <div className="flex items-center gap-1.5">
                                                 <span className={`text-base font-black ${bal.color}`}>
                                                     {bal.formatted}
                                                 </span>
-                                                <Badge variant={ledger.closing_balance >= 0 ? 'info' : 'error'} className="text-[8px] font-black px-1.5 py-0.5 border-none">
+                                                <Badge variant={ledger.current_balance >= 0 ? 'info' : 'error'} className="text-[8px] font-black px-1.5 py-0.5 border-none">
                                                     {bal.suffix}
                                                 </Badge>
                                             </div>

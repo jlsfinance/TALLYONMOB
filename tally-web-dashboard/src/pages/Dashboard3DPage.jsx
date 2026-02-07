@@ -36,20 +36,21 @@ export default function Dashboard3DPage() {
                 ? new Date(today.getFullYear(), 3, 1)
                 : new Date(today.getFullYear() - 1, 3, 1);
 
-            // Fetch sales data
+            // Fetch sales data from vouchers
             const { data: sales } = await supabase
-                .from('sales')
-                .select('gross_amount, invoice_date')
+                .from('vouchers')
+                .select('total_amount, grand_total, voucher_date')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', format(fyStart, 'yyyy-MM-dd'))
-                .eq('is_cancelled', false);
+                .eq('voucher_type', 'Sales')
+                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
+                .eq('is_deleted', false);
 
-            const totalSales = (sales || []).reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
+            const totalSales = (sales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
             // This month sales
             const thisMonthSales = (sales || [])
-                .filter(s => s.invoice_date >= monthStart && s.invoice_date <= monthEnd)
-                .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
+                .filter(s => s.voucher_date >= monthStart && s.voucher_date <= monthEnd)
+                .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
             // Previous month sales for comparison
             const lastMonth = subMonths(today, 1);
@@ -57,8 +58,8 @@ export default function Dashboard3DPage() {
             const lastMonthEnd = format(endOfMonth(lastMonth), 'yyyy-MM-dd');
 
             const lastMonthSales = (sales || [])
-                .filter(s => s.invoice_date >= lastMonthStart && s.invoice_date <= lastMonthEnd)
-                .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
+                .filter(s => s.voucher_date >= lastMonthStart && s.voucher_date <= lastMonthEnd)
+                .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
             const salesTrend = lastMonthSales > 0
                 ? ((thisMonthSales - lastMonthSales) / lastMonthSales * 100).toFixed(1)
@@ -73,25 +74,26 @@ export default function Dashboard3DPage() {
                 }
             });
 
-            // Fetch purchases data
+            // Fetch purchases data from vouchers
             const { data: purchases } = await supabase
-                .from('purchases')
-                .select('gross_amount')
+                .from('vouchers')
+                .select('total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
-                .gte('invoice_date', format(fyStart, 'yyyy-MM-dd'))
-                .eq('is_cancelled', false);
+                .eq('voucher_type', 'Purchase')
+                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
+                .eq('is_deleted', false);
 
-            const totalPurchases = (purchases || []).reduce((sum, p) => sum + (Number(p.gross_amount) || 0), 0);
+            const totalPurchases = (purchases || []).reduce((sum, p) => sum + Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0), 0);
             setPurchaseData({ total: totalPurchases });
 
-            // Fetch outstanding receivables
+            // Fetch outstanding receivables from ledgers
             const { data: ledgers } = await supabase
                 .from('ledgers')
-                .select('closing_balance, parent_group')
+                .select('current_balance, parent')
                 .eq('company_id', selectedCompany.id)
-                .eq('parent_group', 'Sundry Debtors');
+                .eq('parent', 'Sundry Debtors');
 
-            const totalReceivables = (ledgers || []).reduce((sum, l) => sum + Math.abs(Number(l.closing_balance) || 0), 0);
+            const totalReceivables = (ledgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
             setOutstandingData({ receivables: totalReceivables });
 
             // Monthly sales for chart (last 6 months)
@@ -102,8 +104,8 @@ export default function Dashboard3DPage() {
                 const mEnd = format(endOfMonth(month), 'yyyy-MM-dd');
 
                 const monthSales = (sales || [])
-                    .filter(s => s.invoice_date >= mStart && s.invoice_date <= mEnd)
-                    .reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0);
+                    .filter(s => s.voucher_date >= mStart && s.voucher_date <= mEnd)
+                    .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
                 monthlyData.push({
                     label: format(month, 'MMM'),
@@ -115,7 +117,7 @@ export default function Dashboard3DPage() {
             // Fetch recent vouchers
             const { data: vouchers } = await supabase
                 .from('vouchers')
-                .select('voucher_id, voucher_number, party_name, voucher_type, total_amount')
+                .select('id, voucher_number, party_name, voucher_type, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .order('voucher_date', { ascending: false })
                 .limit(5);
@@ -131,16 +133,17 @@ export default function Dashboard3DPage() {
 
             setPendingCount(pending || 0);
 
-            // Fetch today's actual sales
+            // Fetch today's actual sales from vouchers
             const todayStr = format(new Date(), 'yyyy-MM-dd');
             const { data: tSales } = await supabase
-                .from('sales')
-                .select('gross_amount')
+                .from('vouchers')
+                .select('total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
-                .eq('invoice_date', todayStr)
-                .eq('is_cancelled', false);
+                .eq('voucher_type', 'Sales')
+                .eq('voucher_date', todayStr)
+                .eq('is_deleted', false);
 
-            setTodaySales((tSales || []).reduce((sum, s) => sum + (Number(s.gross_amount) || 0), 0));
+            setTodaySales((tSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
 
             // Fetch Receipts for Collection %
             const { data: receipts } = await supabase
@@ -154,9 +157,10 @@ export default function Dashboard3DPage() {
             const totalReceipts = (receipts || []).reduce((sum, r) => sum + (Math.abs(Number(r.total_amount)) || 0), 0);
 
             // Calculate Ratios
+            const netProfitCalc = totalSales - totalPurchases;
             const collectionRate = totalSales > 0 ? (totalReceipts / totalSales) * 100 : 0;
             const expenseRate = totalSales > 0 ? (totalPurchases / totalSales) * 100 : 0;
-            const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+            const profitMargin = totalSales > 0 ? (netProfitCalc / totalSales) * 100 : 0;
 
             setKpiRatios({
                 collection: Math.min(collectionRate, 100),
@@ -315,9 +319,9 @@ export default function Dashboard3DPage() {
                             <div className="dashboard-3d__voucher-list">
                                 {recentVouchers.slice(0, 5).map((voucher, idx) => (
                                     <div
-                                        key={idx}
+                                        key={voucher.id || idx}
                                         className="dashboard-3d__voucher-item"
-                                        onClick={() => navigate(`/vouchers/${encodeURIComponent(voucher.voucher_id)}`)}
+                                        onClick={() => navigate(`/vouchers/${encodeURIComponent(voucher.id)}`)}
                                     >
                                         <div className="dashboard-3d__voucher-info">
                                             <span className="dashboard-3d__voucher-number">{voucher.voucher_number}</span>
@@ -325,7 +329,7 @@ export default function Dashboard3DPage() {
                                         </div>
                                         <div className="dashboard-3d__voucher-details">
                                             <span className="dashboard-3d__voucher-type">{voucher.voucher_type}</span>
-                                            <span className="dashboard-3d__voucher-amount">{formatCurrency(Number(voucher.total_amount))}</span>
+                                            <span className="dashboard-3d__voucher-amount">{formatCurrency(Math.abs(Number(voucher.grand_total) || Number(voucher.total_amount) || 0))}</span>
                                         </div>
                                     </div>
                                 ))}
