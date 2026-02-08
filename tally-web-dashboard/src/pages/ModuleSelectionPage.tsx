@@ -13,7 +13,7 @@ export default function ModuleSelectionPage() {
         if (mode === 'tally') {
             navigate('/select-company');
         } else {
-            navigate('/');
+            navigate('/dashboard');
         }
     };
 

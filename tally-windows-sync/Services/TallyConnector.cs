@@ -225,7 +225,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""CompanyCollection"">
             <TYPE>Company</TYPE>
-            <FETCH>NAME, GUID, MasterId</FETCH>
+            <FETCH>NAME, GUID, ADDRESS, GSTREGISTRATIONNUMBER, PHONENUMBER, EMAIL, STATE</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -286,7 +286,12 @@ namespace TallySyncApp.Services
                         companies.Add(new Company
                         {
                             Id = sanitizedId,
-                            Name = name
+                            Name = name,
+                            Gstin = GetElementValue(comp, "GSTREGISTRATIONNUMBER"),
+                            Address = string.Join(", ", comp.Descendants("ADDRESS").Select(a => a.Value).Where(v => !string.IsNullOrWhiteSpace(v))),
+                            State = GetElementValue(comp, "STATE") ?? GetElementValue(comp, "STATENAME"),
+                            Phone = GetElementValue(comp, "PHONENUMBER"),
+                            Email = GetElementValue(comp, "EMAIL")
                         });
                         Log($"   Added Company: '{name}' (ID: {sanitizedId})");
                     }
@@ -675,7 +680,7 @@ namespace TallySyncApp.Services
           <SVFROMDATE>{fromDateStr}</SVFROMDATE>
           <SVTODATE>{toDateStr}</SVTODATE>
           <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-          <ISITEMWISE>Yes</ISITEMWISE>
+          <ISITEMWISE>No</ISITEMWISE>
           <SVEXPLODEALL>Yes</SVEXPLODEALL>
           <SVEXPORTINVENTORY>Yes</SVEXPORTINVENTORY>
           {filterXml}
@@ -806,6 +811,12 @@ namespace TallySyncApp.Services
                             GetElementValue(iNode, "AMOUNT") ?? 
                             GetElementValue(iNode, "DSPVCHITEMAMOUNT") ?? "0"));
 
+                        // Discount Percentage
+                        // Tally sends " 5 %" or "-5%" or just "5"
+                        string discountStr = GetElementValue(iNode, "DISCOUNT") ?? 
+                                           GetElementValue(iNode, "DSPVCHDISCOUNT") ?? "0";
+                        decimal discountPercent = Math.Abs(ParseDecimal(discountStr.Replace("%", "").Trim()));
+
                         // Tax Rate & Taxability
                         string? taxRateStr = iDescendants.FirstOrDefault(x => x.Name.LocalName.Equals("RATEOFTAXCALCULATION", StringComparison.OrdinalIgnoreCase))?.Value;
                         decimal? taxRate = !string.IsNullOrEmpty(taxRateStr) ? ParseDecimal(taxRateStr) : (decimal?)null;
@@ -819,6 +830,7 @@ namespace TallySyncApp.Services
                             Unit = unit,
                             Rate = rate,
                             Amount = amount,
+                            DiscountPercent = discountPercent,
                             HsnCode = hsnCode,
                             TaxRate = taxRate,
                             Taxability = taxability

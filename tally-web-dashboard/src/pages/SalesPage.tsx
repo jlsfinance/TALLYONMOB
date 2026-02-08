@@ -43,7 +43,8 @@ export default function SalesPage() {
     const loadSales = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase.from('vouchers')
+            // Fetch synced vouchers
+            const { data: syncedData } = await supabase.from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
@@ -51,10 +52,29 @@ export default function SalesPage() {
                 .lte('voucher_date', toDate)
                 .order('voucher_date', { ascending: false });
 
-            const salesData = data || [];
+            // Fetch pending and failed transactions
+            const { data: pendingData } = await supabase.from('pending_transactions')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .eq('transaction_type', 'Sales')
+                .in('status', ['pending', 'failed']);
+
+            const pendingSales = (pendingData || []).map(p => {
+                const { id, ...rest } = p.voucher_data || {};
+                return {
+                    id: p.id,
+                    party_name: rest.customerName || 'Pending Customer',
+                    voucher_number: rest.invoiceNumber || 'NEW',
+                    voucher_date: rest.date || p.created_at,
+                    grand_total: rest.total,
+                    status: p.status
+                };
+            });
+
+            const salesData = [...pendingSales, ...(syncedData || [])];
             setSales(salesData);
 
-            const total = salesData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);
+            const total = salesData.reduce((s, v) => s + Math.abs(v.grand_total || v.total_amount || 0), 0);
             setStats({
                 total,
                 count: salesData.length,
@@ -139,14 +159,17 @@ export default function SalesPage() {
                     <div className="space-y-3">
                         {filteredSales.map((sale, idx) => (
                             <TransactionCard
-                                key={sale.voucher_id}
-                                type={sale.voucher_type}
+                                key={sale.id || idx}
+                                type={sale.voucher_type || 'Sales'} // default to Sales for pending
                                 partyName={sale.party_name}
                                 voucherNumber={sale.voucher_number}
                                 date={sale.voucher_date}
-                                amount={sale.total_amount}
-                                status={sale.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(sale.id)}`)}
+                                amount={sale.grand_total || sale.total_amount || 0}
+                                status={sale.status === 'pending' ? 'Pending' : (sale.sync_status === 'failed' ? 'Failed' : 'Synced')}
+                                highlighted={sale.status === 'pending'}
+                                onClick={() => {
+                                    navigate(`/vouchers/${encodeURIComponent(sale.id)}`);
+                                }}
                             />
                         ))}
                     </div>

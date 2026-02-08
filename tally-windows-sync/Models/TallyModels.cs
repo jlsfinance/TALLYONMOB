@@ -173,6 +173,9 @@ namespace TallySyncApp.Models
         [JsonProperty("amount")]
         public decimal Amount { get; set; }
 
+        [JsonProperty("discount_percent")]
+        public decimal DiscountPercent { get; set; }
+
         [JsonProperty("hsn_code")]
         public string? HsnCode { get; set; }
 
@@ -512,11 +515,17 @@ namespace TallySyncApp.Models
         [JsonProperty("name")]
         public string Name { get; set; } = string.Empty;
 
+        [JsonProperty("gstin")]
+        public string? Gstin { get; set; }
+
         [JsonProperty("formal_name")]
         public string? FormalName { get; set; }
 
         [JsonProperty("address")]
         public string? Address { get; set; }
+
+        [JsonProperty("state")]
+        public string? State { get; set; }
 
         [JsonProperty("email")]
         public string? Email { get; set; }

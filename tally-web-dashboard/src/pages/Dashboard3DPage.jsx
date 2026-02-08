@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { GlassCard, KPICard, ProgressRing, BarChart3D } from '../components/3d';
+import TopAnalyticsSection from '../components/TopAnalyticsSection';
 import './Dashboard3DPage.css';
 
 export default function Dashboard3DPage() {
@@ -336,6 +337,9 @@ export default function Dashboard3DPage() {
                             </div>
                         </GlassCard>
                     </section>
+
+                    {/* Top Analytics Section */}
+                    <TopAnalyticsSection />
 
                     {/* Quick Actions */}
                     <section className="dashboard-3d__actions">

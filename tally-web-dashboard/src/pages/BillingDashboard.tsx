@@ -44,7 +44,7 @@ export default function BillingDashboard() {
                 count: sales?.length || 0
             });
 
-            // Recent Invoices (Sales vouchers)
+            // Recent Invoices (Sales vouchers + Pending items)
             const { data: recent } = await supabase
                 .from('vouchers')
                 .select('*')
@@ -54,7 +54,22 @@ export default function BillingDashboard() {
                 .order('voucher_date', { ascending: false })
                 .limit(5);
 
-            setRecentInvoices(recent || []);
+            const { data: pending } = await supabase
+                .from('pending_transactions')
+                .select('*')
+                .eq('company_id', selectedCompany.id)
+                .in('status', ['pending', 'failed'])
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            const combined = [
+                ...(pending || []).map(p => {
+                    const { id, ...rest } = p.voucher_data || {};
+                    return { ...p, ...rest, status: p.status };
+                }),
+                ...(recent || []).map(r => ({ ...r, status: 'synced' }))
+            ];
+            setRecentInvoices(combined.sort((a, b) => new Date(b.created_at || b.voucher_date).getTime() - new Date(a.created_at || a.voucher_date).getTime()).slice(0, 5));
 
             // Low Stock
             const { data: stock } = await supabase
@@ -166,18 +181,24 @@ export default function BillingDashboard() {
                                     <Link key={inv.id} to={`/vouchers/${inv.id}`} className="block hover:bg-[var(--surface-variant)] transition-all group">
                                         <div className="flex items-center justify-between p-5">
                                             <div className="flex items-center gap-4">
-                                                <Avatar name={inv.party_name || 'Unknown'} size="sm" />
+                                                <Avatar name={inv.party_name || inv.customerName || 'Unknown'} size="sm" />
                                                 <div>
-                                                    <p className="text-sm font-black text-[var(--on-surface)] tracking-tight group-hover:text-[var(--primary)] transition-colors">{inv.party_name || 'Unknown Party'}</p>
+                                                    <p className="text-sm font-black text-[var(--on-surface)] tracking-tight group-hover:text-[var(--primary)] transition-colors">{inv.party_name || inv.customerName || 'Unknown Party'}</p>
                                                     <p className="text-[10px] text-[var(--text-muted)] uppercase font-black tracking-widest leading-none mt-1.5 opacity-80">
-                                                        #{inv.voucher_number} • {format(new Date(inv.voucher_date), 'd MMM, yyyy')}
+                                                        #{inv.voucher_number || inv.invoiceNumber || 'NEW'} • {format(new Date(inv.voucher_date || inv.date || inv.created_at), 'd MMM, yyyy')}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-sm font-black text-[var(--on-surface)]">{formatCurrency(Math.abs(Number(inv.grand_total) || Number(inv.total_amount) || 0))}</p>
-                                                <Badge variant="success" className="mt-1 bg-[var(--success-bg)] text-[var(--success)] border-none text-[8px] px-1.5 py-0">
-                                                    SYNCED
+                                                <Badge
+                                                    variant={inv.status === 'synced' ? 'success' : (inv.status === 'failed' ? 'error' : 'default')}
+                                                    className={`mt-1 border-none text-[8px] px-1.5 py-0 ${inv.status === 'synced' ? 'bg-[var(--success-bg)] text-[var(--success)]' :
+                                                            inv.status === 'failed' ? 'bg-red-500/10 text-red-500' :
+                                                                'bg-blue-500/10 text-blue-500'
+                                                        }`}
+                                                >
+                                                    {inv.status === 'synced' ? 'SYNCED' : (inv.status === 'failed' ? 'FAILED SYNC' : 'PENDING SYNC')}
                                                 </Badge>
                                             </div>
                                         </div>

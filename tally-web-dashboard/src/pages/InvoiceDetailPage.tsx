@@ -79,7 +79,9 @@ export default function InvoiceDetailPage() {
                     unit: item.unit || stockLookup[item.item_name]?.unit || '',
                     quantity: item.quantity || item.billed_qty || 0,
                     rate: item.rate || item.unit_price || 0,
-                    amount: item.amount || (item.quantity * item.rate) || 0
+                    amount: item.amount || (item.quantity * item.rate) || 0,
+                    discount_percent: item.discount_percent || 0,
+                    tax_rate: item.tax_rate || 0
                 }));
 
                 salesData.sales_items = finalItems;
@@ -210,6 +212,7 @@ export default function InvoiceDetailPage() {
                                 <th className="px-6 py-4 text-center">HSN CODE</th>
                                 <th className="px-6 py-4 text-center">Qty</th>
                                 <th className="px-6 py-4 text-right">Rate</th>
+                                <th className="px-6 py-4 text-center">Disc %</th>
                                 <th className="px-6 py-4 text-right">Amount</th>
                             </tr>
                         </thead>
@@ -219,15 +222,16 @@ export default function InvoiceDetailPage() {
                                     <tr key={item.id || idx} className="hover:bg-white/[0.02] print:hover:bg-gray-50">
                                         <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
                                         <td className="px-6 py-4 font-medium text-white print:text-gray-900">{item.stock_item_name || item.name || 'Unknown'}</td>
-                                        <td className="px-6 py-4 text-center text-gray-400 font-mono text-[10px]">HSN CODE: {item.hsn_code || '-'}</td>
+                                        <td className="px-6 py-4 text-center text-gray-400 font-mono text-[10px]">{item.hsn_code || '-'}</td>
                                         <td className="px-6 py-4 text-center"><span className="font-semibold text-white print:text-gray-900">{item.quantity}</span><span className="text-xs text-gray-500 ml-1">{item.unit}</span></td>
                                         <td className="px-6 py-4 text-right font-mono text-gray-300 print:text-gray-700">{formatCurrency(item.rate)}</td>
+                                        <td className="px-6 py-4 text-center text-orange-400">{Number(item.discount_percent) > 0 ? `${item.discount_percent}%` : '-'}</td>
                                         <td className="px-6 py-4 text-right font-semibold text-white print:text-gray-900">{formatCurrency(item.amount)}</td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">No items found</td>
+                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">No items found</td>
                                 </tr>
                             )}
                         </tbody>
@@ -237,10 +241,22 @@ export default function InvoiceDetailPage() {
                 {/* Summary */}
                 <div className="p-6 border-t border-white/5">
                     <div className="ml-auto max-w-xs space-y-2">
-                        <div className="flex justify-between text-gray-400"><span>Gross Amount</span><span className="font-mono text-white print:text-gray-900">{formatCurrency(invoice.gross_amount)}</span></div>
-                        {invoice.discount_amount > 0 && (
-                            <div className="flex justify-between text-red-400"><span>Discount</span><span className="font-mono">-{formatCurrency(invoice.discount_amount)}</span></div>
-                        )}
+                        {/* Calculate gross from items (qty * rate without discount) */}
+                        {(() => {
+                            const grossFromItems = invoice.sales_items?.reduce((sum: number, item: any) => sum + (Number(item.quantity) * Number(item.rate)), 0) || 0;
+                            const totalDiscount = grossFromItems - (invoice.taxable_amount || invoice.gross_amount || 0);
+                            const hasItemDiscount = invoice.sales_items?.some((item: any) => Number(item.discount_percent) > 0);
+
+                            return (
+                                <>
+                                    <div className="flex justify-between text-gray-400"><span>Gross Amount</span><span className="font-mono text-white print:text-gray-900">{formatCurrency(grossFromItems > 0 ? grossFromItems : invoice.gross_amount)}</span></div>
+
+                                    {(hasItemDiscount || totalDiscount > 0 || invoice.discount_amount > 0) && (
+                                        <div className="flex justify-between text-orange-400"><span>Discount</span><span className="font-mono">-{formatCurrency(totalDiscount > 0 ? totalDiscount : invoice.discount_amount || 0)}</span></div>
+                                    )}
+                                </>
+                            );
+                        })()}
                         <div className="border-t border-white/5 pt-2 mt-2">
                             <div className="flex justify-between text-gray-400"><span>Taxable Value</span><span className="font-mono text-white print:text-gray-900">{formatCurrency(invoice.taxable_amount)}</span></div>
                             {invoice.cgst_amount > 0 && <div className="flex justify-between text-gray-500"><span>CGST</span><span className="font-mono">{formatCurrency(invoice.cgst_amount)}</span></div>}

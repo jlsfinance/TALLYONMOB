@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Controls;
 using TallySyncApp.Services;
 
 namespace TallySyncApp
@@ -26,6 +27,18 @@ namespace TallySyncApp
                 if (e.Key == Key.Enter)
                     LoginButton_Click(s, e);
             };
+
+            // Allow dragging the window
+            MouseDown += (s, e) =>
+            {
+                if (e.LeftButton == MouseButtonState.Pressed && !(e.OriginalSource is Button) && !(e.OriginalSource is TextBox) && !(e.OriginalSource is PasswordBox))
+                    DragMove();
+            };
+        }
+
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
 
         private async void LoginButton_Click(object sender, RoutedEventArgs e)
@@ -109,6 +122,38 @@ namespace TallySyncApp
             }
         }
 
+        private async void GoogleSignInButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetLoading(true);
+            LoadingText.Text = "Opening Google Sign-In...";
+            HideError();
+
+            try
+            {
+                // Use Supabase OAuth with Google
+                var (success, error) = await _authService.SignInWithGoogleAsync();
+
+                if (success)
+                {
+                    LoginSuccessful = true;
+                    DialogResult = true;
+                    Close();
+                }
+                else
+                {
+                    ShowError(error ?? "Google Sign-In failed. Please try again.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowError($"Google Sign-In error: {ex.Message}");
+            }
+            finally
+            {
+                SetLoading(false);
+            }
+        }
+
         private void ToggleMode_Click(object sender, MouseButtonEventArgs e)
         {
             ToggleMode();
@@ -143,12 +188,12 @@ namespace TallySyncApp
         private void ShowError(string message)
         {
             ErrorText.Text = message;
-            ErrorText.Visibility = Visibility.Visible;
+            ErrorBorder.Visibility = Visibility.Visible;
         }
 
         private void HideError()
         {
-            ErrorText.Visibility = Visibility.Collapsed;
+            ErrorBorder.Visibility = Visibility.Collapsed;
         }
 
         private void SetLoading(bool isLoading)

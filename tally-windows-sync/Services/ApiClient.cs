@@ -108,7 +108,9 @@ namespace TallySyncApp.Services
             {
                 ["id"] = companyUuid,
                 ["name"] = company.Name,
+                ["gstin"] = company.Gstin,
                 ["address"] = company.Address,
+                ["state"] = company.State,
                 ["phone"] = company.Phone,
                 ["email"] = company.Email
             };
@@ -261,6 +263,7 @@ namespace TallySyncApp.Services
                         
                         // Keep: stock_group, hsn_code, gst_rate (already match schema)
                         // Note: hsn_code uses snake_case which matches both model and DB
+                        // Keep: opening_value, closing_value (stock valuation amounts)
                         
                         // Ensure ID is a valid UUID (Tally GUIDs may not be valid UUIDs)
                         if (dict.ContainsKey("id"))
@@ -273,15 +276,13 @@ namespace TallySyncApp.Services
                             }
                         }
                         
-                        // Remove unsupported columns
+                        // Remove unsupported columns (but keep opening_value, closing_value!)
                         dict.Remove("alias");
                         dict.Remove("stock_category");
-                        dict.Remove("opening_value");
                         dict.Remove("inward_quantity");
                         dict.Remove("inward_value");
                         dict.Remove("outward_quantity");
                         dict.Remove("outward_value");
-                        dict.Remove("closing_value");
                     }
                     
                     itemsWithCompanyId.Add(dict);
@@ -386,7 +387,9 @@ namespace TallySyncApp.Services
                                 ["amount"] = entry.Amount,
                                 ["unit"] = entry.Unit ?? "",
                                 ["hsn_code"] = entry.HsnCode ?? "",
-                                ["is_inward"] = isInward
+                                ["is_inward"] = isInward,
+                                ["discount_percent"] = entry.DiscountPercent,
+                                ["tax_rate"] = entry.TaxRate ?? 0m
                             });
                             stockIdx++;
                         }
@@ -905,6 +908,67 @@ namespace TallySyncApp.Services
         public void Dispose()
         {
             _httpClient?.Dispose();
+        }
+
+        /// <summary>
+        /// Fetch Telegram Chat ID for the current user
+        /// </summary>
+        public async Task<string?> GetTelegramChatIdAsync(string userId)
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/user_profiles?user_id=eq.{userId}&select=telegram_chat_id";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var users = JsonConvert.DeserializeObject<List<dynamic>>(content);
+                    if (users != null && users.Count > 0)
+                    {
+                        return users[0].telegram_chat_id?.ToString();
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Failed to fetch Telegram Chat ID: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Send Telegram Notification directly via Bot API
+        /// </summary>
+        public async Task SendTelegramNotificationAsync(string chatId, string message)
+        {
+            try
+            {
+                var botToken = "7953293377:AAECXVdld53QjfAkqz6LVW71Zxi8zn3K27M";
+                var url = $"https://api.telegram.org/bot{botToken}/sendMessage";
+                
+                var payload = new
+                {
+                    chat_id = chatId,
+                    text = message,
+                    parse_mode = "HTML"
+                };
+
+                var json = JsonConvert.SerializeObject(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                
+                // Use a separate client for Telegram to avoid Supabase headers
+                using (var tgClient = new HttpClient())
+                {
+                    await tgClient.PostAsync(url, content);
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Failed to send Telegram notification: {ex.Message}");
+            }
         }
     }
 }

@@ -5,7 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         mc:Ignorable="d"
-        Title="LiveKeeping Tally Sync" Height="600" Width="900"
+        Title="TallyLink - LiveKeeping Sync" Height="600" Width="900"
+        Icon="app_icon.ico"
         FontFamily="Segoe UI" Background="#F3F4F6">
 
     <Window.Resources>
@@ -304,7 +305,7 @@
                 <TextBlock Text="Ready"/>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="v1.0.2"/>
+                <TextBlock Text="v2.0.0"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>

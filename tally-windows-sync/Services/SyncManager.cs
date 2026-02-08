@@ -28,6 +28,7 @@ namespace TallySyncApp.Services
         private bool _isSyncing = false;
         private bool _isFirstRun = true;
         private readonly object _syncLock = new object();
+        private Dictionary<string, string> _hsnCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public SyncStatus Status { get; private set; } = new();
         public Company? CurrentCompany { get; private set; }
@@ -110,9 +111,9 @@ namespace TallySyncApp.Services
             string supabaseUrl = _settings.AuthSettings.SupabaseUrl;
             string supabaseKey = _settings.AuthSettings.SupabaseAnonKey;
 
-            // Fallback to known values if empty (safety net)
-            if (string.IsNullOrEmpty(supabaseUrl)) supabaseUrl = "https://lcsehcwocqvxrrgbmhcz.supabase.co";
-            if (string.IsNullOrEmpty(supabaseKey)) supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4";
+            // Fallback to known values if empty (safety net) - Ensure these are empty for production/Git
+            if (string.IsNullOrEmpty(supabaseUrl)) supabaseUrl = "";
+            if (string.IsNullOrEmpty(supabaseKey)) supabaseKey = "";
 
             _apiClient = new ApiClient(
                 supabaseUrl,
@@ -442,8 +443,11 @@ namespace TallySyncApp.Services
                         UpdateStatus(SyncState.FetchingData, $"Found: {breakdown}", company.Name);
                         await Task.Delay(1000); // Give user a moment to see the counts
                         */
-                        AddLog("⏩ Skipping statistics fetch for performance");
-                        Status.TotalRecords = 1; // Default to allow progress to move
+                        // FIX 1: HSN Cache MUST be scoped per company to avoid cross-contamination
+                        _hsnCache.Clear();
+
+                        // FIX 2: Status.TotalRecords logic - Reset properly at start of company sync
+                        Status.TotalRecords = 0; 
                         Status.ProcessedRecords = 0;
                         
                         // Process queue for this company
@@ -459,40 +463,34 @@ namespace TallySyncApp.Services
                         // ===========================================
                         // CACHE STOCK HSN (Critical for HSN Fallback)
                         // ===========================================
-                        UpdateStatus(SyncState.FetchingData, $"Caching Stock Items HSN...");
-                        var stockItems = await _tallyConnector!.GetStockItemsAsync(company.Name);
-                        var hsnCache = stockItems
-                            .Where(s => !string.IsNullOrEmpty(s.HsnCode))
-                            .GroupBy(s => s.Name)
-                            .ToDictionary(g => g.Key, g => g.First().HsnCode, StringComparer.OrdinalIgnoreCase);
-                        
-                        SyncLogger.Log($"📦 Cached {hsnCache.Count} HSN codes from {stockItems.Count} items");
-                        AddLog($"📦 HSN Cache: {hsnCache.Count} valid codes found in {stockItems.Count} items");
-                        
-                        // DEBUG: Check for missing HSN codes
-                        if (hsnCache.Count == 0 && stockItems.Count > 0)
+                        // Optimization: Fetch stock items to populate cache for this company
+                        // Since we cleared cache above, this will always run for usage in this session
+                        if (_hsnCache.Count == 0)
                         {
-                            AddLog($"⚠️ WARNING: {stockItems.Count} stock items found but ZERO HSN codes!");
-                            AddLog("   → Check if HSN codes are filled in Tally Masters");
-                        }
-
-                        // TEMP DEBUG: Print sample HSN mappings
-                        if (hsnCache.Any())
-                        {
-                            AddLog($"📋 Sample HSN Cache Entries:");
-                            foreach (var entry in hsnCache.Take(5))
+                            UpdateStatus(SyncState.FetchingData, $"Caching Stock Items HSN...");
+                            var stockItems = await _tallyConnector!.GetStockItemsAsync(company.Name);
+                            _hsnCache = stockItems
+                                .Where(s => !string.IsNullOrEmpty(s.HsnCode))
+                                .GroupBy(s => s.Name)
+                                .ToDictionary(g => g.Key, g => g.First().HsnCode, StringComparer.OrdinalIgnoreCase);
+                            
+                            SyncLogger.Log($"📦 Cached {_hsnCache.Count} HSN codes from {stockItems.Count} items");
+                            AddLog($"📦 HSN Cache: {_hsnCache.Count} valid codes found in {stockItems.Count} items");
+                            
+                            // Sync Stock Items (Only if needed or force/first)
+                            if (stockItems.Any() && (isFirstSync || forceResync || stockItems.Count != stockSynced)) // Simplified condition
                             {
-                                AddLog($"   {entry.Key} → {entry.Value}");
+                                 await UploadListAsync("stock_items", stockItems, "id");
+                                 stockSynced = stockItems.Count;
+                                 AddLog($"📦 Synced {stockItems.Count} Stock Items");
                             }
                         }
-                        
-                        // Sync Stock Items (Always update masters to ensure HSN/GST rates are fresh)
-                        if (stockItems.Any())
+                        else
                         {
-                             await UploadListAsync("stock_items", stockItems, "id");
-                             stockSynced = stockItems.Count;
-                             AddLog($"📦 Synced {stockItems.Count} Stock Items");
+                            AddLog($"📦 Using cached HSN ({_hsnCache.Count} items)");
                         }
+                        
+                        var hsnCache = _hsnCache;
 
                         // ===========================================
                         // ALTERID-BASED INCREMENTAL SYNC
@@ -730,16 +728,14 @@ namespace TallySyncApp.Services
                                 }
                                 
                                 // Also sync Sales/Purchases for modified vouchers
-                                // Filter by date range of modified vouchers
+                                // Optimization: Map existing vouchers instead of re-fetching from Tally
                                 if (finalVouchers.Any())
                                 {
-                                    var minDate = finalVouchers.Min(v => v.VoucherDate);
-                                    var maxDate = finalVouchers.Max(v => v.VoucherDate);
-                                    
-                                    // Re-sync sales/purchases for affected date range
-                                    var sales = await _tallyConnector.GetSalesAsync(minDate, maxDate, company.Name, hsnCache);
-                                    if (sales != null && sales.Count > 0)
+                                    // 1. Map existing vouchers to Sales
+                                    var salesVouchers = finalVouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (salesVouchers.Count > 0)
                                     {
+                                        var sales = _tallyConnector.MapVouchersToSales(salesVouchers, company.Name);
                                         var salesFlat = sales.Select(s => new {
                                             id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
                                             invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
@@ -753,41 +749,18 @@ namespace TallySyncApp.Services
                                             narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
                                         }).ToList();
                                         await UploadListAsync("sales", salesFlat, "id");
-                                        
-                                        // FIX: Upload sales_items (was missing in incremental sync!)
-                                        var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
-                                        if (salesItems.Any()) 
-                                        {
-                                            await UploadListAsync("sales_items", salesItems, "id");
-                                            AddLog($"   📦 {salesItems.Count} sales items synced");
+                                        salesSynced += salesVouchers.Count;
 
-                                            // DIAGNOSTIC SELECTION: Log HSN coverage
-                                            var itemsWithHsn = salesItems.Count(i => !string.IsNullOrEmpty(i.HsnCode));
-                                            AddLog($"   📊 HSN Coverage: {itemsWithHsn}/{salesItems.Count} items ({(salesItems.Count > 0 ? (itemsWithHsn * 100 / salesItems.Count) : 0)}%)");
-                                            
-                                            if (itemsWithHsn == 0 && salesItems.Count > 0)
-                                            {
-                                                AddLog($"   ❌ CRITICAL: ZERO HSN CODES!");
-                                                AddLog($"   First 3 items without HSN:");
-                                                foreach (var item in salesItems.Take(3))
-                                                {
-                                                    AddLog($"   - {item.StockItemName}");
-                                                }
-                                            }
-                                            else if (itemsWithHsn > 0)
-                                            {
-                                                AddLog($"   ✅ Sample items WITH HSN:");
-                                                foreach (var item in salesItems.Where(i => !string.IsNullOrEmpty(i.HsnCode)).Take(3))
-                                                {
-                                                    AddLog($"   - {item.StockItemName} -> {item.HsnCode}");
-                                                }
-                                            }
-                                        }
+                                        var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
+                                        if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
+                                        AddLog($"   📊 {salesVouchers.Count} sales updated locally");
                                     }
-                                    
-                                    var purchases = await _tallyConnector.GetPurchasesAsync(minDate, maxDate, company.Name, hsnCache);
-                                    if (purchases != null && purchases.Count > 0)
+
+                                    // 2. Map existing vouchers to Purchases
+                                    var purchaseVouchers = finalVouchers.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
+                                    if (purchaseVouchers.Count > 0)
                                     {
+                                        var purchases = _tallyConnector.MapVouchersToPurchases(purchaseVouchers, company.Name);
                                         var purchasesFlat = purchases.Select(p => new {
                                             id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
                                             invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
@@ -801,14 +774,11 @@ namespace TallySyncApp.Services
                                             master_id = p.MasterId, alter_id = p.AlterId
                                         }).ToList();
                                         await UploadListAsync("purchases", purchasesFlat, "id");
-                                        
-                                        // FIX: Upload purchase_items (was missing in incremental sync!)
+                                        purchasesSynced += purchaseVouchers.Count;
+
                                         var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
-                                        if (purchaseItems.Any()) 
-                                        {
-                                            await UploadListAsync("purchase_items", purchaseItems, "id");
-                                            AddLog($"   📦 {purchaseItems.Count} purchase items synced");
-                                        }
+                                        if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
+                                        AddLog($"   🛒 {purchaseVouchers.Count} purchases updated locally");
                                     }
                                 }
                             }
@@ -878,6 +848,38 @@ namespace TallySyncApp.Services
                                 syncedVoucherIds
                             );
                             AddLog($"📜 Sync history saved: {syncType} sync completed");
+                        }
+
+                        // ===== PUSH SYNC (Cloud -> Tally) =====
+                        await ProcessPendingTransactionsAsync(company);
+
+                        // ===== TELEGRAM NOTIFICATION =====
+                        if (Status.TotalRecords > 0)
+                        {
+                            try
+                            {
+                                var currentUserId = App.AuthService?.CurrentSession?.UserId;
+                                if (!string.IsNullOrEmpty(currentUserId))
+                                {
+                                    var tgChatId = await _apiClient!.GetTelegramChatIdAsync(currentUserId);
+                                    if (!string.IsNullOrEmpty(tgChatId))
+                                    {
+                                        string telegramMsg = $"✅ <b>Sync Completed for {company.Name}</b>\n\n" +
+                                                     $"📊 <b>Stats:</b>\n" +
+                                                     $"• Vouchers: {vouchersSynced}\n" +
+                                                     $"• Ledgers: {ledgersSynced}\n" +
+                                                     $"• Items: {stockSynced}\n\n" +
+                                                     $"<i>View details on dashboard.</i>";
+                                        
+                                        await _apiClient.SendTelegramNotificationAsync(tgChatId, telegramMsg);
+                                        AddLog($"📨 Telegram notification sent to user.");
+                                    }
+                                }
+                            }
+                            catch (Exception tgEx)
+                            {
+                                SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
+                            }
                         }
                     }
                     catch (Exception ex)

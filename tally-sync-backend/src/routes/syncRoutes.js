@@ -10,6 +10,7 @@ const CompanyService = require('../services/companyService');
 const logger = require('../utils/logger');
 const { body, validationResult } = require('express-validator');
 const { SYNC_DATA_TYPES } = require('../config/constants');
+const TelegramService = require('../services/telegramService');
 
 // Validation middleware for sync requests
 const validateSync = [
@@ -57,6 +58,9 @@ router.post('/', validateSync, async (req, res) => {
 
         // Update company last sync timestamp
         await CompanyService.updateLastSync(companyId);
+
+        // 🔔 Notify via Telegram
+        await TelegramService.sendSyncReport(companyId, dataType, result);
 
         res.status(200).json({
             success: true,
@@ -150,6 +154,14 @@ router.post('/batch', async (req, res) => {
 
         await CompanyService.updateLastSync(companyId);
 
+        // 🔔 Notify via Telegram (Summary for Batch)
+        await TelegramService.sendSyncReport(companyId, 'Batch Transfer', {
+            count: totalSuccess,
+            failed: totalFailed,
+            added: totalSuccess,
+            success: true
+        });
+
         res.status(200).json({
             success: true,
             summary: {
@@ -187,6 +199,13 @@ router.post('/sync/with-items', async (req, res) => {
         const result = await SyncService.syncWithItems(companyId, dataType, records);
 
         await CompanyService.updateLastSync(companyId);
+
+        // 🔔 Notify via Telegram
+        await TelegramService.sendSyncReport(companyId, dataType, {
+            count: result.parentCount,
+            added: result.parentCount,
+            success: true
+        });
 
         res.status(200).json({
             success: true,

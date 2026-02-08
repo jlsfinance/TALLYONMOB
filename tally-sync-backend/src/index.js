@@ -16,10 +16,15 @@ app.use(morgan('dev'));
 // Import Routes
 const syncRoutes = require('./routes/syncRoutes');
 const dataRoutes = require('./routes/dataRoutes');
+const telegramRoutes = require('./routes/telegramRoutes');
+const contactRoutes = require('./routes/contactRoutes');
+const telegramService = require('./services/telegramService');
 
 // Use Routes
 app.use('/api/v1/sync', syncRoutes);
 app.use('/api/v1/data', dataRoutes);
+app.use('/api/v1/telegram', telegramRoutes);
+app.use('/api/v1/contact', contactRoutes);
 
 // Health Check
 app.get('/', (req, res) => {
@@ -32,4 +37,7 @@ app.listen(PORT, () => {
     console.log(`Endpoints:`);
     console.log(`- POST /api/v1/sync (Sync Tally Data)`);
     console.log(`- GET  /api/v1/data (Web Dashboard)`);
+
+    // Start Telegram Polling for local dev (MIGRATED TO SUPABASE EDGE FUNCTIONS)
+    // telegramService.startPolling();
 });

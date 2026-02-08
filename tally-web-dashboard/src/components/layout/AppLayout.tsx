@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,12 +6,12 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
-    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale
+    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/GlassUI';
 
 // Navigation Item
-const NavItem = ({
+const NavItem = memo(({
     to, icon, label, collapsed, active
 }: { to: string; icon: React.ReactNode; label: string; collapsed: boolean; active: boolean }) => {
     return (
@@ -30,7 +30,7 @@ const NavItem = ({
             </div>
         </Link>
     );
-};
+});
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { user, companies, selectedCompany, selectCompany, signOut, appMode } = useAuth() as any;
@@ -52,32 +52,46 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         window.dispatchEvent(new CustomEvent('app-refresh-trigger'));
     };
 
-    const tallyNavItems = [
-        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-        { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
-        { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
-        { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
-        { to: '/purchases', icon: <Package size={20} />, label: 'Purchases' },
-        { to: '/stock', icon: <Box size={20} />, label: 'Stock Summary' },
-        { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
-        { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
-        { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Reports' },
-    ];
+    const isAdmin = user?.email === 'lovneetrathi@gmail.com';
 
-    const billingNavItems = [
-        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Billing Desk' },
-        { to: '/create-invoice', icon: <Plus size={20} />, label: 'Create Invoice' },
-        { to: '/sales', icon: <FileText size={20} />, label: 'Recent Invoices' },
-        { to: '/ledgers', icon: <Users size={20} />, label: 'Customers' },
-        { to: '/stock', icon: <Box size={20} />, label: 'Inventory' },
-        { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
-        { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
-        { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Filing' },
-    ];
+    const tallyNavItems = useMemo(() => {
+        const items = [
+            { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
+            { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
+            { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
+            { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
+            { to: '/purchases', icon: <Package size={20} />, label: 'Purchases' },
+            { to: '/stock', icon: <Box size={20} />, label: 'Stock Summary' },
+            { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
+            { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
+            { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Reports' },
+        ];
+        if (isAdmin) {
+            items.push({ to: '/admin', icon: <Lock size={20} />, label: 'Super Admin' });
+        }
+        return items;
+    }, [isAdmin]);
+
+    const billingNavItems = useMemo(() => {
+        const items = [
+            { to: '/', icon: <LayoutDashboard size={20} />, label: 'Billing Desk' },
+            { to: '/create-invoice', icon: <Plus size={20} />, label: 'Create Invoice' },
+            { to: '/sales', icon: <FileText size={20} />, label: 'Recent Invoices' },
+            { to: '/ledgers', icon: <Users size={20} />, label: 'Customers' },
+            { to: '/stock', icon: <Box size={20} />, label: 'Inventory' },
+            { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
+            { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
+            { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Filing' },
+        ];
+        if (isAdmin) {
+            items.push({ to: '/admin', icon: <Lock size={20} />, label: 'Super Admin' });
+        }
+        return items;
+    }, [isAdmin]);
 
     const navItems = appMode === 'tally' ? tallyNavItems : billingNavItems;
 
-    const bottomNavItems = appMode === 'tally' ? [
+    const bottomNavItems = useMemo(() => appMode === 'tally' ? [
         { to: '/', icon: <LayoutDashboard size={22} />, label: 'Home' },
         { to: '/vouchers', icon: <FileText size={22} />, label: 'Vouchers' },
         { to: '/ledgers', icon: <Users size={22} />, label: 'Parties' },
@@ -87,7 +101,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { to: '/create-invoice', icon: <Plus size={22} />, label: 'Bill' },
         { to: '/sales', icon: <FileText size={22} />, label: 'Sales' },
         { to: '/ledgers', icon: <Users size={22} />, label: 'Parties' },
-    ];
+    ], [appMode]);
 
     return (
         <div className="flex min-h-screen relative overflow-x-hidden">

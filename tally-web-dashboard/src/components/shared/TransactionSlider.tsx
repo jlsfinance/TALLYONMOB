@@ -1,4 +1,4 @@
-import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import TransactionCard from './TransactionCard';
 
@@ -8,6 +8,8 @@ interface TransactionSliderProps {
 }
 
 const TransactionSlider: React.FC<TransactionSliderProps> = ({ transactions, compact = false }) => {
+    const navigate = useNavigate();
+
     if (!transactions || transactions.length === 0) {
         return (
             <div className="py-2 px-6 text-[9px] font-black uppercase tracking-[2px] text-[var(--text-muted)] italic opacity-50">
@@ -26,8 +28,8 @@ const TransactionSlider: React.FC<TransactionSliderProps> = ({ transactions, com
                     <div
                         key={v.voucher_id || idx}
                         className={`flex-shrink-0 snap-start transition-all ${compact
-                                ? 'w-[160px] sm:w-[180px]'
-                                : 'w-[85vw] sm:w-[400px]'
+                            ? 'w-[160px] sm:w-[180px]'
+                            : 'w-[85vw] sm:w-[400px]'
                             }`}
                     >
                         <TransactionCard
@@ -38,7 +40,10 @@ const TransactionSlider: React.FC<TransactionSliderProps> = ({ transactions, com
                             amount={v.amount || v.total_amount}
                             status={v.sync_status || 'Synced'}
                             compact={compact}
-                            onClick={() => window.location.href = `/vouchers/${encodeURIComponent(v.voucher_id)}`}
+                            onClick={() => {
+                                const targetId = v.id || v.voucher_id;
+                                if (targetId) navigate(`/vouchers/${targetId}`);
+                            }}
                         />
                     </div>
                 ))}

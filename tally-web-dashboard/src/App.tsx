@@ -32,10 +32,15 @@ import LandingPage3D from './pages/LandingPage3D';
 import ProfitLossPage from './pages/ProfitLossPage';
 import BalanceSheetPage from './pages/BalanceSheetPage';
 import AuthCallback from './pages/AuthCallback';
+import OnboardingPage from './pages/OnboardingPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsPage from './pages/TermsPage';
+import RefundPolicyPage from './pages/RefundPolicyPage';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading, selectedCompany, appMode } = useAuth() as any;
+    const { user, loading, selectedCompany, appMode, companies } = useAuth() as any;
     const location = useLocation();
 
     if (loading) {
@@ -53,13 +58,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         return <Navigate to="/login" replace />;
     }
 
-    // First force mode selection if not set
-    if (!appMode && location.pathname !== '/select-mode') {
+    // First force mode selection if not set (allow onboarding and admin pages)
+    // Only redirect if we are strictly on the root path or trying to access protected areas without mode
+    if (!appMode &&
+        location.pathname !== '/select-mode' &&
+        location.pathname !== '/onboarding' &&
+        location.pathname !== '/admin' &&
+        location.pathname !== '/login') {
         return <Navigate to="/select-mode" replace />;
     }
 
-    // If in Tally mode, force company selection
-    if (appMode === 'tally' && !selectedCompany && location.pathname !== '/select-company') {
+    // If in Tally mode and no company selected, redirect to select-company
+    // This allows users to land on Select Company page even if they have 0 companies
+    if (appMode === 'tally' && !selectedCompany &&
+        location.pathname !== '/select-company' &&
+        location.pathname !== '/onboarding' &&
+        location.pathname !== '/admin' &&
+        !location.pathname.startsWith('/create-invoice') &&
+        location.pathname !== '/select-mode' &&  // Added: prevent redirect loop when trying to switch mode
+        location.pathname !== '/') {
         return <Navigate to="/select-company" replace />;
     }
 
@@ -98,13 +115,18 @@ function App() {
                     <Routes>
                         <Route path="/login" element={<LoginPage />} />
                         <Route path="/auth/callback" element={<AuthCallback />} />
+                        <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
+                        <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />
 
                         {/* Protected Routes */}
                         <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
                         <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
 
-                        {/* Landing Page (Fullscreen, No Layout) */}
-                        <Route path="/landing" element={<ProtectedRoute><LandingPage3D /></ProtectedRoute>} />
+                        {/* Landing & Legal Pages (Public) */}
+                        <Route path="/" element={<LandingPage3D />} />
+                        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                        <Route path="/terms" element={<TermsPage />} />
+                        <Route path="/refund" element={<RefundPolicyPage />} />
 
                         <Route
                             path="/*"
@@ -112,7 +134,9 @@ function App() {
                                 <ProtectedRoute>
                                     <AppLayout>
                                         <Routes>
-                                            <Route path="/" element={<DashboardPage />} />
+                                            <Route path="/dashboard" element={<DashboardPage />} />
+                                            {/* Legacy redirect */}
+                                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
                                             <Route path="/dashboard-3d" element={<Dashboard3DPage />} />
                                             <Route path="/ledgers" element={<LedgersPage />} />
                                             <Route path="/ledgers/:id" element={<LedgerDetailPage />} />

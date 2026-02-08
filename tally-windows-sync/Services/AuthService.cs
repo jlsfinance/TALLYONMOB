@@ -137,6 +137,128 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Sign in with Google OAuth
+        /// </summary>
+        public async Task<(bool Success, string? Error)> SignInWithGoogleAsync()
+        {
+            try
+            {
+                // Generate state for CSRF protection
+                var state = Guid.NewGuid().ToString();
+                var redirectUri = "http://localhost:54321/auth/callback";
+
+                // Build OAuth URL
+                var authUrl = $"{_supabaseUrl}/auth/v1/authorize?" +
+                    $"provider=google&" +
+                    $"redirect_to={Uri.EscapeDataString(redirectUri)}&" +
+                    $"state={state}";
+
+                // Start local HTTP listener for callback
+                var listener = new System.Net.HttpListener();
+                listener.Prefixes.Add("http://localhost:54321/");
+                listener.Start();
+
+                // Open browser
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = authUrl,
+                    UseShellExecute = true
+                });
+
+                // Wait for callback (with timeout)
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5));
+                var contextTask = listener.GetContextAsync();
+                var completedTask = await Task.WhenAny(contextTask, timeoutTask);
+
+                if (completedTask == timeoutTask)
+                {
+                    listener.Stop();
+                    return (false, "Sign-in timed out. Please try again.");
+                }
+
+                var context = await contextTask;
+                var request = context.Request;
+                var response = context.Response;
+
+                // Extract tokens from URL fragment (Supabase returns them in hash)
+                var query = request.Url?.Query;
+                var accessToken = ExtractQueryParam(query, "access_token");
+                var refreshToken = ExtractQueryParam(query, "refresh_token");
+
+                // Send success page
+                var responseString = @"
+                    <html>
+                    <head><title>Sign In Successful</title></head>
+                    <body style='font-family: Arial; text-align: center; padding: 50px;'>
+                        <h1 style='color: #10b981;'>✓ Sign In Successful!</h1>
+                        <p>You can close this window and return to the app.</p>
+                        <script>window.close();</script>
+                    </body>
+                    </html>";
+
+                var buffer = Encoding.UTF8.GetBytes(responseString);
+                response.ContentLength64 = buffer.Length;
+                await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
+                response.Close();
+                listener.Stop();
+
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    return (false, "Failed to retrieve authentication tokens.");
+                }
+
+                // Get user info
+                var userInfoRequest = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/auth/v1/user");
+                userInfoRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
+                var userInfoResponse = await _httpClient.SendAsync(userInfoRequest);
+
+                if (userInfoResponse.IsSuccessStatusCode)
+                {
+                    var userInfoBody = await userInfoResponse.Content.ReadAsStringAsync();
+                    var userInfo = JsonSerializer.Deserialize<SupabaseUser>(userInfoBody);
+
+                    CurrentSession = new UserSession
+                    {
+                        UserId = userInfo?.id ?? "",
+                        Email = userInfo?.email ?? "",
+                        AccessToken = accessToken,
+                        RefreshToken = refreshToken ?? "",
+                        ExpiresAt = DateTime.UtcNow.AddHours(1) // Default 1 hour
+                    };
+
+                    SaveSession();
+                    SessionChanged?.Invoke(this, CurrentSession);
+                    return (true, null);
+                }
+
+                return (false, "Failed to retrieve user information.");
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Google Sign-In error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Extract query parameter from URL
+        /// </summary>
+        private string? ExtractQueryParam(string? query, string paramName)
+        {
+            if (string.IsNullOrEmpty(query)) return null;
+
+            var pairs = query.TrimStart('?').Split('&');
+            foreach (var pair in pairs)
+            {
+                var parts = pair.Split('=');
+                if (parts.Length == 2 && parts[0] == paramName)
+                {
+                    return Uri.UnescapeDataString(parts[1]);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Sign out current user
         /// </summary>
         public void SignOut()

@@ -25,33 +25,44 @@ export default function PurchasesPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [fromDate, setFromDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-    const [toDate, setToDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+
+    // Initial state: Set correct dates immediately based on FY
+    const getDatesForFy = (fy: string) => {
+        const fyYear = parseInt(fy.split(' ')[1].split('-')[0]);
+        return {
+            start: format(new Date(fyYear, 3, 1), 'yyyy-MM-dd'),
+            end: format(new Date(fyYear + 1, 2, 31), 'yyyy-MM-dd')
+        };
+    };
+
+    const [dateRange, setDateRange] = useState(getDatesForFy(getCurrentFy()));
     const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     useEffect(() => {
         // Update dates when FY changes
-        const fyYear = parseInt(selectedFy.split(' ')[1].split('-')[0]);
-        setFromDate(format(new Date(fyYear, 3, 1), 'yyyy-MM-dd'));
-        setToDate(format(new Date(fyYear + 1, 2, 31), 'yyyy-MM-dd'));
+        setDateRange(getDatesForFy(selectedFy));
     }, [selectedFy]);
 
     useEffect(() => {
         if (selectedCompany) loadPurchases();
-    }, [selectedCompany, fromDate, toDate]);
+    }, [selectedCompany, dateRange]); // Dependency on dateRange object
 
     const loadPurchases = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase.from('vouchers')
+            console.log('Loading purchases for range:', dateRange);
+            const { data, error } = await supabase.from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
-                .gte('voucher_date', fromDate)
-                .lte('voucher_date', toDate)
+                .gte('voucher_date', dateRange.start)
+                .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false });
 
+            if (error) throw error;
+
             const purchaseData = data || [];
+            console.log('Purchases loaded:', purchaseData.length);
             setPurchases(purchaseData);
 
             const total = purchaseData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);

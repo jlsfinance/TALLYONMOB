@@ -6,7 +6,7 @@
 const { supabase } = require('../config/supabase');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+const uuidv4 = () => crypto.randomUUID();
 
 class CompanyService {
     /**

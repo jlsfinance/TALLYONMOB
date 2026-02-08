@@ -5,7 +5,8 @@
 
 const { supabase } = require('../config/supabase');
 const logger = require('../utils/logger');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 const { SYNC_STATUS, MAX_SYNC_BATCH_SIZE } = require('../config/constants');
 
 class SyncService {

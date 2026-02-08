@@ -98,65 +98,12 @@ export default function ProfitLossPage() {
             // Fetch all ledgers with their groups
             const { data: ledgers, error: ledgersError } = await supabase
                 .from('ledgers')
-                .select('id, name, group_name, opening_balance')
+                .select('id, name, parent, opening_balance, current_balance')
                 .eq('company_id', selectedCompany.id);
 
-            if (ledgersError) {
-                console.error('Ledgers error:', ledgersError);
-            }
+            if (ledgersError) throw ledgersError;
 
-            // Fetch all vouchers in date range to get their IDs
-            const { data: vouchers, error: vouchersError } = await supabase
-                .from('vouchers')
-                .select('id, voucher_type, voucher_date, total_amount, party_name')
-                .eq('company_id', selectedCompany.id)
-                .gte('voucher_date', dateRange.from)
-                .lte('voucher_date', dateRange.to);
-
-            if (vouchersError) {
-                console.error('Vouchers error:', vouchersError);
-            }
-
-            const voucherIds = (vouchers || []).map(v => v.id);
-
-            // Fetch ledger entries only for vouchers in date range
-            let ledgerEntries: any[] = [];
-            if (voucherIds.length > 0) {
-                const { data: entries, error: entriesError } = await supabase
-                    .from('voucher_ledger_entries')
-                    .select('ledger_name, amount, voucher_id')
-                    .in('voucher_id', voucherIds);
-
-                if (entriesError) {
-                    console.error('Ledger entries error:', entriesError);
-                } else {
-                    ledgerEntries = entries || [];
-                }
-            }
-
-            // Calculate ledger balances
-            const ledgerBalances: Record<string, number> = {};
-            ledgers?.forEach(l => {
-                ledgerBalances[l.name] = Number(l.opening_balance) || 0;
-            });
-
-            ledgerEntries.forEach(e => {
-                if (ledgerBalances[e.ledger_name] !== undefined) {
-                    ledgerBalances[e.ledger_name] += Number(e.amount) || 0;
-                }
-            });
-
-            // Group ledgers by P&L categories
-            const groupMapping: Record<string, string> = {
-                'Sales Accounts': 'income',
-                'Direct Incomes': 'income',
-                'Indirect Incomes': 'income',
-                'Purchase Accounts': 'expense',
-                'Direct Expenses': 'expense',
-                'Indirect Expenses': 'expense',
-                'Stock-in-Hand': 'stock'
-            };
-
+            // Group mapping based on standard Tally primary groups
             const plData: any = {
                 // Left Side (Expenses)
                 openingStock: 0,
@@ -175,59 +122,70 @@ export default function ProfitLossPage() {
                 nettLoss: 0
             };
 
-            // Get stock values from stock_items
-            const { data: stockItems, error: stockError } = await supabase
-                .from('stock_items')
-                .select('name, opening_balance, opening_value, closing_balance, closing_value')
-                .eq('company_id', selectedCompany.id);
-
-            if (stockError) {
-                console.error('Stock items error:', stockError);
-            }
-
-            stockItems?.forEach(item => {
-                plData.openingStock += Number(item.opening_value) || 0;
-                plData.closingStock += Number(item.closing_value) || 0;
-            });
-
-            // Categorize ledgers
+            // Process Ledgers
             ledgers?.forEach(l => {
-                const balance = ledgerBalances[l.name] || 0;
+                const balance = Number(l.current_balance) || 0;
+                // In Tally: 
+                // Expenses/Assets are typically Positive (Debit)
+                // Incomes/Liabilities are typically Negative (Credit) in some syncs.
+                // We use absolute value for side-based display.
                 const absBalance = Math.abs(balance);
+                if (absBalance === 0) return;
 
-                switch (l.group_name) {
-                    case 'Sales Accounts':
-                        plData.salesAccounts.total += absBalance;
-                        plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
-                    case 'Direct Incomes':
-                        plData.directIncomes.total += absBalance;
-                        plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
-                    case 'Indirect Incomes':
-                        plData.indirectIncomes.total += absBalance;
-                        plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
-                    case 'Purchase Accounts':
-                        plData.purchaseAccounts.total += absBalance;
-                        plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
-                    case 'Direct Expenses':
-                        plData.directExpenses.total += absBalance;
-                        plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
-                    case 'Indirect Expenses':
-                        plData.indirectExpenses.total += absBalance;
-                        plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                        break;
+                const group = l.parent || '';
+
+                if (group.includes('Sales Accounts')) {
+                    plData.salesAccounts.total += absBalance;
+                    plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Purchase Accounts')) {
+                    plData.purchaseAccounts.total += absBalance;
+                    plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Direct Expenses')) {
+                    plData.directExpenses.total += absBalance;
+                    plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Direct Incomes')) {
+                    plData.directIncomes.total += absBalance;
+                    plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Indirect Expenses')) {
+                    plData.indirectExpenses.total += absBalance;
+                    plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Indirect Incomes')) {
+                    plData.indirectIncomes.total += absBalance;
+                    plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Stock-in-Hand')) {
+                    plData.closingStock += absBalance;
                 }
             });
+
+            // Get stock values from stock_items table
+            const { data: stockItems } = await supabase
+                .from('stock_items')
+                .select('opening_stock, current_stock, rate, opening_value, closing_value')
+                .eq('company_id', selectedCompany.id);
+
+            if (stockItems && stockItems.length > 0) {
+                // Prefer direct value columns (synced from Tally)
+                const openingVal = stockItems.reduce((sum, item) => sum + (Number(item.opening_value) || 0), 0);
+                const closingVal = stockItems.reduce((sum, item) => sum + (Number(item.closing_value) || 0), 0);
+
+                if (openingVal > 0 || closingVal > 0) {
+                    plData.openingStock = openingVal;
+                    if (plData.closingStock === 0) plData.closingStock = closingVal;
+                } else {
+                    // Fallback: calculate from qty * rate
+                    plData.openingStock = stockItems.reduce((sum, item) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    const itemsClosingValue = stockItems.reduce((sum, item) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    if (itemsClosingValue > 0 && plData.closingStock === 0) {
+                        plData.closingStock = itemsClosingValue;
+                    }
+                }
+            }
 
             // Calculate Gross Profit
             const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
             const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
 
-            if (tradingCredit > tradingDebit) {
+            if (tradingCredit >= tradingDebit) {
                 plData.grossProfitCo = tradingCredit - tradingDebit;
                 plData.grossProfitBf = plData.grossProfitCo;
             } else {
@@ -239,7 +197,7 @@ export default function ProfitLossPage() {
             const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
             const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
 
-            if (plCredit > plDebit) {
+            if (plCredit >= plDebit) {
                 plData.nettProfit = plCredit - plDebit;
             } else {
                 plData.nettLoss = plDebit - plCredit;

@@ -91,9 +91,9 @@ namespace TallySyncApp
 
             if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
             {
-                // Use default values for testing
-                supabaseUrl = "https://lcsehcwocqvxrrgbmhcz.supabase.co";
-                supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4";
+                // Credentials should be loaded from appsettings.json
+                supabaseUrl = "";
+                supabaseKey = "";
             }
 
             _authService = new AuthService(supabaseUrl, supabaseKey);

@@ -13,6 +13,7 @@ export default function InvoicePDFPage() {
     const printRef = useRef();
 
     const [invoice, setInvoice] = useState(null);
+    const [companyInfo, setCompanyInfo] = useState(null);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [template, setTemplate] = useState('professional');
@@ -42,6 +43,19 @@ export default function InvoicePDFPage() {
             }
 
             if (voucherData) {
+                // Fetch full company details to get address/gstin (Moved up to be available for calculations)
+                const { data: companyData } = await supabase
+                    .from('companies')
+                    .select('*')
+                    .eq('id', voucherData.company_id)
+                    .single();
+
+                if (companyData) {
+                    setCompanyInfo(companyData);
+                } else {
+                    setCompanyInfo(selectedCompany);
+                }
+
                 // Fetch stock entries first to calculate GST from items
                 const { data: stockEntries } = await supabase
                     .from('voucher_stock_entries')
@@ -74,7 +88,7 @@ export default function InvoicePDFPage() {
                         quantity: Number(item.quantity) || Number(item.billed_qty) || 0,
                         rate: Number(item.rate) || Number(item.unit_price) || 0,
                         amount: amount,
-                        discount: Number(item.discount) || 0,
+                        discount: Number(item.discount) || Number(item.discount_percent) || 0,
                         taxable_value: taxable
                     };
                 });
@@ -114,7 +128,7 @@ export default function InvoicePDFPage() {
 
                 // If still no GST from ledgers, try calculating from items
                 if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0) {
-                    const companyState = selectedCompany?.state || '';
+                    const companyState = companyData?.state || selectedCompany?.state || '';
                     const partyState = voucherData.party_state || voucherData.place_of_supply || '';
                     const isIGST = companyState && partyState && companyState !== partyState;
 
@@ -182,6 +196,8 @@ export default function InvoicePDFPage() {
                     voucher_type: voucherData.voucher_type || 'Sales'
                 };
                 setInvoice(sale);
+
+
             }
         } catch (error) {
             console.error('Error loading invoice:', error);
@@ -193,6 +209,7 @@ export default function InvoicePDFPage() {
     const columnVisibility = useMemo(() => {
         const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-');
         const hasGST = items.some(i => i.gst_rate > 0) || invoice?.cgst_amount > 0 || invoice?.igst_amount > 0;
+        // Show discount if any item has discount OR if specifically requested (could add setting later)
         const hasDiscount = items.some(i => i.discount > 0);
         const hasUnit = items.some(i => i.unit);
         const isIGST = invoice?.igst_amount > 0;
@@ -304,347 +321,354 @@ export default function InvoicePDFPage() {
     const handleDownloadPDF = () => {
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 10;
         let y = 15;
 
-        // Colors
-        const primaryColor = [30, 58, 95]; // Dark blue
-        const accentColor = [0, 128, 128]; // Teal
-        const lightGray = [245, 245, 245];
-
-        // Header Background
-        doc.setFillColor(...primaryColor);
-        doc.rect(0, 0, pageWidth, 40, 'F');
-
-        // Company Name
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(18);
+        // --- STYLES ---
         doc.setFont('helvetica', 'bold');
-        doc.text(selectedCompany?.name || 'Company Name', pageWidth / 2, 15, { align: 'center' });
-
-        // Company Address
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text(selectedCompany?.address || '', pageWidth / 2, 22, { align: 'center' });
-
-        // GSTIN & Phone
-        doc.setFontSize(8);
-        const gstPhone = `GSTIN: ${selectedCompany?.gstin || 'N/A'} | Phone: ${selectedCompany?.phone || 'N/A'}`;
-        doc.text(gstPhone, pageWidth / 2, 28, { align: 'center' });
-
-        // Email
-        if (selectedCompany?.email) {
-            doc.text(`Email: ${selectedCompany.email}`, pageWidth / 2, 34, { align: 'center' });
-        }
-
-        y = 48;
-
-        // TAX INVOICE Title
-        doc.setFillColor(255, 193, 7); // Amber
-        doc.rect(margin, y - 5, pageWidth - margin * 2, 10, 'F');
+        doc.setFontSize(16);
         doc.setTextColor(0, 0, 0);
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text('TAX INVOICE', pageWidth / 2, y + 2, { align: 'center' });
 
-        y += 12;
-
-        // Invoice Details & Party Info (Two columns)
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.3);
-        doc.rect(margin, y, (pageWidth - margin * 2) / 2 - 2, 35);
-        doc.rect(margin + (pageWidth - margin * 2) / 2 + 2, y, (pageWidth - margin * 2) / 2 - 2, 35);
-
-        // Left Column - Invoice Details
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(100, 100, 100);
-        doc.text('INVOICE DETAILS', margin + 3, y + 5);
+        // --- COMPANY HEADER ---
+        const companyName = companyInfo?.name || selectedCompany?.name || 'Company Name';
+        doc.text(companyName, pageWidth / 2, y, { align: 'center' });
+        y += 6;
 
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(9);
-        doc.text(`Invoice No: ${invoice?.invoice_number || ''}`, margin + 3, y + 12);
-        doc.text(`Date: ${formatDate(invoice?.invoice_date)}`, margin + 3, y + 18);
-        doc.text(`Mode: ${invoice?.voucher_type || 'Sales'}`, margin + 3, y + 24);
-        if (invoice?.place_of_supply) {
-            doc.text(`Place of Supply: ${invoice.place_of_supply}`, margin + 3, y + 30);
-        }
-
-        // Right Column - Bill To
-        const rightX = margin + (pageWidth - margin * 2) / 2 + 5;
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(100, 100, 100);
-        doc.setFontSize(8);
-        doc.text('BILL TO', rightX, y + 5);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 0, 0);
         doc.setFontSize(10);
-        doc.text(invoice?.party_ledger_name || 'Customer', rightX, y + 12);
+        const companyAddr = companyInfo?.address || selectedCompany?.address || '';
+        const addrLines = doc.splitTextToSize(companyAddr, 120);
+        doc.text(addrLines, pageWidth / 2, y, { align: 'center' });
+        y += (addrLines.length * 4) + 2;
+
+        const gstin = companyInfo?.gstin || selectedCompany?.gstin || 'N/A';
+        doc.text(`GSTIN/UIN: ${gstin}`, pageWidth / 2, y, { align: 'center' });
+        y += 5;
+
+        const email = companyInfo?.email || selectedCompany?.email || '';
+        if (email) {
+            doc.text(`E-Mail: ${email}`, pageWidth / 2, y, { align: 'center' });
+            y += 5;
+        }
+
+        y += 5;
+
+        // --- TITLE ---
+        const isPurchase = invoice?.voucher_type?.toLowerCase().includes('purchase') || invoice?.voucher_type?.toLowerCase().includes('payment');
+        const title = isPurchase ? 'PURCHASE VOUCHER' : 'TAX INVOICE';
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(title, pageWidth / 2, y, { align: 'center' });
+        y += 2;
+
+        // --- BORDERS & GRID ---
+        // Main Box
+        const contentStartY = y;
+        const footerHeight = 45; // Space for sign/bank
+        const contentEndY = pageHeight - margin - footerHeight;
+
+        // Draw main outer border
+        // doc.rect(margin, contentStartY, pageWidth - 2 * margin, contentEndY - contentStartY);
+
+        // --- INVOICE INFO SECTION ---
+        // Top Section: 
+        // Left: Invoice Details
+        // Right: Date/Terms
+
+        const topSectionY = y;
+        const leftColX = margin + 2;
+        const rightColX = pageWidth / 2 + 2;
+
+        // Horizontal Line below Title
+        doc.setLineWidth(0.1);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 5;
+
+        // Left Side: Invoice No
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Invoice No:', leftColX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(invoice?.invoice_number || '-', leftColX + 25, y);
+
+        // Right Side: Date
+        doc.setFont('helvetica', 'bold');
+        doc.text('Dated:', rightColX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(formatDate(invoice?.invoice_date), rightColX + 30, y);
+
+        y += 6;
+
+        // Left: Delivery Note
+        doc.text('Delivery Note:', leftColX, y);
+        // Right: Mode/Terms
+        doc.text('Mode/Terms of Payment:', rightColX, y);
+
+        y += 6;
+
+        // Left: Supplier Ref (empty usually)
+        doc.text('Supplier\'s Ref:', leftColX, y);
+        // Right: Other Ref
+        doc.text('Other References:', rightColX, y);
+
+        y += 6;
+
+        // Separator Line
+        doc.line(margin, y, pageWidth - margin, y);
+        // Vertical Separator
+        doc.line(pageWidth / 2, topSectionY, pageWidth / 2, y);
+
+        // --- PARTY DETAILS ---
+        const partyStartY = y;
+        y += 5;
+
+        // Buyer (Bill To) - Full Width for now or Tally Style (Buyer is usually bottom left, Consignee top left if different)
+        // Standard Tally often puts Buyer on Right and Consignee on Left, or just one block.
+        // Let's do simple Buyer block.
+
+        doc.setFont('helvetica', 'bold');
+        const partyLabel = isPurchase ? 'Supplier (Bill From):' : 'Buyer (Bill To):';
+        doc.text(partyLabel, leftColX, y);
+        y += 5;
+
+        doc.setFontSize(10);
+        doc.text(invoice?.party_ledger_name || 'Cash', leftColX, y);
+        y += 5;
 
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         if (invoice?.party_address) {
-            const addrLines = doc.splitTextToSize(invoice.party_address, 80);
-            doc.text(addrLines, rightX, y + 18);
+            const lines = doc.splitTextToSize(invoice.party_address, pageWidth - 2 * margin - 10);
+            doc.text(lines, leftColX, y);
+            y += (lines.length * 4);
         }
+
+        y += 2;
         if (invoice?.party_gstin) {
-            doc.text(`GSTIN: ${invoice.party_gstin}`, rightX, y + 28);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`GSTIN/UIN: ${invoice.party_gstin}`, leftColX, y);
+            doc.setFont('helvetica', 'normal');
+            y += 5;
         }
-        if (invoice?.party_state) {
-            doc.text(`State: ${invoice.party_state}`, rightX, y + 33);
-        }
-
-        y += 42;
-
-        // Items Table
-        const tableColumns = ['#', 'Item Description'];
-        const columnStyles = {
-            0: { cellWidth: 8, halign: 'center' },
-            1: { cellWidth: 'auto' }
-        };
-        let colIndex = 2;
-
-        if (columnVisibility.hasHSN) {
-            tableColumns.push('HSN');
-            columnStyles[colIndex] = { cellWidth: 20, halign: 'center' };
-            colIndex++;
+        if (invoice?.party_state || invoice?.place_of_supply) {
+            doc.text(`State: ${invoice?.party_state || invoice?.place_of_supply}`, leftColX, y);
+            y += 5;
         }
 
-        tableColumns.push('Qty');
-        columnStyles[colIndex] = { cellWidth: 15, halign: 'center' };
-        colIndex++;
+        y += 2;
+        // Separator Line above Items
+        doc.line(margin, y, pageWidth - margin, y);
+        doc.rect(margin, contentStartY, pageWidth - 2 * margin, y - contentStartY); // Draw box around header part
 
-        if (columnVisibility.hasUnit) {
-            tableColumns.push('Unit');
-            columnStyles[colIndex] = { cellWidth: 12, halign: 'center' };
-            colIndex++;
-        }
+        // --- ITEMS TABLE ---
+        // --- ITEMS TABLE ---
+        const tableColumns = [
+            { header: 'SI No.', dataKey: 'sno' },
+            { header: 'Description of Goods', dataKey: 'desc' },
+            { header: 'HSN/SAC', dataKey: 'hsn' },
+            { header: 'GST Rate', dataKey: 'gst' }, // Added
+            { header: 'Quantity', dataKey: 'qty' },
+            { header: 'Rate', dataKey: 'rate' },
+            { header: 'Per', dataKey: 'unit' },
+            { header: 'Disc %', dataKey: 'disc' },   // Added
+            { header: 'Amount', dataKey: 'amount' }
+        ];
 
-        tableColumns.push('Rate');
-        columnStyles[colIndex] = { cellWidth: 22, halign: 'right' };
-        colIndex++;
-
-        if (columnVisibility.hasDiscount) {
-            tableColumns.push('Disc');
-            columnStyles[colIndex] = { cellWidth: 15, halign: 'right' };
-            colIndex++;
-        }
-
-        if (columnVisibility.hasGST) {
-            tableColumns.push('GST%');
-            columnStyles[colIndex] = { cellWidth: 15, halign: 'center' };
-            colIndex++;
-        }
-
-        tableColumns.push('Amount');
-        columnStyles[colIndex] = { cellWidth: 25, halign: 'right' };
-
-        // Prepare table data
-        const tableData = items.map((item, idx) => {
-            const row = [(idx + 1).toString(), item.stock_item_name];
-            if (columnVisibility.hasHSN) row.push(item.hsn_code || '-');
-            row.push(item.quantity.toString());
-            if (columnVisibility.hasUnit) row.push(item.unit || '');
-            row.push(formatNumber(item.rate));
-            if (columnVisibility.hasDiscount) row.push(formatNumber(item.discount));
-            if (columnVisibility.hasGST) row.push(item.gst_rate ? `${item.gst_rate}%` : '-');
-            row.push(formatNumber(item.amount));
-            return row;
-        });
-
-        // If no items, show placeholder
-        if (tableData.length === 0) {
-            tableData.push(['1', 'As per details', '', '1', '', formatNumber(invoice?.taxable_amount || 0), formatNumber(invoice?.taxable_amount || 0)]);
-        }
+        const tableBody = items.map((item, index) => ({
+            sno: index + 1,
+            desc: item.stock_item_name,
+            hsn: item.hsn_code || '',
+            gst: item.gst_rate ? `${item.gst_rate}%` : '', // Map GST
+            qty: item.quantity,
+            rate: formatNumber(item.rate),
+            unit: item.unit,
+            disc: item.discount ? `${item.discount}%` : '', // Map Discount
+            amount: formatNumber(item.amount)
+        }));
 
         autoTable(doc, {
             startY: y,
-            head: [tableColumns],
-            body: tableData,
-            theme: 'grid',
+            columns: tableColumns,
+            body: tableBody,
+            theme: 'plain',
+            styles: {
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0],
+                textColor: [0, 0, 0],
+                fontSize: 9,
+                valign: 'top',
+            },
             headStyles: {
-                fillColor: primaryColor,
-                textColor: 255,
-                fontSize: 8,
+                fillColor: [255, 255, 255],
+                textColor: [0, 0, 0],
                 fontStyle: 'bold',
-                halign: 'center'
+                halign: 'center',
+                lineWidth: 0.1,
+                lineColor: [0, 0, 0]
             },
-            bodyStyles: {
-                fontSize: 8,
-                textColor: [30, 30, 30]
+            columnStyles: {
+                sno: { halign: 'center', cellWidth: 10 },
+                desc: { halign: 'left' },
+                hsn: { halign: 'center', cellWidth: 18 },
+                gst: { halign: 'center', cellWidth: 12 }, // Width for GST
+                qty: { halign: 'right', cellWidth: 18 },
+                rate: { halign: 'right', cellWidth: 22 },
+                unit: { halign: 'center', cellWidth: 12 },
+                disc: { halign: 'center', cellWidth: 12 }, // Width for Disc
+                amount: { halign: 'right', cellWidth: 28 }
             },
-            columnStyles: columnStyles,
             margin: { left: margin, right: margin },
-            tableWidth: 'auto'
+            tableLineWidth: 0.1,
+            tableLineColor: [0, 0, 0],
+            didDrawPage: (data) => {
+                // Determine layout on new pages if multipage
+            }
         });
 
-        y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 5 : y + 60;
+        y = doc.lastAutoTable.finalY;
 
-        // Two column layout: Amount in Words + Totals
-        const totalsStartX = pageWidth - margin - 80;
+        // --- TOTALS ROW ---
+        // Draw a line for total
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 1; // padding
 
-        // Amount in Words (Left side)
-        doc.setFillColor(...lightGray);
-        doc.rect(margin, y, totalsStartX - margin - 5, 20, 'F');
-        doc.setFontSize(7);
-        doc.setTextColor(100, 100, 100);
+        // Total Qty
+        const totalQty = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+
         doc.setFont('helvetica', 'bold');
-        doc.text('AMOUNT IN WORDS', margin + 3, y + 5);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(8);
-        const wordsLines = doc.splitTextToSize(numberToWords(invoice?.net_amount || 0), totalsStartX - margin - 15);
-        doc.text(wordsLines, margin + 3, y + 11);
+        doc.text('Total', margin + 60, y + 4, { align: 'right' });
+        doc.text(totalQty.toString(), pageWidth - margin - 85, y + 4, { align: 'right' }); // Approx position aligned with Qty col
+        doc.text(formatNumber(invoice.taxable_amount), pageWidth - margin - 2, y + 4, { align: 'right' });
 
-        // Totals (Right side)
-        let totalsY = y;
-        const drawTotalRow = (label, value, isBold = false, highlight = false) => {
-            if (highlight) {
-                doc.setFillColor(...primaryColor);
-                doc.rect(totalsStartX, totalsY, 80, 7, 'F');
-                doc.setTextColor(255, 255, 255);
-            } else {
-                doc.setTextColor(0, 0, 0);
+        y += 6;
+        doc.line(margin, y, pageWidth - margin, y);
+
+        // --- AMOUNT IN WORDS & TAXES ---
+        // Box for bottom section
+        const bottomSectionStart = y;
+
+        // Left: Amount in words
+        doc.setFontSize(9);
+        doc.text('Amount Chargeable (in words)', margin + 2, y + 4);
+        doc.setFont('helvetica', 'bold');
+
+        const words = numberToWords(invoice?.net_amount || 0);
+        const wordLines = doc.splitTextToSize(words, (pageWidth / 2) - 10);
+        doc.text(wordLines, margin + 2, y + 9);
+
+        // Right: Tax Breakdown
+        let rightY = y + 2;
+        const rightXStart = pageWidth - 80; // approx start of right block
+
+        // Draw vertical separator
+        doc.line(rightXStart, y, rightXStart, y + 40); // fixed height approx
+
+        const drawTaxRow = (label, amount) => {
+            if (amount > 0) {
+                doc.setFont('helvetica', 'normal');
+                doc.text(label, rightXStart + 2, rightY + 3);
+                doc.setFont('helvetica', 'bold');
+                doc.text(formatNumber(amount), pageWidth - margin - 2, rightY + 3, { align: 'right' });
+                rightY += 5;
             }
-            doc.setFontSize(8);
-            doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-            doc.text(label, totalsStartX + 3, totalsY + 5);
-            doc.text(formatNumber(value), totalsStartX + 77, totalsY + 5, { align: 'right' });
-            totalsY += 7;
         };
 
-        drawTotalRow('Taxable Amount', invoice?.taxable_amount || 0);
-        if (invoice?.cgst_amount > 0) drawTotalRow('CGST', invoice.cgst_amount);
-        if (invoice?.sgst_amount > 0) drawTotalRow('SGST', invoice.sgst_amount);
-        if (invoice?.igst_amount > 0) drawTotalRow('IGST', invoice.igst_amount);
-        if (invoice?.round_off) drawTotalRow('Round Off', invoice.round_off);
-        drawTotalRow('GRAND TOTAL', invoice?.net_amount || 0, true, true);
+        if (invoice?.cgst_amount) drawTaxRow('CGST Amount', invoice.cgst_amount);
+        if (invoice?.sgst_amount) drawTaxRow('SGST Amount', invoice.sgst_amount);
+        if (invoice?.igst_amount) drawTaxRow('IGST Amount', invoice.igst_amount);
+        if (invoice?.round_off) drawTaxRow('Round Off', invoice.round_off);
 
-        y = Math.max(y + 25, totalsY + 5);
+        // Grand Total Line
+        doc.line(rightXStart, rightY, pageWidth - margin, rightY);
+        rightY += 5;
+        doc.text('Total (INR)', rightXStart + 2, rightY);
+        doc.text(formatNumber(invoice.net_amount), pageWidth - margin - 2, rightY, { align: 'right' });
 
-        // GST Summary Table (if applicable)
-        if (columnVisibility.hasGST && hsnSummary.length > 0 && hsnSummary[0].hsn !== 'NIL') {
-            doc.setFontSize(9);
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(0, 0, 0);
-            doc.text('GST SUMMARY', margin, y + 5);
+        y = Math.max(y + 20, rightY + 5);
+        // Ensure y is below the vertical line
+        y = Math.max(y, bottomSectionStart + 40);
 
-            const gstHeaders = columnVisibility.isIGST
-                ? ['HSN', 'Taxable Value', 'IGST Rate', 'IGST Amt', 'Total']
-                : ['HSN', 'Taxable Value', 'CGST Rate', 'CGST Amt', 'SGST Rate', 'SGST Amt', 'Total'];
+        doc.line(margin, y, pageWidth - margin, y); // End of Tax/Words section
 
-            const gstData = hsnSummary.map(row => {
-                if (columnVisibility.isIGST) {
-                    return [
-                        row.hsn,
-                        formatNumber(row.taxable),
-                        `${row.gst_rate}%`,
-                        formatNumber(row.igst),
-                        formatNumber(row.total)
-                    ];
-                } else {
-                    return [
-                        row.hsn,
-                        formatNumber(row.taxable),
-                        `${row.gst_rate / 2}%`,
-                        formatNumber(row.cgst),
-                        `${row.gst_rate / 2}%`,
-                        formatNumber(row.sgst),
-                        formatNumber(row.total)
-                    ];
-                }
+        // --- HSN SUMMARY (Optional) ---
+        if (columnVisibility.hasGST && hsnSummary.length > 0) {
+            y += 2;
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.text('HSN/SAC', margin + 2, y + 3);
+            doc.text('Taxable', margin + 25, y + 3, { align: 'right' });
+            doc.text('Rate', margin + 40, y + 3, { align: 'right' });
+            doc.text('Tax Amt', margin + 60, y + 3, { align: 'right' });
+
+            y += 4;
+            doc.line(margin, y, margin + 70, y); // Small table underline
+
+            hsnSummary.forEach(row => {
+                y += 4;
+                doc.text(row.hsn, margin + 2, y);
+                doc.text(formatNumber(row.taxable), margin + 25, y, { align: 'right' });
+                doc.text(`${row.gst_rate}%`, margin + 40, y, { align: 'right' });
+                doc.text(formatNumber(row.total - row.taxable), margin + 60, y, { align: 'right' });
             });
-
-            autoTable(doc, {
-                startY: y + 8,
-                head: [gstHeaders],
-                body: gstData,
-                theme: 'grid',
-                headStyles: {
-                    fillColor: accentColor,
-                    textColor: 255,
-                    fontSize: 7,
-                    fontStyle: 'bold',
-                    halign: 'center'
-                },
-                bodyStyles: {
-                    fontSize: 7,
-                    halign: 'center'
-                },
-                margin: { left: margin, right: margin },
-                tableWidth: 'auto'
-            });
-
-            y = doc.lastAutoTable?.finalY ? doc.lastAutoTable.finalY + 5 : y + 30;
+            y += 4;
+            doc.line(margin, y, pageWidth - margin, y);
         }
 
-        // Bank Details & Signature (Footer)
-        y = Math.max(y, 220);
+        // --- FOOTER (Bank & Sign) ---
+        const footerY = y;
+        const middleX = pageWidth / 2;
 
-        // Bank Details
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(margin, y, 90, 30);
-        doc.setFontSize(7);
+        doc.line(middleX, footerY, middleX, footerY + 30); // Vertical split
+
+        // Left: Bank Details
+        doc.setFontSize(9);
+        doc.text('Company\'s Bank Details', margin + 2, footerY + 4);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(100, 100, 100);
-        doc.text('BANK DETAILS', margin + 3, y + 5);
-
+        doc.text(`Bank Name: ${selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
+        doc.text(`A/C No: ${selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
+        doc.text(`IFS Code: ${selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(0, 0, 0);
+
+        // Right: Signature
+        doc.text(`for ${companyInfo?.name || selectedCompany?.name}`, pageWidth - margin - 2, footerY + 4, { align: 'right' });
         doc.setFontSize(8);
-        doc.text(`Bank: ${selectedCompany?.bank_name || 'N/A'}`, margin + 3, y + 12);
-        doc.text(`A/C No: ${selectedCompany?.bank_account || 'N/A'}`, margin + 3, y + 18);
-        doc.text(`IFSC: ${selectedCompany?.bank_ifsc || 'N/A'}`, margin + 3, y + 24);
+        doc.text('Authorized Signatory', pageWidth - margin - 2, footerY + 28, { align: 'right' });
 
-        // Authorized Signatory
-        doc.rect(pageWidth - margin - 70, y, 70, 30);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`For ${selectedCompany?.name || ''}`, pageWidth - margin - 67, y + 6);
-        doc.setDrawColor(0, 0, 0);
-        doc.line(pageWidth - margin - 60, y + 22, pageWidth - margin - 10, y + 22);
-        doc.setFontSize(7);
-        doc.text('Authorized Signatory', pageWidth - margin - 50, y + 27);
+        // Bottom border
+        doc.rect(margin, contentStartY, pageWidth - 2 * margin, (footerY + 30) - contentStartY); // Re-draw outer box to be sure it covers all
 
-        // Footer
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        doc.text('This is a computer generated invoice.', pageWidth / 2, 285, { align: 'center' });
-        doc.text('Powered by JLS BillBook', pageWidth / 2, 290, { align: 'center' });
-
-        // Save PDF
         doc.save(`Invoice_${invoice?.invoice_number || 'Draft'}.pdf`);
     };
 
     const handleWhatsAppShare = () => {
         const message = `*TAX INVOICE*
-━━━━━━━━━━━━━━━━━━━
-📋 *Invoice #${invoice?.invoice_number}*
-📅 Date: ${formatDate(invoice?.invoice_date)}
+    ━━━━━━━━━━━━━━━━━━━
+    📋 *Invoice #${invoice?.invoice_number}*
+    📅 Date: ${formatDate(invoice?.invoice_date)}
 
-🏢 *From:*
-${selectedCompany?.name}
-GSTIN: ${selectedCompany?.gstin || 'N/A'}
+    🏢 *From:*
+    ${selectedCompany?.name}
+    GSTIN: ${selectedCompany?.gstin || 'N/A'}
 
-👤 *To:*
-${invoice?.party_ledger_name}
-GSTIN: ${invoice?.party_gstin || 'N/A'}
+    👤 *To:*
+    ${invoice?.party_ledger_name}
+    GSTIN: ${invoice?.party_gstin || 'N/A'}
 
-━━━━━━━━━━━━━━━━━━━
-💰 *Amount Details:*
+    ━━━━━━━━━━━━━━━━━━━
+    💰 *Amount Details:*
 
-Taxable: ${formatCurrency(invoice?.taxable_amount)}
-${invoice?.cgst_amount > 0 ? `CGST: ${formatCurrency(invoice?.cgst_amount)}` : ''}
-${invoice?.sgst_amount > 0 ? `SGST: ${formatCurrency(invoice?.sgst_amount)}` : ''}
-${invoice?.igst_amount > 0 ? `IGST: ${formatCurrency(invoice?.igst_amount)}` : ''}
-━━━━━━━━━━━━━━━━━━━
-*TOTAL: ${formatCurrency(invoice?.net_amount)}*
-━━━━━━━━━━━━━━━━━━━
+    Taxable: ${formatCurrency(invoice?.taxable_amount)}
+    ${invoice?.cgst_amount > 0 ? `CGST: ${formatCurrency(invoice?.cgst_amount)}` : ''}
+    ${invoice?.sgst_amount > 0 ? `SGST: ${formatCurrency(invoice?.sgst_amount)}` : ''}
+    ${invoice?.igst_amount > 0 ? `IGST: ${formatCurrency(invoice?.igst_amount)}` : ''}
+    ━━━━━━━━━━━━━━━━━━━
+    *TOTAL: ${formatCurrency(invoice?.net_amount)}*
+    ━━━━━━━━━━━━━━━━━━━
 
-Thank you for your business! 🙏
-Generated via JLS BillBook`;
+    Thank you for your business! 🙏
+    Generated via JLS BillBook`;
 
         window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
     };
@@ -671,258 +695,391 @@ Generated via JLS BillBook`;
     const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
 
     return (
-        <div className="page-m3">
-            {/* Controls */}
-            <div className="page-m3__action-bar" style={{ marginBottom: '24px' }}>
-                <button onClick={() => navigate(-1)} className="page-m3__back-link">
-                    <span>←</span> Back
-                </button>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button
-                        onClick={handleDownloadPDF}
-                        className="page-m3__button page-m3__button--primary"
-                        style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #0d7377 100%)' }}
-                    >
-                        📄 Download PDF
+        <div className="bg-gray-100 min-h-screen pb-10 font-sans">
+            {/* Sticky Header with Actions */}
+            <div className="sticky top-0 z-20 bg-white shadow-md border-b border-gray-200 px-6 py-3 mb-6 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 flex items-center gap-1 font-medium">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        Back
                     </button>
+                    <h1 className="text-lg font-bold text-gray-800 hidden md:block">Invoice #{invoice.invoice_number}</h1>
+                </div>
+
+                <div className="flex gap-3">
                     <button
                         onClick={handleWhatsAppShare}
-                        className="page-m3__button page-m3__button--secondary"
-                        style={{ background: '#25D366', color: 'white', border: 'none' }}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow transition-colors font-medium text-sm"
                     >
-                        📱 WhatsApp
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                        WhatsApp
+                    </button>
+                    <button
+                        onClick={handleDownloadPDF}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Download PDF
                     </button>
                 </div>
             </div>
 
-            {/* Invoice Preview - Clean White Design */}
-            <div ref={printRef} className="bg-white shadow-lg rounded-lg overflow-hidden border border-gray-200 max-w-3xl mx-auto text-gray-800" style={{ fontSize: '12px' }}>
-
-                {/* Header - Minimal ink usage */}
-                <div className="border-b-2 border-gray-800 p-4">
-                    <div className="flex justify-between items-start">
+            {/* Mobile View (Responsive Layout) */}
+            <div className="md:hidden px-4 space-y-4 pb-20">
+                {/* Invoice Summary Card */}
+                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                    <div className="flex justify-between items-start mb-2">
                         <div>
-                            <h1 className="text-lg font-bold text-gray-900">{selectedCompany?.name}</h1>
-                            {selectedCompany?.address && (
-                                <p className="text-[11px] text-gray-600 mt-0.5 max-w-xs">{selectedCompany.address}</p>
-                            )}
-                            <div className="flex flex-wrap gap-x-4 text-[10px] text-gray-500 mt-1">
-                                {selectedCompany?.gstin && <span>GSTIN: <b className="text-gray-700">{selectedCompany.gstin}</b></span>}
-                                {selectedCompany?.phone && <span>Ph: {selectedCompany.phone}</span>}
-                                {selectedCompany?.email && <span>Email: {selectedCompany.email}</span>}
-                            </div>
+                            <p className="text-xs text-gray-500 uppercase">Invoice No</p>
+                            <p className="font-bold text-lg">{invoice.invoice_number}</p>
                         </div>
                         <div className="text-right">
-                            <div className="border-2 border-gray-800 px-3 py-1">
-                                <span className="font-bold text-sm">TAX INVOICE</span>
-                            </div>
-                            <p className="text-[10px] text-gray-500 mt-1">Original for Buyer</p>
+                            <p className="text-xs text-gray-500 uppercase">Date</p>
+                            <p className="font-medium">{formatDate(invoice.invoice_date)}</p>
                         </div>
                     </div>
-                </div>
-
-                {/* Invoice Details Row - Compact */}
-                <div className="grid grid-cols-3 border-b border-gray-300 text-[11px]">
-                    <div className="p-2 border-r border-gray-300">
-                        <p className="text-gray-500">Invoice No.</p>
-                        <p className="font-bold">{invoice.invoice_number}</p>
-                    </div>
-                    <div className="p-2 border-r border-gray-300">
-                        <p className="text-gray-500">Date</p>
-                        <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
-                    </div>
-                    <div className="p-2">
-                        <p className="text-gray-500">Mode</p>
-                        <p className="font-bold">{invoice.voucher_type || 'Cash'}</p>
+                    <div className="pt-2 border-t border-gray-100 flex justify-between">
+                        <div className="text-xs text-gray-500">{invoice.voucher_type}</div>
+                        <div className="font-bold text-green-600">₹ {formatNumber(invoice.net_amount)}</div>
                     </div>
                 </div>
 
-                {/* Bill To */}
-                <div className="p-3 border-b border-gray-300 bg-gray-50">
-                    <div className="flex justify-between">
-                        <div>
-                            <p className="text-[10px] text-gray-500 uppercase">Bill To / Ship To</p>
-                            <p className="font-bold text-sm">{invoice.party_ledger_name}</p>
-                            {invoice.party_address && <p className="text-[11px] text-gray-600 max-w-sm">{invoice.party_address}</p>}
-                            {invoice.party_gstin && <p className="text-[10px] mt-0.5">GSTIN: <b>{invoice.party_gstin}</b></p>}
-                            {invoice.party_state && <p className="text-[10px] text-gray-500">State: {invoice.party_state}</p>}
-                        </div>
-                        {invoice.place_of_supply && (
-                            <div className="text-right text-[10px]">
-                                <p className="text-gray-500">Place of Supply</p>
-                                <p className="font-bold">{invoice.place_of_supply}</p>
-                            </div>
-                        )}
+                {/* Parties Card */}
+                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                    <div className="mb-4">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Billed To</p>
+                        <p className="font-bold">{invoice.party_ledger_name}</p>
+                        {invoice.party_gstin && <p className="text-xs text-gray-600">GSTIN: {invoice.party_gstin}</p>}
+                        <p className="text-xs text-gray-600 mt-1">{invoice.party_address}</p>
                     </div>
-                </div>
-
-                {/* Items Table - Compact */}
-                <table className="w-full text-[11px] border-collapse">
-                    <thead>
-                        <tr className="border-y border-gray-400 bg-gray-100">
-                            <th className="px-1.5 py-1.5 text-left w-6 border-r border-gray-300">#</th>
-                            <th className="px-1.5 py-1.5 text-left border-r border-gray-300">Description</th>
-                            {columnVisibility.hasHSN && <th className="px-1.5 py-1.5 text-center w-16 border-r border-gray-300">HSN</th>}
-                            {columnVisibility.hasGST && <th className="px-1.5 py-1.5 text-center w-12 border-r border-gray-300">GST%</th>}
-                            <th className="px-1.5 py-1.5 text-center w-10 border-r border-gray-300">Qty</th>
-                            {columnVisibility.hasUnit && <th className="px-1.5 py-1.5 text-center w-10 border-r border-gray-300">Unit</th>}
-                            <th className="px-1.5 py-1.5 text-right w-16 border-r border-gray-300">Rate</th>
-                            {columnVisibility.hasDiscount && <th className="px-1.5 py-1.5 text-right w-14 border-r border-gray-300">Disc</th>}
-                            <th className="px-1.5 py-1.5 text-right w-20">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {items.length > 0 ? items.map((item, idx) => {
-                            // Get GST rate from hsnSummary for this item's HSN
-                            const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
-                            const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
-
-                            return (
-                                <tr key={idx} className="border-b border-gray-200">
-                                    <td className="px-1.5 py-1 text-gray-500 border-r border-gray-200">{idx + 1}</td>
-                                    <td className="px-1.5 py-1 border-r border-gray-200">{item.stock_item_name}</td>
-                                    {columnVisibility.hasHSN && <td className="px-1.5 py-1 text-center font-mono text-[10px] border-r border-gray-200">{item.hsn_code || '-'}</td>}
-                                    {columnVisibility.hasGST && <td className="px-1.5 py-1 text-center border-r border-gray-200">{displayGstRate > 0 ? `${displayGstRate}%` : '-'}</td>}
-                                    <td className="px-1.5 py-1 text-center border-r border-gray-200">{item.quantity}</td>
-                                    {columnVisibility.hasUnit && <td className="px-1.5 py-1 text-center text-gray-500 border-r border-gray-200">{item.unit || '-'}</td>}
-                                    <td className="px-1.5 py-1 text-right border-r border-gray-200">{formatNumber(item.rate)}</td>
-                                    {columnVisibility.hasDiscount && <td className="px-1.5 py-1 text-right border-r border-gray-200">{item.discount > 0 ? formatNumber(item.discount) : '-'}</td>}
-                                    <td className="px-1.5 py-1 text-right font-medium">{formatNumber(item.amount)}</td>
-                                </tr>
-                            );
-                        }) : (
-                            <tr>
-                                <td className="px-1.5 py-1">1</td>
-                                <td className="px-1.5 py-1">As per details</td>
-                                <td className="px-1.5 py-1 text-center">-</td>
-                                <td className="px-1.5 py-1 text-center">1</td>
-                                <td className="px-1.5 py-1 text-right" colSpan={2}>{formatNumber(invoice.taxable_amount)}</td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-
-                {/* Summary - Two Column Compact */}
-                <div className="grid grid-cols-2 border-t border-gray-400 text-[11px]">
-                    {/* Left: In Words */}
-                    <div className="p-2 border-r border-gray-300">
-                        <p className="text-[9px] text-gray-500 uppercase">Amount in Words</p>
-                        <p className="text-[10px] font-medium mt-0.5">{numberToWords(invoice.net_amount)}</p>
-                        <p className="text-[10px] text-gray-500 mt-1">Total Qty: <b>{totalQty}</b></p>
-                    </div>
-
-                    {/* Right: Totals */}
                     <div>
-                        <div className="flex justify-between px-2 py-1 border-b border-gray-200">
-                            <span>Taxable Amount</span>
-                            <span>{formatCurrency(invoice.taxable_amount)}</span>
+                        <p className="text-xs text-gray-500 uppercase mb-1">From</p>
+                        <p className="font-medium text-sm">{selectedCompany?.name}</p>
+                    </div>
+                </div>
+
+                {/* Items List */}
+                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                        <h3 className="text-sm font-bold text-gray-700">Items ({totalQty})</h3>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                        {items.map((item, idx) => (
+                            <div key={idx} className="p-3">
+                                <div className="flex justify-between mb-1">
+                                    <span className="font-medium text-sm">{item.stock_item_name}</span>
+                                    <span className="font-bold text-sm">₹ {formatNumber(item.amount)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>{item.quantity} {item.unit} x ₹ {formatNumber(item.rate)}</span>
+                                    <span>HSN: {item.hsn_code || '-'}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Bill Details */}
+                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">Bill Details</h3>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-gray-600">Taxable Amount</span>
+                            <span>{formatNumber(invoice.taxable_amount)}</span>
                         </div>
                         {invoice.cgst_amount > 0 && (
-                            <div className="flex justify-between px-2 py-1 border-b border-gray-200">
-                                <span>CGST</span>
-                                <span>{formatCurrency(invoice.cgst_amount)}</span>
+                            <div className="flex justify-between">
+                                <span className="text-gray-600">CGST</span>
+                                <span>{formatNumber(invoice.cgst_amount)}</span>
                             </div>
                         )}
                         {invoice.sgst_amount > 0 && (
-                            <div className="flex justify-between px-2 py-1 border-b border-gray-200">
-                                <span>SGST</span>
-                                <span>{formatCurrency(invoice.sgst_amount)}</span>
+                            <div className="flex justify-between">
+                                <span className="text-gray-600">SGST</span>
+                                <span>{formatNumber(invoice.sgst_amount)}</span>
                             </div>
                         )}
                         {invoice.igst_amount > 0 && (
-                            <div className="flex justify-between px-2 py-1 border-b border-gray-200">
-                                <span>IGST</span>
-                                <span>{formatCurrency(invoice.igst_amount)}</span>
+                            <div className="flex justify-between">
+                                <span className="text-gray-600">IGST</span>
+                                <span>{formatNumber(invoice.igst_amount)}</span>
                             </div>
                         )}
-                        {invoice.round_off !== 0 && (
-                            <div className="flex justify-between px-2 py-1 border-b border-gray-200">
-                                <span>Round Off</span>
-                                <span>{formatCurrency(invoice.round_off)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between px-2 py-1.5 bg-gray-100 font-bold border-t border-gray-400">
-                            <span>GRAND TOTAL</span>
-                            <span>₹{formatNumber(invoice.net_amount)}</span>
+                        <div className="flex justify-between pt-2 border-t border-gray-100 font-bold text-base">
+                            <span>Grand Total</span>
+                            <span>₹ {formatNumber(invoice.net_amount)}</span>
+                        </div>
+                        <div className="text-xs text-gray-500 italic text-right mt-1">
+                            {numberToWords(invoice.net_amount)}
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* GST Summary (if applicable) - Compact */}
-                {columnVisibility.hasGST && hsnSummary.length > 0 && hsnSummary[0].hsn !== 'NIL' && (
-                    <div className="p-2 border-t border-gray-300 text-[10px]">
-                        <p className="text-[9px] text-gray-500 uppercase mb-1">GST Summary</p>
-                        <table className="w-full border border-gray-300">
-                            <thead>
-                                <tr className="bg-gray-100 border-b border-gray-300">
-                                    <th className="px-1.5 py-1 text-left border-r border-gray-300">HSN</th>
-                                    <th className="px-1.5 py-1 text-right border-r border-gray-300">Taxable</th>
-                                    {columnVisibility.isIGST ? (
-                                        <>
-                                            <th className="px-1.5 py-1 text-center border-r border-gray-300">Rate</th>
-                                            <th className="px-1.5 py-1 text-right border-r border-gray-300">IGST</th>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <th className="px-1.5 py-1 text-center border-r border-gray-300">Rate</th>
-                                            <th className="px-1.5 py-1 text-right border-r border-gray-300">CGST</th>
-                                            <th className="px-1.5 py-1 text-right border-r border-gray-300">SGST</th>
-                                        </>
-                                    )}
-                                    <th className="px-1.5 py-1 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {hsnSummary.map((row, i) => (
-                                    <tr key={i} className="border-b border-gray-200">
-                                        <td className="px-1.5 py-1 font-mono border-r border-gray-200">{row.hsn}</td>
-                                        <td className="px-1.5 py-1 text-right border-r border-gray-200">{formatNumber(row.taxable)}</td>
-                                        {columnVisibility.isIGST ? (
-                                            <>
-                                                <td className="px-1.5 py-1 text-center border-r border-gray-200">{row.gst_rate}%</td>
-                                                <td className="px-1.5 py-1 text-right border-r border-gray-200">{formatNumber(row.igst)}</td>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <td className="px-1.5 py-1 text-center border-r border-gray-200">{row.gst_rate / 2}%</td>
-                                                <td className="px-1.5 py-1 text-right border-r border-gray-200">{formatNumber(row.cgst)}</td>
-                                                <td className="px-1.5 py-1 text-right border-r border-gray-200">{formatNumber(row.sgst)}</td>
-                                            </>
-                                        )}
-                                        <td className="px-1.5 py-1 text-right font-medium">{formatNumber(row.total)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+            {/* A4 Paper Preview (Hidden on Mobile) */}
+            <div className="hidden md:block max-w-[210mm] mx-auto bg-white shadow-2xl printable-content text-sm text-gray-900" style={{ minHeight: '297mm' }}>
+                <div className="p-8 h-full flex flex-col relative border border-gray-300">
 
-                {/* Footer: Bank Details & Signature - Compact */}
-                <div className="grid grid-cols-2 border-t border-gray-300 text-[10px]">
-                    <div className="p-2 border-r border-gray-300">
-                        <p className="text-[9px] text-gray-500 uppercase">Bank Details</p>
-                        {(selectedCompany?.bank_name || selectedCompany?.bank_account) ? (
-                            <div className="mt-0.5">
-                                {selectedCompany.bank_name && <p>Bank: <b>{selectedCompany.bank_name}</b></p>}
-                                {selectedCompany.bank_account && <p>A/C: <b>{selectedCompany.bank_account}</b></p>}
-                                {selectedCompany.bank_ifsc && <p>IFSC: <b>{selectedCompany.bank_ifsc}</b></p>}
+                    {/* Tally Style Border Container */}
+                    <div className="border-2 border-black h-full flex flex-col">
+
+                        {/* Header Section */}
+                        <div className="grid grid-cols-2 border-b-2 border-black">
+                            {/* Company Info - Left */}
+                            <div className="p-4 border-r-2 border-black flex flex-col justify-center">
+                                <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name || selectedCompany?.name}</h1>
+
+                                <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
+                                    {companyInfo?.address || selectedCompany?.address || 'Address Not Available'}
+                                </p>
+
+                                <div className="text-xs space-y-0.5">
+                                    <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo?.gstin || selectedCompany?.gstin || 'N/A'}</p>
+                                    <p><span className="font-semibold">State Name:</span> {companyInfo?.state || selectedCompany?.state || 'Unknown'}</p>
+                                    <p><span className="font-semibold">E-Mail:</span> {companyInfo?.email || selectedCompany?.email || '-'}</p>
+                                </div>
                             </div>
-                        ) : (
-                            <p className="text-gray-400 mt-0.5">-</p>
-                        )}
-                    </div>
-                    <div className="p-2 text-right">
-                        <p className="text-[9px] text-gray-500">For {selectedCompany?.name}</p>
-                        <div className="h-8"></div>
-                        <p className="border-t border-gray-400 pt-1 inline-block px-4">Authorized Signatory</p>
-                    </div>
-                </div>
 
-                {/* Footer Note */}
-                <div className="p-1.5 border-t border-gray-200 text-[9px] text-gray-500 text-center">
-                    <span>E. & O.E. | Computer Generated Invoice | Subject to Jurisdiction</span>
+                            {/* Invoice Info - Right */}
+                            <div className="flex flex-col">
+                                <div className="p-2 border-b-2 border-black text-center bg-gray-50">
+                                    <h2 className="text-base font-bold uppercase tracking-wider">Tax Invoice</h2>
+                                </div>
+                                <div className="grid grid-cols-2 flex-grow text-xs">
+                                    <div className="p-2 border-r border-black border-b border-black">
+                                        <p className="font-semibold">Invoice No</p>
+                                        <p className="font-bold text-sm">{invoice.invoice_number}</p>
+                                    </div>
+                                    <div className="p-2 border-b border-black">
+                                        <p className="font-semibold">Dated</p>
+                                        <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
+                                    </div>
+                                    <div className="p-2 border-r border-black border-b border-black">
+                                        <p className="font-semibold">Delivery Note</p>
+                                        <p>-</p>
+                                    </div>
+                                    <div className="p-2 border-b border-black">
+                                        <p className="font-semibold">Mode/Terms of Payment</p>
+                                        <p>{invoice.voucher_type}</p>
+                                    </div>
+                                    <div className="p-2 border-r border-black">
+                                        <p className="font-semibold">Buyer's Order No.</p>
+                                        <p>-</p>
+                                    </div>
+                                    <div className="p-2">
+                                        <p className="font-semibold">Dated</p>
+                                        <p>-</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Buyer Info */}
+                        <div className="border-b-2 border-black p-0">
+                            <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
+                            <div className="p-3 text-xs">
+                                <p className="font-bold text-sm uppercase">{invoice.party_ledger_name}</p>
+                                <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
+                                <div className="flex gap-4 mt-2">
+                                    <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin || 'N/A'}</p>
+                                    <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Items Table */}
+                        <div className="flex-grow flex flex-col border-b-2 border-black relative">
+                            {/* Table Header */}
+                            <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
+                                <div className="w-10 p-2 border-r border-black">SI No.</div>
+                                <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
+                                {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
+                                {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
+                                <div className="w-14 p-2 border-r border-black">Quantity</div>
+                                <div className="w-20 p-2 border-r border-black">Rate</div>
+                                <div className="w-10 p-2 border-r border-black">Per</div>
+                                {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
+                                <div className="w-24 p-2 text-right">Amount</div>
+                            </div>
+
+                            {/* Table Body - Rows */}
+                            <div className="flex-grow text-xs relative">
+                                {items.map((item, idx) => {
+                                    // Calculate Display GST Rate
+                                    const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
+                                    const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
+
+                                    return (
+                                        <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
+                                            <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
+                                            <div className="flex-1 p-2 border-r border-black font-semibold text-left">{item.stock_item_name}</div>
+                                            {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || '-'}</div>}
+                                            {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
+                                            <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>
+                                            <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>
+                                            <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>
+                                            {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
+                                                {(item.discount > 0 || item.discount_percent > 0) ? (item.discount || item.discount_percent) + '%' : '-'}
+                                            </div>}
+                                            <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Vertical Lines Overlay (to span full height) - CSS trick or simplified */}
+                            </div>
+
+                            {/* Totals Row */}
+                            <div className="flex border-t border-black font-bold text-xs bg-gray-50">
+                                <div className="w-10 p-2 border-r border-black text-center"></div>
+                                <div className="flex-1 p-2 border-r border-black text-right">Total</div>
+                                {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
+                                {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
+                                <div className="w-14 p-2 border-r border-black text-center">{totalQty}</div>
+                                <div className="w-20 p-2 border-r border-black"></div>
+                                <div className="w-10 p-2 border-r border-black"></div>
+                                {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
+                                <div className="w-24 p-2 text-right">{formatNumber(invoice.taxable_amount)}</div>
+                            </div>
+                        </div>
+
+                        {/* Bottom Section: Words & Tax Breakdown */}
+                        <div className="grid grid-cols-2 border-b-2 border-black text-xs">
+                            {/* Left: Amount in Words */}
+                            <div className="p-2 border-r-2 border-black">
+                                <p className="text-[10px] text-gray-500 mb-1">Amount Chargeable (in words)</p>
+                                <p className="font-bold italic text-sm">{numberToWords(invoice.net_amount)}</p>
+                            </div>
+
+                            {/* Right: Tax Amounts */}
+                            <div className="text-right">
+                                {invoice.cgst_amount > 0 && (
+                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                        <span className="italic px-2">CGST Amount</span>
+                                        <span className="font-semibold px-2">{formatNumber(invoice.cgst_amount)}</span>
+                                    </div>
+                                )}
+                                {invoice.sgst_amount > 0 && (
+                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                        <span className="italic px-2">SGST Amount</span>
+                                        <span className="font-semibold px-2">{formatNumber(invoice.sgst_amount)}</span>
+                                    </div>
+                                )}
+                                {invoice.igst_amount > 0 && (
+                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                        <span className="italic px-2">IGST Amount</span>
+                                        <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
+                                    <span>Total (INR)</span>
+                                    <span>₹ {formatNumber(invoice.net_amount)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* HSN/SAC Summary (If GST) */}
+                        {columnVisibility.hasGST && (
+                            <div className="border-b-2 border-black p-2">
+                                <p className="text-[10px] font-bold underline mb-1">Tax Analysis:</p>
+                                <table className="w-full text-[10px] border border-black text-center">
+                                    <thead>
+                                        <tr className="bg-gray-100 border-b border-black">
+                                            <th className="border-r border-black">HSN/SAC</th>
+                                            <th className="border-r border-black">Taxable Value</th>
+                                            {columnVisibility.isIGST ? (
+                                                <>
+                                                    <th className="border-r border-black" colSpan="2">Integrated Tax</th>
+                                                    <th>Total Tax</th>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <th className="border-r border-black" colSpan="2">Central Tax</th>
+                                                    <th className="border-r border-black" colSpan="2">State Tax</th>
+                                                    <th>Total Tax</th>
+                                                </>
+                                            )}
+                                        </tr>
+                                        <tr className="bg-gray-50 border-b border-black">
+                                            <th className="border-r border-black"></th>
+                                            <th className="border-r border-black"></th>
+                                            {columnVisibility.isIGST ? (
+                                                <>
+                                                    <th className="border-r border-black">Rate</th>
+                                                    <th className="border-r border-black">Amount</th>
+                                                    <th>Amount</th>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <th className="border-r border-black">Rate</th>
+                                                    <th className="border-r border-black">Amount</th>
+                                                    <th className="border-r border-black">Rate</th>
+                                                    <th className="border-r border-black">Amount</th>
+                                                    <th>Amount</th>
+                                                </>
+                                            )}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {hsnSummary.map((row, i) => (
+                                            <tr key={i} className="border-b border-gray-300 last:border-0">
+                                                <td className="border-r border-black p-1">{row.hsn}</td>
+                                                <td className="border-r border-black p-1 text-right">{formatNumber(row.taxable)}</td>
+                                                {columnVisibility.isIGST ? (
+                                                    <>
+                                                        <td className="border-r border-black p-1">{row.gst_rate}%</td>
+                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.igst)}</td>
+                                                        <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
+                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.cgst)}</td>
+                                                        <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
+                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.sgst)}</td>
+                                                        <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                    </>
+                                                )}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Footer Section */}
+                        <div className="grid grid-cols-2 flex-grow h-32">
+                            {/* Bank & Terms */}
+                            <div className="border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
+                                <div>
+                                    <p className="font-bold underline mb-1">Company's Bank Details:</p>
+                                    <p>Bank Name: <span className="font-semibold">{selectedCompany?.bank_name}</span></p>
+                                    <p>A/C No.: <span className="font-semibold">{selectedCompany?.bank_account}</span></p>
+                                    <p>Branch & IFS Code: <span className="font-semibold">{selectedCompany?.bank_ifsc}</span></p>
+                                </div>
+                                <div className="mt-2 text-[10px]">
+                                    <p className="underline mb-0.5">Declaration:</p>
+                                    <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
+                                </div>
+                            </div>
+
+                            {/* Signatory */}
+                            <div className="p-2 flex flex-col justify-between h-full text-center">
+                                <p className="text-right text-xs font-bold">for {companyInfo?.name || selectedCompany?.name}</p>
+                                <div className="h-16"></div>
+                                <div className="text-right">
+                                    <p className="border-t border-black inline-block px-8 pt-1 text-xs font-bold">Authorized Signatory</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="text-center text-[10px] text-gray-400 mt-2">
+                        SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
+                    </div>
                 </div>
             </div>
         </div>
     );
 }
+

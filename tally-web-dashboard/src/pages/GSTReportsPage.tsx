@@ -152,6 +152,43 @@ export default function GSTReportsPage() {
             acc.igst += s.igst_amount || 0; acc.cess += s.cess_amount || 0; acc.invoiceValue += s.net_amount || 0; acc.count += 1; return acc;
         }, { taxableValue: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, invoiceValue: 0, count: 0 });
 
+        // Rate-wise summary
+        const rateMap = new Map();
+        sales.forEach(sale => {
+            if (sale.stock_entries) {
+                sale.stock_entries.forEach((item: any) => {
+                    const rate = item.tax_rate || 0;
+                    if (!rateMap.has(rate)) rateMap.set(rate, { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 });
+                    const entry = rateMap.get(rate);
+                    entry.taxable += item.amount || 0;
+                    // Pro-rata tax calculation if item tax not explicitly present
+                    // In real Tally data, we'd have tax per item, but here we estimate or use voucher totals if available
+                    // For now, let's use the item-level tax_rate if provided
+                    const taxFactor = rate / 100;
+                    if (sale.igst_amount > 0) {
+                        entry.igst += (item.amount || 0) * taxFactor;
+                    } else {
+                        entry.cgst += (item.amount || 0) * (taxFactor / 2);
+                        entry.sgst += (item.amount || 0) * (taxFactor / 2);
+                    }
+                    entry.total += (item.amount || 0) * (1 + taxFactor);
+                });
+            }
+        });
+
+        // POS (Place of Supply) distribution
+        const posMap = new Map();
+        sales.forEach(sale => {
+            const pos = sale.place_of_supply || 'Unknown';
+            if (!posMap.has(pos)) posMap.set(pos, { state: pos, taxable: 0, igst: 0, cgst: 0, sgst: 0, count: 0 });
+            const entry = posMap.get(pos);
+            entry.taxable += sale.taxable_amount || 0;
+            entry.igst += sale.igst_amount || 0;
+            entry.cgst += sale.cgst_amount || 0;
+            entry.sgst += sale.sgst_amount || 0;
+            entry.count++;
+        });
+
         const hsnMap = new Map();
         sales.forEach((sale: any) => {
             (sale.stock_entries || []).forEach((item: any) => {
@@ -161,7 +198,15 @@ export default function GSTReportsPage() {
                 entry.quantity += item.quantity || 0;
                 entry.taxableValue += item.amount || 0;
                 entry.totalValue += item.amount || 0;
-                // Note: GST breakdown per line item may need to be calculated from voucher-level GST
+
+                const rate = item.tax_rate || 0;
+                const taxFactor = rate / 100;
+                if (sale.igst_amount > 0) {
+                    entry.igst += (item.amount || 0) * taxFactor;
+                } else {
+                    entry.cgst += (item.amount || 0) * (taxFactor / 2);
+                    entry.sgst += (item.amount || 0) * (taxFactor / 2);
+                }
             });
         });
 
@@ -192,8 +237,16 @@ export default function GSTReportsPage() {
 
         return {
             b2b, b2c, hsnSummary: Array.from(hsnMap.values()),
+            rateSummary: Array.from(rateMap.values()).sort((a, b) => b.rate - a.rate),
+            posSummary: Array.from(posMap.values()).sort((a, b) => b.taxable - a.taxable),
             gstr3b: { outwardSupplies, inputTaxCredit, netPayable },
-            totals: { salesCount: sales.length, purchasesCount: purchases.length, totalSales: sales.reduce((sum: number, s: any) => sum + (s.net_amount || 0), 0), totalPurchases: purchases.reduce((sum: number, p: any) => sum + (p.net_amount || 0), 0) }
+            totals: {
+                salesCount: sales.length,
+                purchasesCount: purchases.length,
+                totalSales: sales.reduce((sum: number, s: any) => sum + (s.net_amount || 0), 0),
+                totalPurchases: purchases.reduce((sum: number, p: any) => sum + (p.net_amount || 0), 0),
+                exemptedSales: sales.filter(s => (s.cgst_amount + s.sgst_amount + s.igst_amount) === 0).reduce((sum, s) => sum + (s.taxable_amount || 0), 0)
+            }
         };
     };
 
@@ -217,6 +270,8 @@ export default function GSTReportsPage() {
 
     const tabs = [
         { key: 'summary', label: 'Matrix', icon: <PieChart size={16} /> },
+        { key: 'rates', label: 'Rates', icon: <ShieldCheck size={16} /> },
+        { key: 'pos', label: 'Places', icon: <Building2 size={16} /> },
         { key: 'b2b', label: 'B2B Flow', icon: <Building2 size={16} /> },
         { key: 'b2c', label: 'B2C Flow', icon: <User size={16} /> },
         { key: 'hsn', label: 'HSN Core', icon: <Package size={16} /> },
@@ -291,52 +346,112 @@ export default function GSTReportsPage() {
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                                     <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Outward Gross</p>
-                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(reportData.totals.totalSales)}</p>
+                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Outward Taxable</p>
+                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(reportData.gstr3b.outwardSupplies.taxable)}</p>
                                     </div>
                                     <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Inward Gross</p>
-                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(reportData.totals.totalPurchases)}</p>
+                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Exempted/Nil</p>
+                                        <p className="text-lg font-black text-blue-500 mt-1">{formatCurrency(reportData.totals.exemptedSales)}</p>
                                     </div>
                                     <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Total Liability</p>
-                                        <p className="text-lg font-black text-amber-500 mt-1">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst)}</p>
-                                    </div>
-                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">ITC Assets</p>
+                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Input Tax Credit</p>
                                         <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</p>
                                     </div>
-                                </div>
-                                <div className="bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] rounded-[32px] p-8 text-white shadow-xl relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-8 opacity-10">
-                                        <ShieldCheck size={100} />
+                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
+                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Net Tax Payable</p>
+                                        <p className="text-lg font-black text-amber-500 mt-1">{formatCurrency(reportData.gstr3b.netPayable.total)}</p>
                                     </div>
-                                    <h3 className="text-[10px] font-black uppercase tracking-widest mb-6 flex items-center gap-2">
-                                        Net Tax Settlement Profile
-                                    </h3>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                                        <div>
-                                            <p className="text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">CGST Net</p>
-                                            <p className="text-xl font-black">{formatCurrency(reportData.gstr3b.netPayable.cgst)}</p>
+                                </div>
+
+                                <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="bg-[var(--surface-variant)]/50 p-6 rounded-3xl border border-[var(--border)]">
+                                        <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <ShieldCheck size={14} className="text-[var(--primary)]" /> Top GST Rates
+                                        </h3>
+                                        <div className="space-y-3">
+                                            {reportData.rateSummary.slice(0, 3).map((r: any) => (
+                                                <div key={r.rate} className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-[var(--on-surface)]">{r.rate}% GST</span>
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-black">{formatCurrency(r.taxable)}</p>
+                                                        <div className="w-32 h-1 bg-[var(--border)] rounded-full mt-1 overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-[var(--primary)] text-right"
+                                                                style={{ width: `${Math.min(100, (r.taxable / (reportData.gstr3b.outwardSupplies.taxable || 1)) * 100)}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <div>
-                                            <p className="text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">SGST Net</p>
-                                            <p className="text-xl font-black">{formatCurrency(reportData.gstr3b.netPayable.sgst)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">IGST Net</p>
-                                            <p className="text-xl font-black">{formatCurrency(reportData.gstr3b.netPayable.igst)}</p>
-                                        </div>
-                                        <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/20">
-                                            <p className="text-[8px] font-black uppercase tracking-widest mb-1">Global Flow</p>
-                                            <p className="text-2xl font-black">{formatCurrency(reportData.gstr3b.netPayable.total)}</p>
+                                    </div>
+
+                                    <div className="bg-[var(--surface-variant)]/50 p-6 rounded-3xl border border-[var(--border)]">
+                                        <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                                            <Building2 size={14} className="text-[var(--primary)]" /> Place of Supply
+                                        </h3>
+                                        <div className="space-y-3">
+                                            {reportData.posSummary.slice(0, 3).map((p: any) => (
+                                                <div key={p.state} className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-[var(--on-surface)] truncate max-w-[100px]">{p.state}</span>
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-black">{formatCurrency(p.taxable)}</p>
+                                                        <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-tighter">{p.count} Invoices</p>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* Rest of the tabs remain similar but with updated styling for high density */}
+                        {/* Rate-wise Tab */}
+                        {activeTab === 'rates' && (
+                            <div className="space-y-3">
+                                <div className="bg-[var(--surface-variant)] p-4 rounded-t-2xl border border-[var(--border)] grid grid-cols-5 text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+                                    <div className="col-span-1">Tax Rate</div>
+                                    <div className="text-right">Taxable Val</div>
+                                    <div className="text-right">IGST</div>
+                                    <div className="text-right">CGST/SGST</div>
+                                    <div className="text-right">Total</div>
+                                </div>
+                                <div className="grid gap-2">
+                                    {reportData.rateSummary.map((r: any) => (
+                                        <div key={r.rate} className="bg-[var(--surface-variant)]/30 p-4 rounded-xl border border-[var(--border)] grid grid-cols-5 items-center">
+                                            <div className="text-xs font-black">{r.rate}% GST</div>
+                                            <div className="text-right text-[11px] font-bold">{formatCurrency(r.taxable)}</div>
+                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(r.igst)}</div>
+                                            <div className="text-right text-[11px] font-bold text-emerald-500">{formatCurrency(r.cgst + r.sgst)}</div>
+                                            <div className="text-right text-xs font-black">{formatCurrency(r.total)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* POS Tab */}
+                        {activeTab === 'pos' && (
+                            <div className="grid gap-3">
+                                {reportData.posSummary.map((p: any) => (
+                                    <div key={p.state} className="bg-[var(--surface-variant)]/50 p-4 rounded-2xl border border-[var(--border)] flex justify-between items-center">
+                                        <div>
+                                            <h4 className="text-xs font-black text-[var(--on-surface)] uppercase">{p.state}</h4>
+                                            <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{p.count} Transactions</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-black text-[var(--primary)]">{formatCurrency(p.taxable)}</p>
+                                            <div className="flex gap-2 justify-end mt-1">
+                                                <span className="text-[8px] font-bold text-emerald-500">C+S: {formatCurrency(p.cgst + p.sgst)}</span>
+                                                <span className="text-[8px] font-bold text-amber-500">I: {formatCurrency(p.igst)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* B2B Tab */}
                         {activeTab === 'b2b' && (
                             <div className="space-y-4">
                                 {reportData.b2b.length === 0 ? (
@@ -364,76 +479,127 @@ export default function GSTReportsPage() {
                             </div>
                         )}
 
-                        {/* Simplified B2C view */}
+                        {/* B2C Tab */}
                         {activeTab === 'b2c' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <GlassCard className="p-6">
                                     <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Retail Aggregate</p>
                                     <div className="space-y-4">
                                         <div className="flex justify-between">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Clients Count</span>
-                                            <span className="text-lg font-black">{reportData.b2c.count}</span>
+                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Volume</span>
+                                            <span className="text-lg font-black">{reportData.b2c.count} bills</span>
                                         </div>
                                         <div className="flex justify-between border-t border-[var(--border)] pt-4">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Total Invoice Vol</span>
+                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Grand Total</span>
                                             <span className="text-xl font-black text-[var(--primary)]">{formatCurrency(reportData.b2c.invoiceValue)}</span>
                                         </div>
                                     </div>
                                 </GlassCard>
                                 <GlassCard className="p-6">
-                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Tax Component</p>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <p className="text-[8px] uppercase font-bold text-[var(--text-muted)]">CGST</p>
-                                            <p className="text-sm font-black">{formatCurrency(reportData.b2c.cgst)}</p>
+                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Tax Components</p>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between">
+                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">CGST</span>
+                                            <span className="text-sm font-black">{formatCurrency(reportData.b2c.cgst)}</span>
                                         </div>
-                                        <div>
-                                            <p className="text-[8px] uppercase font-bold text-[var(--text-muted)]">SGST</p>
-                                            <p className="text-sm font-black">{formatCurrency(reportData.b2c.sgst)}</p>
+                                        <div className="flex justify-between">
+                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">SGST</span>
+                                            <span className="text-sm font-black">{formatCurrency(reportData.b2c.sgst)}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-[var(--border)] pt-4">
+                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">IGST</span>
+                                            <span className="text-sm font-black text-amber-500">{formatCurrency(reportData.b2c.igst)}</span>
                                         </div>
                                     </div>
+                                </GlassCard>
+                                <GlassCard className="p-6 flex flex-col justify-center items-center text-center">
+                                    <PieChart size={24} className="text-[var(--primary)] mb-2" />
+                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Tax to Value Ratio</p>
+                                    <p className="text-2xl font-black text-[var(--on-surface)]">
+                                        {Math.round(((reportData.b2c.cgst + reportData.b2c.sgst + reportData.b2c.igst) / (reportData.b2c.taxableValue || 1)) * 100)}%
+                                    </p>
                                 </GlassCard>
                             </div>
                         )}
 
-                        {/* Simplified HSN view */}
+                        {/* HSN Tab */}
                         {activeTab === 'hsn' && (
                             <div className="space-y-3">
-                                {reportData.hsnSummary.map((hsn: any, i: number) => (
-                                    <div key={i} className="bg-[var(--surface-variant)]/50 p-4 rounded-2xl border border-[var(--border)] flex justify-between items-center">
-                                        <div>
-                                            <p className="text-[9px] font-black text-[var(--primary)] tracking-widest">{hsn.hsn}</p>
-                                            <h4 className="text-[10px] font-bold text-[var(--on-surface)] uppercase truncate max-w-[150px]">{hsn.description}</h4>
+                                <div className="bg-[var(--surface-variant)] p-4 rounded-t-2xl border border-[var(--border)] grid grid-cols-6 text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+                                    <div className="col-span-2">HSN/Description</div>
+                                    <div className="text-right">Quantity</div>
+                                    <div className="text-right">Taxable</div>
+                                    <div className="text-right">Tax (I+C+S)</div>
+                                    <div className="text-right">Total</div>
+                                </div>
+                                <div className="grid gap-2">
+                                    {reportData.hsnSummary.map((hsn: any, i: number) => (
+                                        <div key={i} className="bg-[var(--surface-variant)]/30 p-4 rounded-xl border border-[var(--border)] grid grid-cols-6 items-center">
+                                            <div className="col-span-2 min-w-0">
+                                                <p className="text-[10px] font-black text-[var(--primary)] tracking-widest">{hsn.hsn}</p>
+                                                <h4 className="text-[10px] font-bold text-[var(--on-surface)] uppercase truncate pr-4">{hsn.description}</h4>
+                                            </div>
+                                            <div className="text-right text-xs font-bold text-[var(--on-surface)]">{hsn.quantity} {hsn.uqc}</div>
+                                            <div className="text-right text-[11px] font-medium opacity-70">{formatCurrency(hsn.taxableValue)}</div>
+                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(hsn.igst + hsn.cgst + hsn.sgst)}</div>
+                                            <div className="text-right text-xs font-black text-[var(--on-surface)]">{formatCurrency(hsn.totalValue + hsn.igst + hsn.cgst + hsn.sgst)}</div>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="text-xs font-black">{formatCurrency(hsn.totalValue)}</p>
-                                            <p className="text-[8px] font-bold text-[var(--text-muted)]">{hsn.quantity} {hsn.uqc}</p>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         )}
 
-                        {/* Simplified GSTR-3B view */}
+                        {/* GSTR-3B Tab */}
                         {activeTab === 'gstr3b' && (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <GlassCard className="p-6">
-                                        <h3 className="text-xs font-black uppercase text-emerald-500 mb-4 border-b pb-2">3.1 Outbound Supply</h3>
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">Taxable</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.outwardSupplies.taxable)}</span></div>
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">CGST</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst)}</span></div>
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">SGST</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.outwardSupplies.sgst)}</span></div>
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <GlassCard className="p-8">
+                                        <h3 className="text-xs font-black uppercase text-emerald-500 mb-6 border-b pb-3 flex justify-between items-center">
+                                            3.1 Outbound Supply Metrics
+                                            <Badge variant="success" className="text-[8px]">LIABILITY</Badge>
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Taxable Value</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.outwardSupplies.taxable)}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.outwardSupplies.igst)}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst)}</span></div>
+                                            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.outwardSupplies.sgst)}</span></div>
+                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Gross Liability</span><span className="text-lg font-black text-[var(--primary)]">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst)}</span></div>
                                         </div>
                                     </GlassCard>
-                                    <GlassCard className="p-6">
-                                        <h3 className="text-xs font-black uppercase text-blue-500 mb-4 border-b pb-2">4.0 Inbound Credit</h3>
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">Eligible ITC</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst)}</span></div>
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">CGST Credit</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst)}</span></div>
-                                            <div className="flex justify-between"><span className="text-[10px] font-bold opacity-60">SGST Credit</span><span className="text-xs font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.sgst)}</span></div>
+
+                                    <GlassCard className="p-8">
+                                        <h3 className="text-xs font-black uppercase text-blue-500 mb-6 border-b pb-3 flex justify-between items-center">
+                                            4.0 Inbound Credit Summary
+                                            <Badge variant="default" className="text-[8px]">INPUT ASSET</Badge>
+                                        </h3>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">All Other ITC</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.igst)}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst)}</span></div>
+                                            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.inputTaxCredit.sgst)}</span></div>
+                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Total Eligible ITC</span><span className="text-lg font-black text-emerald-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</span></div>
                                         </div>
                                     </GlassCard>
+                                </div>
+
+                                <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[40px] text-white overflow-hidden relative">
+                                    <div className="absolute -right-10 -bottom-10 opacity-5">
+                                        <PieChart size={300} />
+                                    </div>
+                                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                                        <div>
+                                            <h4 className="text-[10px] font-black uppercase tracking-[4px] text-slate-400 mb-2">Settlement Forecast</h4>
+                                            <p className="text-4xl font-black text-white tracking-tighter">
+                                                {formatCurrency(reportData.gstr3b.netPayable.total)}
+                                            </p>
+                                            <p className="text-[9px] font-bold text-slate-500 mt-2 uppercase tracking-widest italic">
+                                                * Net tax payable after adjustment of eligible ITC.
+                                            </p>
+                                        </div>
+                                        <Button className="bg-white text-slate-900 hover:bg-slate-200 border-none px-10 py-5 rounded-[20px] text-[11px] font-black uppercase tracking-widest h-auto">
+                                            Download 3B Draft
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         )}

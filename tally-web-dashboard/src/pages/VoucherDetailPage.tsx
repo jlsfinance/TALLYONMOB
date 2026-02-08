@@ -41,6 +41,12 @@ export default function VoucherDetailPage() {
             const decodedId = decodeURIComponent(voucherId!);
             console.log('Loading voucher with id:', decodedId);
 
+            if (decodedId === 'undefined' || !decodedId) {
+                toast.error('Invalid Voucher ID');
+                navigate(-1);
+                return;
+            }
+
             // Find voucher by id (primary key)
             const { data: vData, error: vError } = await supabase
                 .from('vouchers')
@@ -50,6 +56,34 @@ export default function VoucherDetailPage() {
 
             if (vError || !vData) {
                 console.error('Voucher query error:', vError);
+
+                // Try to find in pending_transactions as fallback
+                const { data: pData } = await supabase
+                    .from('pending_transactions')
+                    .select('*')
+                    .eq('id', decodedId)
+                    .single();
+
+                if (pData) {
+                    const vDataRaw = pData.voucher_data || {};
+                    const mappedVoucher = {
+                        ...vDataRaw,
+                        id: pData.id,
+                        status: pData.status,
+                        voucher_type: pData.transaction_type || vDataRaw.voucherType || 'Sales',
+                        voucher_number: vDataRaw.voucher_number || vDataRaw.invoiceNumber || 'NEW',
+                        voucher_date: vDataRaw.voucher_date || vDataRaw.date || pData.created_at,
+                        party_name: vDataRaw.party_name || vDataRaw.customerName || 'Pending Customer',
+                        total_amount: vDataRaw.total_amount || vDataRaw.grand_total || vDataRaw.total || 0,
+                        narration: vDataRaw.narration,
+                        inventory_entries: vDataRaw.inventory_entries || vDataRaw.items || [],
+                        sync_status: pData.status === 'failed' ? 'Sync Failed' : 'Pending Sync',
+                        created_at: pData.created_at
+                    };
+                    setVoucher(mappedVoucher);
+                    setLoading(false);
+                    return;
+                }
                 throw new Error('Voucher not found');
             }
 

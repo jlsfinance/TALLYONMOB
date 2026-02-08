@@ -15,6 +15,20 @@ export default function SelectCompanyPage() {
         refreshCompanies();
     }, []);
 
+    // Redirect new users with no companies to onboarding
+    // Redirect logic removed as per user request
+    // useEffect(() => {
+    //     if (companies.length === 0) {
+    //         const timer = setTimeout(() => {
+    //             if (companies.length === 0) {
+    //                 navigate('/onboarding');
+    //             }
+    //         }, 1500);
+    //         return () => clearTimeout(timer);
+    //     }
+    // }, [companies, navigate]);
+
+
     const handleBack = () => {
         setAppMode(null);
         navigate('/select-mode');
@@ -22,7 +36,7 @@ export default function SelectCompanyPage() {
 
     const handleSelect = (company: any) => {
         selectCompany(company);
-        navigate('/');
+        navigate('/dashboard');
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -95,7 +109,7 @@ export default function SelectCompanyPage() {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 }}
-                        onClick={() => window.open('/TallyLink.exe', '_blank')}
+                        onClick={() => navigate('/onboarding')}
                         className="group cursor-pointer"
                     >
                         <div className="h-52 bg-[#121214] border-2 border-dashed border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-500/50 hover:bg-blue-500/5 transition-all duration-300">

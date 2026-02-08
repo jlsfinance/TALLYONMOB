@@ -467,10 +467,10 @@ export default function CreateInvoicePage() {
             {/* Bottom Summary Bar */}
             <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-t border-[var(--border)] p-4 pb-8 md:pb-6 z-30">
                 <div className="max-w-5xl mx-auto flex items-center justify-between px-2">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-blue-600 flex flex-col items-center justify-center text-white shadow-lg shadow-blue-500/30">
-                            <span className="text-[8px] font-black uppercase mb-0.5 opacity-70">Payable</span>
-                            <span className="text-xl font-black leading-none">₹{Math.ceil(total).toLocaleString('en-IN')}</span>
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-600 flex flex-col items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                            <span className="text-[7px] font-black uppercase mb-0.5 opacity-70">Payable</span>
+                            <span className="text-lg font-black leading-none">₹{Math.ceil(total).toLocaleString('en-IN')}</span>
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
@@ -496,14 +496,24 @@ export default function CreateInvoicePage() {
                             </div>
                         </div>
                     </div>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className="bg-blue-600 text-white px-10 py-4 rounded-[28px] font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
-                    >
-                        <Save size={18} />
-                        Save Invoice
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleAddItem}
+                            className="bg-[var(--surface-variant)] text-[var(--on-surface)] p-4 rounded-2xl hover:bg-[var(--surface-active)] transition-all md:hidden"
+                            title="Add Item"
+                        >
+                            <Plus size={20} />
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={submitting}
+                            className="bg-blue-600 text-white px-8 md:px-10 py-4 rounded-[24px] md:rounded-[28px] font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+                        >
+                            <Save size={18} />
+                            <span className="hidden sm:inline">Save Invoice</span>
+                            <span className="sm:hidden">Save</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -522,257 +532,293 @@ export default function CreateInvoicePage() {
                             initial={{ y: "100%" }}
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
-                            className="relative bg-[var(--background)] w-full max-h-[90vh] rounded-t-[40px] p-6 shadow-2xl overflow-y-auto"
+                            className="relative bg-[var(--background)] w-full max-h-[90vh] rounded-t-[40px] shadow-2xl flex flex-col"
                         >
-                            <div className="w-12 h-1.5 bg-[var(--border)] rounded-full mx-auto mb-8" />
+                            <div className="p-6 pb-2">
+                                <div className="w-12 h-1.5 bg-[var(--border)] rounded-full mx-auto mb-4" />
+                            </div>
 
-                            <div className="space-y-6 max-w-2xl mx-auto">
-                                <div>
-                                    <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 block px-1">Item Selection</label>
-                                    <Autocomplete
-                                        options={stockItems.map(s => ({ id: s.id, label: s.name, subLabel: `Stock: ${s.closing_balance} ${s.base_unit || ''}` }))}
-                                        value={items[activeItemIndex].productId}
-                                        onChange={(val) => handleUpdateItem(activeItemIndex, 'productId', val)}
-                                        placeholder="Search Product..."
-                                        type="product"
-                                        autoFocus
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
-                                        <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Quantity</label>
-                                        <input
-                                            type="number"
-                                            value={items[activeItemIndex].quantity || ''}
-                                            onChange={e => handleUpdateItem(activeItemIndex, 'quantity', e.target.value)}
-                                            className="w-full bg-transparent text-3xl font-black text-blue-500 outline-none"
-                                            placeholder="1"
-                                        />
-                                    </div>
-                                    <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
-                                        <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Rate (Price)</label>
-                                        <input
-                                            type="number"
-                                            value={items[activeItemIndex].rate || ''}
-                                            onChange={e => handleUpdateItem(activeItemIndex, 'rate', e.target.value)}
-                                            className="w-full bg-transparent text-3xl font-black text-[var(--on-surface)] outline-none"
-                                            placeholder="0"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="bg-blue-600 p-8 rounded-[40px] text-white flex justify-between items-center shadow-xl shadow-blue-500/30">
+                            <div className="flex-1 overflow-y-auto p-6 pt-0">
+                                <div key={activeItemIndex} className="space-y-6 max-w-2xl mx-auto">
                                     <div>
-                                        <p className="text-[10px] font-black uppercase opacity-70 tracking-widest mb-1">Row Total</p>
-                                        <p className="text-5xl font-black tracking-tighter">₹{items[activeItemIndex].totalAmount.toLocaleString()}</p>
+                                        <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3 block px-1">Item Selection</label>
+                                        <Autocomplete
+                                            options={stockItems.map(s => ({ id: s.id, label: s.name, subLabel: `Stock: ${s.current_stock || 0} ${s.unit || ''}` }))}
+                                            value={items[activeItemIndex].productId}
+                                            onChange={(val) => handleUpdateItem(activeItemIndex, 'productId', val)}
+                                            placeholder="Search Product..."
+                                            type="product"
+                                            autoFocus
+                                        />
                                     </div>
-                                    <div className="text-right">
-                                        <div className="bg-white/20 px-3 py-1.5 rounded-xl border border-white/20">
-                                            <p className="text-[10px] font-black uppercase tracking-tight">GST Rate</p>
-                                            <p className="text-sm font-black">{items[activeItemIndex].gstRate}% Included</p>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
+                                            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Quantity</label>
+                                            <input
+                                                type="number"
+                                                value={items[activeItemIndex].quantity || ''}
+                                                onChange={e => handleUpdateItem(activeItemIndex, 'quantity', e.target.value)}
+                                                className="w-full bg-transparent text-3xl font-black text-blue-500 outline-none"
+                                                placeholder="1"
+                                            />
+                                        </div>
+                                        <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
+                                            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Rate (Price)</label>
+                                            <input
+                                                type="number"
+                                                value={items[activeItemIndex].rate || ''}
+                                                onChange={e => handleUpdateItem(activeItemIndex, 'rate', e.target.value)}
+                                                className="w-full bg-transparent text-3xl font-black text-[var(--on-surface)] outline-none"
+                                                placeholder="0"
+                                            />
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="flex gap-3 pt-4">
-                                    <button
-                                        onClick={() => {
-                                            setShowItemModal(false);
-                                            setTimeout(handleAddItem, 100);
-                                        }}
-                                        className="flex-1 py-5 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-[var(--surface-active)]"
-                                    >
-                                        Save & Add Next
-                                    </button>
-                                    <button
-                                        onClick={() => setShowItemModal(false)}
-                                        className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-blue-500/20"
-                                    >
-                                        Save & Done
-                                    </button>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
+                                            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Discount Type</label>
+                                            <select
+                                                value={items[activeItemIndex].discountType || 'PERCENTAGE'}
+                                                onChange={e => handleUpdateItem(activeItemIndex, 'discountType', e.target.value)}
+                                                className="w-full bg-transparent text-sm font-bold text-[var(--on-surface)] outline-none"
+                                            >
+                                                <option value="PERCENTAGE">% Percentage</option>
+                                                <option value="AMOUNT">₹ Amount</option>
+                                            </select>
+                                        </div>
+                                        <div className="bg-[var(--surface-variant)] p-5 rounded-3xl">
+                                            <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2 block">Discount Value</label>
+                                            <input
+                                                type="number"
+                                                value={items[activeItemIndex].discountValue || ''}
+                                                onChange={e => handleUpdateItem(activeItemIndex, 'discountValue', parseFloat(e.target.value))}
+                                                className="w-full bg-transparent text-3xl font-black text-[var(--on-surface)] outline-none"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-blue-600 p-8 rounded-[40px] text-white flex justify-between items-center shadow-xl shadow-blue-500/30">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase opacity-70 tracking-widest mb-1">Row Total</p>
+                                            <p className="text-5xl font-black tracking-tighter">₹{items[activeItemIndex].totalAmount.toLocaleString()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="bg-white/20 px-3 py-1.5 rounded-xl border border-white/20">
+                                                <p className="text-[10px] font-black uppercase tracking-tight">GST Rate (%)</p>
+                                                <input
+                                                    type="number"
+                                                    value={items[activeItemIndex].gstRate || 0}
+                                                    onChange={e => handleUpdateItem(activeItemIndex, 'gstRate', parseFloat(e.target.value) || 0)}
+                                                    className="w-16 bg-transparent text-sm font-black text-white outline-none text-right"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
+                            </div>
+
+                            <div className="p-6 bg-[var(--background)] border-t border-[var(--border)] flex gap-3">
+                                <button
+                                    onClick={handleAddItem}
+                                    className="flex-1 py-5 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-[var(--surface-active)]"
+                                >
+                                    Save & Add Next
+                                </button>
+                                <button
+                                    onClick={() => setShowItemModal(false)}
+                                    className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] shadow-lg shadow-blue-500/20"
+                                >
+                                    Save & Done
+                                </button>
                             </div>
                         </motion.div>
                     </div>
-                )}
-            </AnimatePresence>
+                )
+                }
+            </AnimatePresence >
 
             {/* Smart Calculator Drawer */}
             <AnimatePresence>
-                {showSmartCalculator && (
-                    <div className="fixed inset-0 z-[100] flex flex-col justify-end">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setShowSmartCalculator(false)}
-                            className="absolute inset-0 bg-black/80 backdrop-blur-md"
-                        />
-                        <motion.div
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            className="relative bg-[var(--background)] w-full rounded-t-[40px] overflow-hidden"
-                        >
-                            <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl">
-                                        <Calculator size={24} />
+                {
+                    showSmartCalculator && (
+                        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setShowSmartCalculator(false)}
+                                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                            />
+                            <motion.div
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                className="relative bg-[var(--background)] w-full rounded-t-[40px] overflow-hidden"
+                            >
+                                <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-emerald-500/10 text-emerald-500 rounded-2xl">
+                                            <Calculator size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-lg font-black text-[var(--on-surface)]">Smart Billing</h2>
+                                            <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Entry: ID * QTY</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-lg font-black text-[var(--on-surface)]">Smart Billing</h2>
-                                        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Entry: ID * QTY</p>
-                                    </div>
-                                </div>
-                                <button onClick={() => setShowSmartCalculator(false)} className="p-3 hover:bg-[var(--surface-active)] rounded-2xl">
-                                    <X size={24} />
-                                </button>
-                            </div>
-
-                            <div className="p-6 space-y-6">
-                                <div className="bg-[var(--surface-variant)] rounded-3xl p-6 text-right relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 p-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
-                                        {calcError || 'Awaiting ID'}
-                                    </div>
-                                    <div className="text-5xl font-black font-mono tracking-widest text-[var(--on-surface)]">
-                                        {smartCalcInput || '0'}
-                                    </div>
+                                    <button onClick={() => setShowSmartCalculator(false)} className="p-3 hover:bg-[var(--surface-active)] rounded-2xl">
+                                        <X size={24} />
+                                    </button>
                                 </div>
 
-                                <div className="grid grid-cols-4 gap-3">
-                                    {[7, 8, 9].map(n => (
-                                        <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
-                                            {n}
+                                <div className="p-6 space-y-6">
+                                    <div className="bg-[var(--surface-variant)] rounded-3xl p-6 text-right relative overflow-hidden">
+                                        <div className="absolute top-0 left-0 p-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                                            {calcError || 'Awaiting ID'}
+                                        </div>
+                                        <div className="text-5xl font-black font-mono tracking-widest text-[var(--on-surface)]">
+                                            {smartCalcInput || '0'}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {[7, 8, 9].map(n => (
+                                            <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
+                                                {n}
+                                            </button>
+                                        ))}
+                                        <button onClick={() => handleSmartCalcInput('C')} className="h-20 rounded-2xl bg-red-500/10 text-red-500 text-xl font-black">CLR</button>
+
+                                        {[4, 5, 6].map(n => (
+                                            <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
+                                                {n}
+                                            </button>
+                                        ))}
+                                        <button onClick={() => handleSmartCalcInput('*')} className="h-20 rounded-2xl bg-indigo-500/10 text-indigo-500 flex flex-col items-center justify-center font-black">
+                                            <span className="text-2xl">×</span>
+                                            <span className="text-[8px] uppercase tracking-widest">QTY</span>
                                         </button>
-                                    ))}
-                                    <button onClick={() => handleSmartCalcInput('C')} className="h-20 rounded-2xl bg-red-500/10 text-red-500 text-xl font-black">CLR</button>
 
-                                    {[4, 5, 6].map(n => (
-                                        <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
-                                            {n}
+                                        {[1, 2, 3].map(n => (
+                                            <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
+                                                {n}
+                                            </button>
+                                        ))}
+                                        <button onClick={() => handleSmartCalcInput('+')} className="row-span-2 h-full rounded-2xl bg-blue-600 text-white text-3xl font-black shadow-lg shadow-blue-500/20">+</button>
+
+                                        <button onClick={() => handleSmartCalcInput('0')} className="col-span-2 h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)]">0</button>
+                                        <button onClick={() => handleSmartCalcInput('-')} className="h-20 rounded-2xl bg-orange-500/10 text-orange-500 flex flex-col items-center justify-center font-black">
+                                            <Trash2 size={24} />
+                                            <span className="text-[8px] uppercase tracking-widest">REM</span>
                                         </button>
-                                    ))}
-                                    <button onClick={() => handleSmartCalcInput('*')} className="h-20 rounded-2xl bg-indigo-500/10 text-indigo-500 flex flex-col items-center justify-center font-black">
-                                        <span className="text-2xl">×</span>
-                                        <span className="text-[8px] uppercase tracking-widest">QTY</span>
-                                    </button>
+                                    </div>
 
-                                    {[1, 2, 3].map(n => (
-                                        <button key={n} onClick={() => handleSmartCalcInput(n.toString())} className="h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)] hover:bg-[var(--surface-active)]">
-                                            {n}
+                                    <div className="flex gap-4">
+                                        <button
+                                            onClick={() => setShowSmartCalculator(false)}
+                                            className="flex-1 py-5 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest"
+                                        >
+                                            Close Keypad
                                         </button>
-                                    ))}
-                                    <button onClick={() => handleSmartCalcInput('+')} className="row-span-2 h-full rounded-2xl bg-blue-600 text-white text-3xl font-black shadow-lg shadow-blue-500/20">+</button>
-
-                                    <button onClick={() => handleSmartCalcInput('0')} className="col-span-2 h-20 rounded-2xl bg-[var(--surface-variant)] text-2xl font-black text-[var(--on-surface)]">0</button>
-                                    <button onClick={() => handleSmartCalcInput('-')} className="h-20 rounded-2xl bg-orange-500/10 text-orange-500 flex flex-col items-center justify-center font-black">
-                                        <Trash2 size={24} />
-                                        <span className="text-[8px] uppercase tracking-widest">REM</span>
-                                    </button>
+                                        <button
+                                            onClick={() => setShowSmartCalculator(false)}
+                                            className="flex-[2] py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/20"
+                                        >
+                                            Confirm Items
+                                        </button>
+                                    </div>
                                 </div>
-
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={() => setShowSmartCalculator(false)}
-                                        className="flex-1 py-5 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest"
-                                    >
-                                        Close Keypad
-                                    </button>
-                                    <button
-                                        onClick={() => setShowSmartCalculator(false)}
-                                        className="flex-[2] py-5 bg-emerald-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/20"
-                                    >
-                                        Confirm Items
-                                    </button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Preview Verification Overlay */}
             <AnimatePresence>
-                {showPreview && (
-                    <motion.div
-                        initial={{ opacity: 0, y: "100%" }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: "100%" }}
-                        className="fixed inset-0 z-[200] bg-[var(--background)] flex flex-col"
-                    >
-                        <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
-                            <h2 className="text-xl font-black text-[var(--on-surface)] tracking-tight">Invoice Verification</h2>
-                            <button onClick={() => setShowPreview(false)} className="p-3 bg-[var(--surface-variant)] rounded-2xl">
-                                <X size={20} />
-                            </button>
-                        </div>
+                {
+                    showPreview && (
+                        <motion.div
+                            initial={{ opacity: 0, y: "100%" }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: "100%" }}
+                            className="fixed inset-0 z-[200] bg-[var(--background)] flex flex-col"
+                        >
+                            <div className="p-6 border-b border-[var(--border)] flex items-center justify-between">
+                                <h2 className="text-xl font-black text-[var(--on-surface)] tracking-tight">Invoice Verification</h2>
+                                <button onClick={() => setShowPreview(false)} className="p-3 bg-[var(--surface-variant)] rounded-2xl">
+                                    <X size={20} />
+                                </button>
+                            </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            <div className="max-w-3xl mx-auto space-y-8">
-                                <div className="flex justify-between items-start">
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Customer</p>
-                                        <p className="text-2xl font-black text-[var(--on-surface)]">
-                                            {ledgers.find(l => l.id === selectedCustomerId)?.name || 'Walk-in Customer'}
-                                        </p>
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                <div className="max-w-3xl mx-auto space-y-8">
+                                    <div className="flex justify-between items-start">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Customer</p>
+                                            <p className="text-2xl font-black text-[var(--on-surface)]">
+                                                {ledgers.find(l => l.id === selectedCustomerId)?.name || 'Walk-in Customer'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right space-y-1">
+                                            <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Invoice Date</p>
+                                            <p className="text-lg font-black text-[var(--on-surface)]">{format(new Date(date), 'dd MMM yyyy')}</p>
+                                        </div>
                                     </div>
-                                    <div className="text-right space-y-1">
-                                        <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Invoice Date</p>
-                                        <p className="text-lg font-black text-[var(--on-surface)]">{format(new Date(date), 'dd MMM yyyy')}</p>
-                                    </div>
-                                </div>
 
-                                <div className="bg-white dark:bg-slate-900/50 rounded-[32px] border border-[var(--border)] overflow-hidden">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-[var(--surface-variant)]">
-                                            <tr>
-                                                <th className="px-6 py-4 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Item Name</th>
-                                                <th className="px-6 py-4 text-center text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Qty</th>
-                                                <th className="px-6 py-4 text-right text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Amount</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-[var(--border)] text-sm font-bold">
-                                            {items.map((item, i) => (
-                                                <tr key={i}>
-                                                    <td className="px-6 py-4 text-[var(--on-surface)]">{item.description}</td>
-                                                    <td className="px-6 py-4 text-center text-[var(--text-muted)]">{item.quantity}</td>
-                                                    <td className="px-6 py-4 text-right text-[var(--on-surface)]">₹{item.totalAmount.toLocaleString()}</td>
+                                    <div className="bg-white dark:bg-slate-900/50 rounded-[32px] border border-[var(--border)] overflow-hidden">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-[var(--surface-variant)]">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Item Name</th>
+                                                    <th className="px-6 py-4 text-center text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Qty</th>
+                                                    <th className="px-6 py-4 text-right text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest">Amount</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                        <tfoot className="bg-[var(--surface-variant)]/50">
-                                            <tr>
-                                                <td colSpan={2} className="px-6 py-4 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest text-right">Net Payable</td>
-                                                <td className="px-6 py-4 text-right text-xl font-black text-blue-600">₹{total.toLocaleString()}</td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-
-                                <div className="p-6 bg-blue-600/5 border border-blue-600/10 rounded-3xl flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center">
-                                        <AlertCircle size={24} />
+                                            </thead>
+                                            <tbody className="divide-y divide-[var(--border)] text-sm font-bold">
+                                                {items.map((item, i) => (
+                                                    <tr key={i}>
+                                                        <td className="px-6 py-4 text-[var(--on-surface)]">{item.description}</td>
+                                                        <td className="px-6 py-4 text-center text-[var(--text-muted)]">{item.quantity}</td>
+                                                        <td className="px-6 py-4 text-right text-[var(--on-surface)]">₹{item.totalAmount.toLocaleString()}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot className="bg-[var(--surface-variant)]/50">
+                                                <tr>
+                                                    <td colSpan={2} className="px-6 py-4 text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest text-right">Net Payable</td>
+                                                    <td className="px-6 py-4 text-right text-xl font-black text-blue-600">₹{total.toLocaleString()}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-[var(--on-surface)]">Final Review Required</p>
-                                        <p className="text-xs text-[var(--text-muted)]">Please ensure all items and totals are correct before committing to Tally.</p>
+
+                                    <div className="p-6 bg-blue-600/5 border border-blue-600/10 rounded-3xl flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center">
+                                            <AlertCircle size={24} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-[var(--on-surface)]">Final Review Required</p>
+                                            <p className="text-xs text-[var(--text-muted)]">Please ensure all items and totals are correct before committing to Tally.</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="p-6 bg-[var(--surface-variant)] flex gap-4">
-                            <button onClick={() => setShowPreview(false)} className="flex-1 py-5 bg-white dark:bg-slate-800 text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest shadow-sm">
-                                Go Back
-                            </button>
-                            <button onClick={handleSubmit} className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20">
-                                Confirm & Save Invoice
-                            </button>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+                            <div className="p-6 bg-[var(--surface-variant)] flex gap-4">
+                                <button onClick={() => setShowPreview(false)} className="flex-1 py-5 bg-white dark:bg-slate-800 text-[var(--on-surface)] rounded-3xl font-black text-xs uppercase tracking-widest shadow-sm">
+                                    Go Back
+                                </button>
+                                <button onClick={handleSubmit} className="flex-[2] py-5 bg-blue-600 text-white rounded-3xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20">
+                                    Confirm & Save Invoice
+                                </button>
+                            </div>
+                        </motion.div>
+                    )
+                }
+            </AnimatePresence >
+        </div >
     );
 }

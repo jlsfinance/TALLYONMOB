@@ -64,13 +64,22 @@ export const auth = {
 
 // Company API
 export const companyApi = {
+    // List only companies owned by current user
     list: async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { data: [], error: 'Not authenticated' };
+        }
+
         const { data, error } = await supabase
             .from('companies')
             .select('*')
+            // RLS policy handles security (showing owned + unowned companies)
             .order('name');
-        return { data, error };
+        return { data: data || [], error };
     },
+
 
     getById: async (id) => {
         const { data, error } = await supabase
@@ -79,6 +88,22 @@ export const companyApi = {
             .eq('id', id)
             .single();
         return { data, error };
+    },
+
+    // Get app settings (for download URL, etc.)
+    getAppSettings: async () => {
+        const { data, error } = await supabase
+            .from('app_settings')
+            .select('key, value');
+
+        if (error || !data) return { data: null, error };
+
+        // Convert array to object for easy access
+        const settings = {};
+        data.forEach(s => {
+            settings[s.key] = s.value;
+        });
+        return { data: settings, error: null };
     },
 
     getSummary: async (companyId) => {
@@ -131,83 +156,7 @@ export const companyApi = {
     }
 };
 
-// ============================================
-// PENDING TRANSACTIONS API (Two-Way Sync)
-// Create transactions on Web/App -> Push to Tally
-// ============================================
-export const pendingTransactionApi = {
-    // Create a new pending transaction
-    create: async (companyId, transactionType, voucherData, createdBy = null) => {
-        const { data, error } = await supabase
-            .from('pending_transactions')
-            .insert({
-                company_id: companyId,
-                transaction_type: transactionType,
-                voucher_data: voucherData,
-                status: 'pending',
-                created_by: createdBy
-            })
-            .select()
-            .single();
-        return { data, error };
-    },
 
-    // List pending transactions for a company
-    list: async (companyId, status = null) => {
-        let query = supabase
-            .from('pending_transactions')
-            .select('*')
-            .eq('company_id', companyId)
-            .order('created_at', { ascending: false });
-
-        if (status) {
-            query = query.eq('status', status);
-        }
-
-        const { data, error } = await query;
-        return { data, error };
-    },
-
-    // Get pending count (for badge/notification)
-    getPendingCount: async (companyId) => {
-        const { count, error } = await supabase
-            .from('pending_transactions')
-            .select('*', { count: 'exact', head: true })
-            .eq('company_id', companyId)
-            .eq('status', 'pending');
-        return { count: count || 0, error };
-    },
-
-    // Update transaction status (called by Windows app after sync)
-    updateStatus: async (id, status, tallyVoucherNumber = null, errorMessage = null) => {
-        const updates = {
-            status,
-            error_message: errorMessage
-        };
-
-        if (tallyVoucherNumber) {
-            updates.tally_voucher_number = tallyVoucherNumber;
-            updates.synced_at = new Date().toISOString();
-        }
-
-        const { data, error } = await supabase
-            .from('pending_transactions')
-            .update(updates)
-            .eq('id', id)
-            .select()
-            .single();
-        return { data, error };
-    },
-
-    // Delete a pending transaction
-    delete: async (id) => {
-        const { error } = await supabase
-            .from('pending_transactions')
-            .delete()
-            .eq('id', id);
-        return { error };
-    }
-};
 
 // Ledger API
 export const ledgerApi = {
@@ -341,7 +290,7 @@ export const masterApi = {
 
     getStockItems: async (companyId) => {
         const { data, error } = await supabase
-            .from('stock')
+            .from('stock_items')
             .select('*') // Get all fields
             .eq('company_id', companyId)
             .order('name')
@@ -627,5 +576,108 @@ export const syncHistoryApi = {
     }
 };
 
-export default supabase;
+// ============================================
+// TWO-WAY SYNC: Pending Transactions API
+// Create transactions on Web/Mobile that will be pushed to Tally by Windows app
+// ============================================
+export const pendingTransactionApi = {
+    // Create a new pending transaction
+    create: async (companyId, transactionType, voucherData) => {
+        const { data: { user } } = await supabase.auth.getUser();
 
+        const { data, error } = await supabase
+            .from('pending_transactions')
+            .insert({
+                company_id: companyId,
+                transaction_type: transactionType,
+                voucher_data: voucherData,
+                status: 'pending',
+                created_by: user?.id
+            })
+            .select()
+            .single();
+
+        return { data, error };
+    },
+
+    // Get all pending transactions for a company
+    list: async (companyId, status = null) => {
+        let query = supabase
+            .from('pending_transactions')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false });
+
+        if (status) {
+            query = query.eq('status', status);
+        }
+
+        const { data, error } = await query;
+        return { data, error };
+    },
+
+    // Get pending count
+    getPendingCount: async (companyId) => {
+        const { count, error } = await supabase
+            .from('pending_transactions')
+            .select('*', { count: 'exact', head: true })
+            .eq('company_id', companyId)
+            .eq('status', 'pending');
+
+        return { count: count || 0, error };
+    },
+
+    // Create Sales invoice for Tally sync
+    createSalesInvoice: async (companyId, invoiceData) => {
+        return pendingTransactionApi.create(companyId, 'Sales', invoiceData);
+    },
+
+    // Create Purchase invoice for Tally sync
+    createPurchaseInvoice: async (companyId, invoiceData) => {
+        return pendingTransactionApi.create(companyId, 'Purchase', invoiceData);
+    },
+
+    // Create Receipt for Tally sync
+    createReceipt: async (companyId, receiptData) => {
+        return pendingTransactionApi.create(companyId, 'Receipt', receiptData);
+    },
+
+    // Create Payment for Tally sync
+    createPayment: async (companyId, paymentData) => {
+        return pendingTransactionApi.create(companyId, 'Payment', paymentData);
+    },
+
+    // Update transaction status (called by Windows app after sync)
+    updateStatus: async (id, status, tallyVoucherNumber = null, errorMessage = null) => {
+        const updates = {
+            status,
+            error_message: errorMessage
+        };
+
+        if (tallyVoucherNumber) {
+            updates.tally_voucher_number = tallyVoucherNumber;
+            updates.synced_at = new Date().toISOString();
+        }
+
+        const { data, error } = await supabase
+            .from('pending_transactions')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        return { data, error };
+    },
+
+    // Delete pending transaction
+    delete: async (id) => {
+        const { error } = await supabase
+            .from('pending_transactions')
+            .delete()
+            .eq('id', id)
+            .eq('status', 'pending');
+
+        return { error };
+    }
+};
+
+export default supabase;
