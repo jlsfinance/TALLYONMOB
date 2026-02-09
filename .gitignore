@@ -19,6 +19,20 @@ obj/
 .env.test.local
 .env.production.local
 
+# ⚠️ SENSITIVE CONFIG FILES - NEVER COMMIT!
+appsettings.json
+**/appsettings.json
+!appsettings.example.json
+!**/appsettings.example.json
+supabase_config.dart
+**/supabase_config.dart
+secrets.json
+**/secrets.json
+*.keystore
+*.jks
+google-services.json
+GoogleService-Info.plist
+
 # Debug logs
 npm-debug.log*
 yarn-debug.log*
