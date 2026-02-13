@@ -56,9 +56,9 @@ export default function SelectCompanyPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-[#030712] flex flex-col items-center justify-center p-6 relative overflow-hidden">
             {/* Background Effects */}
-            <div className="absolute top-[-400px] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[150px]" />
+            <div className="absolute top-[-400px] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-cyan-600/10 rounded-full blur-[150px]" />
 
             <div className="relative z-10 w-full max-w-4xl">
                 {/* Back to Modules */}
@@ -112,8 +112,8 @@ export default function SelectCompanyPage() {
                         onClick={() => navigate('/onboarding')}
                         className="group cursor-pointer"
                     >
-                        <div className="h-52 bg-[#121214] border-2 border-dashed border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-500/50 hover:bg-blue-500/5 transition-all duration-300">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4 group-hover:scale-110 transition-transform">
+                        <div className="h-52 bg-[#0F172A] border-2 border-dashed border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all duration-300">
+                            <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4 group-hover:scale-110 transition-transform">
                                 <Plus size={28} />
                             </div>
                             <h3 className="font-semibold text-white mb-1">Add Company</h3>
@@ -131,9 +131,9 @@ export default function SelectCompanyPage() {
                             onClick={() => handleSelect(company)}
                             className="group cursor-pointer"
                         >
-                            <div className="h-52 bg-[#121214] border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-white/20 hover:bg-[#1a1a1d] transition-all duration-300 relative overflow-hidden">
+                            <div className="h-52 bg-[#0F172A] border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-white/20 hover:bg-[#1E293B] transition-all duration-300 relative overflow-hidden">
                                 {/* Hover gradient */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/0 to-purple-600/0 group-hover:from-blue-600/5 group-hover:to-purple-600/5 transition-all duration-500" />
+                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/0 to-violet-600/0 group-hover:from-cyan-600/5 group-hover:to-violet-600/5 transition-all duration-500" />
 
                                 <div className="relative z-10">
                                     <div className="flex items-start justify-between mb-4">
@@ -149,7 +149,7 @@ export default function SelectCompanyPage() {
                                         </button>
                                     </div>
 
-                                    <h3 className="font-bold text-white text-lg truncate group-hover:text-blue-400 transition-colors">
+                                    <h3 className="font-bold text-white text-lg truncate group-hover:text-cyan-400 transition-colors">
                                         {company.name}
                                     </h3>
 
@@ -167,7 +167,7 @@ export default function SelectCompanyPage() {
                                     <span className="text-[10px] font-mono text-gray-600 uppercase tracking-wider">
                                         ID: {company.id.substring(0, 8)}
                                     </span>
-                                    <span className="flex items-center gap-1 text-sm font-medium text-blue-400 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all">
+                                    <span className="flex items-center gap-1 text-sm font-medium text-cyan-400 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all">
                                         Open <ArrowRight size={14} />
                                     </span>
                                 </div>

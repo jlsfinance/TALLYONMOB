@@ -6,7 +6,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
-    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock
+    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock,
+    LineChart, Building2, Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/GlassUI';
 
@@ -64,6 +65,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/stock', icon: <Box size={20} />, label: 'Stock Summary' },
             { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
             { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
+            { to: '/sales-analytics', icon: <LineChart size={20} />, label: 'Sales Analytics' },
+            { to: '/bank-reconciliation', icon: <Building2 size={20} />, label: 'Bank Recon' },
+            { to: '/ai-entry', icon: <Sparkles size={20} />, label: 'AI Auto Entry' },
             { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Reports' },
         ];
         if (isAdmin) {
@@ -81,6 +85,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/stock', icon: <Box size={20} />, label: 'Inventory' },
             { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
             { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
+            { to: '/sales-analytics', icon: <LineChart size={20} />, label: 'Sales Analytics' },
+            { to: '/bank-reconciliation', icon: <Building2 size={20} />, label: 'Bank Recon' },
+            { to: '/ai-entry', icon: <Sparkles size={20} />, label: 'AI Auto Entry' },
             { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Filing' },
         ];
         if (isAdmin) {
@@ -128,8 +135,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         >
                             <div className="flex items-center justify-between mb-8">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white font-black shadow-lg">L</div>
-                                    <span className="font-black text-xl tracking-tight text-[var(--on-surface)]">BillBook</span>
+                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25">
+                                        <RefreshCw size={18} />
+                                    </div>
+                                    <span className="font-black text-xl tracking-tight text-[var(--on-surface)]">TallySync</span>
                                 </div>
                                 <button onClick={() => setShowMobileMenu(false)} className="p-2 rounded-xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
                                     <X size={20} />
@@ -219,14 +228,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {/* Logo Section */}
                 <div className="h-20 flex items-center justify-between px-5">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white font-black shadow-lg shadow-[var(--primary-glow)]">
-                            L
+                        <div className="relative">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-500 to-violet-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/25">
+                                <RefreshCw size={18} />
+                            </div>
+                            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[var(--surface)] animate-pulse" />
                         </div>
                         {sidebarOpen && (
                             <div>
-                                <h1 className="font-black text-lg tracking-tight text-[var(--on-surface)]">BillBook</h1>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] -mt-1 opacity-70">
-                                    {appMode === 'tally' ? 'Fin-OS' : 'Billing'}
+                                <h1 className="font-black text-lg tracking-tight text-[var(--on-surface)]">TallySync</h1>
+                                <p className="text-[8px] font-black uppercase tracking-[0.15em] text-cyan-500 -mt-0.5">
+                                    {appMode === 'tally' ? 'Cloud Platform' : 'Billing Mode'}
                                 </p>
                             </div>
                         )}

@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Fallback to hardcoded values for Capacitor/Mobile builds where .env might be missing
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://lcsehcwocqvxrrgbmhcz.supabase.co";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false // Important for mobile apps to prevent deep link errors
+    }
+});
 
 // Auth helper functions
 export const auth = {
@@ -171,7 +178,7 @@ export const ledgerApi = {
             query = query.eq('parent', parentGroup);
         }
 
-        const { data, error } = await query.limit(100000); // Removed limit (practical max)
+        const { data, error } = await query.limit(10000);
         return { data, error };
     },
 
@@ -202,17 +209,8 @@ export const ledgerApi = {
             .or(`party_name.eq.${ledgerId}`)
             .gte('voucher_date', fromDate)
             .lte('voucher_date', toDate)
-            .order('voucher_date', { ascending: false });
-        // No limit here by default (defaults to 1000), should we add one? 
-        // User said "har jagah se". Let's add limit(100000) to ensure.
-        // Wait, chain modifications might require storing query first.
-        // But supabase-js allows awaits on chain. 
-        // Let's assume default usage above.
-        // Actually, getTransactions code above is:
-        // await supabase... .order(...)
-        // I will add .limit(100000) to it in a separate edit block or just assume 5000 replacement covers known spots.
-        // The instructions said "Update .limit(5000)", getTransactions didn't have one?
-        // Let's stick to replacing the explicit limits first, then I can adding missing ones.
+            .order('voucher_date', { ascending: false })
+            .limit(5000);
         return { data, error };
     }
 };
@@ -224,6 +222,7 @@ export const voucherApi = {
             .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
+            .eq('is_deleted', false)
             .order('voucher_date', { ascending: false });
 
         if (fromDate) query = query.gte('voucher_date', fromDate);
@@ -231,7 +230,7 @@ export const voucherApi = {
         if (type) query = query.eq('voucher_type', type);
         if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query.limit(100000); // Removed limit
+        const { data, error } = await query.limit(10000);
         return { data, error };
     },
 
@@ -284,7 +283,7 @@ export const masterApi = {
             .select('id, name, parent_group, closing_balance')
             .eq('company_id', companyId)
             .order('name')
-            .limit(100000); // Removed limit
+            .limit(10000);
         return { data, error };
     },
 
@@ -294,7 +293,7 @@ export const masterApi = {
             .select('*') // Get all fields
             .eq('company_id', companyId)
             .order('name')
-            .limit(100000); // Removed limit
+            .limit(10000);
         return { data, error };
     }
 };
@@ -314,7 +313,7 @@ export const salesApi = {
         if (toDate) query = query.lte('voucher_date', toDate);
         if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query.limit(100000);
+        const { data, error } = await query.limit(10000);
         return { data, error };
     },
 
@@ -361,7 +360,7 @@ export const purchasesApi = {
         if (toDate) query = query.lte('voucher_date', toDate);
         if (party) query = query.ilike('party_name', `%${party}%`);
 
-        const { data, error } = await query.limit(100000);
+        const { data, error } = await query.limit(10000);
         return { data, error };
     },
 
@@ -406,7 +405,7 @@ export const stockApi = {
             query = query.eq('stock_group', stockGroup);
         }
 
-        const { data, error } = await query.limit(100000); // Removed limit
+        const { data, error } = await query.limit(10000);
 
         return { data, error };
     },

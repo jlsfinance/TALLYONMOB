@@ -37,6 +37,9 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsPage from './pages/TermsPage';
 import RefundPolicyPage from './pages/RefundPolicyPage';
+import SalesAnalyticsPage from './pages/SalesAnalyticsPage';
+import BankReconciliationPage from './pages/BankReconciliationPage';
+import GeminiAutoEntryPage from './pages/GeminiAutoEntryPage';
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -156,6 +159,9 @@ function App() {
                                             <Route path="/invoice/:id" element={<InvoicePDFPage />} />
                                             <Route path="/profit-loss" element={<ProfitLossPage />} />
                                             <Route path="/balance-sheet" element={<BalanceSheetPage />} />
+                                            <Route path="/sales-analytics" element={<SalesAnalyticsPage />} />
+                                            <Route path="/bank-reconciliation" element={<BankReconciliationPage />} />
+                                            <Route path="/ai-entry" element={<GeminiAutoEntryPage />} />
                                         </Routes>
                                     </AppLayout>
                                 </ProtectedRoute>

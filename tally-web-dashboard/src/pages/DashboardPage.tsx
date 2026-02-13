@@ -11,6 +11,7 @@ import {
 import { Card, StatCard, Chip, Badge, Button, ListItem, Avatar, Fab, Spinner, EmptyState } from '../components/ui/GlassUI';
 import { KPICard, ProgressRing, BarChart3D, GlassCard as GlassCard3D } from '../components/3d';
 import GSTReminders from '../components/dashboard/GSTReminders';
+import SmartInsights from '../components/dashboard/SmartInsights';
 import BillingDashboard from './BillingDashboard';
 import { subMonths, startOfMonth as startOfMonthDate, endOfMonth as endOfMonthDate } from 'date-fns';
 
@@ -259,156 +260,241 @@ export default function DashboardPage() {
 
     if (!selectedCompany) return null;
 
+    // STITCH DESIGN SYSTEM - LOCAL COMPONENTS
+    const StitchStatCard = ({ title, value, icon, subtitle, trend, onClick, colorClass = "text-[var(--primary)]", bgClass = "bg-[var(--primary-container)]" }: any) => (
+        <div
+            onClick={onClick}
+            className="stitch-card p-5 cursor-pointer hover:-translate-y-1 transition-transform relative overflow-hidden group"
+        >
+            <div className="flex justify-between items-start mb-4">
+                <div className={`w-10 h-10 rounded-full ${bgClass} flex items-center justify-center ${colorClass}`}>
+                    <span className="text-xl">{icon}</span>
+                </div>
+                {trend && trend.value !== 0 && (
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${trend.direction === 'up' ? 'bg-[var(--tertiary-container)] text-[var(--tertiary)]' : 'bg-[var(--error-bg)] text-[var(--error)]'}`}>
+                        {trend.direction === 'up' ? '↑' : '↓'} {trend.value}%
+                    </span>
+                )}
+            </div>
+            <div>
+                <h3 className="text-[var(--text-muted)] text-sm font-medium mb-1">{title}</h3>
+                <div className="text-2xl font-bold text-[var(--on-surface)] tracking-tight">
+                    {formatCurrency(value)}
+                </div>
+                <p className="text-xs text-[var(--on-surface-variant)] mt-2 opacity-80">{subtitle}</p>
+            </div>
+        </div>
+    );
+
+    const StitchQuickAction = ({ title, icon, onClick, to }: any) => {
+        const Wrapper = to ? Link : 'div';
+        return (
+            <Wrapper to={to} onClick={onClick} className="group">
+                <div className="stitch-card p-4 flex flex-col items-center justify-center gap-3 h-28 border border-dashed border-[var(--outline-variant)] hover:border-solid hover:border-[var(--primary)] transition-all bg-[var(--background)]">
+                    <div className="text-[var(--primary)] group-hover:scale-110 transition-transform">
+                        {icon}
+                    </div>
+                    <span className="text-sm font-medium text-[var(--on-surface-variant)] group-hover:text-[var(--primary)]">{title}</span>
+                </div>
+            </Wrapper>
+        )
+    };
+
+    if (!selectedCompany) return null;
+
     return (
-        <div className="space-y-4 max-w-7xl mx-auto">
-            {/* Hero Section (Desktop Only) */}
-            <div className="hidden md:flex flex-col md:flex-row md:items-center justify-between gap-6 mb-4">
+        <div className="max-w-[1600px] mx-auto p-4 md:p-6 space-y-6">
+
+            {/* Header Section - Google Design Style */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--outline-variant)] pb-6">
                 <div>
-                    <h1 className="text-3xl lg:text-4xl font-bold text-[var(--on-background)] tracking-tight">
-                        {getGreeting()}, <span className="text-[var(--primary)]">{user?.email?.split('@')[0]}</span>
+                    <h1 className="text-2xl md:text-3xl font-normal text-display text-[var(--on-surface)]">
+                        Dashboard
                     </h1>
-                    <p className="text-[var(--text-muted)] mt-2 text-lg">
-                        Here's what's happening with <span className="font-semibold text-[var(--on-surface)]">{selectedCompany.name}</span> today.
+                    <p className="text-[var(--text-muted)] text-sm mt-1">
+                        Overview for <span className="font-medium text-[var(--on-surface)]">{selectedCompany.name}</span>
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <Button variant="ghost" onClick={handleRefresh} icon={<RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />}>
-                        Sync Now
-                    </Button>
-                    <Button variant="glow" onClick={() => navigate('/create-invoice')} icon={<Plus size={18} />} size="lg">
-                        New Invoice
-                    </Button>
-                </div>
-            </div>
 
-            {/* Condant Controls (Pills) */}
-            <div className="flex items-center justify-between gap-2 bg-[var(--surface-variant)]/30 p-1.5 rounded-2xl md:bg-transparent md:p-0">
-                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-                    {periodFilters.map((filter) => (
-                        <button
-                            key={filter.key}
-                            onClick={() => setPeriod(filter.key)}
-                            className={`
-                                flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all
-                                ${period === filter.key
-                                    ? 'bg-[var(--primary)] text-white shadow-lg'
-                                    : 'bg-[var(--surface)] text-[var(--on-surface-variant)] border border-[var(--border)]'
-                                }
-                            `}
-                        >
-                            {filter.icon}
-                            {filter.label}
-                        </button>
-                    ))}
-                </div>
-                {refreshing && (
-                    <div className="pr-2">
-                        <RefreshCw size={14} className="animate-spin text-[var(--primary)]" />
+                <div className="flex items-center gap-3">
+                    <div className="flex bg-[var(--surface-container)] rounded-full p-1 border border-[var(--outline-variant)]">
+                        {periodFilters.map((filter) => (
+                            <button
+                                key={filter.key}
+                                onClick={() => setPeriod(filter.key)}
+                                className={`
+                                    px-4 py-1.5 rounded-full text-xs font-medium transition-all
+                                    ${period === filter.key
+                                        ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-sm'
+                                        : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]'
+                                    }
+                                `}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
                     </div>
-                )}
+
+                    <button
+                        onClick={handleRefresh}
+                        className="stitch-icon-btn bg-[var(--primary-container)] text-[var(--on-primary-container)]"
+                    >
+                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
+                    </button>
+
+                    <button
+                        onClick={() => navigate('/create-invoice')}
+                        className="stitch-button flex items-center gap-2"
+                    >
+                        <Plus size={18} />
+                        <span className="hidden sm:inline">New Invoice</span>
+                    </button>
+                </div>
             </div>
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-4">
                     <Spinner size="lg" />
-                    <p className="text-[var(--text-muted)] animate-pulse">Analyzing financial data...</p>
+                    <p className="text-[var(--text-muted)] animate-pulse font-medium">Syncing financial data...</p>
                 </div>
             ) : appMode === 'billing' ? (
                 <BillingDashboard />
             ) : (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-                    {/* Bento Grid Stats */}
+
+                    {/* KEY METRICS GRID */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <KPICard title="Sales" value={stats.sales} icon="💰" variant="sales" trend={salesTrend} subtitle={`${stats.salesCount} Bills`} onClick={() => navigate('/sales')} />
-                        <KPICard title="Purchase" value={stats.purchases} icon="🛒" variant="purchases" trend={{ value: 0, direction: 'neutral' }} subtitle={`${stats.purchaseCount} Bills`} onClick={() => navigate('/purchases')} />
-                        <KPICard title="Collect" value={stats.receivables} icon="📋" variant="outstanding" trend={{ value: 0, direction: 'neutral' }} subtitle="Receivables" onClick={() => navigate('/ledgers?group=Sundry Debtors')} />
-                        <KPICard title="Profit" value={stats.sales - stats.purchases} icon="📈" variant="profit" trend={{ value: 0, direction: 'neutral' }} subtitle="Margin" onClick={() => { }} />
+                        <StitchStatCard
+                            title="Total Sales"
+                            value={stats.sales}
+                            icon={<TrendingUp size={20} />}
+                            trend={salesTrend}
+                            subtitle={`${stats.salesCount} Invoices generated`}
+                            colorClass="text-[var(--primary)]"
+                            bgClass="bg-[var(--primary-container)]"
+                            onClick={() => navigate('/sales')}
+                        />
+                        <StitchStatCard
+                            title="Total Purchases"
+                            value={stats.purchases}
+                            icon={<TrendingDown size={20} />}
+                            subtitle={`${stats.purchaseCount} Bills recorded`}
+                            colorClass="text-[var(--secondary)]"
+                            bgClass="bg-[var(--secondary-container)]"
+                            onClick={() => navigate('/purchases')}
+                        />
+                        <StitchStatCard
+                            title="Receivables"
+                            value={stats.receivables}
+                            icon={<Wallet size={20} />}
+                            subtitle="Total Pending Collection"
+                            colorClass="text-[var(--warning)]"
+                            bgClass="bg-[var(--warning-bg)]"
+                            onClick={() => navigate('/ledgers?group=Sundry Debtors')}
+                        />
+                        <StitchStatCard
+                            title="Payables"
+                            value={stats.payables}
+                            icon={<CreditCard size={20} />}
+                            subtitle="Total Outstanding Payments"
+                            colorClass="text-[var(--error)]"
+                            bgClass="bg-[var(--error-bg)]"
+                            onClick={() => navigate('/ledgers?group=Sundry Creditors')}
+                        />
                     </div>
 
-                    {/* Health & Trends */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <Card glass className="p-6 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--primary)] opacity-[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:opacity-[0.08] transition-opacity" />
-                            <h3 className="text-[10px] font-black text-[var(--on-surface)] mb-6 uppercase tracking-[3px] flex items-center gap-3">
-                                <span className="w-6 h-6 rounded-lg bg-[var(--primary-glow)] flex items-center justify-center">
-                                    <Activity size={12} className="text-[var(--primary)]" />
-                                </span>
-                                Business Health
-                            </h3>
-                            <div className="flex justify-around items-end py-4">
-                                <ProgressRing value={kpiRatios.collection} label="Collection" color="emerald" size={90} />
-                                <ProgressRing value={kpiRatios.expense} label="Expense" color="blue" size={90} />
-                                <ProgressRing value={kpiRatios.profit} label="Profit" color="purple" size={90} />
-                            </div>
-                        </Card>
-
-                        <Card glass className="p-6 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--info)] opacity-[0.03] rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:opacity-[0.08] transition-opacity" />
-                            <h3 className="text-[10px] font-black text-[var(--on-surface)] mb-6 uppercase tracking-[3px] flex items-center gap-3">
-                                <span className="w-6 h-6 rounded-lg bg-[var(--info-glow)] flex items-center justify-center">
-                                    <BarChart3 size={12} className="text-[var(--info)]" />
-                                </span>
-                                Sales Trend
-                            </h3>
-                            <div className="h-[140px] flex items-end justify-around gap-1 mt-4">
-                                <BarChart3D data={monthlySales} height={120} barColor="purple" animated />
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* Quick Access */}
+                    {/* MAIN CONTENT GRID */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-4">
-                            <h2 className="text-sm font-black text-[var(--on-surface)] uppercase tracking-widest">Access</h2>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {[
-                                    { label: 'Invoice', icon: <Plus className="text-[var(--primary)]" />, to: '/create-invoice' },
-                                    { label: 'Parties', icon: <Users className="text-[var(--info)]" />, to: '/ledgers' },
-                                    { label: 'Vouchers', icon: <FileText className="text-[var(--success)]" />, to: '/vouchers' },
-                                    { label: 'Reports', icon: <BarChart3 className="text-[var(--warning)]" />, to: '/sales-dashboard' },
-                                ].map((action, idx) => (
-                                    <Link key={idx} to={action.to} className="block group">
-                                        <Card hover padding="none" className="flex flex-col items-center justify-center p-4 border-[var(--border)] hover:border-[var(--primary)] transition-all h-24">
-                                            <div className="p-2 rounded-lg bg-[var(--surface-variant)] group-hover:bg-[var(--primary-glow)] transition-colors mb-2">
-                                                {action.icon}
-                                            </div>
-                                            <h3 className="font-bold text-[var(--on-surface)] text-[10px] uppercase tracking-wider">{action.label}</h3>
-                                        </Card>
-                                    </Link>
-                                ))}
+
+                        {/* CHART SECTION */}
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className="stitch-card p-6 min-h-[400px]">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-normal text-[var(--on-surface)]">Financial Performance</h3>
+                                    <div className="flex gap-2">
+                                        <Badge variant="outline">Revenue</Badge>
+                                        <Badge variant="outline">Expenses</Badge>
+                                    </div>
+                                </div>
+
+                                {/* Chart Placeholder - Reusing BarChart3D but constrained */}
+                                <div className="h-[300px] w-full rounded-xl bg-[var(--surface-container)] border border-[var(--outline-variant)] border-opacity-20 p-4">
+                                    <BarChart3D data={monthlySales} height={280} barColor="#0B57D0" animated />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-4">
-                            <h2 className="text-sm font-black text-[var(--on-surface)] uppercase tracking-widest">Activity</h2>
-                            <Card padding="none">
-                                {recentVouchers.length === 0 ? (
-                                    <EmptyState icon={<Activity />} title="No data" />
-                                ) : (
-                                    <div className="divide-y divide-[var(--dividers)]">
-                                        {recentVouchers.map((v, idx) => (
-                                            <Link key={v.id || v.voucher_id || idx} to={`/vouchers/${encodeURIComponent(v.id || v.voucher_id)}`} className="block hover:bg-[var(--surface-hover)] transition-colors">
-                                                <div className="flex items-center gap-3 p-3">
-                                                    <Avatar name={v.party_name || v.voucher_type || '?'} size="sm" color={v.voucher_type === 'Sales' ? 'success' : v.voucher_type === 'Purchase' ? 'warning' : 'default'} />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[11px] font-bold text-[var(--on-surface)] truncate">{v.party_name || v.voucher_type + ' #' + v.voucher_number || 'Unknown Party'}</p>
-                                                        <p className="text-[9px] text-[var(--text-muted)] uppercase">{v.voucher_type} • {format(new Date(v.voucher_date), 'd MMM')}</p>
+                        {/* RIGHT SIDEBAR / ACTIONS */}
+                        <div className="space-y-6">
+
+                            {/* Quick Actions Panel */}
+                            <div className="stitch-card p-5">
+                                <h3 className="text-sm font-medium text-[var(--text-muted)] uppercase tracking-wider mb-4">Quick Actions</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <StitchQuickAction
+                                        title="Invoice"
+                                        icon={<FileText size={24} />}
+                                        to="/create-invoice"
+                                    />
+                                    <StitchQuickAction
+                                        title="Vouchers"
+                                        icon={<CreditCard size={24} />}
+                                        to="/vouchers"
+                                    />
+                                    <StitchQuickAction
+                                        title="Parties"
+                                        icon={<Users size={24} />}
+                                        to="/ledgers"
+                                    />
+                                    <StitchQuickAction
+                                        title="Reports"
+                                        icon={<BarChart3 size={24} />}
+                                        to="/sales-dashboard"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Recent Activity List */}
+                            <div className="stitch-card overflow-hidden">
+                                <div className="p-4 border-b border-[var(--outline-variant)] bg-[var(--surface-container)] bg-opacity-30">
+                                    <h3 className="text-sm font-medium text-[var(--on-surface)]">Recent Transactions</h3>
+                                </div>
+                                <div className="divide-y divide-[var(--outline-variant)] divide-opacity-20">
+                                    {recentVouchers.length === 0 ? (
+                                        <div className="p-8 text-center text-[var(--text-muted)]">No recent activity</div>
+                                    ) : (
+                                        recentVouchers.map((v, idx) => (
+                                            <div
+                                                key={v.id || idx}
+                                                onClick={() => navigate(`/vouchers/${v.id}`)}
+                                                className="p-4 hover:bg-[var(--surface-container)] transition-colors cursor-pointer flex items-center justify-between group"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${v.voucher_type === 'Sales' ? 'bg-[var(--primary-container)] text-[var(--primary)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface)]'}`}>
+                                                        {v.party_name?.[0] || '?'}
                                                     </div>
-                                                    <div className="text-right whitespace-nowrap">
-                                                        <p className={`text-[11px] font-black ${['Sales', 'Receipt'].includes(v.voucher_type) ? 'text-[var(--success)]' : 'text-[var(--on-surface)]'}`}>
-                                                            {formatCurrency(v.total_amount)}
-                                                        </p>
+                                                    <div>
+                                                        <p className="text-sm font-medium text-[var(--on-surface)] group-hover:text-[var(--primary)] transition-colors">{v.party_name || 'Unknown'}</p>
+                                                        <p className="text-xs text-[var(--text-muted)]">{v.voucher_type} • {format(new Date(v.voucher_date), 'MMM d')}</p>
                                                     </div>
                                                 </div>
-                                            </Link>
-                                        ))}
-                                    </div>
-                                )}
-                            </Card>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-bold text-[var(--on-surface)]">
+                                                        {formatCurrency(v.total_amount)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="p-3 bg-[var(--surface-container)] bg-opacity-30 text-center">
+                                    <button onClick={() => navigate('/vouchers')} className="text-xs font-medium text-[var(--primary)] hover:underline">View All Transactions</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
         </div>
     );
-}
+};

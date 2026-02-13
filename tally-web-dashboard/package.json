@@ -1,7 +1,7 @@
 {
     "name": "tally-web-dashboard",
     "private": true,
-    "version": "0.0.0",
+    "version": "1.0.5",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -9,6 +9,14 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@capacitor/android": "^6.2.1",
+        "@capacitor/app": "^6.0.3",
+        "@capacitor/cli": "^6.2.1",
+        "@capacitor/core": "^6.2.1",
+        "@capacitor/haptics": "^6.0.3",
+        "@capacitor/keyboard": "^6.0.4",
+        "@capacitor/splash-screen": "^6.0.4",
+        "@capacitor/status-bar": "^6.0.3",
         "@headlessui/react": "^2.2.9",
         "@heroicons/react": "^2.2.0",
         "@react-three/drei": "^9.0.0",
@@ -35,6 +43,7 @@
         "autoprefixer": "^10.4.14",
         "postcss": "^8.4.27",
         "tailwindcss": "^3.3.3",
+        "typescript": "^5.9.3",
         "vite": "^4.4.5"
     }
 }

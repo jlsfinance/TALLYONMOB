@@ -18,10 +18,10 @@ export default function ModuleSelectionPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#050510] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-[#030712] flex flex-col items-center justify-center p-6 relative overflow-hidden">
             {/* Background Effects */}
-            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 rounded-full blur-[120px]" />
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-600/10 rounded-full blur-[120px]" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[120px]" />
 
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -29,7 +29,7 @@ export default function ModuleSelectionPage() {
                 className="text-center mb-12 relative z-10"
             >
                 <h1 className="text-3xl md:text-5xl font-bold text-white mb-4">
-                    Choose how you want to use <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">BillBook</span>
+                    Choose how you want to use <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">TallySync</span>
                 </h1>
                 <p className="text-[var(--on-surface-variant)] text-lg">
                     Manage your business your way
@@ -61,7 +61,7 @@ export default function ModuleSelectionPage() {
                             Access your real-time Tally data, ledgers, and reports anywhere. Perfect for accounting-heavy users.
                         </p>
 
-                        <div className="flex items-center gap-2 text-blue-400 font-semibold group-hover:gap-4 transition-all uppercase tracking-wider text-xs">
+                        <div className="flex items-center gap-2 text-cyan-400 font-semibold group-hover:gap-4 transition-all uppercase tracking-wider text-xs">
                             Select Module <ArrowRight size={16} />
                         </div>
                     </Card>

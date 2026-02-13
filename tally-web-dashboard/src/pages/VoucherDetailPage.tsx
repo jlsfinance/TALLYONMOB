@@ -39,7 +39,7 @@ export default function VoucherDetailPage() {
         setLoading(true);
         try {
             const decodedId = decodeURIComponent(voucherId!);
-            console.log('Loading voucher with id:', decodedId);
+
 
             if (decodedId === 'undefined' || !decodedId) {
                 toast.error('Invalid Voucher ID');
@@ -96,7 +96,7 @@ export default function VoucherDetailPage() {
                 .eq('voucher_id', vData.id);
 
             if (stockError) {
-                console.log('Stock entries fetch error (table may not exist):', stockError.message);
+                // Stock entries table may not exist for all setups
             }
 
             // Fetch related ledger entries
@@ -106,7 +106,7 @@ export default function VoucherDetailPage() {
                 .eq('voucher_id', vData.id);
 
             if (ledgerError) {
-                console.log('Ledger entries fetch error:', ledgerError.message);
+                // Ledger entries may not be available
             }
 
             // Fetch stock items for metadata lookup
@@ -127,17 +127,17 @@ export default function VoucherDetailPage() {
 
             // Fallback: Check raw_data for inventory entries (when voucher_stock_entries is empty)
             if (inventoryItems.length === 0 && vData.raw_data?.inventory_entries) {
-                console.log('Using raw_data.inventory_entries as fallback');
+
                 inventoryItems = vData.raw_data.inventory_entries;
             }
 
             // Fallback: Check direct inventory_entries on voucher
             if (inventoryItems.length === 0 && vData.inventory_entries) {
-                console.log('Using voucher.inventory_entries as fallback');
+
                 inventoryItems = vData.inventory_entries;
             }
 
-            console.log(`Voucher ${vData.voucher_number}: Found ${inventoryItems.length} items`);
+
 
             // Enrich items with HSN and unit
             const enrichedItems = (inventoryItems).map((item: any) => {
