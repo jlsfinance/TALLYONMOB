@@ -13,13 +13,19 @@
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>2.0.0</Version>
-    <Authors>LiveKeeping</Authors>
-    <Company>LiveKeeping</Company>
-    <Product>LiveKeeping Tally Sync</Product>
+    <Version>2.0.1</Version>
+    <Authors>TallySync</Authors>
+    <Company>TallySync</Company>
+    <Product>TallySync - Tally Data Sync</Product>
     <Description>Sync Tally ERP data to cloud for mobile access</Description>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="tallylink_logo.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />

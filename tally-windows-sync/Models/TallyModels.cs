@@ -6,9 +6,6 @@ namespace TallySyncApp.Models
     /// <summary>
     /// Represents a Tally Ledger (Party, Bank, Expense, etc.)
     /// </summary>
-    /// <summary>
-    /// Represents a Tally Ledger (Party, Bank, Expense, etc.)
-    /// </summary>
     public class Ledger
     {
         [JsonProperty("id")]
@@ -154,6 +151,12 @@ namespace TallySyncApp.Models
 
         [JsonProperty("is_debit")]
         public bool IsDebit { get; set; }
+
+        [JsonIgnore] // Not sent to Supabase directly here, extracted later
+        public List<BillAllocation> BillAllocations { get; set; } = new List<BillAllocation>();
+
+        [JsonIgnore] // Not sent to Supabase directly here, extracted later
+        public List<BankAllocation> BankAllocations { get; set; } = new List<BankAllocation>();
     }
 
     public class VoucherInventoryEntry
@@ -492,6 +495,9 @@ namespace TallySyncApp.Models
         [JsonProperty("hsn_code")]
         public string? HsnCode { get; set; }
 
+        [JsonProperty("rate")]
+        public decimal Rate { get; set; }
+
         [JsonProperty("gst_rate")]
         public decimal GstRate { get; set; }
 
@@ -588,5 +594,528 @@ namespace TallySyncApp.Models
 
         [JsonProperty("retry_count")]
         public int RetryCount { get; set; }
+    }
+
+    // =============================================
+    // NEW TALLY MASTER DATA MODELS
+    // =============================================
+
+    /// <summary>
+    /// Ledger Group (Account Group hierarchy)
+    /// </summary>
+    public class LedgerGroup
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("is_revenue")]
+        public bool IsRevenue { get; set; }
+
+        [JsonProperty("is_deemed_positive")]
+        public bool IsDeemedPositive { get; set; }
+
+        [JsonProperty("affects_gross_profit")]
+        public bool AffectsGrossProfit { get; set; }
+
+        [JsonProperty("sort_position")]
+        public int SortPosition { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name} (Parent: {Parent})";
+    }
+
+    /// <summary>
+    /// Cost Centre (Department/Branch)
+    /// </summary>
+    public class CostCentre
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("category")]
+        public string? Category { get; set; }
+
+        [JsonProperty("revenue_ledger_name")]
+        public string? RevenueLedgerName { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name}";
+    }
+
+    /// <summary>
+    /// Godown (Warehouse/Location)
+    /// </summary>
+    public class Godown
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("address")]
+        public string? Address { get; set; }
+
+        [JsonProperty("has_no_space")]
+        public bool HasNoSpace { get; set; }
+
+        [JsonProperty("is_internal")]
+        public bool IsInternal { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name}";
+    }
+
+    /// <summary>
+    /// Stock Group (Category hierarchy for items)
+    /// </summary>
+    public class TallyStockGroup
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("is_add_able")]
+        public bool IsAddAble { get; set; } = true;
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name}";
+    }
+
+    /// <summary>
+    /// Stock Category
+    /// </summary>
+    public class TallyStockCategory
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name}";
+    }
+
+    /// <summary>
+    /// Currency
+    /// </summary>
+    public class TallyCurrency
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("symbol")]
+        public string? Symbol { get; set; }
+
+        [JsonProperty("formal_name")]
+        public string? FormalName { get; set; }
+
+        [JsonProperty("iso_code")]
+        public string? IsoCode { get; set; }
+
+        [JsonProperty("decimal_places")]
+        public int DecimalPlaces { get; set; } = 2;
+
+        [JsonProperty("in_millions")]
+        public bool InMillions { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name} ({Symbol})";
+    }
+
+    /// <summary>
+    /// Voucher Type (Custom voucher types)
+    /// </summary>
+    public class TallyVoucherType
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("parent")]
+        public string? Parent { get; set; }
+
+        [JsonProperty("numbering_method")]
+        public string? NumberingMethod { get; set; }
+
+        [JsonProperty("is_active")]
+        public bool IsActive { get; set; } = true;
+
+        [JsonProperty("is_tax_invoice")]
+        public bool IsTaxInvoice { get; set; }
+
+        [JsonProperty("prefix")]
+        public string? Prefix { get; set; }
+
+        [JsonProperty("suffix")]
+        public string? Suffix { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name} ({Parent})";
+    }
+
+    /// <summary>
+    /// Unit of Measure
+    /// </summary>
+    public class UnitOfMeasure
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("symbol")]
+        public string? Symbol { get; set; }
+
+        [JsonProperty("formal_name")]
+        public string? FormalName { get; set; }
+
+        [JsonProperty("is_simple_unit")]
+        public bool IsSimpleUnit { get; set; } = true;
+
+        [JsonProperty("base_units")]
+        public string? BaseUnits { get; set; }
+
+        [JsonProperty("additional_units")]
+        public string? AdditionalUnits { get; set; }
+
+        [JsonProperty("conversion")]
+        public decimal Conversion { get; set; }
+
+        [JsonProperty("number_of_decimal_places")]
+        public int NumberOfDecimalPlaces { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name} ({Symbol})";
+    }
+
+    /// <summary>
+    /// Budget
+    /// </summary>
+    public class TallyBudget
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("budget_for")]
+        public string? BudgetFor { get; set; }
+
+        [JsonProperty("from_date")]
+        public DateTime? FromDate { get; set; }
+
+        [JsonProperty("to_date")]
+        public DateTime? ToDate { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
+
+        public override string ToString() => $"{Name}";
+    }
+
+    /// <summary>
+    /// Bank Allocation (cheque/bank details per voucher)
+    /// </summary>
+    public class BankAllocation
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_id")]
+        public string? VoucherId { get; set; }
+
+        [JsonProperty("bank_name")]
+        public string? BankName { get; set; }
+
+        [JsonProperty("instrument_number")]
+        public string? InstrumentNumber { get; set; }
+
+        [JsonProperty("instrument_date")]
+        public DateTime? InstrumentDate { get; set; }
+
+        [JsonProperty("bank_party_name")]
+        public string? BankPartyName { get; set; }
+
+        [JsonProperty("transaction_type")]
+        public string? TransactionType { get; set; }
+
+        [JsonProperty("ifsc_code")]
+        public string? IfscCode { get; set; }
+
+        [JsonProperty("account_number")]
+        public string? AccountNumber { get; set; }
+
+        [JsonProperty("amount")]
+        public decimal Amount { get; set; }
+
+        [JsonProperty("status")]
+        public string Status { get; set; } = "pending";
+    }
+
+    /// <summary>
+    /// Bill Allocation (bill-wise outstanding)
+    /// </summary>
+    public class BillAllocation
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_id")]
+        public string? VoucherId { get; set; }
+
+        [JsonProperty("ledger_name")]
+        public string LedgerName { get; set; } = string.Empty;
+
+        [JsonProperty("bill_type")]
+        public string? BillType { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty("amount")]
+        public decimal Amount { get; set; }
+
+        [JsonProperty("bill_date")]
+        public DateTime? BillDate { get; set; }
+
+        [JsonProperty("due_date")]
+        public DateTime? DueDate { get; set; }
+
+        [JsonProperty("is_advance")]
+        public bool IsAdvance { get; set; }
+
+        [JsonProperty("bill_credit_period")]
+        public string? BillCreditPeriod { get; set; }
+    }
+
+    /// <summary>
+    /// GST Detail (per-voucher GST breakup)
+    /// </summary>
+    public class GstDetail
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_id")]
+        public string? VoucherId { get; set; }
+
+        [JsonProperty("voucher_number")]
+        public string? VoucherNumber { get; set; }
+
+        [JsonProperty("voucher_date")]
+        public DateTime? VoucherDate { get; set; }
+
+        [JsonProperty("voucher_type")]
+        public string? VoucherType { get; set; }
+
+        [JsonProperty("party_name")]
+        public string? PartyName { get; set; }
+
+        [JsonProperty("party_gstin")]
+        public string? PartyGstin { get; set; }
+
+        [JsonProperty("place_of_supply")]
+        public string? PlaceOfSupply { get; set; }
+
+        [JsonProperty("hsn_code")]
+        public string? HsnCode { get; set; }
+
+        [JsonProperty("item_name")]
+        public string? ItemName { get; set; }
+
+        [JsonProperty("taxable_value")]
+        public decimal TaxableValue { get; set; }
+
+        [JsonProperty("cgst_rate")]
+        public decimal CgstRate { get; set; }
+
+        [JsonProperty("cgst_amount")]
+        public decimal CgstAmount { get; set; }
+
+        [JsonProperty("sgst_rate")]
+        public decimal SgstRate { get; set; }
+
+        [JsonProperty("sgst_amount")]
+        public decimal SgstAmount { get; set; }
+
+        [JsonProperty("igst_rate")]
+        public decimal IgstRate { get; set; }
+
+        [JsonProperty("igst_amount")]
+        public decimal IgstAmount { get; set; }
+
+        [JsonProperty("cess_rate")]
+        public decimal CessRate { get; set; }
+
+        [JsonProperty("cess_amount")]
+        public decimal CessAmount { get; set; }
+
+        [JsonProperty("gst_return_type")]
+        public string? GstReturnType { get; set; }
+    }
+
+    /// <summary>
+    /// Price List Entry
+    /// </summary>
+    public class PriceListEntry
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("price_list_name")]
+        public string PriceListName { get; set; } = string.Empty;
+
+        [JsonProperty("stock_item_name")]
+        public string StockItemName { get; set; } = string.Empty;
+
+        [JsonProperty("rate")]
+        public decimal Rate { get; set; }
+
+        [JsonProperty("unit")]
+        public string? Unit { get; set; }
+
+        [JsonProperty("from_date")]
+        public DateTime? FromDate { get; set; }
+
+        [JsonProperty("to_date")]
+        public DateTime? ToDate { get; set; }
+
+        [JsonProperty("discount_percent")]
+        public decimal DiscountPercent { get; set; }
+    }
+
+    /// <summary>
+    /// Debit/Credit Note
+    /// </summary>
+    public class DebitCreditNote
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty("voucher_id")]
+        public string? VoucherId { get; set; }
+
+        [JsonProperty("note_type")]
+        public string NoteType { get; set; } = string.Empty;
+
+        [JsonProperty("note_number")]
+        public string? NoteNumber { get; set; }
+
+        [JsonProperty("note_date")]
+        public DateTime? NoteDate { get; set; }
+
+        [JsonProperty("party_name")]
+        public string? PartyName { get; set; }
+
+        [JsonProperty("party_gstin")]
+        public string? PartyGstin { get; set; }
+
+        [JsonProperty("original_invoice_number")]
+        public string? OriginalInvoiceNumber { get; set; }
+
+        [JsonProperty("original_invoice_date")]
+        public DateTime? OriginalInvoiceDate { get; set; }
+
+        [JsonProperty("reason")]
+        public string? Reason { get; set; }
+
+        [JsonProperty("taxable_amount")]
+        public decimal TaxableAmount { get; set; }
+
+        [JsonProperty("cgst_amount")]
+        public decimal CgstAmount { get; set; }
+
+        [JsonProperty("sgst_amount")]
+        public decimal SgstAmount { get; set; }
+
+        [JsonProperty("igst_amount")]
+        public decimal IgstAmount { get; set; }
+
+        [JsonProperty("total_amount")]
+        public decimal TotalAmount { get; set; }
+
+        [JsonProperty("narration")]
+        public string? Narration { get; set; }
+
+        [JsonProperty("master_id")]
+        public string? MasterId { get; set; }
+
+        [JsonProperty("alter_id")]
+        public string? AlterId { get; set; }
     }
 }

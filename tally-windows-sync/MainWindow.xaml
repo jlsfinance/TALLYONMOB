@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         mc:Ignorable="d"
-        Title="TallyLink - LiveKeeping Sync" Height="600" Width="900"
+        Title="TallyLink - TallySync" Height="600" Width="900"
         Icon="app_icon.ico"
         FontFamily="Segoe UI" Background="#F3F4F6">
 
@@ -36,9 +36,9 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🔄" FontSize="24" Margin="0,0,10,0"/>
+                    <Image Source="tallylink_logo.png" Width="45" Height="45" Margin="0,0,12,0"/>
                     <StackPanel>
-                        <TextBlock Text="LiveKeeping Sync" FontWeight="Bold" FontSize="18"/>
+                        <TextBlock Text="TallySync" FontWeight="Bold" FontSize="18"/>
                         <TextBlock Text="{Binding Status.CompanyName, StringFormat='Company: {0}'}" 
                                    Foreground="#6B7280" FontSize="12"/>
                     </StackPanel>
@@ -305,7 +305,7 @@
                 <TextBlock Text="Ready"/>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="v2.0.0"/>
+                <TextBlock Text="v2.0.1"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>

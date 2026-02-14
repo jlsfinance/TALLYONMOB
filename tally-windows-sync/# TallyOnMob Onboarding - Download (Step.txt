@@ -1,0 +1,20 @@
+# TallyOnMob Onboarding - Download (Step 1)
+
+
+## TallyOnMob
+[Features](https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzFlZDVhOTcxOGQ1YzQ3Y2FhODczMzJlZWZmMTZmNmNmEgsSBxDl2dGYqBcYAZIBIwoKcHJvamVjdF9pZBIVQhM3MDAwMjUxNzIxMDQ3MTQ3NjIw&filename=&opi=96797242)
+[Pricing](https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzFlZDVhOTcxOGQ1YzQ3Y2FhODczMzJlZWZmMTZmNmNmEgsSBxDl2dGYqBcYAZIBIwoKcHJvamVjdF9pZBIVQhM3MDAwMjUxNzIxMDQ3MTQ3NjIw&filename=&opi=96797242)
+[Support](https://contribution.usercontent.google.com/download?c=CgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzFlZDVhOTcxOGQ1YzQ3Y2FhODczMzJlZWZmMTZmNmNmEgsSBxDl2dGYqBcYAZIBIwoKcHJvamVjdF9pZBIVQhM3MDAwMjUxNzIxMDQ3MTQ3NjIw&filename=&opi=96797242)
+
+# Connect Your Tally Data
+Download and install the TallySync desktop client to start accessing your business reports securely on your mobile device.
+Mobile App
+Real-time reports
+Secure Cloud
+Encrypted Sync
+Desktop Client
+Windows Sync
+Tally ERP/Prime
+Data Source
+System Requirements
+Windows 10 or higher • Tally Prime or ERP 9 • 20MB Disk Space

@@ -4,10 +4,11 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="TallyLink - Limitless Sync" 
+        Title="TallySync — Desktop Connector" 
         Height="700" Width="1000"
         MinHeight="600" MinWidth="800"
         WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI"
         Background="{StaticResource BackgroundBrush}">
 
     <Grid Margin="20">
@@ -18,8 +19,8 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,20">
+        <!-- ===== Header ===== -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,16">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -28,109 +29,142 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <TextBlock Text="TallyLink" 
-                                   FontSize="28" FontWeight="Bold" 
-                                   Foreground="{StaticResource TextBrush}"/>
+                        <!-- Brand Icon -->
+                        <Border Width="32" Height="32" Background="{StaticResource PrimaryBrush}" 
+                                CornerRadius="8" Margin="0,0,12,0">
+                            <TextBlock Text="⚡" FontSize="16" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="TallySync" 
+                                   FontSize="24" FontWeight="Bold" 
+                                   Foreground="{StaticResource TextBrush}"
+                                   VerticalAlignment="Center"/>
                         <TextBlock x:Name="TopCompanyText" 
-                                   Text="(Selected Company)" 
-                                   FontSize="18" FontWeight="SemiBold" 
+                                   Text="" 
+                                   FontSize="16" FontWeight="Medium" 
                                    Foreground="{StaticResource PrimaryBrush}"
-                                   Margin="15,0,0,5"
+                                   Margin="12,0,0,2"
                                    VerticalAlignment="Bottom"/>
                     </StackPanel>
                     <TextBlock Text="Sync your Tally ERP data to cloud in real-time" 
-                               FontSize="14" 
+                               FontSize="13" 
                                Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,5,0,0"/>
+                               Margin="44,4,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Status Indicator -->
+                    <!-- Status Badge -->
                     <Border x:Name="StatusBadge" 
-                            Background="#10B981" 
-                            CornerRadius="15" 
-                            Padding="15,8" 
-                            Margin="0,0,15,0">
+                            Background="{StaticResource OnlineBrush}" 
+                            CornerRadius="16" 
+                            Padding="14,7" 
+                            Margin="0,0,10,0">
                         <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="StatusDot" Width="8" Height="8" Fill="White" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="StatusText" Text="Ready" Foreground="White" FontWeight="SemiBold"/>
+                            <Ellipse x:Name="StatusDot" Width="8" Height="8" 
+                                     Fill="White" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="StatusText" Text="Ready" 
+                                       Foreground="White" FontWeight="SemiBold" FontSize="12"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Logout Button -->
+                    <Button Content="Sign Out" 
+                            Style="{StaticResource SecondaryButton}"
+                            Padding="12,6" FontSize="12"
+                            Click="LogoutButton_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Connection Status Cards -->
-        <Grid Grid.Row="1" Margin="0,0,0,20">
+        <!-- ===== Connection Status Cards ===== -->
+        <Grid Grid.Row="1" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="16"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="16"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <!-- Tally Status -->
             <Border Grid.Column="0" Style="{StaticResource CardBorder}">
                 <StackPanel>
-                    <TextBlock Text="📊 Tally ERP" FontSize="16" FontWeight="SemiBold" 
-                               Foreground="{StaticResource TextBrush}"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Ellipse x:Name="TallyStatusDot" Width="12" Height="12" 
-                                 Fill="{StaticResource WarningBrush}" Margin="0,0,10,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border Width="28" Height="28" Background="#DBEAFE" CornerRadius="6" Margin="0,0,10,0">
+                            <TextBlock Text="📊" FontSize="14" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="Tally ERP" FontSize="14" FontWeight="SemiBold" 
+                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <Ellipse x:Name="TallyStatusDot" Width="10" Height="10" 
+                                 Fill="{StaticResource WarningBrush}" Margin="0,0,8,0"/>
                         <TextBlock x:Name="TallyStatusText" Text="Checking..." 
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
                     </StackPanel>
                     <TextBlock x:Name="TallyEndpoint" Text="localhost:9000" 
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,5,0,0"/>
+                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
 
-            <!-- API Status -->
+            <!-- Cloud Status -->
             <Border Grid.Column="2" Style="{StaticResource CardBorder}">
                 <StackPanel>
-                    <TextBlock Text="☁️ Cloud API" FontSize="16" FontWeight="SemiBold" 
-                               Foreground="{StaticResource TextBrush}"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Ellipse x:Name="ApiStatusDot" Width="12" Height="12" 
-                                 Fill="{StaticResource WarningBrush}" Margin="0,0,10,0"/>
-                        <TextBlock x:Name="ApiStatusText" Text="Checking..." 
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border Width="28" Height="28" Background="#D1FAE5" CornerRadius="6" Margin="0,0,10,0">
+                            <TextBlock Text="☁️" FontSize="14" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="Cloud API" FontSize="14" FontWeight="SemiBold" 
+                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="ApiEndpoint" Text="http://localhost:5000" 
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,5,0,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <Ellipse x:Name="ApiStatusDot" Width="10" Height="10" 
+                                 Fill="{StaticResource WarningBrush}" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="ApiStatusText" Text="Checking..." 
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
+                    </StackPanel>
+                    <TextBlock x:Name="ApiEndpoint" Text="Supabase Direct" 
+                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
 
             <!-- Queue Status -->
             <Border Grid.Column="4" Style="{StaticResource CardBorder}">
                 <StackPanel>
-                    <TextBlock Text="📦 Sync Queue" FontSize="16" FontWeight="SemiBold" 
-                               Foreground="{StaticResource TextBrush}"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <TextBlock x:Name="QueueCount" Text="0" FontSize="24" FontWeight="Bold"
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border Width="28" Height="28" Background="#FEF3C7" CornerRadius="6" Margin="0,0,10,0">
+                            <TextBlock Text="📦" FontSize="14" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="Sync Queue" FontSize="14" FontWeight="SemiBold" 
+                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock x:Name="QueueCount" Text="0" FontSize="22" FontWeight="Bold"
                                    Foreground="{StaticResource PrimaryBrush}"/>
-                        <TextBlock Text=" pending items" VerticalAlignment="Bottom" Margin="5,0,0,4"
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBlock Text=" items synced" VerticalAlignment="Bottom" Margin="5,0,0,3"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="13"/>
                     </StackPanel>
                     <TextBlock x:Name="LastSyncText" Text="Never synced" 
-                               FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,5,0,0"/>
+                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
         </Grid>
 
-        <!-- Main Content Area -->
+        <!-- ===== Main Content ===== -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="20"/>
-                <ColumnDefinition Width="350"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="340"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Sync Progress / Controls -->
+            <!-- Sync Controls -->
             <Border Grid.Column="0" Style="{StaticResource CardBorder}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -140,41 +174,45 @@
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="Sync Controls" 
-                               FontSize="18" FontWeight="SemiBold" 
+                               FontSize="16" FontWeight="SemiBold" 
                                Foreground="{StaticResource TextBrush}"
-                               Margin="0,0,0,20"/>
+                               Margin="0,0,0,18"/>
 
-                    <!-- Company Selection -->
+                    <!-- Company Selection & Options -->
                     <StackPanel Grid.Row="1">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <!-- Company -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Company" Foreground="{StaticResource TextSecondaryBrush}" 
-                                       FontSize="12" VerticalAlignment="Center"/>
-                            <Button x:Name="RefreshCompaniesButton" Content="🔄 Refresh" 
+                                       FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+                            <Button x:Name="RefreshCompaniesButton" Content="↻ Refresh" 
                                     Background="Transparent" BorderThickness="0" 
                                     Foreground="{StaticResource PrimaryBrush}" 
-                                    FontSize="11" Margin="10,0,0,0" Cursor="Hand"
+                                    FontSize="11" FontWeight="Medium" 
+                                    Margin="10,0,0,0" Cursor="Hand"
                                     Click="RefreshCompaniesButton_Click"/>
                         </StackPanel>
                         <ComboBox x:Name="CompanyComboBox" 
-                                  Height="40" 
+                                  Height="42" 
                                   FontSize="14"
-                                  Padding="10,8"
+                                  Padding="12,8"
                                   Background="{StaticResource SurfaceLightBrush}"
                                   Foreground="{StaticResource TextBrush}"
-                                  BorderThickness="0">
+                                  BorderBrush="{StaticResource BorderBrush}"
+                                  BorderThickness="1">
                             <ComboBoxItem Content="Loading companies..." IsSelected="True"/>
                         </ComboBox>
 
-                        <!-- Sync Options -->
+                        <!-- Sync Interval -->
                         <TextBlock Text="Sync Interval" Foreground="{StaticResource TextSecondaryBrush}" 
-                                   FontSize="12" Margin="0,20,0,5"/>
+                                   FontSize="12" FontWeight="Medium" Margin="0,18,0,6"/>
                         <ComboBox x:Name="IntervalComboBox" 
-                                  Height="40" 
+                                  Height="42" 
                                   FontSize="14"
-                                  Padding="10,8"
+                                  Padding="12,8"
                                   Background="{StaticResource SurfaceLightBrush}"
                                   Foreground="{StaticResource TextBrush}"
-                                  BorderThickness="0">
+                                  BorderBrush="{StaticResource BorderBrush}"
+                                  BorderThickness="1">
                             <ComboBoxItem Content="Every 1 minute"/>
                             <ComboBoxItem Content="Every 5 minutes" IsSelected="True"/>
                             <ComboBoxItem Content="Every 15 minutes"/>
@@ -182,18 +220,18 @@
                             <ComboBoxItem Content="Manual only"/>
                         </ComboBox>
 
-                        <!-- Force Reset Checkbox -->
+                        <!-- Force Reset -->
                         <CheckBox x:Name="ForceResetCheckBox" 
                                   Content="Force Full Resync (Fix ID Issues)" 
-                                  Margin="0,15,0,0"
+                                  Margin="0,16,0,0"
                                   FontSize="12"
-                                  Foreground="#EF4444"/>
+                                  Foreground="{StaticResource ErrorBrush}"/>
 
                         <!-- Progress -->
                         <TextBlock Text="Sync Progress" Foreground="{StaticResource TextSecondaryBrush}" 
-                                   FontSize="12" Margin="0,20,0,5"/>
+                                   FontSize="12" FontWeight="Medium" Margin="0,20,0,6"/>
                         <ProgressBar x:Name="SyncProgressBar" 
-                                     Height="8" 
+                                     Height="6" 
                                      Value="0"
                                      Background="{StaticResource SurfaceLightBrush}"
                                      Foreground="{StaticResource PrimaryBrush}"
@@ -201,52 +239,59 @@
                         <TextBlock x:Name="SyncProgressText" 
                                    Text="Ready to sync"
                                    Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12" Margin="0,10,0,0"/>
+                                   FontSize="12" Margin="0,8,0,0"/>
                     </StackPanel>
 
                     <!-- Action Buttons -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,20,0,0">
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,18,0,0">
                         <Button x:Name="SyncNowButton" 
-                                Content="🔄 Sync Now" 
+                                Content="⟳  Sync Now" 
                                 Style="{StaticResource PrimaryButton}"
                                 Click="SyncNowButton_Click"
                                 Margin="0,0,10,0"/>
                         <Button x:Name="StartAutoSyncButton" 
-                                Content="▶️ Start Auto Sync" 
+                                Content="▶  Auto Sync" 
                                 Style="{StaticResource SecondaryButton}"
                                 Click="StartAutoSyncButton_Click"
                                 Margin="0,0,10,0"/>
                         <Button x:Name="StopAutoSyncButton" 
-                                Content="⏹️ Stop" 
-                                Style="{StaticResource SecondaryButton}"
+                                Content="■  Stop" 
+                                Style="{StaticResource DangerButton}"
                                 Click="StopAutoSyncButton_Click"
                                 IsEnabled="False"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- Logs and Errors Tabs -->
+            <!-- ===== Logs & Errors ===== -->
             <Border Grid.Column="2" Style="{StaticResource CardBorder}">
                 <TabControl Background="Transparent" BorderThickness="0">
-                    <!-- Activity Log Tab -->
-                    <TabItem Header="Logs">
+                    <!-- Logs Tab -->
+                    <TabItem Header="📋 Activity Log">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             
-                            <Button Content="Clear Logs" Background="Transparent" Foreground="{StaticResource TextSecondaryBrush}"
-                                    BorderThickness="0" FontSize="11" HorizontalAlignment="Right" Margin="0,5,5,5"
+                            <Button Content="Clear" Background="Transparent" 
+                                    Foreground="{StaticResource TextMutedBrush}"
+                                    BorderThickness="0" FontSize="11" 
+                                    HorizontalAlignment="Right" Margin="0,4,4,4"
+                                    Cursor="Hand"
                                     Click="ClearLogButton_Click"/>
 
-                            <ListBox x:Name="ActivityLogList" Grid.Row="1" Background="Transparent" BorderThickness="0">
+                            <ListBox x:Name="ActivityLogList" Grid.Row="1" 
+                                     Background="Transparent" BorderThickness="0">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Padding="8" Margin="0,2" CornerRadius="4" Background="#F8FAFC">
+                                        <Border Padding="10,8" Margin="0,2" CornerRadius="6" 
+                                                Background="#F7F8FA" BorderBrush="#E5E7EB" BorderThickness="1">
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11" Foreground="#334155"/>
-                                                <TextBlock Text="{Binding Timestamp}" FontSize="9" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" 
+                                                           FontSize="12" Foreground="#374151"/>
+                                                <TextBlock Text="{Binding Timestamp}" FontSize="10" 
+                                                           Foreground="#9CA3AF" Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
@@ -256,25 +301,33 @@
                     </TabItem>
 
                     <!-- Errors Tab -->
-                    <TabItem Header="Errors">
+                    <TabItem Header="⚠️ Errors">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <Button Content="Clear Errors" Background="Transparent" Foreground="{StaticResource TextSecondaryBrush}"
-                                    BorderThickness="0" FontSize="11" HorizontalAlignment="Right" Margin="0,5,5,5"
+                            <Button Content="Clear" Background="Transparent" 
+                                    Foreground="{StaticResource TextMutedBrush}"
+                                    BorderThickness="0" FontSize="11" 
+                                    HorizontalAlignment="Right" Margin="0,4,4,4"
+                                    Cursor="Hand"
                                     Click="ClearErrorsButton_Click"/>
 
-                            <ListBox x:Name="ErrorLogList" Grid.Row="1" Background="Transparent" BorderThickness="0">
+                            <ListBox x:Name="ErrorLogList" Grid.Row="1" 
+                                     Background="Transparent" BorderThickness="0">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Padding="8" Margin="0,2" CornerRadius="4" Background="#FEF2F2">
+                                        <Border Padding="10,8" Margin="0,2" CornerRadius="6" 
+                                                Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1">
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11" Foreground="#991B1B" FontWeight="Bold"/>
-                                                <TextBlock Text="{Binding Details}" TextWrapping="Wrap" FontSize="10" Foreground="#B91C1C" Margin="0,4,0,0"/>
-                                                <TextBlock Text="{Binding Timestamp}" FontSize="9" Foreground="#F87171" Margin="0,2,0,0"/>
+                                                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" 
+                                                           FontSize="12" Foreground="#991B1B" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Details}" TextWrapping="Wrap" 
+                                                           FontSize="11" Foreground="#B91C1C" Margin="0,4,0,0"/>
+                                                <TextBlock Text="{Binding Timestamp}" FontSize="10" 
+                                                           Foreground="#EF4444" Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
@@ -286,13 +339,16 @@
             </Border>
         </Grid>
 
-        <!-- Footer -->
-        <Border Grid.Row="3" Margin="0,20,0,0">
+        <!-- ===== Footer ===== -->
+        <Border Grid.Row="3" Margin="0,16,0,0">
             <Grid>
-                <TextBlock Text="© 2026 TallyLink • Build v1.0.3" 
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           FontSize="12"
-                           HorizontalAlignment="Left"/>
+                <TextBlock Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="11"
+                           HorizontalAlignment="Left">
+                    <Run Text="© 2026 TallySync"/>
+                    <Run Text="  •  "/>
+                    <Run Text="v2.2.0"/>
+                </TextBlock>
                 <TextBlock HorizontalAlignment="Right">
                     <Hyperlink x:Name="SettingsLink" 
                                Foreground="{StaticResource PrimaryBrush}"

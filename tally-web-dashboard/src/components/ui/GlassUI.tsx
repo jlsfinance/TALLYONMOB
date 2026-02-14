@@ -350,7 +350,7 @@ export const Fab: React.FC<FabProps> = ({ icon, onClick, className = '' }) => {
 // ==================== BADGE (Restored) ====================
 interface BadgeProps {
     children: React.ReactNode;
-    variant?: 'default' | 'success' | 'error' | 'warning' | 'primary' | 'info';
+    variant?: 'default' | 'success' | 'error' | 'warning' | 'primary' | 'info' | 'outline';
     className?: string;
 }
 
@@ -362,6 +362,7 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default', cla
         warning: 'bg-[var(--warning-bg)] text-[var(--warning)]',
         primary: 'bg-[var(--primary)]/10 text-[var(--primary)]',
         info: 'bg-[var(--info-bg)] text-[var(--info)]',
+        outline: 'border border-[var(--outline-variant)] text-[var(--on-surface-variant)] bg-transparent',
     };
 
     return (

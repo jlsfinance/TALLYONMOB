@@ -27,7 +27,7 @@ namespace TallySyncApp.Services
             _supabaseAnonKey = supabaseAnonKey;
             _sessionFilePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "LiveKeepingSync",
+                "TallySync",
                 "session.json"
             );
             
@@ -341,6 +341,29 @@ namespace TallySyncApp.Services
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Auto-refresh token if it's about to expire (within 5 minutes)
+        /// Returns the fresh access token or null
+        /// </summary>
+        public async Task<string?> RefreshTokenIfNeededAsync()
+        {
+            if (CurrentSession == null) return null;
+
+            // Refresh if token expires in less than 5 minutes
+            if (CurrentSession.ExpiresAt <= DateTime.UtcNow.AddMinutes(5))
+            {
+                var success = await RefreshTokenAsync();
+                if (success)
+                {
+                    return CurrentSession.AccessToken;
+                }
+                return null;
+            }
+
+            // Token is still valid
+            return CurrentSession.AccessToken;
         }
 
         /// <summary>

@@ -13,7 +13,7 @@
 
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallyLink</RootNamespace>
-    <Version>1.0.5</Version>
+    <Version>1.1.0</Version>
     <Authors>TallyLink</Authors>
     <Description>TallyLink Limitless Sync</Description>
     <Copyright>Copyright © 2026 TallyLink</Copyright>

@@ -87,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
+            color: Colors.blue.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -100,7 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _buildStatItem('Sales', data.totalSales, Colors.white),
               _buildStatItem('Purchases', data.totalPurchases,
-                  Colors.white.withOpacity(0.9)),
+                  Colors.white.withValues(alpha: 0.9)),
             ],
           ),
           const Divider(color: Colors.white24, height: 30),
@@ -110,7 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildStatItem(
                   'Receivables', data.totalReceivables, Colors.white),
               _buildStatItem('Payables', data.totalPayables,
-                  Colors.white.withOpacity(0.9)),
+                  Colors.white.withValues(alpha: 0.9)),
             ],
           ),
         ],
@@ -123,7 +123,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: TextStyle(color: color.withOpacity(0.7), fontSize: 13)),
+            style:
+                TextStyle(color: color.withValues(alpha: 0.7), fontSize: 13)),
         const SizedBox(height: 4),
         Text(
           currencyFormat.format(value),
@@ -158,7 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -168,7 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           CircleAvatar(
-            backgroundColor: color.withOpacity(0.1),
+            backgroundColor: color.withValues(alpha: 0.1),
             radius: 24,
             child: Icon(icon, color: color, size: 28),
           ),

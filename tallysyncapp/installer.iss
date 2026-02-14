@@ -26,9 +26,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Source files from the publish directory
-Source: "publish\TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Source files from the current directory
+Source: "TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "installer.iss,setup,Output,*.pdb,*.ipdb,*.iobj"
 ; NOTE: Exclude the exe itself from secondary copy if already included in publish\*
 Source: "appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
 

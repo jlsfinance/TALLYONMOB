@@ -1,13 +1,15 @@
 /// Supabase configuration
 /// Replace with your actual Supabase project credentials
 class SupabaseConfig {
-  // TODO: Replace with your Supabase URL
-  static const String url = 'https://YOUR_PROJECT_ID.supabase.co';
+  // Supabase URL from web dashboard
+  static const String url = 'https://lcsehcwocqvxrrgbmhcz.supabase.co';
 
-  // TODO: Replace with your Supabase anon key
-  static const String anonKey = 'YOUR_SUPABASE_ANON_KEY';
+  // Supabase Anon Key from web dashboard
+  static const String anonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4';
 
-  // API configuration for sync backend
-  static const String apiBaseUrl = 'https://your-api-server.com';
+  // API configuration for sync backend (if needed)
+  static const String apiBaseUrl =
+      'https://your-api-server.com'; // TODO: Update if custom backend is deployed
   static const String apiKey = 'your_secret_sync_key_here';
 }

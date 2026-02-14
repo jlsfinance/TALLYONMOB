@@ -85,7 +85,8 @@ namespace TallySyncApp.Views
 
             if (tallyOk)
             {
-                UpdateTallyStatus("Connected", Brushes.LimeGreen);
+                var onlineColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                UpdateTallyStatus("Connected", onlineColor);
                 AddLog("✅ Tally ERP connected");
                 
                 // Show detected companies
@@ -93,19 +94,22 @@ namespace TallySyncApp.Views
             }
             else
             {
-                UpdateTallyStatus("Offline", Brushes.OrangeRed);
+                var offlineColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                UpdateTallyStatus("Offline", offlineColor);
                 AddLog("⚠️ Tally ERP is offline");
                 AddError("Tally Connection Failed", error ?? "Is Tally open and ODBC enabled on port 9000?");
             }
 
             if (serverOk)
             {
-                UpdateApiStatus("Connected", Brushes.LimeGreen);
+                var apiOnline = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                UpdateApiStatus("Connected", apiOnline);
                 AddLog("✅ Supabase connected");
             }
             else
             {
-                UpdateApiStatus("Offline", Brushes.OrangeRed);
+                var apiOffline = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                UpdateApiStatus("Offline", apiOffline);
                 AddLog("⚠️ Supabase offline");
                 AddError("Supabase Connection Failed", error ?? "Check internet connection and API keys.");
             }
@@ -177,7 +181,7 @@ namespace TallySyncApp.Views
             if (!await CheckSerialAndConfirmAsync()) return;
 
             SyncNowButton.IsEnabled = false;
-            UpdateStatus("Starting...", "#6366F1");
+            UpdateStatus("Starting...", "#1A56DB");
 
             try
             {
@@ -219,7 +223,7 @@ namespace TallySyncApp.Views
             StartAutoSyncButton.IsEnabled = false;
             StopAutoSyncButton.IsEnabled = true;
             
-            UpdateStatus("Auto-Syncing", "#10B981");
+            UpdateStatus("Auto-Syncing", "#16A34A");
             AddLog($"Auto-sync started ({intervalMinutes} m)");
         }
 
@@ -231,7 +235,7 @@ namespace TallySyncApp.Views
             StartAutoSyncButton.IsEnabled = true;
             StopAutoSyncButton.IsEnabled = false;
             
-            UpdateStatus("Stopped", "#EF4444");
+            UpdateStatus("Stopped", "#DC2626");
             AddLog("Auto-sync stopped");
         }
 
@@ -256,11 +260,11 @@ namespace TallySyncApp.Views
                 SyncProgressText.Text = status.Message;
                 
                 // Update connection dots in real-time
-                UpdateTallyStatus(status.IsTallyConnected ? "Connected" : "Offline", 
-                                 status.IsTallyConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
+                var tallyColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(status.IsTallyConnected ? "#16A34A" : "#DC2626"));
+                UpdateTallyStatus(status.IsTallyConnected ? "Connected" : "Offline", tallyColor);
                 
-                UpdateApiStatus(status.IsServerConnected ? "Connected" : "Offline", 
-                               status.IsServerConnected ? Brushes.LimeGreen : Brushes.OrangeRed);
+                var apiColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(status.IsServerConnected ? "#16A34A" : "#DC2626"));
+                UpdateApiStatus(status.IsServerConnected ? "Connected" : "Offline", apiColor);
 
                 // Log significant state changes
                 if (status.State == SyncState.Completed || status.State == SyncState.Error)
@@ -271,26 +275,26 @@ namespace TallySyncApp.Views
                 switch (status.State)
                 {
                     case SyncState.FetchingData:
-                        UpdateStatus(status.Message, "#F59E0B"); // Orange for fetching
+                        UpdateStatus(status.Message, "#D97706");
                         break;
                     case SyncState.Syncing:
                     case SyncState.Uploading:
-                        UpdateStatus($"Syncing {status.ProcessedRecords}/{status.TotalRecords}", "#6366F1");
+                        UpdateStatus($"Syncing {status.ProcessedRecords}/{status.TotalRecords}", "#1A56DB");
                         break;
                     case SyncState.Completed:
-                        UpdateStatus("Sync Success", "#10B981");
+                        UpdateStatus("Sync Success", "#16A34A");
                         AddLog($"✅ Sync Completed: {status.TotalRecords} records processed.");
                         LastSyncText.Text = $"Last sync: {DateTime.Now:HH:mm:ss}";
                         break;
                     case SyncState.Error:
-                        UpdateStatus("Sync Failed", "#EF4444");
+                        UpdateStatus("Sync Failed", "#DC2626");
                         AddError("Sync Failed", status.Error ?? status.Message);
                         break;
                     case SyncState.Connecting:
-                        UpdateStatus("Connecting...", "#F59E0B");
+                        UpdateStatus("Connecting...", "#D97706");
                         break;
                     default:
-                        UpdateStatus("System Idle", "#10B981");
+                        UpdateStatus("System Idle", "#16A34A");
                         break;
                 }
                 
@@ -370,6 +374,21 @@ namespace TallySyncApp.Views
         {
             MessageBox.Show("Settings are configured in appsettings.json", 
                             "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void LogoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to sign out?",
+                "Sign Out",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                App.GetSyncManager().StopSync();
+                App.Logout();
+            }
         }
         private async Task<bool> CheckSerialAndConfirmAsync()
         {

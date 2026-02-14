@@ -357,6 +357,12 @@ export default function InvoicePDFPage() {
             y += 5;
         }
 
+        const phone = companyInfo?.phone || selectedCompany?.phone || '';
+        if (phone) {
+            doc.text(`Phone: ${phone}`, pageWidth / 2, y, { align: 'center' });
+            y += 5;
+        }
+
         y += 5;
 
         // --- TITLE ---
@@ -378,10 +384,6 @@ export default function InvoicePDFPage() {
         // doc.rect(margin, contentStartY, pageWidth - 2 * margin, contentEndY - contentStartY);
 
         // --- INVOICE INFO SECTION ---
-        // Top Section: 
-        // Left: Invoice Details
-        // Right: Date/Terms
-
         const topSectionY = y;
         const leftColX = margin + 2;
         const rightColX = pageWidth / 2 + 2;
@@ -429,10 +431,6 @@ export default function InvoicePDFPage() {
         const partyStartY = y;
         y += 5;
 
-        // Buyer (Bill To) - Full Width for now or Tally Style (Buyer is usually bottom left, Consignee top left if different)
-        // Standard Tally often puts Buyer on Right and Consignee on Left, or just one block.
-        // Let's do simple Buyer block.
-
         doc.setFont('helvetica', 'bold');
         const partyLabel = isPurchase ? 'Supplier (Bill From):' : 'Buyer (Bill To):';
         doc.text(partyLabel, leftColX, y);
@@ -467,28 +465,36 @@ export default function InvoicePDFPage() {
         doc.line(margin, y, pageWidth - margin, y);
         doc.rect(margin, contentStartY, pageWidth - 2 * margin, y - contentStartY); // Draw box around header part
 
-        // --- ITEMS TABLE (Tally-smart: hide empty columns) ---
+        // --- ITEMS TABLE ---
+        // Force visibility checks directly on current items to ensure columns appear
+        const hasItems = items.length > 0;
+        const _hasHSN = hasItems && items.some(i => i.hsn_code); 
+        const _hasGST = hasItems; // Always show GST column if items exist
+        const _hasRate = hasItems; 
+        const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+
         const tableColumns = [
             { header: 'SI No.', dataKey: 'sno' },
             { header: 'Description of Goods', dataKey: 'desc' },
         ];
-        if (columnVisibility.hasHSN) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' });
-        if (columnVisibility.hasGST) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' });
-        if (columnVisibility.hasQty) tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
-        if (columnVisibility.hasRate) tableColumns.push({ header: 'Rate', dataKey: 'rate' });
-        if (columnVisibility.hasUnit) tableColumns.push({ header: 'Per', dataKey: 'unit' });
-        if (columnVisibility.hasDiscount) tableColumns.push({ header: 'Disc %', dataKey: 'disc' });
+        
+        if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' }); 
+        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' }); 
+        tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
+        tableColumns.push({ header: 'Rate', dataKey: 'rate' });
+        tableColumns.push({ header: 'Per', dataKey: 'unit' });
+        if (_hasDisc) tableColumns.push({ header: 'Disc %', dataKey: 'disc' });
         tableColumns.push({ header: 'Amount', dataKey: 'amount' });
 
         const tableBody = items.map((item, index) => ({
             sno: index + 1,
-            desc: item.stock_item_name,
-            hsn: item.hsn_code || '',
-            gst: item.gst_rate ? `${item.gst_rate}%` : '', // Map GST
-            qty: item.quantity,
+            desc: item.stock_item_name || 'Item',
+            hsn: item.hsn_code || '-',
+            gst: item.gst_rate ? `${item.gst_rate}%` : '0%',
+            qty: item.quantity || 0,
             rate: formatNumber(item.rate),
-            unit: item.unit,
-            disc: item.discount ? `${item.discount}%` : '', // Map Discount
+            unit: item.unit || '',
+            disc: item.discount ? `${item.discount}%` : '',
             amount: formatNumber(item.amount)
         }));
 
@@ -515,42 +521,36 @@ export default function InvoicePDFPage() {
             columnStyles: {
                 sno: { halign: 'center', cellWidth: 10 },
                 desc: { halign: 'left' },
-                ...(columnVisibility.hasHSN && { hsn: { halign: 'center', cellWidth: 18 } }),
-                ...(columnVisibility.hasGST && { gst: { halign: 'center', cellWidth: 12 } }),
-                ...(columnVisibility.hasQty && { qty: { halign: 'right', cellWidth: 18 } }),
-                ...(columnVisibility.hasRate && { rate: { halign: 'right', cellWidth: 22 } }),
-                ...(columnVisibility.hasUnit && { unit: { halign: 'center', cellWidth: 12 } }),
-                ...(columnVisibility.hasDiscount && { disc: { halign: 'center', cellWidth: 12 } }),
-                amount: { halign: 'right', cellWidth: 28 }
+                hsn: { halign: 'center', cellWidth: 20 },
+                gst: { halign: 'center', cellWidth: 15 },
+                qty: { halign: 'right', cellWidth: 20 },
+                rate: { halign: 'right', cellWidth: 25 },
+                unit: { halign: 'center', cellWidth: 15 },
+                disc: { halign: 'center', cellWidth: 15 },
+                amount: { halign: 'right', cellWidth: 30 }
             },
             margin: { left: margin, right: margin },
             tableLineWidth: 0.1,
             tableLineColor: [0, 0, 0],
-            didDrawPage: (data) => {
-                // Determine layout on new pages if multipage
-            }
         });
 
         y = doc.lastAutoTable.finalY;
 
         // --- TOTALS ROW ---
-        // Draw a line for total
         doc.line(margin, y, pageWidth - margin, y);
-        y += 1; // padding
+        y += 1;
 
-        // Total Qty
-        const totalQty = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+        const totalQtyVal = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 
         doc.setFont('helvetica', 'bold');
         doc.text('Total', margin + 60, y + 4, { align: 'right' });
-        doc.text(totalQty.toString(), pageWidth - margin - 85, y + 4, { align: 'right' }); // Approx position aligned with Qty col
+        doc.text(totalQtyVal.toString(), pageWidth - margin - 85, y + 4, { align: 'right' });
         doc.text(formatNumber(invoice.taxable_amount), pageWidth - margin - 2, y + 4, { align: 'right' });
 
         y += 6;
         doc.line(margin, y, pageWidth - margin, y);
 
         // --- AMOUNT IN WORDS & TAXES ---
-        // Box for bottom section
         const bottomSectionStart = y;
 
         // Left: Amount in words
@@ -564,10 +564,9 @@ export default function InvoicePDFPage() {
 
         // Right: Tax Breakdown
         let rightY = y + 2;
-        const rightXStart = pageWidth - 80; // approx start of right block
+        const rightXStart = pageWidth - 80;
 
-        // Draw vertical separator
-        doc.line(rightXStart, y, rightXStart, y + 40); // fixed height approx
+        doc.line(rightXStart, y, rightXStart, y + 40); 
 
         const drawTaxRow = (label, amount) => {
             if (amount > 0) {
@@ -591,34 +590,9 @@ export default function InvoicePDFPage() {
         doc.text(formatNumber(invoice.net_amount), pageWidth - margin - 2, rightY, { align: 'right' });
 
         y = Math.max(y + 20, rightY + 5);
-        // Ensure y is below the vertical line
         y = Math.max(y, bottomSectionStart + 40);
 
-        doc.line(margin, y, pageWidth - margin, y); // End of Tax/Words section
-
-        // --- HSN SUMMARY (Optional) ---
-        if (columnVisibility.hasGST && hsnSummary.length > 0) {
-            y += 2;
-            doc.setFontSize(8);
-            doc.setFont('helvetica', 'normal');
-            doc.text('HSN/SAC', margin + 2, y + 3);
-            doc.text('Taxable', margin + 25, y + 3, { align: 'right' });
-            doc.text('Rate', margin + 40, y + 3, { align: 'right' });
-            doc.text('Tax Amt', margin + 60, y + 3, { align: 'right' });
-
-            y += 4;
-            doc.line(margin, y, margin + 70, y); // Small table underline
-
-            hsnSummary.forEach(row => {
-                y += 4;
-                doc.text(row.hsn, margin + 2, y);
-                doc.text(formatNumber(row.taxable), margin + 25, y, { align: 'right' });
-                doc.text(`${row.gst_rate}%`, margin + 40, y, { align: 'right' });
-                doc.text(formatNumber(row.total - row.taxable), margin + 60, y, { align: 'right' });
-            });
-            y += 4;
-            doc.line(margin, y, pageWidth - margin, y);
-        }
+        doc.line(margin, y, pageWidth - margin, y); 
 
         // --- FOOTER (Bank & Sign) ---
         const footerY = y;
@@ -630,9 +604,12 @@ export default function InvoicePDFPage() {
         doc.setFontSize(9);
         doc.text('Company\'s Bank Details', margin + 2, footerY + 4);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Bank Name: ${selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
-        doc.text(`A/C No: ${selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
-        doc.text(`IFS Code: ${selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
+        doc.text(`Bank Name: ${companyInfo?.bank_name || selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
+        doc.text(`A/C No: ${companyInfo?.bank_account || selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
+        doc.text(`IFS Code: ${companyInfo?.bank_ifsc || selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
+        if (companyInfo?.bank_branch || selectedCompany?.bank_branch) {
+            doc.text(`Branch: ${companyInfo?.bank_branch || selectedCompany?.bank_branch}`, margin + 2, footerY + 24);
+        }
         doc.setFont('helvetica', 'normal');
 
         // Right: Signature
@@ -1013,7 +990,6 @@ export default function InvoicePDFPage() {
                                 </div>
                             </div>
                         </div>
-
                         {/* HSN/SAC Summary (If GST) */}
                         {columnVisibility.hasGST && (
                             <div className="border-b-2 border-black p-2">
