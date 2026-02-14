@@ -3,12 +3,12 @@
 
 [Setup]
 AppId={{D3B2A1E4-7C9F-4A9B-B8D2-E4F5A6B7C8D9}
-AppName=LiveKeeping Tally Sync
+AppName=TallyLink Sync
 AppVersion=2.0.0
-AppPublisher=LiveKeeping
-AppPublisherURL=https://livekeeping.com
-DefaultDirName={autopf}\LiveKeeping\TallyLink
-DefaultGroupName=LiveKeeping Tally Sync
+AppPublisher=TallyLink
+AppPublisherURL=https://tallylink.com
+DefaultDirName={autopf}\TallyLink\Sync
+DefaultGroupName=TallyLink Sync
 AllowNoIcons=yes
 LicenseFile=LICENSE.txt
 ; Set the output folder and filename
@@ -33,8 +33,8 @@ Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubd
 Source: "appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\LiveKeeping Tally Sync"; Filename: "{app}\TallyLink.exe"
-Name: "{autodesktop}\LiveKeeping Tally Sync"; Filename: "{app}\TallyLink.exe"; Tasks: desktopicon
+Name: "{group}\TallyLink Sync"; Filename: "{app}\TallyLink.exe"
+Name: "{autodesktop}\TallyLink Sync"; Filename: "{app}\TallyLink.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\TallyLink.exe"; Description: "{cm:LaunchProgram,LiveKeeping Tally Sync}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\TallyLink.exe"; Description: "{cm:LaunchProgram,TallyLink Sync}"; Flags: nowait postinstall skipifsilent
