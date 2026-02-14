@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on v2.1.6
+      - 'v*' # Triggers on v2.1.7
 
 permissions:
   contents: write
@@ -52,11 +52,11 @@ jobs:
         # 3. Create Releases directory
         if (-not (Test-Path "Releases")) { New-Item -ItemType Directory -Path "Releases" }
         
-        # 4. Run Squirrel pack using strict = syntax for Clowd.Squirrel CLI
-        # Clowd.Squirrel is picky about --option=value format
-        & $SQUIRREL_EXE pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
+        # 4. Run Squirrel pack with --releasify as per user's recommendation
+        # This will create Setup.exe, RELEASES, and .nupkg
+        & $SQUIRREL_EXE pack --releasify --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
         
-        # 5. Renaming logic
+        # 5. Renaming logic for consistent URLs
         Get-ChildItem -Path "Releases" -Filter "*Setup.exe" | ForEach-Object {
             Move-Item $_.FullName "Releases/TallyLinkSetup.exe" -Force
             Write-Host "Renamed $($_.Name) to TallyLinkSetup.exe"
