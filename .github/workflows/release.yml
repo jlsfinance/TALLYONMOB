@@ -19,27 +19,25 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Install Squirrel Tool
-<<<<<<< HEAD
       run: dotnet tool install --global Clowd.Squirrel.Tool
-=======
-      run: |
-        dotnet tool install --global Clowd.Squirrel.Tool
-        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-      shell: bash
->>>>>>> thebaap
+      shell: pwsh
 
     - name: Publish App
       run: dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+      shell: pwsh
 
     - name: Create Squirrel Release
       run: |
-        # Get version from tag (e.g. v2.0.2 -> 2.0.2)
         $VERSION = "${{ github.ref_name }}".Substring(1)
-        squirrel pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
+        # Use full path to avoid PATH refresh issues in same runner session
+        $SQUIRREL_EXE = "$env:USERPROFILE\.dotnet\tools\squirrel.exe"
+        & $SQUIRREL_EXE pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
         
         # Rename to a URL-friendly name
-        Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe"
-      shell: powershell
+        if (Test-Path "Releases/TallyLink Setup.exe") {
+            Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe" -Force
+        }
+      shell: pwsh
 
     - name: Upload to GitHub Release
       uses: softprops/action-gh-release@v1
@@ -67,7 +65,7 @@ jobs:
             "Prefer" = "return=minimal"
           } `
           -Body $BODY
-      shell: powershell
+      shell: pwsh
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
