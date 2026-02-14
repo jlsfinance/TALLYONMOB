@@ -284,7 +284,7 @@ export const masterApi = {
     getLedgers: async (companyId) => {
         const { data, error } = await supabase
             .from('ledgers')
-            .select('id, name, parent_group, closing_balance')
+            .select('id, name, parent_group, current_balance')
             .eq('company_id', companyId)
             .order('name')
             .limit(10000);

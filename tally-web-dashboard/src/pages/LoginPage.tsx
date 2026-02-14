@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, BarChart3, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '../contexts/types';
+import SEO from '../components/common/SEO';
 
 export default function LoginPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -59,6 +60,11 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
+            <SEO
+                title={isLogin ? "Client Login | TallyLink" : "Create Account | TallyLink"}
+                description="Securely access your TallyLink business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
+                canonical="https://tallyonmob.vercel.app/login"
+            />
 
             {/* Theme Toggle — Top Right */}
             <button

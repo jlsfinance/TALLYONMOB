@@ -59,6 +59,8 @@ import RecurringInvoicesPage from './pages/RecurringInvoicesPage';
 import CustomerPortalPage from './pages/CustomerPortalPage';
 import PortalLinksPage from './pages/PortalLinksPage';
 import ReportBuilderPage from './pages/ReportBuilderPage';
+import InvoiceViewPage from './pages/InvoiceViewPage';
+import LegalTemplatePage from './pages/LegalTemplatePage';
 import { LanguageProvider } from './contexts/LanguageContext';
 
 
@@ -187,9 +189,11 @@ function App() {
                             <Route path="/privacy" element={<PrivacyPolicyPage />} />
                             <Route path="/terms" element={<TermsPage />} />
                             <Route path="/refund" element={<RefundPolicyPage />} />
+                            <Route path="/legal/:slug" element={<LegalTemplatePage />} />
 
                             {/* Public Customer Portal */}
                             <Route path="/portal/view" element={<CustomerPortalPage />} />
+                            <Route path="/portal/invoice/:id" element={<InvoiceViewPage />} />
 
                             <Route
                                 path="/*"

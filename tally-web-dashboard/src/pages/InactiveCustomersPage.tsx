@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 interface InactiveCustomer {
     id: string;
     name: string;
-    closing_balance: number;
+    current_balance: number;
     lastTransactionDate: string | null;
     daysSinceLastTransaction: number;
     totalTransactions: number;
@@ -76,7 +76,7 @@ export default function InactiveCustomersPage() {
                     inactiveList.push({
                         id: ledger.id,
                         name: ledger.name,
-                        closing_balance: ledger.closing_balance || 0,
+                        current_balance: ledger.current_balance || 0,
                         lastTransactionDate: lastDate,
                         daysSinceLastTransaction: lastDate ? daysSince : 999,
                         totalTransactions: partyVouchers.length,
@@ -247,9 +247,9 @@ export default function InactiveCustomersPage() {
                                     <div className="text-right">
                                         <p className="text-sm font-bold text-[var(--on-surface)]">{formatCurrency(customer.totalValue)}</p>
                                         <p className="text-xs text-[var(--text-muted)]">total business</p>
-                                        {customer.closing_balance > 0 && (
+                                        {customer.current_balance > 0 && (
                                             <p className="text-xs text-red-400 mt-1">
-                                                Outstanding: {formatCurrency(customer.closing_balance)}
+                                                Outstanding: {formatCurrency(customer.current_balance)}
                                             </p>
                                         )}
                                     </div>

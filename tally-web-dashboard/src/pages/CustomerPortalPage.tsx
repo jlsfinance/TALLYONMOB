@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
     Download, Calendar, Filter, ArrowUpRight, ArrowDownLeft,
     Wallet, Building2, Phone, Mail, MapPin, IndianRupee,
-    CreditCard, ExternalLink, Share2, ChevronDown, ChevronUp, FileText
+    CreditCard, ExternalLink, Share2, ChevronDown, ChevronUp, FileText, FileDown
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
@@ -25,7 +27,7 @@ interface Transaction {
 interface PartyInfo {
     id: string;
     name: string;
-    closing_balance: number;
+    current_balance: number;
     email?: string;
     phone?: string;
     address?: string;
@@ -133,7 +135,7 @@ export default function CustomerPortalPage() {
         // Razorpay payment link integration
         const razorpayKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID;
         if (razorpayKeyId && party) {
-            const amount = Math.max(0, party.closing_balance) * 100; // paise
+            const amount = Math.max(0, party.current_balance) * 100; // paise
             window.open(
                 `https://pages.razorpay.com/pl_pay?amount=${amount}&description=Payment to ${company?.name || 'Business'}`,
                 '_blank'
@@ -141,6 +143,65 @@ export default function CustomerPortalPage() {
         } else {
             alert('Online payment is not configured. Please contact the business.');
         }
+    };
+
+    const downloadPDF = () => {
+        if (!transactions.length) return;
+        const doc = new jsPDF('l', 'mm', 'a4'); // Landscape for T-Shape
+        const pageWidth = doc.internal.pageSize.getWidth();
+
+        // Header
+        doc.setFontSize(18);
+        doc.text(company?.name || 'Business Statement', pageWidth / 2, 15, { align: 'center' });
+        doc.setFontSize(10);
+        doc.text(company?.address || '', pageWidth / 2, 20, { align: 'center' });
+        if (company?.gstin) doc.text(`GSTIN: ${company.gstin}`, pageWidth / 2, 24, { align: 'center' });
+
+        doc.setFontSize(14);
+        doc.text(`Ledger Account: ${party?.name}`, 15, 35);
+        doc.setFontSize(10);
+        doc.text(`Period: ${dateRange.from} to ${dateRange.to}`, 15, 40);
+
+        const drTxns = transactionsWithBalance.filter(t => ['Sales', 'Debit Note', 'Journal'].includes(t.voucher_type));
+        const crTxns = transactionsWithBalance.filter(t => ['Receipt', 'Credit Note', 'Payment'].includes(t.voucher_type));
+
+        const maxRows = Math.max(drTxns.length, crTxns.length);
+        const tableData = [];
+
+        for (let i = 0; i < maxRows; i++) {
+            const dr = drTxns[i];
+            const cr = crTxns[i];
+            tableData.push([
+                dr ? new Date(dr.voucher_date).toLocaleDateString('en-IN') : '',
+                dr ? dr.voucher_type : '',
+                dr ? Math.abs(Number(dr.grand_total || dr.total_amount) || 0).toLocaleString('en-IN') : '',
+                cr ? new Date(cr.voucher_date).toLocaleDateString('en-IN') : '',
+                cr ? cr.voucher_type : '',
+                cr ? Math.abs(Number(cr.grand_total || cr.total_amount) || 0).toLocaleString('en-IN') : ''
+            ]);
+        }
+
+        autoTable(doc, {
+            startY: 45,
+            head: [['Date', 'Particulars (Dr)', 'Amount', 'Date', 'Particulars (Cr)', 'Amount']],
+            body: tableData,
+            theme: 'grid',
+            headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+            styles: { fontSize: 8, cellPadding: 2, textColor: [0, 0, 0] },
+            columnStyles: {
+                2: { halign: 'right', fontStyle: 'bold' },
+                5: { halign: 'right', fontStyle: 'bold' }
+            }
+        });
+
+        // Summary at bottom
+        const finalY = (doc as any).lastAutoTable.finalY + 10;
+        doc.text(`Total Debit: ${formatCurrency(totalDebit)}`, 15, finalY);
+        doc.text(`Total Credit: ${formatCurrency(totalCredit)}`, pageWidth / 2, finalY);
+        doc.setFontSize(12);
+        doc.text(`Closing Balance: ${formatCurrency(party?.current_balance || 0)} ${(party?.current_balance || 0) > 0 ? 'Dr' : 'Cr'}`, 15, finalY + 10);
+
+        doc.save(`statement_${party?.name}_tshape.pdf`);
     };
 
     const downloadCsv = () => {
@@ -241,19 +302,19 @@ export default function CustomerPortalPage() {
                             <p style={{ margin: 0, fontSize: '12px', color: '#999' }}>Outstanding Balance</p>
                             <p style={{
                                 margin: '4px 0 0', fontSize: '28px', fontWeight: 800,
-                                color: (party?.closing_balance || 0) > 0 ? '#ef4444' : '#10b981',
+                                color: (party?.current_balance || 0) > 0 ? '#ef4444' : '#10b981',
                             }}>
-                                {formatCurrency(party?.closing_balance || 0)}
+                                {formatCurrency(party?.current_balance || 0)}
                             </p>
                             <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#999' }}>
-                                {(party?.closing_balance || 0) > 0 ? 'Amount to pay' : 'Credit balance'}
+                                {(party?.current_balance || 0) > 0 ? 'Amount to pay' : 'Credit balance'}
                             </p>
                         </div>
                     </div>
 
                     {/* Action Buttons */}
                     <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
-                        {(party?.closing_balance || 0) > 0 && (
+                        {(party?.current_balance || 0) > 0 && (
                             <button
                                 onClick={handlePayNow}
                                 style={{
@@ -267,15 +328,15 @@ export default function CustomerPortalPage() {
                             </button>
                         )}
                         <button
-                            onClick={downloadCsv}
+                            onClick={downloadPDF}
                             style={{
                                 flex: 1, minWidth: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
                                 padding: '12px 20px', borderRadius: '12px',
-                                background: '#667eea15', color: '#667eea',
-                                border: '1px solid #667eea30', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
+                                background: '#667eea', color: '#fff',
+                                border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '14px',
                             }}
                         >
-                            <Download size={18} /> Download Statement
+                            <FileDown size={18} /> Download T-Shape PDF
                         </button>
                     </div>
                 </motion.div>
@@ -386,12 +447,12 @@ export default function CustomerPortalPage() {
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead>
                                     <tr style={{ background: '#f8fafc' }}>
-                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#666' }}>Date</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#666' }}>Type</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, color: '#666' }}>Voucher #</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#ef4444' }}>Debit ₹</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#10b981' }}>Credit ₹</th>
-                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#667eea' }}>Balance ₹</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'bold', color: '#000' }}>Date</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'bold', color: '#000' }}>Type</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 'bold', color: '#000' }}>Voucher #</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 'bold', color: '#000' }}>Debit ₹</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 'bold', color: '#000' }}>Credit ₹</th>
+                                        <th style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 'bold', color: '#000' }}>Balance ₹</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -419,7 +480,17 @@ export default function CustomerPortalPage() {
                                                         {txn.voucher_type}
                                                     </span>
                                                 </td>
-                                                <td style={{ padding: '12px 16px', color: '#666' }}>{txn.voucher_number || '-'}</td>
+                                                <td style={{ padding: '12px 16px', color: '#666' }}>
+                                                    <Link
+                                                        to={`/portal/invoice/${txn.id}`}
+                                                        target="_blank"
+                                                        style={{ color: '#667eea', textDecoration: 'none', fontWeight: 600 }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        {txn.voucher_number || 'View'}
+                                                        <ExternalLink size={12} style={{ display: 'inline', marginLeft: '4px' }} />
+                                                    </Link>
+                                                </td>
                                                 <td style={{ padding: '12px 16px', textAlign: 'right', color: '#ef4444', fontWeight: isDebit ? 600 : 400 }}>
                                                     {isDebit ? formatCurrency(amount) : ''}
                                                 </td>

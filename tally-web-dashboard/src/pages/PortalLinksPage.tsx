@@ -9,7 +9,7 @@ import {
 interface Party {
     id: string;
     name: string;
-    closing_balance: number;
+    current_balance: number;
     email?: string;
     phone?: string;
 }
@@ -26,9 +26,9 @@ export default function PortalLinksPage() {
         setLoading(true);
         const { data } = await supabase
             .from('ledgers')
-            .select('id, name, closing_balance, email, phone')
+            .select('id, name, current_balance, email, phone')
             .eq('company_id', companyId)
-            .in('parent_group', ['Sundry Debtors', 'Sundry Creditors'])
+            .or('parent.ilike.%Debtors%,parent.ilike.%Creditors%,parent.ilike.%Customer%,parent.ilike.%Supplier%')
             .order('name');
         setParties(data || []);
         setLoading(false);
@@ -136,8 +136,8 @@ export default function PortalLinksPage() {
                             <div style={{ flex: 1, minWidth: '200px' }}>
                                 <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>{party.name}</div>
                                 <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                                    Balance: <span style={{ color: party.closing_balance > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-                                        {formatCurrency(party.closing_balance)} {party.closing_balance > 0 ? 'Dr' : 'Cr'}
+                                    Balance: <span style={{ color: party.current_balance > 0 ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                                        {formatCurrency(party.current_balance)} {party.current_balance > 0 ? 'Dr' : 'Cr'}
                                     </span>
                                 </div>
                             </div>

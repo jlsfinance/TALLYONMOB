@@ -51,9 +51,69 @@ export default function InvoicePDFPage() {
                     .single();
 
                 if (companyData) {
-                    setCompanyInfo(companyData);
+                    console.log('DEBUG: Fetched Company Data:', companyData);
+                    // Critical Fix: Remove null values so they don't overwrite valid context data
+                    const cleanCompanyData = Object.fromEntries(
+                        Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
+                    );
+                    setCompanyInfo({ ...(selectedCompany || {}), ...cleanCompanyData });
                 } else {
+                    console.warn('DEBUG: No company data found in DB, using context fallback as last resort.');
                     setCompanyInfo(selectedCompany);
+                }
+
+                // Fetch Party Details (Address, GSTIN)
+                let partyDetails = {};
+                if (voucherData.party_ledger_id) {
+                    const { data: pData, error: pErr } = await supabase
+                        .from('ledgers')
+                        .select('address, gstin, email, phone')
+                        .eq('id', voucherData.party_ledger_id)
+                        .single();
+                    if (pErr) console.error('DEBUG: Party Ledger Fetch Error:', pErr);
+                    if (pData) partyDetails = pData;
+                } else if (voucherData.party_name) {
+                    const { data: pData, error: pErr } = await supabase
+                        .from('ledgers')
+                        .select('address, gstin, email, phone')
+                        .eq('company_id', voucherData.company_id)
+                        .ilike('name', voucherData.party_name.trim())
+                        .maybeSingle();
+                    if (pErr) console.error('DEBUG: Party Name Fetch Error:', pErr);
+                    if (pData) partyDetails = pData;
+                }
+
+                // Fallback for Company GSTIN: Check if a ledger exists with Company Name
+                // Fix: Check against companyData/selectedCompany variables (fresh) not state (stale/async)
+                const currentGstin = companyData?.gstin || selectedCompany?.gstin;
+                if (!currentGstin || currentGstin === 'N/A') {
+                    const { data: cLedger } = await supabase
+                        .from('ledgers')
+                        .select('gstin, address, email, phone')
+                        .eq('company_id', voucherData.company_id)
+                        .ilike('name', companyData?.name || selectedCompany?.name)
+                        .maybeSingle();
+
+                    if (cLedger && cLedger.gstin) {
+                        setCompanyInfo(prev => ({ ...prev, ...cLedger }));
+                    }
+
+                    // Bank Details Fallback: Search for any ledger in 'Bank Accounts' group
+                    const { data: bLedger } = await supabase
+                        .from('ledgers')
+                        .select('name, address')
+                        .eq('company_id', voucherData.company_id)
+                        .eq('parent', 'Bank Accounts')
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (bLedger) {
+                        setCompanyInfo(prev => ({
+                            ...prev,
+                            bank_name: prev?.bank_name || bLedger.name,
+                            bank_account: prev?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '') // Try to extract account number from address if possible
+                        }));
+                    }
                 }
 
                 // Fetch stock entries first to calculate GST from items
@@ -183,9 +243,11 @@ export default function InvoicePDFPage() {
                     invoice_number: voucherData.voucher_number,
                     invoice_date: voucherData.voucher_date,
                     party_ledger_name: voucherData.party_name,
-                    party_gstin: voucherData.party_gstin || '',
-                    party_address: voucherData.party_address || '',
-                    party_state: voucherData.party_state || voucherData.place_of_supply || '',
+                    party_gstin: voucherData.party_gstin || partyDetails.gstin || '',
+                    party_address: voucherData.party_address || partyDetails.address || '',
+                    party_state: voucherData.party_state || voucherData.place_of_supply || partyDetails.state || '',
+                    party_email: partyDetails.email || '',
+                    party_phone: partyDetails.phone || '',
                     place_of_supply: voucherData.place_of_supply || '',
                     net_amount: netAmount,
                     taxable_amount: taxableAmount,
@@ -207,6 +269,8 @@ export default function InvoicePDFPage() {
 
     // Smart column detection — Tally-style: hide every column with no data
     const columnVisibility = useMemo(() => {
+        if (!items || !invoice) return {};
+
         const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-' && i.hsn_code.trim() !== '');
         const hasGST = items.some(i => Number(i.gst_rate) > 0) || Number(invoice?.cgst_amount) > 0 || Number(invoice?.igst_amount) > 0;
         const hasDiscount = items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
@@ -217,9 +281,12 @@ export default function InvoicePDFPage() {
         const hasCGST = Number(invoice?.cgst_amount) > 0;
         const hasSGST = Number(invoice?.sgst_amount) > 0;
         const hasRoundOff = Number(invoice?.round_off) > 0 && Math.abs(Number(invoice?.round_off)) > 0.001;
-        const hasBankDetails = !!(invoice?.selectedCompany?.bank_name || invoice?.selectedCompany?.bank_account);
+
+        // Critical Fix: Use companyInfo instead of invoice.selectedCompany
+        const hasBankDetails = !!(companyInfo?.bank_name || companyInfo?.bank_account);
+
         return { hasHSN, hasGST, hasDiscount, hasUnit, hasRate, hasQty, isIGST, hasCGST, hasSGST, hasRoundOff, hasBankDetails };
-    }, [items, invoice]);
+    }, [items, invoice, companyInfo]);
 
     // HSN Summary calculation - distribute invoice GST proportionally
     const hsnSummary = useMemo(() => {
@@ -336,28 +403,28 @@ export default function InvoicePDFPage() {
         doc.setTextColor(0, 0, 0);
 
         // --- COMPANY HEADER ---
-        const companyName = companyInfo?.name || selectedCompany?.name || 'Company Name';
+        const companyName = companyInfo?.name || 'Company Name';
         doc.text(companyName, pageWidth / 2, y, { align: 'center' });
         y += 6;
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
-        const companyAddr = companyInfo?.address || selectedCompany?.address || '';
+        const companyAddr = companyInfo?.address || '';
         const addrLines = doc.splitTextToSize(companyAddr, 120);
         doc.text(addrLines, pageWidth / 2, y, { align: 'center' });
         y += (addrLines.length * 4) + 2;
 
-        const gstin = companyInfo?.gstin || selectedCompany?.gstin || 'N/A';
+        const gstin = companyInfo?.gstin || 'N/A';
         doc.text(`GSTIN/UIN: ${gstin}`, pageWidth / 2, y, { align: 'center' });
         y += 5;
 
-        const email = companyInfo?.email || selectedCompany?.email || '';
+        const email = companyInfo?.email || '';
         if (email) {
             doc.text(`E-Mail: ${email}`, pageWidth / 2, y, { align: 'center' });
             y += 5;
         }
 
-        const phone = companyInfo?.phone || selectedCompany?.phone || '';
+        const phone = companyInfo?.phone || '';
         if (phone) {
             doc.text(`Phone: ${phone}`, pageWidth / 2, y, { align: 'center' });
             y += 5;
@@ -468,18 +535,18 @@ export default function InvoicePDFPage() {
         // --- ITEMS TABLE ---
         // Force visibility checks directly on current items to ensure columns appear
         const hasItems = items.length > 0;
-        const _hasHSN = hasItems && items.some(i => i.hsn_code); 
+        const _hasHSN = hasItems && items.some(i => i.hsn_code);
         const _hasGST = hasItems; // Always show GST column if items exist
-        const _hasRate = hasItems; 
+        const _hasRate = hasItems;
         const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
 
         const tableColumns = [
             { header: 'SI No.', dataKey: 'sno' },
             { header: 'Description of Goods', dataKey: 'desc' },
         ];
-        
-        if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' }); 
-        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' }); 
+
+        if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' });
+        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' });
         tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
         tableColumns.push({ header: 'Rate', dataKey: 'rate' });
         tableColumns.push({ header: 'Per', dataKey: 'unit' });
@@ -566,7 +633,7 @@ export default function InvoicePDFPage() {
         let rightY = y + 2;
         const rightXStart = pageWidth - 80;
 
-        doc.line(rightXStart, y, rightXStart, y + 40); 
+        doc.line(rightXStart, y, rightXStart, y + 40);
 
         const drawTaxRow = (label, amount) => {
             if (amount > 0) {
@@ -592,7 +659,7 @@ export default function InvoicePDFPage() {
         y = Math.max(y + 20, rightY + 5);
         y = Math.max(y, bottomSectionStart + 40);
 
-        doc.line(margin, y, pageWidth - margin, y); 
+        doc.line(margin, y, pageWidth - margin, y);
 
         // --- FOOTER (Bank & Sign) ---
         const footerY = y;
@@ -604,16 +671,16 @@ export default function InvoicePDFPage() {
         doc.setFontSize(9);
         doc.text('Company\'s Bank Details', margin + 2, footerY + 4);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Bank Name: ${companyInfo?.bank_name || selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
-        doc.text(`A/C No: ${companyInfo?.bank_account || selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
-        doc.text(`IFS Code: ${companyInfo?.bank_ifsc || selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
-        if (companyInfo?.bank_branch || selectedCompany?.bank_branch) {
-            doc.text(`Branch: ${companyInfo?.bank_branch || selectedCompany?.bank_branch}`, margin + 2, footerY + 24);
+        doc.text(`Bank Name: ${companyInfo?.bank_name || '-'}`, margin + 2, footerY + 9);
+        doc.text(`A/C No: ${companyInfo?.bank_account || '-'}`, margin + 2, footerY + 14);
+        doc.text(`IFS Code: ${companyInfo?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
+        if (companyInfo?.bank_branch) {
+            doc.text(`Branch: ${companyInfo?.bank_branch}`, margin + 2, footerY + 24);
         }
         doc.setFont('helvetica', 'normal');
 
         // Right: Signature
-        doc.text(`for ${companyInfo?.name || selectedCompany?.name}`, pageWidth - margin - 2, footerY + 4, { align: 'right' });
+        doc.text(`for ${companyInfo?.name}`, pageWidth - margin - 2, footerY + 4, { align: 'right' });
         doc.setFontSize(8);
         doc.text('Authorized Signatory', pageWidth - margin - 2, footerY + 28, { align: 'right' });
 
@@ -630,8 +697,8 @@ export default function InvoicePDFPage() {
     📅 Date: ${formatDate(invoice?.invoice_date)}
 
     🏢 *From:*
-    ${selectedCompany?.name}
-    GSTIN: ${selectedCompany?.gstin || 'N/A'}
+    ${companyInfo?.name}
+    GSTIN: ${companyInfo?.gstin || 'N/A'}
 
     👤 *To:*
     ${invoice?.party_ledger_name}
@@ -735,7 +802,7 @@ export default function InvoicePDFPage() {
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 uppercase mb-1">From</p>
-                        <p className="font-medium text-sm">{selectedCompany?.name}</p>
+                        <p className="font-medium text-sm">{companyInfo?.name}</p>
                     </div>
                 </div>
 
@@ -808,26 +875,26 @@ export default function InvoicePDFPage() {
                         <div className="grid grid-cols-2 border-b-2 border-black">
                             {/* Company Info - Left */}
                             <div className="p-4 border-r-2 border-black flex flex-col justify-center">
-                                <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name || selectedCompany?.name}</h1>
+                                <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
 
-                                {(companyInfo?.address || selectedCompany?.address) && (
+                                {(companyInfo?.address) && (
                                     <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
-                                        {companyInfo?.address || selectedCompany?.address}
+                                        {companyInfo?.address}
                                     </p>
                                 )}
 
                                 <div className="text-xs space-y-0.5">
-                                    {(companyInfo?.gstin || selectedCompany?.gstin) && (
-                                        <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo?.gstin || selectedCompany?.gstin}</p>
+                                    {(companyInfo?.gstin) && (
+                                        <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
                                     )}
-                                    {(companyInfo?.state || selectedCompany?.state) && (
-                                        <p><span className="font-semibold">State Name:</span> {companyInfo?.state || selectedCompany?.state}</p>
+                                    {(companyInfo?.state) && (
+                                        <p><span className="font-semibold">State Name:</span> {companyInfo.state}</p>
                                     )}
-                                    {(companyInfo?.email || selectedCompany?.email) && (
-                                        <p><span className="font-semibold">E-Mail:</span> {companyInfo?.email || selectedCompany?.email}</p>
+                                    {(companyInfo?.email) && (
+                                        <p><span className="font-semibold">E-Mail:</span> {companyInfo.email}</p>
                                     )}
-                                    {(companyInfo?.phone || selectedCompany?.phone) && (
-                                        <p><span className="font-semibold">Contact:</span> {companyInfo?.phone || selectedCompany?.phone}</p>
+                                    {(companyInfo?.phone) && (
+                                        <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
                                     )}
                                 </div>
                             </div>
@@ -1063,12 +1130,12 @@ export default function InvoicePDFPage() {
                         <div className="grid grid-cols-2 flex-grow h-32">
                             {/* Bank & Terms */}
                             <div className="border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
-                                {(selectedCompany?.bank_name || selectedCompany?.bank_account) ? (
+                                {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
                                     <div>
                                         <p className="font-bold underline mb-1">Company's Bank Details:</p>
-                                        {selectedCompany?.bank_name && <p>Bank Name: <span className="font-semibold">{selectedCompany.bank_name}</span></p>}
-                                        {selectedCompany?.bank_account && <p>A/C No.: <span className="font-semibold">{selectedCompany.bank_account}</span></p>}
-                                        {selectedCompany?.bank_ifsc && <p>Branch & IFS Code: <span className="font-semibold">{selectedCompany.bank_ifsc}</span></p>}
+                                        {companyInfo?.bank_name && <p>Bank Name: <span className="font-semibold">{companyInfo.bank_name}</span></p>}
+                                        {companyInfo?.bank_account && <p>A/C No.: <span className="font-semibold">{companyInfo.bank_account}</span></p>}
+                                        {companyInfo?.bank_ifsc && <p>Branch & IFS Code: <span className="font-semibold">{companyInfo.bank_ifsc}</span></p>}
                                     </div>
                                 ) : <div />}
                                 <div className="mt-2 text-[10px]">
@@ -1079,7 +1146,7 @@ export default function InvoicePDFPage() {
 
                             {/* Signatory */}
                             <div className="p-2 flex flex-col justify-between h-full text-center">
-                                <p className="text-right text-xs font-bold">for {companyInfo?.name || selectedCompany?.name}</p>
+                                <p className="text-right text-xs font-bold">for {companyInfo?.name}</p>
                                 <div className="h-16"></div>
                                 <div className="text-right">
                                     <p className="border-t border-black inline-block px-8 pt-1 text-xs font-bold">Authorized Signatory</p>

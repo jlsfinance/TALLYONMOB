@@ -21,13 +21,13 @@ const NavItem = memo(({
     return (
         <Link to={to}>
             <div className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] mb-0.5
-                transition-all duration-150 group text-sm
+                flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1
+                transition-all duration-200 group text-[13px]
                 ${active
-                    ? 'bg-[var(--primary)] text-white font-semibold shadow-[var(--shadow-sm)]'
-                    : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] hover:text-[var(--on-surface)] font-medium'
+                    ? 'bg-[var(--primary)] text-white font-semibold shadow-lg shadow-[var(--primary-glow)]'
+                    : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] hover:text-[var(--primary)] font-medium active:scale-95'
                 }
-                ${collapsed ? 'justify-center px-2' : ''}
+                ${collapsed ? 'justify-center px-0 w-10 h-10 mx-auto' : ''}
             `}>
                 <span className="flex-shrink-0">{icon}</span>
                 {!collapsed && <span className="truncate">{label}</span>}
@@ -62,72 +62,123 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     const isAdmin = user?.email === 'lovneetrathi@gmail.com';
 
-    const tallyNavItems = useMemo(() => {
-        const items = [
-            { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
-            { to: '/vouchers', icon: <FileText size={18} />, label: 'Vouchers' },
-            { to: '/ledgers', icon: <Users size={18} />, label: 'Parties' },
-            { to: '/sales', icon: <TrendingUp size={18} />, label: 'Sales' },
-            { to: '/purchases', icon: <Package size={18} />, label: 'Purchases' },
-            { to: '/stock', icon: <Box size={18} />, label: 'Stock Summary' },
-            { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
-            { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
-            { to: '/sales-analytics', icon: <LineChart size={18} />, label: 'Sales Analytics' },
-            { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
-            { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
-            { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Reports' },
-            { to: '/create-voucher', icon: <ClipboardList size={18} />, label: 'Create Voucher' },
-            { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
-            { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
-            { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
-            { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
-            { to: '/sales-team', icon: <MapPin size={18} />, label: 'Sales Tracking' },
-            { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Invoice Templates' },
-            { to: '/team-management', icon: <ShieldCheck size={18} />, label: 'Team Access' },
-            { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup & Restore' },
-            { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Invoice Scanner' },
-            { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
-            { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring Invoices' },
-            { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
-            { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Report Builder' },
+    const tallyNavGroups = useMemo(() => {
+        const groups = [
+            {
+                label: 'Main',
+                items: [
+                    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+                    { to: '/vouchers', icon: <FileText size={18} />, label: 'Vouchers' },
+                    { to: '/ledgers', icon: <Users size={18} />, label: 'Parties' },
+                ]
+            },
+            {
+                label: 'Financials',
+                items: [
+                    { to: '/sales', icon: <TrendingUp size={18} />, label: 'Sales' },
+                    { to: '/purchases', icon: <Package size={18} />, label: 'Purchases' },
+                    { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
+                    { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
+                    { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Reports' },
+                    { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
+                ]
+            },
+            {
+                label: 'CRM & Portal',
+                items: [
+                    { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
+                    { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
+                    { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Reminders' },
+                    { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive List' },
+                ]
+            },
+            {
+                label: 'Inventory',
+                items: [
+                    { to: '/stock', icon: <Box size={18} />, label: 'Stock Summary' },
+                    { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
+                ]
+            },
+            {
+                label: 'Intelligence',
+                items: [
+                    { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
+                    { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
+                    { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
+                ]
+            },
+            {
+                label: 'Operations',
+                items: [
+                    { to: '/create-voucher', icon: <Plus size={18} />, label: 'Create Voucher' },
+                    { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring' },
+                    { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Reports' },
+                    { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup' },
+                ]
+            }
         ];
         if (isAdmin) {
-            items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
+            groups.push({
+                label: 'Admin',
+                items: [{ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' }]
+            });
         }
-        return items;
+        return groups;
     }, [isAdmin]);
 
-    const billingNavItems = useMemo(() => {
-        const items = [
-            { to: '/', icon: <LayoutDashboard size={18} />, label: 'Billing Desk' },
-            { to: '/create-invoice', icon: <Plus size={18} />, label: 'Create Invoice' },
-            { to: '/sales', icon: <FileText size={18} />, label: 'Recent Invoices' },
-            { to: '/ledgers', icon: <Users size={18} />, label: 'Customers' },
-            { to: '/stock', icon: <Box size={18} />, label: 'Inventory' },
-            { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
-            { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
-            { to: '/sales-analytics', icon: <LineChart size={18} />, label: 'Sales Analytics' },
-            { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
-            { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
-            { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Filing' },
-            { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
-            { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
-            { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
-            { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Invoice Templates' },
-            { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Invoice Scanner' },
-            { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
-            { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring Invoices' },
-            { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
-            { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Report Builder' },
-            { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup & Restore' },
+    const billingNavGroups = useMemo(() => {
+        const groups = [
+            {
+                label: 'Main',
+                items: [
+                    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Billing Desk' },
+                    { to: '/create-invoice', icon: <Plus size={18} />, label: 'Create Bill' },
+                    { to: '/ledgers', icon: <Users size={18} />, label: 'Customers' },
+                ]
+            },
+            {
+                label: 'Sales & Inventory',
+                items: [
+                    { to: '/sales', icon: <TrendingUp size={18} />, label: 'Recent Bills' },
+                    { to: '/stock', icon: <Box size={18} />, label: 'Inventory' },
+                    { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
+                ]
+            },
+            {
+                label: 'Finance',
+                items: [
+                    { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
+                    { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
+                    { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Filing' },
+                ]
+            },
+            {
+                label: 'CRM',
+                items: [
+                    { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
+                    { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
+                    { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Reminders' },
+                ]
+            },
+            {
+                label: 'Tools',
+                items: [
+                    { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
+                    { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
+                    { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Templates' },
+                ]
+            }
         ];
         if (isAdmin) {
-            items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
+            groups.push({
+                label: 'Admin',
+                items: [{ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' }]
+            });
         }
-        return items;
+        return groups;
     }, [isAdmin]);
 
-    const navItems = appMode === 'tally' ? tallyNavItems : billingNavItems;
+    const navGroups = appMode === 'tally' ? tallyNavGroups : billingNavGroups;
 
     const bottomNavItems = useMemo(() => appMode === 'tally' ? [
         { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
@@ -196,21 +247,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 </div>
                             )}
 
-                            {/* Nav Items */}
-                            <nav className="flex-1 px-3 py-3 overflow-y-auto">
-                                {navItems.map((item) => (
-                                    <Link
-                                        key={item.to}
-                                        to={item.to}
-                                        onClick={() => setShowMobileMenu(false)}
-                                        className={`flex items-center gap-3 px-3 py-3 rounded-[var(--radius-md)] mb-0.5 transition-all text-sm ${location.pathname === item.to
-                                            ? 'bg-[var(--primary)] text-white font-semibold'
-                                            : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
-                                            }`}
-                                    >
-                                        {item.icon}
-                                        <span>{item.label}</span>
-                                    </Link>
+                            <nav className="flex-1 px-4 py-4 overflow-y-auto custom-scrollbar">
+                                {navGroups.map((group, idx) => (
+                                    <div key={idx} className="mb-6 last:mb-0">
+                                        <div className="flex items-center gap-2 mb-2 px-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] opacity-60">
+                                                {group.label}
+                                            </span>
+                                            <div className="flex-1 h-px bg-[var(--border)] opacity-30" />
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-1">
+                                            {group.items.map((item) => (
+                                                <Link
+                                                    key={item.to}
+                                                    to={item.to}
+                                                    onClick={() => setShowMobileMenu(false)}
+                                                    className={`flex items-center gap-3.5 px-3 py-3 rounded-xl transition-all duration-200 ${location.pathname === item.to
+                                                            ? 'bg-[var(--primary)] text-white font-bold shadow-md'
+                                                            : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
+                                                        }`}
+                                                >
+                                                    <span className={`${location.pathname === item.to ? 'text-white' : 'text-[var(--primary)]'}`}>
+                                                        {item.icon}
+                                                    </span>
+                                                    <span className="text-sm">{item.label}</span>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </div>
                                 ))}
                             </nav>
 
@@ -306,15 +370,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </div>
                 )}
 
-                {/* Navigation */}
-                <nav className="flex-1 px-3 py-2 overflow-y-auto">
-                    {navItems.map((item) => (
-                        <NavItem
-                            key={item.to}
-                            {...item}
-                            collapsed={!sidebarOpen}
-                            active={location.pathname === item.to}
-                        />
+                <nav className="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
+                    {navGroups.map((group, idx) => (
+                        <div key={idx} className="mb-4 last:mb-0">
+                            {sidebarOpen && (
+                                <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] opacity-60">
+                                    {group.label}
+                                </div>
+                            )}
+                            {!sidebarOpen && <div className="h-px bg-[var(--border)] mx-2 mb-2 opacity-50" />}
+                            {group.items.map((item) => (
+                                <NavItem
+                                    key={item.to}
+                                    {...item}
+                                    collapsed={!sidebarOpen}
+                                    active={location.pathname === item.to}
+                                />
+                            ))}
+                        </div>
                     ))}
                 </nav>
 

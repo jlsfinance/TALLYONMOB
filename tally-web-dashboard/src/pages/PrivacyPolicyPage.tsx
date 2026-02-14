@@ -1,12 +1,18 @@
 import { motion } from 'framer-motion';
 import { Shield, Lock, Eye, Mail, Server, Smartphone, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import SEO from '../components/common/SEO';
 
 export default function PrivacyPolicyPage() {
     const navigate = useNavigate();
 
     return (
         <div className="min-h-screen bg-[#020202] text-white selection:bg-emerald-500/30 font-sans">
+            <SEO
+                title="Privacy Policy | TallyLink"
+                description="Our commitment to your data privacy. Learn how TallyLink protects your business-sensitive Tally ERP 9 and TallyPrime data."
+                canonical="https://tallyonmob.vercel.app/privacy"
+            />
             {/* Header */}
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -52,7 +58,7 @@ export default function PrivacyPolicyPage() {
                             </p>
                             <h3 className="text-white font-bold text-lg mt-6">Personal Identification</h3>
                             <p className="text-gray-400 leading-relaxed">
-                                We collect your name, email address (lovneetrathi@gmail.com), and phone number (+91 9413821007) for account management and security verification.
+                                We collect your name, email address ({import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com'}), and phone number ({import.meta.env.VITE_SUPPORT_PHONE || '+91 9413821007'}) for account management and security verification.
                             </p>
                         </div>
                     </section>
@@ -100,9 +106,9 @@ export default function PrivacyPolicyPage() {
                         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-3xl p-8">
                             <p className="text-gray-300 font-bold mb-4">For any privacy-related queries, contact our Data Protection Officer:</p>
                             <div className="space-y-2 text-emerald-400 font-black">
-                                <p>NAME: LAVNEET RATHI</p>
-                                <p>EMAIL: LOVNEETRATHI@GMAIL.COM</p>
-                                <p>PHONE: +91 9413821007</p>
+                                <p>NAME: {import.meta.env.VITE_DPO_NAME || 'LAVNEET RATHI'}</p>
+                                <p>EMAIL: {import.meta.env.VITE_SUPPORT_EMAIL?.toUpperCase() || 'LOVNEETRATHI@GMAIL.COM'}</p>
+                                <p>PHONE: {import.meta.env.VITE_SUPPORT_PHONE || '+91 9413821007'}</p>
                             </div>
                         </div>
                     </section>

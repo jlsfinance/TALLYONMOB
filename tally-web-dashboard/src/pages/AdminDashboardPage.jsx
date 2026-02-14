@@ -25,7 +25,10 @@ import {
 import supabase from '../lib/supabase';
 import toast from 'react-hot-toast';
 
-const ADMIN_EMAILS = ['lovneetrathi@gmail.com']; // Super admins
+const ADMIN_EMAILS = [
+    'lovneetrathi@gmail.com',
+    import.meta.env.VITE_SUPPORT_EMAIL?.toLowerCase()
+].filter(Boolean); // Super admins
 
 const AdminDashboardPage = () => {
     const { user, signOut } = useAuth();
