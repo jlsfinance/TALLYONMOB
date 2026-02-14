@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on tags like v2.1.4
+      - 'v*' # Triggers on v2.1.5
 
 permissions:
   contents: write
@@ -36,22 +36,27 @@ jobs:
       run: |
         $VERSION = "${{ github.ref_name }}".Substring(1)
         
-        # 1. Look for Squirrel.exe in the NuGet cache
-        $SQUIRREL_EXE = (Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Select-Object -First 1).FullName
+        # 1. Look for Squirrel.exe in the NuGet cache specifically in tools
+        $SQUIRREL_EXE = (Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Where-Object { $_.FullName -like "*tools*" } | Select-Object -First 1).FullName
         
         if (-not $SQUIRREL_EXE) {
-            Write-Error "Squirrel.exe not found in NuGet cache. Ensure Clowd.Squirrel is a dependency."
+            Write-Error "Squirrel.exe not found in NuGet cache."
             exit 1
         }
         
+        # 2. Add WiX v3 to path (essential for Setup.exe generation)
+        $env:PATH += ";C:\Program Files (x86)\WiX Toolset v3.11\bin"
+        
         Write-Host "Using Squirrel from: $SQUIRREL_EXE"
         
-        # 2. Run Squirrel pack
-        # We use --icon if available, but for now keeping it simple as per working CLI help
-        & $SQUIRREL_EXE pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
+        # 3. Create Releases directory
+        New-Item -ItemType Directory -Force -Path "Releases"
         
-        # 3. Rename to a URL-friendly name
-        # The 'pack' command usually creates 'Setup.exe' or 'TallyLink Setup.exe'
+        # 4. Run Squirrel pack with full verbose and noDelta to minimize failure points
+        # Using short flags to avoid potential parsing issues with long names
+        & $SQUIRREL_EXE pack --verbose --noDelta -u "TallyLink" -v $VERSION -p "PublishOutput" -r "Releases" --packAuthors "ShauryaTechSol" --packTitle "TallyLink"
+        
+        # 5. Renaming logic
         if (Test-Path "Releases/TallyLink Setup.exe") {
             Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe" -Force
         } elseif (Test-Path "Releases/Setup.exe") {
@@ -60,6 +65,16 @@ jobs:
         
         echo "Listing Releases directory:"
         ls Releases
+      shell: pwsh
+
+    - name: Update tallysyncapp folder
+      run: |
+        # Rule 16: always use /tallysyncapp folder to update .exe file
+        if (Test-Path "Releases/TallyLinkSetup.exe") {
+            if (-not (Test-Path "tallysyncapp")) { New-Item -ItemType Directory -Path "tallysyncapp" }
+            Copy-Item "Releases/TallyLinkSetup.exe" "tallysyncapp/TallyLink.exe" -Force
+            Write-Host "Updated /tallysyncapp folder with new TallyLink.exe"
+        }
       shell: pwsh
 
     - name: Upload to GitHub Release
