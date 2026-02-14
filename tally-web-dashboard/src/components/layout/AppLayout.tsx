@@ -7,7 +7,8 @@ import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
     Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock,
-    LineChart, Building2, Sparkles, LogOut, ArrowLeftRight
+    LineChart, Building2, Sparkles, LogOut, ArrowLeftRight,
+    Bot, UserX, MessageCircle, ClipboardList
 } from 'lucide-react';
 
 // Navigation Item
@@ -72,6 +73,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
             { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
             { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Reports' },
+            { to: '/create-voucher', icon: <ClipboardList size={18} />, label: 'Create Voucher' },
+            { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
+            { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
+            { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
         ];
         if (isAdmin) {
             items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
@@ -92,6 +97,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
             { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
             { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Filing' },
+            { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
+            { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
+            { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
         ];
         if (isAdmin) {
             items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });

@@ -44,6 +44,10 @@ import SalesAnalyticsPage from './pages/SalesAnalyticsPage';
 import BankReconciliationPage from './pages/BankReconciliationPage';
 import AIEntryPage from './pages/AIEntryPage';
 import EditVoucherPage from './pages/EditVoucherPage';
+import PaymentRemindersPage from './pages/PaymentRemindersPage';
+import InactiveCustomersPage from './pages/InactiveCustomersPage';
+import AIAssistantPage from './pages/AIAssistantPage';
+import CreateVoucherPage from './pages/CreateVoucherPage';
 
 
 // Protected Route Wrapper
@@ -203,6 +207,10 @@ function App() {
                                             <Route path="/sales-analytics" element={<SalesAnalyticsPage />} />
                                             <Route path="/bank-reconciliation" element={<BankReconciliationPage />} />
                                             <Route path="/ai-entry" element={<AIEntryPage />} />
+                                            <Route path="/payment-reminders" element={<PaymentRemindersPage />} />
+                                            <Route path="/inactive-customers" element={<InactiveCustomersPage />} />
+                                            <Route path="/ai-assistant" element={<AIAssistantPage />} />
+                                            <Route path="/create-voucher" element={<CreateVoucherPage />} />
                                         </Routes>
                                     </AppLayout>
                                 </ProtectedRoute>
