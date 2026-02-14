@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on tags like v2.0.2
+      - 'v*' # Triggers on tags like v2.0.9
 
 jobs:
   release:
@@ -18,22 +18,29 @@ jobs:
       with:
         dotnet-version: '8.0.x'
         
-    - name: Install Squirrel Tool
-      run: dotnet tool install --global Clowd.Squirrel.Tool
+    - name: Install Squirrel Tool (Local)
+      run: |
+        dotnet new tool-manifest
+        dotnet tool install Clowd.Squirrel.Tool
       shell: pwsh
 
     - name: Publish App
-      run: dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+      run: |
+        dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+        echo "Listing PublishOutput files:"
+        ls PublishOutput
       shell: pwsh
 
     - name: Create Squirrel Release
       run: |
         $VERSION = "${{ github.ref_name }}".Substring(1)
-        # Use full path to avoid PATH refresh issues in same runner session
-        $SQUIRREL_EXE = "$env:USERPROFILE\.dotnet\tools\squirrel.exe"
-        & $SQUIRREL_EXE pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
+        
+        # Use local tool to avoid PATH issues
+        dotnet tool run squirrel pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
         
         # Rename to a URL-friendly name
+        echo "Listing Releases directory:"
+        ls Releases
         if (Test-Path "Releases/TallyLink Setup.exe") {
             Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe" -Force
         }
