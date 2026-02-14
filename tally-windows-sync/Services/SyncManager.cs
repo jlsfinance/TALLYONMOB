@@ -238,8 +238,10 @@ namespace TallySyncApp.Services
         {
             _settings.TallySettings.SerialNumber = newSerial;
             SaveSettings(_settings);
-            AddLog($"🔐 Tally License Serial updated to: {newSerial}");
+            SyncLogRequested?.Invoke(this, $"🔐 Tally License Serial updated to: {newSerial}");
         }
+
+        public ApiClient GetApiClient() => _apiClient!;
 
         /// <summary>
         /// Start background sync timer

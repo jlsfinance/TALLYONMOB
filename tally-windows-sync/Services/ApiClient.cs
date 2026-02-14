@@ -457,6 +457,38 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Get all application settings from app_settings table
+        /// </summary>
+        public async Task<Dictionary<string, string>> GetAppSettingsAsync()
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/app_settings?select=key,value";
+                var response = await _httpClient.GetStringAsync(url);
+                var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(response);
+                
+                var settings = new Dictionary<string, string>();
+                if (items != null)
+                {
+                    foreach (var item in items)
+                    {
+                        if (item.ContainsKey("key") && item.ContainsKey("value"))
+                        {
+                            settings[item["key"]] = item["value"];
+                        }
+                    }
+                }
+                return settings;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetAppSettingsAsync error: {ex.Message}");
+                return new Dictionary<string, string>();
+            }
+        }
+
+        /// <summary>
         /// Get metadata value from Supabase
         /// </summary>
         public async Task<string?> GetMetadataAsync(string companyId, string key)

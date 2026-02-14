@@ -57,6 +57,9 @@ namespace TallySyncApp.Views
                 // Check connections
                 await CheckConnectionsAsync();
                 
+                // Check for updates
+                _ = CheckForUpdatesAsync();
+                
                 // Update queue stats
                 UpdateQueueStats();
             }
@@ -421,6 +424,56 @@ namespace TallySyncApp.Views
              
              AddLog("Sync cancelled by user due to serial mismatch.");
              return false;
+        }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                var syncManager = App.GetSyncManager();
+                var apiClient = syncManager.GetApiClient();
+                var settings = await apiClient.GetAppSettingsAsync();
+
+                if (settings.TryGetValue("app_version", out var serverVersion))
+                {
+                    var currentVersion = "2.0.1"; // Hardcoded matching .csproj
+                    if (serverVersion != currentVersion)
+                    {
+                        Dispatcher.Invoke(() => {
+                            UpdateBtn.Visibility = Visibility.Visible;
+                            UpdateBtn.ToolTip = $"New Version {serverVersion} available!";
+                        });
+                    }
+                }
+            }
+            catch { /* Silent fail */ }
+        }
+
+        private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var syncManager = App.GetSyncManager();
+                var apiClient = syncManager.GetApiClient();
+                var settings = await apiClient.GetAppSettingsAsync();
+
+                if (settings.TryGetValue("windows_app_download_url", out var downloadUrl))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = downloadUrl,
+                        UseShellExecute = true
+                    });
+                }
+                else
+                {
+                    MessageBox.Show("Download link not found in settings.", "Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not open download link: {ex.Message}", "Update Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 
