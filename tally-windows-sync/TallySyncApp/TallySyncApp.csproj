@@ -14,7 +14,7 @@
 
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallyLink</RootNamespace>
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <Authors>Shaurya Tech Sol</Authors>
     <Company>Shaurya Tech Sol</Company>
     <Product>TallyLink Sync</Product>

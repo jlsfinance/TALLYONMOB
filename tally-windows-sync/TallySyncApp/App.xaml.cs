@@ -285,19 +285,37 @@ namespace TallySyncApp
 
         private void SetupTrayIcon()
         {
-            _notifyIcon = new NotifyIcon();
-            _notifyIcon.Icon = new System.Drawing.Icon(GetIconPath());
-            _notifyIcon.Visible = true;
-            _notifyIcon.Text = "TallyLink - Data Sync Running";
-            
-            var contextMenu = new ContextMenuStrip();
-            contextMenu.Items.Add("Open Dashboard", null, (s, e) => ShowMainWindow());
-            contextMenu.Items.Add("Sync Now", null, async (s, e) => await ForceSync());
-            contextMenu.Items.Add("-");
-            contextMenu.Items.Add("Exit", null, (s, e) => { _isClosing = true; Application.Current.Shutdown(); });
-            
-            _notifyIcon.ContextMenuStrip = contextMenu;
-            _notifyIcon.DoubleClick += (s, e) => ShowMainWindow();
+            try
+            {
+                _notifyIcon = new NotifyIcon();
+                
+                // Safely load icon
+                string iconPath = GetIconPath();
+                if (!string.IsNullOrEmpty(iconPath) && File.Exists(iconPath))
+                {
+                    _notifyIcon.Icon = new System.Drawing.Icon(iconPath);
+                }
+                else
+                {
+                    _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+                }
+                
+                _notifyIcon.Visible = true;
+                _notifyIcon.Text = "TallyLink - Data Sync Running";
+                
+                var contextMenu = new ContextMenuStrip();
+                contextMenu.Items.Add("Open Dashboard", null, (s, e) => ActivateMainWindow());
+                contextMenu.Items.Add("Sync Now", null, async (s, e) => await ForceSync());
+                contextMenu.Items.Add("-");
+                contextMenu.Items.Add("Exit", null, (s, e) => { _isClosing = true; Application.Current.Shutdown(); });
+                
+                _notifyIcon.ContextMenuStrip = contextMenu;
+                _notifyIcon.DoubleClick += (s, e) => ActivateMainWindow();
+            }
+            catch
+            {
+                // Tray icon is non-critical, don't crash if it fails
+            }
         }
 
         private string GetIconPath()
@@ -307,7 +325,7 @@ namespace TallySyncApp
             return File.Exists(path) ? path : string.Empty;
         }
 
-        private void ShowMainWindow()
+        private void ActivateMainWindow()
         {
             if (MainWindow is null) return;
             MainWindow.Show();
