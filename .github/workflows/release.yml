@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on v2.1.8
+      - 'v*'
 
 permissions:
   contents: write
@@ -35,44 +35,52 @@ jobs:
     - name: Create Squirrel Release
       run: |
         $VERSION = "${{ github.ref_name }}".Substring(1)
+        $WORKSPACE = (Get-Location).Path
         
-        # 1. Look for Squirrel.exe in the NuGet cache
-        $SQUIRREL_EXE = (Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Where-Object { $_.FullName -like "*tools*" } | Select-Object -First 1).FullName
+        # 1. Find Squirrel tools directory (not just the exe)
+        $SQUIRREL_EXE_FILE = Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Where-Object { $_.FullName -like "*tools*" } | Select-Object -First 1
         
-        if (-not $SQUIRREL_EXE) {
+        if (-not $SQUIRREL_EXE_FILE) {
             Write-Error "Squirrel.exe not found in NuGet cache."
             exit 1
         }
         
+        $SQUIRREL_DIR = $SQUIRREL_EXE_FILE.DirectoryName
+        $SQUIRREL_EXE = $SQUIRREL_EXE_FILE.FullName
+        
+        Write-Host "Squirrel dir: $SQUIRREL_DIR"
+        Write-Host "Squirrel exe: $SQUIRREL_EXE"
+        Write-Host "Contents of Squirrel tools dir:"
+        ls $SQUIRREL_DIR
+        
         # 2. Add WiX v3 to path
         $env:PATH += ";C:\Program Files (x86)\WiX Toolset v3.11\bin"
         
-        Write-Host "Using Squirrel from: $SQUIRREL_EXE"
+        # 3. Create absolute paths for pack/release dirs
+        $PACK_DIR = Join-Path $WORKSPACE "PublishOutput"
+        $RELEASE_DIR = Join-Path $WORKSPACE "Releases"
+        if (-not (Test-Path $RELEASE_DIR)) { New-Item -ItemType Directory -Path $RELEASE_DIR }
         
-        # 3. Create Releases directory
-        if (-not (Test-Path "Releases")) { New-Item -ItemType Directory -Path "Releases" }
+        # 4. CD into Squirrel tools dir so companion files (Update.exe, StubExecutable) are found
+        Push-Location $SQUIRREL_DIR
         
-        # 4. Step 1: Create the nupkg
-        & $SQUIRREL_EXE pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
+        Write-Host "Running Squirrel pack from: $(Get-Location)"
+        & .\Squirrel.exe pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="$PACK_DIR" --releaseDir="$RELEASE_DIR" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
         
-        # 5. Step 2: Explicitly Releasify (This ensures Setup.exe is created)
-        $NUPKG = (Get-ChildItem -Path "Releases" -Filter "*.nupkg" | Select-Object -First 1).FullName
-        Write-Host "Releasifying: $NUPKG"
-        & $SQUIRREL_EXE releasify --package="$NUPKG" --releaseDir="Releases"
+        Pop-Location
         
-        # 6. Renaming logic
-        Get-ChildItem -Path "Releases" -Filter "*Setup.exe" | ForEach-Object {
-            Move-Item $_.FullName "Releases/TallyLinkSetup.exe" -Force
+        # 5. Rename Setup.exe to URL-friendly name
+        Get-ChildItem -Path $RELEASE_DIR -Filter "*Setup*" | ForEach-Object {
+            Move-Item $_.FullName "$RELEASE_DIR\TallyLinkSetup.exe" -Force
             Write-Host "Renamed $($_.Name) to TallyLinkSetup.exe"
         }
         
         echo "Listing Releases directory:"
-        ls Releases
+        ls $RELEASE_DIR
       shell: pwsh
 
     - name: Update tallysyncapp folder
       run: |
-        # Rule 16
         if (Test-Path "Releases/TallyLinkSetup.exe") {
             if (-not (Test-Path "tallysyncapp")) { New-Item -ItemType Directory -Path "tallysyncapp" }
             Copy-Item "Releases/TallyLinkSetup.exe" "tallysyncapp/TallyLink.exe" -Force
@@ -109,4 +117,3 @@ jobs:
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
