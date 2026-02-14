@@ -10,8 +10,7 @@ using System.Windows.Threading;
 using Squirrel;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Forms;
-using Application = System.Windows.Application;
+using WinForms = System.Windows.Forms;
 
 namespace TallySyncApp
 {
@@ -25,7 +24,7 @@ namespace TallySyncApp
         private static SyncManager? _syncManager;
         private static AuthService? _authService;
         private static AppSettings? _settings;
-        private static NotifyIcon? _notifyIcon;
+        private static WinForms.NotifyIcon? _notifyIcon;
         private static bool _isClosing = false;
 
         public static AuthService AuthService => _authService!;
@@ -287,7 +286,7 @@ namespace TallySyncApp
         {
             try
             {
-                _notifyIcon = new NotifyIcon();
+                _notifyIcon = new WinForms.NotifyIcon();
                 
                 // Safely load icon
                 string iconPath = GetIconPath();
@@ -303,11 +302,11 @@ namespace TallySyncApp
                 _notifyIcon.Visible = true;
                 _notifyIcon.Text = "TallyLink - Data Sync Running";
                 
-                var contextMenu = new ContextMenuStrip();
+                var contextMenu = new WinForms.ContextMenuStrip();
                 contextMenu.Items.Add("Open Dashboard", null, (s, e) => ActivateMainWindow());
                 contextMenu.Items.Add("Sync Now", null, async (s, e) => await ForceSync());
                 contextMenu.Items.Add("-");
-                contextMenu.Items.Add("Exit", null, (s, e) => { _isClosing = true; Application.Current.Shutdown(); });
+                contextMenu.Items.Add("Exit", null, (s, e) => { _isClosing = true; System.Windows.Application.Current.Shutdown(); });
                 
                 _notifyIcon.ContextMenuStrip = contextMenu;
                 _notifyIcon.DoubleClick += (s, e) => ActivateMainWindow();
@@ -337,7 +336,7 @@ namespace TallySyncApp
         {
             if (_notifyIcon != null)
             {
-                _notifyIcon.ShowBalloonTip(3000, title, message, ToolTipIcon.Info);
+                _notifyIcon.ShowBalloonTip(3000, title, message, WinForms.ToolTipIcon.Info);
             }
         }
 

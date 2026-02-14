@@ -14,7 +14,7 @@
 
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallyLink</RootNamespace>
-    <Version>2.2.1</Version>
+    <Version>2.2.2</Version>
     <Authors>Shaurya Tech Sol</Authors>
     <Company>Shaurya Tech Sol</Company>
     <Product>TallyLink Sync</Product>
@@ -47,6 +47,12 @@
   <ItemGroup>
     <Compile Include="..\Services\**\*.cs" Link="Services\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Prevent WinForms global usings from conflicting with WPF -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
 </Project>
