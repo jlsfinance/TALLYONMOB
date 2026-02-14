@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on v2.1.5
+      - 'v*' # Triggers on v2.1.6
 
 permissions:
   contents: write
@@ -50,17 +50,16 @@ jobs:
         Write-Host "Using Squirrel from: $SQUIRREL_EXE"
         
         # 3. Create Releases directory
-        New-Item -ItemType Directory -Force -Path "Releases"
+        if (-not (Test-Path "Releases")) { New-Item -ItemType Directory -Path "Releases" }
         
-        # 4. Run Squirrel pack with full verbose and noDelta to minimize failure points
-        # Using short flags to avoid potential parsing issues with long names
-        & $SQUIRREL_EXE pack --verbose --noDelta -u "TallyLink" -v $VERSION -p "PublishOutput" -r "Releases" --packAuthors "ShauryaTechSol" --packTitle "TallyLink"
+        # 4. Run Squirrel pack using strict = syntax for Clowd.Squirrel CLI
+        # Clowd.Squirrel is picky about --option=value format
+        & $SQUIRREL_EXE pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
         
         # 5. Renaming logic
-        if (Test-Path "Releases/TallyLink Setup.exe") {
-            Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe" -Force
-        } elseif (Test-Path "Releases/Setup.exe") {
-            Move-Item "Releases/Setup.exe" "Releases/TallyLinkSetup.exe" -Force
+        Get-ChildItem -Path "Releases" -Filter "*Setup.exe" | ForEach-Object {
+            Move-Item $_.FullName "Releases/TallyLinkSetup.exe" -Force
+            Write-Host "Renamed $($_.Name) to TallyLinkSetup.exe"
         }
         
         echo "Listing Releases directory:"
