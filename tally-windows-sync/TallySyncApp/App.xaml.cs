@@ -25,6 +25,8 @@ namespace TallySyncApp
         private static SyncManager? _syncManager;
         private static AuthService? _authService;
         private static AppSettings? _settings;
+        private static NotifyIcon? _notifyIcon;
+        private static bool _isClosing = false;
 
         public static AuthService AuthService => _authService!;
         public static AppSettings Settings => _settings!;
@@ -37,6 +39,8 @@ namespace TallySyncApp
                 onAppUpdate: (v, t) => CreateShortcuts(),
                 onAppUninstall: (v, t) => RemoveShortcuts()
             );
+            
+            SetupTrayIcon();
 
             base.OnStartup(e);
 
@@ -196,6 +200,13 @@ namespace TallySyncApp
         {
             _logger?.LogInformation("Application shutting down...");
             _syncManager?.StopSync();
+            
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+            }
+            
             base.OnExit(e);
         }
 
@@ -270,6 +281,8 @@ namespace TallySyncApp
 
             // Show login again
             ((App)Current).ShowLoginWindow();
+        }
+
         private void SetupTrayIcon()
         {
             _notifyIcon = new NotifyIcon();
@@ -339,14 +352,6 @@ namespace TallySyncApp
             ShowNotification("TallyLink", "Sync completed successfully!");
         }
 
-        protected override void OnExit(ExitEventArgs e)
-        {
-            if (_notifyIcon != null)
-            {
-                _notifyIcon.Visible = false;
-                _notifyIcon.Dispose();
-            }
-            base.OnExit(e);
         }
     }
 }
