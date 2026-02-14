@@ -27,7 +27,9 @@ import {
     FileText,
     Globe,
     Play,
-    Star
+    Star,
+    ChevronDown,
+    Plus
 } from 'lucide-react';
 
 // Animation variants
@@ -85,6 +87,7 @@ export default function LandingPage3D() {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [downloadUrl, setDownloadUrl] = useState('https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLinkSetup.exe');
+    const [openFaq, setOpenFaq] = useState<number | null>(null);
 
     useEffect(() => {
         const loadSettings = async () => {
@@ -246,6 +249,38 @@ export default function LandingPage3D() {
         }
     };
 
+    const faqItems = [
+        {
+            question: "Is TallyLink really 100% free?",
+            answer: "Yes, TallyLink is completely free for all users. We believe in empowering Indian SMEs with accessible technology. There are no hidden fees or subscriptions."
+        },
+        {
+            question: "Is my Tally data safe on mobile?",
+            answer: "Absolutely. We use bank-grade 256-bit AES encryption. Your data is encrypted before it leaves your Tally machine and remains encrypted in the cloud."
+        },
+        {
+            question: "Does it work with Tally Prime and ERP 9?",
+            answer: "Yes, TallyLink is compatible with both Tally.ERP 9 and TallyPrime. Our smart connector detects your version automatically."
+        },
+        {
+            question: "How do I sync Tally to mobile?",
+            answer: "Download our desktop app, log in, and select the companies you want to sync. The process takes less than 3 minutes."
+        }
+    ];
+
+    const faqSchema = {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": faqItems.map(item => ({
+            "@type": "Question",
+            "name": item.question,
+            "acceptedAnswer": {
+                "@type": "Answer",
+                "text": item.answer
+            }
+        }))
+    };
+
     const organizationSchema = {
         "@context": "https://schema.org",
         "@type": "Organization",
@@ -268,7 +303,7 @@ export default function LandingPage3D() {
                 title="TallyLink | 100% FREE Real-Time Tally on Mobile & Web"
                 description="Experience the power of Tally ERP 9 & TallyPrime on mobile for FREE. Real-time vouchers, ledgers, and GST reports with bank-grade encryption."
                 keywords="free tally on mobile app, tally sync cloud, tally prime mobile view free, tally erp 9 dashboard mobile, android tally viewer free"
-                schema={[softwareSchema, organizationSchema]}
+                schema={[softwareSchema, organizationSchema, faqSchema]}
                 canonical="https://tallyonmob.vercel.app"
             />
             {/* Animated Gradient Background */}
@@ -641,6 +676,61 @@ export default function LandingPage3D() {
                             </motion.div>
                         ))}
                     </motion.div>
+                </div>
+            </section>
+
+            {/* FAQ Section */}
+            <section id="faq" className="py-20 px-6 relative z-10">
+                <div className="max-w-4xl mx-auto">
+                    <motion.div
+                        variants={fadeInUp}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true }}
+                        className="text-center mb-16"
+                    >
+                        <span className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 block">Common Questions</span>
+                        <h2 className="text-4xl md:text-5xl font-black tracking-tight">
+                            Frequently Asked <span className="text-cyan-400">Questions</span>
+                        </h2>
+                    </motion.div>
+
+                    <div className="space-y-4">
+                        {faqItems.map((item, i) => (
+                            <motion.div
+                                key={i}
+                                variants={fadeInUp}
+                                initial="hidden"
+                                whileInView="visible"
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1 }}
+                                className="group"
+                            >
+                                <button
+                                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                                    className={`w-full text-left p-6 rounded-2xl border transition-all duration-300 flex items-center justify-between ${openFaq === i
+                                        ? 'bg-white/[0.05] border-cyan-500/30 shadow-lg shadow-cyan-500/10'
+                                        : 'bg-white/[0.02] border-white/[0.08] hover:bg-white/[0.04] hover:border-white/[0.15]'
+                                        }`}
+                                >
+                                    <span className="font-bold text-lg">{item.question}</span>
+                                    <ChevronDown
+                                        size={20}
+                                        className={`text-cyan-400 transition-transform duration-300 ${openFaq === i ? 'rotate-180' : ''
+                                            }`}
+                                    />
+                                </button>
+                                <div
+                                    className={`overflow-hidden transition-all duration-300 ease-in-out ${openFaq === i ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
+                                        }`}
+                                >
+                                    <div className="p-6 pt-0 text-gray-400 leading-relaxed">
+                                        {item.answer}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
                 </div>
             </section>
 
