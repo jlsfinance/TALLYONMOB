@@ -58,3 +58,5 @@ publish/
 *.dll
 *.pdb
 *.log
+*.zip
+*.apk
