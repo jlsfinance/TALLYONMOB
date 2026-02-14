@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
 
 // Fallback to hardcoded values for Capacitor/Mobile builds where .env might be missing
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -35,7 +36,10 @@ export const auth = {
 
     // Google OAuth Login
     signInWithGoogle: async () => {
-        const redirectUrl = window.location.origin + '/auth/callback';
+        const redirectUrl = Capacitor.isNativePlatform()
+            ? 'com.tallysync.app://auth/callback'
+            : window.location.origin + '/auth/callback';
+
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

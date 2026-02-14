@@ -1,6 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { App as CapApp } from '@capacitor/app';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { supabase } from './lib/supabase';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import AppLayout from './components/layout/AppLayout';
 import './App.css';
@@ -89,6 +92,39 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+    useEffect(() => {
+        // Handle Capacitor deep links (for social login/magic links)
+        const handleDeepLink = async (data: any) => {
+            const url = new URL(data.url);
+            const fragment = url.hash.substring(1); // remove #
+
+            if (fragment) {
+                const params = new URLSearchParams(fragment);
+                const accessToken = params.get('access_token');
+                const refreshToken = params.get('refresh_token');
+
+                if (accessToken && refreshToken) {
+                    const { error } = await supabase.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken
+                    });
+
+                    if (error) console.error('Error setting session from deep link:', error);
+                }
+            }
+        };
+
+        const setupAppListeners = async () => {
+            CapApp.addListener('appUrlOpen', handleDeepLink);
+        };
+
+        setupAppListeners();
+
+        return () => {
+            CapApp.removeAllListeners();
+        };
+    }, []);
+
     return (
         <ThemeProvider>
             <Router>
