@@ -3,12 +3,15 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import LanguageSelector from './LanguageSelector';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
     Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock,
     LineChart, Building2, Sparkles, LogOut, ArrowLeftRight,
-    Bot, UserX, MessageCircle, ClipboardList
+    Bot, UserX, MessageCircle, ClipboardList, Truck, MapPin,
+    Palette, CreditCard, ScanLine, Database, ShieldCheck,
+    Repeat, Globe, FileSpreadsheet
 } from 'lucide-react';
 
 // Navigation Item
@@ -77,6 +80,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
             { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
             { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
+            { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
+            { to: '/sales-team', icon: <MapPin size={18} />, label: 'Sales Tracking' },
+            { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Invoice Templates' },
+            { to: '/team-management', icon: <ShieldCheck size={18} />, label: 'Team Access' },
+            { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup & Restore' },
+            { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Invoice Scanner' },
+            { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
+            { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring Invoices' },
+            { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
+            { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Report Builder' },
         ];
         if (isAdmin) {
             items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
@@ -100,6 +113,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Payment Reminders' },
             { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive Customers' },
             { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
+            { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Invoice Templates' },
+            { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Invoice Scanner' },
+            { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
+            { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring Invoices' },
+            { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
+            { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Report Builder' },
+            { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup & Restore' },
         ];
         if (isAdmin) {
             items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
@@ -379,7 +399,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {/* Desktop Header */}
                 <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-[var(--surface)]/80 backdrop-blur-lg border-b border-[var(--border)]">
                     <div />
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                        <LanguageSelector />
+                        <div className="h-6 w-px bg-[var(--border)]" />
                         <button
                             onClick={toggleTheme}
                             className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
