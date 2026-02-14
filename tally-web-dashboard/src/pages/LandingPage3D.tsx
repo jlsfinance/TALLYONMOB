@@ -229,8 +229,11 @@ export default function LandingPage3D() {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "TallyLink - 100% Free Tally on Mobile",
-        "operatingSystem": "Windows, Android, iOS, Cloud",
+        "operatingSystem": "Windows 10, Windows 11, Android, iOS, Cloud",
         "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "AccountingApplication",
+        "fileSize": "12MB",
+        "softwareVersion": "2.5.0",
         "aggregateRating": {
             "@type": "AggregateRating",
             "ratingValue": "4.9",
@@ -242,11 +245,45 @@ export default function LandingPage3D() {
             "priceCurrency": "INR"
         },
         "description": "100% FREE Enterprise-grade real-time Tally on Mobile and Web dashboard. Access Tally ERP 9 and TallyPrime data anywhere with automated cloud sync.",
+        "brand": {
+            "@type": "Brand",
+            "name": "TallyLink"
+        },
+        "featureList": "Real-time Tally Sync, Mobile Dashboard, GSTR Reports, Multi-User Access, Bank-Grade Security",
+        "screenshot": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=2000",
         "author": {
             "@type": "Organization",
             "name": "TallyLink Technologies",
             "url": "https://tallyonmob.vercel.app"
-        }
+        },
+        "mainEntityOfPage": "https://tallyonmob.vercel.app"
+    };
+
+    const howToSchema = {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "How to Use Tally on Mobile for Free",
+        "description": "Sync your Tally ERP 9 or TallyPrime data to mobile in 3 simple steps.",
+        "step": steps.map((step, index) => ({
+            "@type": "HowToStep",
+            "position": index + 1,
+            "name": step.title,
+            "itemListElement": {
+                "@type": "HowToDirection",
+                "text": step.desc
+            }
+        }))
+    };
+
+    const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [{
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://tallyonmob.vercel.app"
+        }]
     };
 
     const faqItems = [
@@ -303,7 +340,7 @@ export default function LandingPage3D() {
                 title="TallyLink | 100% FREE Real-Time Tally on Mobile & Web"
                 description="Experience the power of Tally ERP 9 & TallyPrime on mobile for FREE. Real-time vouchers, ledgers, and GST reports with bank-grade encryption."
                 keywords="free tally on mobile app, tally sync cloud, tally prime mobile view free, tally erp 9 dashboard mobile, android tally viewer free"
-                schema={[softwareSchema, organizationSchema, faqSchema]}
+                schema={[softwareSchema, organizationSchema, faqSchema, howToSchema, breadcrumbSchema]}
                 canonical="https://tallyonmob.vercel.app"
             />
             {/* Animated Gradient Background */}
