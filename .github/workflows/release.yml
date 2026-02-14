@@ -118,6 +118,7 @@ jobs:
         Invoke-RestMethod -Method Patch `
           -Uri "${{ secrets.SUPABASE_URL }}/rest/v1/app_settings?key=eq.windows_app_download_url" `
           -Headers @{ 
+            "apikey" = "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}";
             "Authorization" = "Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}";
             "Content-Type" = "application/json";
             "Prefer" = "return=minimal"
@@ -127,3 +128,4 @@ jobs:
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
