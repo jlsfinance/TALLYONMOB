@@ -3,7 +3,7 @@ name: Release TallyLink
 on:
   push:
     tags:
-      - 'v*' # Triggers on v2.1.7
+      - 'v*' # Triggers on v2.1.8
 
 permissions:
   contents: write
@@ -36,7 +36,7 @@ jobs:
       run: |
         $VERSION = "${{ github.ref_name }}".Substring(1)
         
-        # 1. Look for Squirrel.exe in the NuGet cache specifically in tools
+        # 1. Look for Squirrel.exe in the NuGet cache
         $SQUIRREL_EXE = (Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Where-Object { $_.FullName -like "*tools*" } | Select-Object -First 1).FullName
         
         if (-not $SQUIRREL_EXE) {
@@ -44,7 +44,7 @@ jobs:
             exit 1
         }
         
-        # 2. Add WiX v3 to path (essential for Setup.exe generation)
+        # 2. Add WiX v3 to path
         $env:PATH += ";C:\Program Files (x86)\WiX Toolset v3.11\bin"
         
         Write-Host "Using Squirrel from: $SQUIRREL_EXE"
@@ -52,11 +52,15 @@ jobs:
         # 3. Create Releases directory
         if (-not (Test-Path "Releases")) { New-Item -ItemType Directory -Path "Releases" }
         
-        # 4. Run Squirrel pack with --releasify as per user's recommendation
-        # This will create Setup.exe, RELEASES, and .nupkg
-        & $SQUIRREL_EXE pack --releasify --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
+        # 4. Step 1: Create the nupkg
+        & $SQUIRREL_EXE pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="PublishOutput" --releaseDir="Releases" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
         
-        # 5. Renaming logic for consistent URLs
+        # 5. Step 2: Explicitly Releasify (This ensures Setup.exe is created)
+        $NUPKG = (Get-ChildItem -Path "Releases" -Filter "*.nupkg" | Select-Object -First 1).FullName
+        Write-Host "Releasifying: $NUPKG"
+        & $SQUIRREL_EXE releasify --package="$NUPKG" --releaseDir="Releases"
+        
+        # 6. Renaming logic
         Get-ChildItem -Path "Releases" -Filter "*Setup.exe" | ForEach-Object {
             Move-Item $_.FullName "Releases/TallyLinkSetup.exe" -Force
             Write-Host "Renamed $($_.Name) to TallyLinkSetup.exe"
@@ -68,11 +72,10 @@ jobs:
 
     - name: Update tallysyncapp folder
       run: |
-        # Rule 16: always use /tallysyncapp folder to update .exe file
+        # Rule 16
         if (Test-Path "Releases/TallyLinkSetup.exe") {
             if (-not (Test-Path "tallysyncapp")) { New-Item -ItemType Directory -Path "tallysyncapp" }
             Copy-Item "Releases/TallyLinkSetup.exe" "tallysyncapp/TallyLink.exe" -Force
-            Write-Host "Updated /tallysyncapp folder with new TallyLink.exe"
         }
       shell: pwsh
 
