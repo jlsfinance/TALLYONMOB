@@ -22,7 +22,9 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Restore dependencies
-      run: dotnet restore tally-windows-sync/TallySyncApp/TallySyncApp.csproj
+      run: |
+        dotnet nuget locals all --clear
+        dotnet restore tally-windows-sync/TallySyncApp/TallySyncApp.csproj --force
       shell: pwsh
 
     - name: Publish App
