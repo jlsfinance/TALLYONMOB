@@ -14,7 +14,7 @@ LicenseFile=LICENSE.txt
 ; Set the output folder and filename
 OutputDir=setup
 OutputBaseFilename=TallyLinkSetup
-SetupIconFile=app_icon.ico
+; SetupIconFile=app_icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -33,7 +33,7 @@ Source: "*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubd
 Source: "appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\LiveKeeping Tally Sync"; Filename: "{app}\TallyLink.exe"; IconFilename: "{app}\app_icon.ico"
+Name: "{group}\LiveKeeping Tally Sync"; Filename: "{app}\TallyLink.exe"
 Name: "{autodesktop}\LiveKeeping Tally Sync"; Filename: "{app}\TallyLink.exe"; Tasks: desktopicon
 
 [Run]
