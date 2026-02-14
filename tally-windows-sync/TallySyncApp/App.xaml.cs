@@ -7,7 +7,7 @@ using TallySyncApp.Models;
 using TallySyncApp.Views;
 using Newtonsoft.Json;
 using System.Windows.Threading;
-using Clowd.Squirrel;
+using Squirrel;
 using System.Linq;
 using System.Threading.Tasks;
 
