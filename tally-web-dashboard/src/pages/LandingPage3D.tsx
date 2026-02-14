@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
-import { motion, useScroll, useTransform, useInView } from 'framer-motion';
+import { companyApi } from '@/lib/supabase';
+import { motion, useScroll, useTransform, useInView, Variants } from 'framer-motion';
 import {
     ArrowRight,
     Smartphone,
@@ -29,17 +30,17 @@ import {
 } from 'lucide-react';
 
 // Animation variants
-const fadeInUp = {
+const fadeInUp: Variants = {
     hidden: { opacity: 0, y: 40 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] } }
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
 };
 
-const scaleIn = {
+const scaleIn: Variants = {
     hidden: { opacity: 0, scale: 0.8 },
     visible: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
 };
@@ -82,12 +83,28 @@ export default function LandingPage3D() {
         message: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [downloadUrl, setDownloadUrl] = useState('https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLinkSetup.exe');
+
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const { data } = await companyApi.getAppSettings();
+                if (data?.windows_app_download_url) {
+                    setDownloadUrl(data.windows_app_download_url);
+                }
+            } catch (err) {
+                console.error('Error loading download settings:', err);
+            }
+        };
+        loadSettings();
+    }, []);
 
     const handleContactSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/api/v1/contact/send', formData);
+            // Direct call to Vercel serverless function (relative path)
+            await axios.post('/api/contact', formData);
             toast.success('Message sent! We will get back to you soon.');
             setFormData({ name: '', email: '', subject: '', message: '' });
         } catch (error) {
@@ -101,7 +118,7 @@ export default function LandingPage3D() {
     const steps = [
         {
             icon: <Monitor size={28} />,
-            title: "Install TallySync",
+            title: "Install TallyLink",
             desc: "Download & run our lightweight Windows app. It connects directly to your Tally ERP.",
             color: "from-cyan-500 to-blue-600",
             step: "01"
@@ -254,7 +271,7 @@ export default function LandingPage3D() {
                                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#030712] animate-pulse" />
                             </div>
                             <div>
-                                <span className="font-black text-lg tracking-tight">TallySync</span>
+                                <span className="font-black text-lg tracking-tight">TallyLink</span>
                                 <span className="text-[8px] font-bold text-cyan-400 ml-1 uppercase tracking-widest">Pro</span>
                             </div>
                         </div>
@@ -354,7 +371,7 @@ export default function LandingPage3D() {
                                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                             <button
-                                onClick={() => window.open('/TallySync.exe', '_blank')}
+                                onClick={() => window.open(downloadUrl, '_blank')}
                                 className="group w-full sm:w-auto px-8 py-4 bg-white/5 backdrop-blur-sm border border-white/10 font-bold rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-3 text-lg"
                             >
                                 <Monitor size={20} />
@@ -405,7 +422,7 @@ export default function LandingPage3D() {
                                 </div>
                                 <div className="flex-1 flex justify-center">
                                     <div className="px-4 py-1 rounded-lg bg-white/5 text-xs text-gray-500 font-mono">
-                                        app.tallysync.in
+                                        app.tallylink.in
                                     </div>
                                 </div>
                             </div>
@@ -732,7 +749,7 @@ export default function LandingPage3D() {
                                 Ready to Transform Your Business?
                             </h2>
                             <p className="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">
-                                Join 10,000+ businesses already using TallySync to modernize their financial operations.
+                                Join 10,000+ businesses already using TallyLink to modernize their financial operations.
                             </p>
                             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                                 <button
@@ -742,7 +759,7 @@ export default function LandingPage3D() {
                                     Start Free Trial
                                 </button>
                                 <button
-                                    onClick={() => window.open('/TallySync.exe', '_blank')}
+                                    onClick={() => navigate('/onboarding')}
                                     className="px-8 py-4 bg-white/10 backdrop-blur-sm border border-white/20 font-bold rounded-xl hover:bg-white/20 transition-all"
                                 >
                                     Download App
@@ -763,7 +780,7 @@ export default function LandingPage3D() {
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
                                     <RefreshCw size={18} className="text-white" />
                                 </div>
-                                <span className="font-black text-xl">TallySync</span>
+                                <span className="font-black text-xl">TallyLink</span>
                             </div>
                             <p className="text-gray-500 max-w-sm mb-6 leading-relaxed">
                                 Empowering Indian businesses with real-time financial transparency. Your Tally data, everywhere.

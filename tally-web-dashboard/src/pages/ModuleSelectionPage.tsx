@@ -51,7 +51,7 @@ export default function ModuleSelectionPage() {
                 className="text-center mb-10 max-w-xl"
             >
                 <h1 className="text-2xl md:text-3xl font-bold text-[var(--on-surface)] tracking-tight mb-3">
-                    How do you want to use TallySync?
+                    How do you want to use TallyLink?
                 </h1>
                 <p className="text-[var(--text-muted)] text-sm">
                     Choose a module that fits your workflow. You can switch anytime.

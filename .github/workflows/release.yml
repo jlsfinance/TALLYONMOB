@@ -1,0 +1,67 @@
+name: Release TallyLink
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on tags like v2.0.2
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Install Squirrel Tool
+      run: dotnet tool install --global Clowd.Squirrel.Tool
+
+    - name: Publish App
+      run: dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+
+    - name: Create Squirrel Release
+      run: |
+        # Get version from tag (e.g. v2.0.2 -> 2.0.2)
+        $VERSION = "${{ github.ref_name }}".Substring(1)
+        squirrel pack --packId "TallyLink" --packVersion $VERSION --packAuthors "ShauryaTechSol" --packTitle "TallyLink" --releaseDir "Releases" --packDir "PublishOutput"
+        
+        # Rename to a URL-friendly name
+        Move-Item "Releases/TallyLink Setup.exe" "Releases/TallyLinkSetup.exe"
+      shell: powershell
+
+    - name: Upload to GitHub Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          Releases/TallyLinkSetup.exe
+          Releases/*.nupkg
+          Releases/RELEASES
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update Download URL in Supabase
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        $DL_URL = "https://github.com/${{ github.repository }}/releases/latest/download/TallyLinkSetup.exe"
+        $BODY = @{ value = $DL_URL } | ConvertTo-Json
+        
+        Invoke-RestMethod -Method Patch `
+          -Uri "${{ secrets.SUPABASE_URL }}/rest/v1/app_settings?key=eq.windows_app_download_url" `
+          -Headers @{ 
+            "apikey" = "${{ secrets.SUPABASE_ANON_KEY }}";
+            "Authorization" = "Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}";
+            "Content-Type" = "application/json";
+            "Prefer" = "return=minimal"
+          } `
+          -Body $BODY
+      shell: powershell
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

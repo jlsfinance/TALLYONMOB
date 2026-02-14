@@ -1,7 +1,7 @@
 {
     "name": "tally-web-dashboard",
     "private": true,
-    "version": "1.0.5",
+    "version": "2.0.2",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -29,6 +29,7 @@
         "jspdf": "^4.1.0",
         "jspdf-autotable": "^5.0.7",
         "lucide-react": "^0.292.0",
+        "nodemailer": "^8.0.1",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-hot-toast": "^2.6.0",

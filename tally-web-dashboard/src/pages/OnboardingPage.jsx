@@ -28,7 +28,8 @@ const OnboardingPage = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const [companies, setCompanies] = useState([]);
     const [isChecking, setIsChecking] = useState(false);
-    const [downloadUrl, setDownloadUrl] = useState('https://github.com/jlsfinance/tallyonmob/releases/latest/download/TallySyncSetup.exe');
+    const [downloadUrl, setDownloadUrl] = useState('/TallyLinkSetup.exe');
+    const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
 
     useEffect(() => {
         checkForCompanies();
@@ -50,10 +51,20 @@ const OnboardingPage = () => {
         setIsChecking(true);
         try {
             const { data } = await companyApi.list();
-            setCompanies(data || []);
-            // Only auto-navigate if on step 3 (success)
-            if (data && data.length > 0 && currentStep === 3) {
-                setTimeout(() => navigate('/'), 2000);
+            const companyList = data || [];
+            setCompanies(companyList);
+
+            // If user has companies, redirect to select-company after a short delay
+            if (companyList.length > 0) {
+                if (currentStep === 3) {
+                    setTimeout(() => navigate('/'), 2000);
+                } else {
+                    // Start of the flow: if user already has companies, they shouldn't be here
+                    // unless they explicitly clicked 'Download' to add another.
+                    // But if they just landed here after login, redirect them to select-company.
+                    toast.success('You already have companies synced!');
+                    setTimeout(() => navigate('/select-company'), 1500);
+                }
             }
         } catch (error) {
             console.error('Error checking companies:', error);
@@ -61,6 +72,15 @@ const OnboardingPage = () => {
             setIsChecking(false);
         }
     };
+
+    // Auto-download when reaching step 1 if no companies
+    useEffect(() => {
+        if (currentStep === 1 && !hasAutoDownloaded && companies.length === 0 && !isChecking) {
+            // Boom experience: Download starts when you land on step 1
+            handleDownload();
+            setHasAutoDownloaded(true);
+        }
+    }, [currentStep, companies, isChecking]);
 
     const handleDownload = () => {
         window.open(downloadUrl, '_blank');
@@ -136,7 +156,7 @@ const OnboardingPage = () => {
                         <Sparkles className="w-10 h-10 text-white" />
                     </div>
                     <h1 className="text-5xl md:text-6xl font-black text-white mb-4 tracking-tight">
-                        Welcome to <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">TallySync</span>
+                        Welcome to <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">TallyLink</span>
                     </h1>
                     <p className="text-xl text-gray-400 max-w-2xl mx-auto">
                         Sync your Tally data to the cloud and access it anywhere, anytime

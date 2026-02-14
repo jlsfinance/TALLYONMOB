@@ -1,4 +1,4 @@
-import { useState } from 'react';
+illimport { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -85,7 +85,7 @@ export default function LoginPage() {
                             </svg>
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">TallySync</h1>
+                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">TallyLink</h1>
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
                         </div>
                     </div>
@@ -106,7 +106,7 @@ export default function LoginPage() {
                             <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
                                 {isLogin
                                     ? 'Sign in to access your business dashboard'
-                                    : 'Get started with TallySync in under a minute'
+                                    : 'Get started with TallyLink in under a minute'
                                 }
                             </p>
                         </motion.div>

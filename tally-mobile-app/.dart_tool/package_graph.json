@@ -10,6 +10,7 @@
         "connectivity_plus",
         "cupertino_icons",
         "flutter",
+        "flutter_dotenv",
         "flutter_spinkit",
         "google_fonts",
         "hive",
@@ -102,6 +103,13 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "flutter_dotenv",
+      "version": "5.2.1",
+      "dependencies": [
+        "flutter"
       ]
     },
     {

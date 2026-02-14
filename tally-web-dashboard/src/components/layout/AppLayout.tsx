@@ -142,7 +142,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                             <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
                                         </svg>
                                     </div>
-                                    <span className="font-bold text-base text-[var(--on-surface)]">TallySync</span>
+                                    <span className="font-bold text-base text-[var(--on-surface)]">TallyLink</span>
                                 </div>
                                 <button onClick={() => setShowMobileMenu(false)} className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
                                     <X size={18} />
@@ -176,8 +176,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                         to={item.to}
                                         onClick={() => setShowMobileMenu(false)}
                                         className={`flex items-center gap-3 px-3 py-3 rounded-[var(--radius-md)] mb-0.5 transition-all text-sm ${location.pathname === item.to
-                                                ? 'bg-[var(--primary)] text-white font-semibold'
-                                                : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
+                                            ? 'bg-[var(--primary)] text-white font-semibold'
+                                            : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
                                             }`}
                                     >
                                         {item.icon}
@@ -240,7 +240,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </div>
                         {sidebarOpen && (
                             <div>
-                                <h1 className="font-bold text-sm text-[var(--on-surface)] leading-none">TallySync</h1>
+                                <h1 className="font-bold text-sm text-[var(--on-surface)] leading-none">TallyLink</h1>
                                 <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--primary)] mt-0.5">
                                     {appMode === 'tally' ? 'Cloud' : 'Billing'}
                                 </p>
