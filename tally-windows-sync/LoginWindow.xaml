@@ -19,7 +19,7 @@
             <Border Width="70" Height="70" Background="White" CornerRadius="18">
                 <TextBlock Text="🔄" FontSize="36" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <TextBlock Text="LiveKeeping Sync" Foreground="White" FontSize="24" FontWeight="Bold" 
+            <TextBlock Text="TallySync" Foreground="White" FontSize="24" FontWeight="Bold" 
                        HorizontalAlignment="Center" Margin="0,15,0,0"/>
             <TextBlock Text="Tally Cloud Sync Desktop App" Foreground="#93C5FD" FontSize="12" 
                        HorizontalAlignment="Center" Margin="0,5,0,0"/>

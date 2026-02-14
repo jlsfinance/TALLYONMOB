@@ -118,7 +118,8 @@ namespace TallySyncApp.Services
             _apiClient = new ApiClient(
                 supabaseUrl,
                 supabaseKey,
-                300
+                300,
+                _settings.SyncSettings.TelegramBotToken
             );
 
             // Set User Token if logged in
@@ -237,8 +238,10 @@ namespace TallySyncApp.Services
         {
             _settings.TallySettings.SerialNumber = newSerial;
             SaveSettings(_settings);
-            AddLog($"🔐 Tally License Serial updated to: {newSerial}");
+            SyncLogRequested?.Invoke(this, $"🔐 Tally License Serial updated to: {newSerial}");
         }
+
+        public ApiClient GetApiClient() => _apiClient!;
 
         /// <summary>
         /// Start background sync timer
@@ -322,7 +325,23 @@ namespace TallySyncApp.Services
 
             try
             {
-                // Test connections first
+                // AUDIT FIX: Auto-refresh auth token before sync to prevent 401 expiry failures
+                if (App.AuthService != null && App.AuthService.IsLoggedIn)
+                {
+                    try
+                    {
+                        var freshToken = await App.AuthService.RefreshTokenIfNeededAsync();
+                        if (!string.IsNullOrEmpty(freshToken))
+                        {
+                            _apiClient!.SetUserToken(freshToken);
+                        }
+                    }
+                    catch (Exception refreshEx)
+                    {
+                        AddLog($"⚠️ Token refresh failed: {refreshEx.Message} — continuing with existing token");
+                    }
+                }
+
                 // Test connections first
                 AddLog("🔄 Testing connections...");
                 var (tallyOk, serverOk, error) = await TestConnectionsAsync();
@@ -367,11 +386,31 @@ namespace TallySyncApp.Services
                     string syncType = "incremental"; // Default
                     string? syncHistoryId = null;
                     int ledgersSynced = 0, vouchersSynced = 0, salesSynced = 0, purchasesSynced = 0, stockSynced = 0;
+                    int masterDataSynced = 0;
+                    decimal totalSalesAmountFetched = 0;
+                    var highValueAlerts = new List<string>();
+                    const decimal HighValueThreshold = 50000; // ₹50,000 threshold for alerts
                     var syncedVoucherIds = new List<string>();
 
                     try
                     {
                         SyncLogger.Log($"--- Starting Sync for {company.Name} ---");
+                        
+                        // TELEGRAM: Start Notification
+                        try 
+                        {
+                            var uid = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(uid)) 
+                            {
+                                var chatId = await _apiClient!.GetTelegramChatIdAsync(uid);
+                                if (!string.IsNullOrEmpty(chatId)) 
+                                {
+                                    await _apiClient.SendTelegramNotificationAsync(chatId, $"🚀 <b>Sync Started: {company.Name}</b>\n\n<i>Time: {DateTime.Now:HH:mm:ss}</i>");
+                                }
+                            }
+                        } 
+                        catch (Exception tgEx) { SyncLogger.Log($"⚠️ Telegram Start notification failed: {tgEx.Message}"); }
+
                         CurrentCompany = company;
                         UpdateStatus(SyncState.Syncing, $"Processing: {company.Name}");
 
@@ -489,6 +528,116 @@ namespace TallySyncApp.Services
                         {
                             AddLog($"📦 Using cached HSN ({_hsnCache.Count} items)");
                         }
+
+                        // ===========================================
+                        // MASTER DATA SYNC (All 8 collection types)
+                        // Runs on first sync, force resync, or manual sync
+                        // ===========================================
+                        if (isFirstSync || forceResync || isManual)
+                        {
+                            AddLog($"📋 Syncing Master Data...");
+                            UpdateStatus(SyncState.FetchingData, "Fetching master data...");
+
+                            try
+                            {
+                                // 1. Ledger Groups
+                                var ledgerGroups = await _tallyConnector!.GetLedgerGroupsAsync(company.Name);
+                                if (ledgerGroups.Count > 0)
+                                {
+                                    await UploadListAsync("ledger_groups", ledgerGroups, "company_id,name");
+                                    masterDataSynced += ledgerGroups.Count;
+                                    AddLog($"   📋 {ledgerGroups.Count} Ledger Groups");
+                                }
+
+                                // 2. Cost Centres
+                                var costCentres = await _tallyConnector!.GetCostCentresAsync(company.Name);
+                                if (costCentres.Count > 0)
+                                {
+                                    await UploadListAsync("cost_centres", costCentres, "company_id,name");
+                                    masterDataSynced += costCentres.Count;
+                                    AddLog($"   🏭 {costCentres.Count} Cost Centres");
+                                }
+
+                                // 3. Godowns
+                                var godowns = await _tallyConnector!.GetGodownsAsync(company.Name);
+                                if (godowns.Count > 0)
+                                {
+                                    await UploadListAsync("godowns", godowns, "company_id,name");
+                                    masterDataSynced += godowns.Count;
+                                    AddLog($"   📦 {godowns.Count} Godowns");
+                                }
+
+                                // 4. Stock Groups
+                                var stockGroups = await _tallyConnector!.GetStockGroupsAsync(company.Name);
+                                if (stockGroups.Count > 0)
+                                {
+                                    await UploadListAsync("stock_groups", stockGroups, "company_id,name");
+                                    masterDataSynced += stockGroups.Count;
+                                    AddLog($"   📊 {stockGroups.Count} Stock Groups");
+                                }
+
+                                // 5. Stock Categories
+                                var stockCategories = await _tallyConnector!.GetStockCategoriesAsync(company.Name);
+                                if (stockCategories.Count > 0)
+                                {
+                                    await UploadListAsync("stock_categories", stockCategories, "company_id,name");
+                                    masterDataSynced += stockCategories.Count;
+                                    AddLog($"   📂 {stockCategories.Count} Stock Categories");
+                                }
+
+                                // 6. Currencies
+                                var currencies = await _tallyConnector!.GetCurrenciesAsync(company.Name);
+                                if (currencies.Count > 0)
+                                {
+                                    await UploadListAsync("currencies", currencies, "company_id,name");
+                                    masterDataSynced += currencies.Count;
+                                    AddLog($"   💱 {currencies.Count} Currencies");
+                                }
+
+                                // 7. Voucher Types
+                                var voucherTypes = await _tallyConnector!.GetVoucherTypesAsync(company.Name);
+                                if (voucherTypes.Count > 0)
+                                {
+                                    await UploadListAsync("voucher_types", voucherTypes, "company_id,name");
+                                    masterDataSynced += voucherTypes.Count;
+                                    AddLog($"   📝 {voucherTypes.Count} Voucher Types");
+                                }
+
+                                // 8. Units of Measure
+                                var units = await _tallyConnector!.GetUnitsAsync(company.Name);
+                                if (units.Count > 0)
+                                {
+                                    await UploadListAsync("units", units, "company_id,name");
+                                    masterDataSynced += units.Count;
+                                    AddLog($"   📐 {units.Count} Units");
+                                }
+
+                                // 9. Budgets
+                                var budgets = await _tallyConnector!.GetBudgetsAsync(company.Name);
+                                if (budgets.Count > 0)
+                                {
+                                    await UploadListAsync("budgets", budgets, "company_id,name");
+                                    masterDataSynced += budgets.Count;
+                                    AddLog($"   💰 {budgets.Count} Budgets");
+                                }
+
+                                // 10. Price Lists
+                                var priceLists = await _tallyConnector!.GetPriceListsAsync(company.Name);
+                                if (priceLists.Count > 0)
+                                {
+                                    await UploadListAsync("price_lists", priceLists, "id");
+                                    masterDataSynced += priceLists.Count;
+                                    AddLog($"   🏷️ {priceLists.Count} Price Lists (Levels)");
+                                }
+
+                                AddLog($"✅ Master Data Sync Complete: {masterDataSynced} total items");
+                            }
+                            catch (Exception mdEx)
+                            {
+                                AddLog($"⚠️ Master data sync partial failure: {mdEx.Message}");
+                                SyncLogger.Log($"Master data error: {mdEx.Message}");
+                            }
+                        }
                         
                         var hsnCache = _hsnCache;
 
@@ -595,6 +744,13 @@ namespace TallySyncApp.Services
                                             var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
                                             if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
                                             AddLog($"   📊 {salesVouchers.Count} sales synced");
+
+                                            // TRACK FOR SMART ALERTS
+                                            totalSalesAmountFetched += sales.Sum(s => s.NetAmount);
+                                            foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
+                                            {
+                                                highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
+                                            }
                                         }
 
                                         // 3. Extract Purchases Locally (No extra Tally call)
@@ -621,6 +777,19 @@ namespace TallySyncApp.Services
                                             if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
                                             AddLog($"   🛒 {purchaseVouchers.Count} purchases synced");
                                         }
+                                    }
+
+                                    // 4. Extract Allocations & Notes (Batched Vouchers)
+                                    if (allVouchers.Count > 0)
+                                    {
+                                        var billAllocations = _tallyConnector.ExtractBillAllocations(allVouchers, company.Name);
+                                        if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
+
+                                        var bankAllocations = _tallyConnector.ExtractBankAllocations(allVouchers, company.Name);
+                                        if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
+
+                                        var notes = _tallyConnector.ExtractDebitCreditNotes(allVouchers, company.Name);
+                                        if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
                                     }
 
                                     // Track Progress
@@ -656,12 +825,9 @@ namespace TallySyncApp.Services
                             List<Ledger> finalLedgers = new List<Ledger>();
                             List<Voucher> finalVouchers = new List<Voucher>();
 
-                            // 1. Check Ledgers
-                            if (lastLedgerAlterId > 0)
-                            {
-                                finalLedgers = await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
-                                totalToSync += finalLedgers.Count;
-                            }
+                            // 1. Check Ledgers - Always attempt fetch (use 0 for first incremental pass)
+                            finalLedgers = await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
+                            totalToSync += finalLedgers.Count;
                             
                             // 2. Check Vouchers
                             // FIX: Removed flag check to ensure modified vouchers always sync
@@ -695,7 +861,8 @@ namespace TallySyncApp.Services
                             }
                             else if (lastLedgerAlterId == 0)
                             {
-                                // First time for ledgers - full sync
+                                // First time for ledgers - full sync (no ALTERID data yet)
+                                AddLog($"📝 No ALTERID data for ledgers yet - performing full ledger sync");
                                 await SyncDataTypeAsync("ledgers", async () => await _tallyConnector!.GetLedgersAsync(company.Name));
                             }
                             
@@ -754,6 +921,13 @@ namespace TallySyncApp.Services
                                         var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
                                         if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
                                         AddLog($"   📊 {salesVouchers.Count} sales updated locally");
+                                        
+                                        // TRACK FOR SMART ALERTS
+                                        totalSalesAmountFetched += sales.Sum(s => s.NetAmount);
+                                        foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
+                                        {
+                                            highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
+                                        }
                                     }
 
                                     // 2. Map existing vouchers to Purchases
@@ -780,6 +954,16 @@ namespace TallySyncApp.Services
                                         if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
                                         AddLog($"   🛒 {purchaseVouchers.Count} purchases updated locally");
                                     }
+
+                                    // 3. Extract Allocations & Notes (Incremental)
+                                    var billAllocations = _tallyConnector.ExtractBillAllocations(finalVouchers, company.Name);
+                                    if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
+
+                                    var bankAllocations = _tallyConnector.ExtractBankAllocations(finalVouchers, company.Name);
+                                    if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
+
+                                    var notes = _tallyConnector.ExtractDebitCreditNotes(finalVouchers, company.Name);
+                                    if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
                                 }
                             }
                             else
@@ -828,8 +1012,9 @@ namespace TallySyncApp.Services
                         AddLog($"   📄 Vouchers:     {vouchersSynced}");
                         AddLog($"   💰 Sales:        {salesSynced}");
                         AddLog($"   🛒 Purchases:    {purchasesSynced}");
+                        AddLog($"   📋 Master Data:  {masterDataSynced}");
                         AddLog($"───────────────────────────────────────────────────");
-                        AddLog($"   ✅ Total:        {stockSynced + ledgersSynced + vouchersSynced + salesSynced + purchasesSynced}");
+                        AddLog($"   ✅ Total:        {stockSynced + ledgersSynced + vouchersSynced + salesSynced + purchasesSynced + masterDataSynced}");
                         AddLog($"═══════════════════════════════════════════════════");
                         AddLog($"");
 
@@ -854,38 +1039,107 @@ namespace TallySyncApp.Services
                         await ProcessPendingTransactionsAsync(company);
 
                         // ===== TELEGRAM NOTIFICATION =====
-                        if (Status.TotalRecords > 0)
+                        try
                         {
-                            try
+                            var currentUserId = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(currentUserId))
                             {
-                                var currentUserId = App.AuthService?.CurrentSession?.UserId;
-                                if (!string.IsNullOrEmpty(currentUserId))
+                                var tgChatId = await _apiClient!.GetTelegramChatIdAsync(currentUserId);
+                                if (!string.IsNullOrEmpty(tgChatId))
                                 {
-                                    var tgChatId = await _apiClient!.GetTelegramChatIdAsync(currentUserId);
-                                    if (!string.IsNullOrEmpty(tgChatId))
+                                    int totalSynced = vouchersSynced + ledgersSynced + stockSynced;
+                                    string telegramMsg;
+                                    
+                                    if (totalSynced > 0 || masterDataSynced > 0)
                                     {
-                                        string telegramMsg = $"✅ <b>Sync Completed for {company.Name}</b>\n\n" +
-                                                     $"📊 <b>Stats:</b>\n" +
-                                                     $"• Vouchers: {vouchersSynced}\n" +
-                                                     $"• Ledgers: {ledgersSynced}\n" +
-                                                     $"• Items: {stockSynced}\n\n" +
-                                                     $"<i>View details on dashboard.</i>";
+                                        var sb = new StringBuilder();
+                                        sb.AppendLine($"✅ <b>Sync Completed: {company.Name}</b>");
+                                        sb.AppendLine();
                                         
-                                        await _apiClient.SendTelegramNotificationAsync(tgChatId, telegramMsg);
-                                        AddLog($"📨 Telegram notification sent to user.");
+                                        sb.AppendLine("📊 <b>Performance Stats:</b>");
+                                        if (vouchersSynced > 0) sb.AppendLine($"• Vouchers: <code>{vouchersSynced}</code>");
+                                        if (ledgersSynced > 0) sb.AppendLine($"• Ledgers: <code>{ledgersSynced}</code>");
+                                        if (stockSynced > 0) sb.AppendLine($"• Items: <code>{stockSynced}</code>");
+                                        if (masterDataSynced > 0) sb.AppendLine($"• Master Data: <code>{masterDataSynced}</code>");
+                                        sb.AppendLine();
+
+                                        if (totalSalesAmountFetched > 0)
+                                        {
+                                            sb.AppendLine("💰 <b>Sales Summary:</b>");
+                                            sb.AppendLine($"• Total Amount: <b>₹{totalSalesAmountFetched:N2}</b>");
+                                            sb.AppendLine();
+                                        }
+
+                                        if (highValueAlerts.Count > 0)
+                                        {
+                                            sb.AppendLine("⚠️ <b>Smart Alerts:</b>");
+                                            foreach (var alert in highValueAlerts.Take(5)) // Limit to 5 alerts
+                                            {
+                                                sb.AppendLine($"• {alert}");
+                                            }
+                                            if (highValueAlerts.Count > 5) sb.AppendLine($"<i>...and {highValueAlerts.Count - 5} more</i>");
+                                            sb.AppendLine();
+                                        }
+
+                                        sb.AppendLine($"<i>Time: {DateTime.Now:HH:mm:ss}</i>");
+                                        telegramMsg = sb.ToString();
                                     }
+                                    else
+                                    {
+                                        telegramMsg = $"✅ <b>Sync Status: {company.Name}</b>\n\n" +
+                                                     $"📊 No changes detected. All data is up to date.\n\n" +
+                                                     $"<i>Time: {DateTime.Now:HH:mm:ss}</i>";
+                                    }
+                                    
+                                    await _apiClient.SendTelegramNotificationAsync(tgChatId, telegramMsg);
+                                    
+                                    // SEND DAILY CLOSING REPORT (If after 8 PM)
+                                    if (DateTime.Now.Hour >= 20 && totalSynced > 0)
+                                    {
+                                        var reportSb = new StringBuilder();
+                                        reportSb.AppendLine("📊 <b>Daily Closing Report</b>");
+                                        reportSb.AppendLine($"<i>{DateTime.Now:dd MMM yyyy}</i>\n");
+                                        reportSb.AppendLine($"💰 Total Sales: <b>₹{totalSalesAmountFetched:N0}</b>");
+                                        reportSb.AppendLine($"📥 New Vouchers: <b>{vouchersSynced}</b>");
+                                        
+                                        if (highValueAlerts.Count > 0)
+                                        {
+                                            reportSb.AppendLine("\n🌟 <b>Top Deals:</b>");
+                                            foreach(var alert in highValueAlerts.Take(3)) reportSb.AppendLine($"• {alert}");
+                                        }
+
+                                        reportSb.AppendLine("\n📈 <i>Data synced successfully to Cloud.</i>");
+                                        await _apiClient.SendTelegramNotificationAsync(tgChatId, reportSb.ToString());
+                                    }
+
+                                    AddLog($"📨 Telegram notification sent to user.");
                                 }
                             }
-                            catch (Exception tgEx)
-                            {
-                                SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
-                            }
+                        }
+                        catch (Exception tgEx)
+                        {
+                            SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
                         }
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"❌ Error processing company {company.Name}: {ex.Message}");
                         UpdateStatus(SyncState.Error, $"Failed: {company.Name}", ex.Message);
+
+                        // TELEGRAM: Error Notification
+                        try 
+                        {
+                            var uid = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(uid)) 
+                            {
+                                var chatId = await _apiClient!.GetTelegramChatIdAsync(uid);
+                                if (!string.IsNullOrEmpty(chatId)) 
+                                {
+                                    await _apiClient.SendTelegramNotificationAsync(chatId, $"❌ <b>Sync Failed: {company.Name}</b>\n\nError: {ex.Message}\n\n<i>Time: {DateTime.Now:HH:mm:ss}</i>");
+                                }
+                            }
+                        } 
+                        catch (Exception tgEx) { SyncLogger.Log($"⚠️ Telegram Error notification failed: {tgEx.Message}"); }
                         
                         // Update sync history with error
                         if (!string.IsNullOrEmpty(syncHistoryId))
@@ -1225,14 +1479,18 @@ namespace TallySyncApp.Services
                             DateTime.TryParse(voucherData.voucher_date.ToString(), out voucherDate);
 
                         string narration = voucherData.narration?.ToString() ?? 
-                                          $"Created from LiveKeeping App";
+                                          $"Created from TallySync App";
 
-                        AddLog($"   → {transaction.TransactionType}: {partyLedger} ₹{amount:N0}");
+                        // CRITICAL FIX: Normalize the voucher type 
+                        // Database may store "VOUCHERS" (table name) instead of valid Tally types
+                        string normalizedType = NormalizeTallyVoucherType(transaction.TransactionType, voucherData);
 
-                        // Push to Tally
+                        AddLog($"   → {normalizedType}: {partyLedger} ₹{amount:N0}");
+
+                        // Push to Tally with normalized type
                         var (success, voucherNumber, error) = await _tallyConnector.PushVoucherToTallyAsync(
                             company.Name,
-                            transaction.TransactionType,
+                            normalizedType,
                             voucherDate,
                             partyLedger,
                             amount,
@@ -1280,6 +1538,113 @@ namespace TallySyncApp.Services
             {
                 SyncLogger.Log($"❌ ProcessPendingTransactionsAsync error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Normalize voucher type from database format to valid Tally voucher type.
+        /// Database may store table names like "VOUCHERS" or generic types.
+        /// Tally requires exact type names: Sales, Purchase, Receipt, Payment, Journal, etc.
+        /// </summary>
+        private string NormalizeTallyVoucherType(string rawType, dynamic voucherData)
+        {
+            if (string.IsNullOrEmpty(rawType)) return "Receipt";
+
+            // 1. First try to get the actual voucher type from the voucher data itself
+            string? typeFromData = null;
+            try
+            {
+                typeFromData = voucherData?.voucher_type_name?.ToString() ??
+                               voucherData?.voucherTypeName?.ToString() ??
+                               voucherData?.voucher_type?.ToString() ??
+                               voucherData?.voucherType?.ToString() ??
+                               voucherData?.type?.ToString();
+            }
+            catch { /* dynamic access may fail, ignore */ }
+
+            // If we found a type in voucher data and it's a valid Tally type, use it
+            if (!string.IsNullOrEmpty(typeFromData))
+            {
+                var normalizedFromData = MapToTallyType(typeFromData);
+                if (normalizedFromData != null)
+                {
+                    SyncLogger.Log($"   📎 Resolved voucher type from data: '{rawType}' → '{normalizedFromData}'");
+                    return normalizedFromData;
+                }
+            }
+
+            // 2. Try to map the raw type directly
+            var mapped = MapToTallyType(rawType);
+            if (mapped != null) return mapped;
+
+            // 3. If type is generic (VOUCHERS, TRANSACTION, etc.), try to infer from data shape
+            var upperType = rawType.Trim().ToUpper();
+            if (upperType == "VOUCHERS" || upperType == "TRANSACTION" || upperType == "ENTRY")
+            {
+                // Try to infer from amount sign or available fields
+                try
+                {
+                    bool hasItems = voucherData?.items != null;
+                    string? cashBankLedger = voucherData?.cash_bank_ledger?.ToString();
+
+                    if (hasItems)
+                    {
+                        // Has inventory items → likely Sales or Purchase
+                        return "Sales";
+                    }
+                    else if (!string.IsNullOrEmpty(cashBankLedger))
+                    {
+                        // Has cash/bank ledger → likely Receipt or Payment
+                        return "Receipt";
+                    }
+                }
+                catch { /* dynamic access may fail */ }
+
+                // Default fallback for generic types
+                SyncLogger.Log($"   ⚠️ Could not determine voucher type from '{rawType}', defaulting to 'Receipt'");
+                return "Receipt";
+            }
+
+            // 4. Last resort: return as-is (may fail in Tally if not valid)
+            SyncLogger.Log($"   ⚠️ Unknown voucher type: '{rawType}', passing as-is to Tally");
+            return rawType;
+        }
+
+        /// <summary>
+        /// Map common variations to exact Tally voucher type names.
+        /// Returns null if no mapping found.
+        /// </summary>
+        private static string? MapToTallyType(string type)
+        {
+            if (string.IsNullOrEmpty(type)) return null;
+
+            return type.Trim().ToUpper() switch
+            {
+                // Exact matches
+                "SALES" => "Sales",
+                "SALE" => "Sales",
+                "SALES INVOICE" => "Sales",
+                "PURCHASE" => "Purchase",
+                "PURCHASES" => "Purchase",
+                "PURCHASE INVOICE" => "Purchase",
+                "RECEIPT" => "Receipt",
+                "RECEIPTS" => "Receipt",
+                "PAYMENT" => "Payment",
+                "PAYMENTS" => "Payment",
+                "JOURNAL" => "Journal",
+                "JOURNALS" => "Journal",
+                "CONTRA" => "Contra",
+                "CREDIT NOTE" => "Credit Note",
+                "CREDIT_NOTE" => "Credit Note",
+                "CREDITNOTE" => "Credit Note",
+                "DEBIT NOTE" => "Debit Note",
+                "DEBIT_NOTE" => "Debit Note",
+                "DEBITNOTE" => "Debit Note",
+                "SALES ORDER" => "Sales Order",
+                "PURCHASE ORDER" => "Purchase Order",
+                "DELIVERY NOTE" => "Delivery Note",
+                "RECEIPT NOTE" => "Receipt Note",
+                _ => null // Unknown
+            };
         }
 
         public void Dispose()

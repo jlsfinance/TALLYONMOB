@@ -1,13 +1,16 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 /// Supabase configuration
 /// Replace with your actual Supabase project credentials
 class SupabaseConfig {
-  // TODO: Replace with your Supabase URL
-  static const String url = 'https://YOUR_PROJECT_ID.supabase.co';
+  // Supabase URL from web dashboard
+  static String get url => dotenv.env['SUPABASE_URL'] ?? '';
 
-  // TODO: Replace with your Supabase anon key
-  static const String anonKey = 'YOUR_SUPABASE_ANON_KEY';
+  // Supabase Anon Key from web dashboard
+  static String get anonKey => dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
-  // API configuration for sync backend
-  static const String apiBaseUrl = 'https://your-api-server.com';
+  // API configuration for sync backend (if needed)
+  static const String apiBaseUrl =
+      'https://your-api-server.com'; // TODO: Update if custom backend is deployed
   static const String apiKey = 'your_secret_sync_key_here';
 }

@@ -36,7 +36,7 @@ export default function PrivacyPolicyPage() {
                             <h2 className="text-2xl font-black tracking-tight uppercase">1. INTRODUCTION</h2>
                         </div>
                         <p className="text-gray-400 leading-relaxed text-lg font-medium">
-                            At TallyLink (LiveKeeping), we take your data privacy with extreme seriousness. This policy explains how we collect, use, and protect your financial data when you use the TallyLink Sync application and our mobile/web dashboard.
+                            At TallyLink (TallySync), we take your data privacy with extreme seriousness. This policy explains how we collect, use, and protect your financial data when you use the TallyLink Sync application and our mobile/web dashboard.
                         </p>
                     </section>
 

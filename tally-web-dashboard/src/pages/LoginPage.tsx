@@ -1,11 +1,11 @@
-import { useState } from 'react';
+illimport { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, BarChart3, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { AuthContextType } from '@/contexts/types';
+import { AuthContextType } from '../contexts/types';
 
 export default function LoginPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -44,187 +44,80 @@ export default function LoginPage() {
         try {
             const { error } = await signInWithGoogle();
             if (error) throw error;
-            // Google OAuth will redirect, no need for navigation here
         } catch (error: any) {
             toast.error(error.message || 'Google login failed');
             setLoading(false);
         }
     };
 
-    const features = [
-        { icon: <Zap size={20} />, title: "3D Visual Sync", desc: "Experience your Tally data in a new dimension." },
-        { icon: <Shield size={20} />, title: "Secure-Vault", desc: "Military-grade encryption for your financial data." },
-        { icon: <Smartphone size={20} />, title: "Cloud-Node", desc: "Access your business OS from any device globally." },
+    const highlights = [
+        { icon: <Zap size={20} />, text: "Real-time sync with Tally ERP" },
+        { icon: <BarChart3 size={20} />, text: "Smart business analytics & GST reports" },
+        { icon: <Shield size={20} />, text: "Bank-grade AES-256 encryption" },
+        { icon: <Smartphone size={20} />, text: "Works on mobile, tablet & desktop" },
     ];
 
-    const inputClasses = `
-        w-full bg-[var(--surface-variant)]
-        border border-[var(--border)]
-        rounded-2xl px-5 py-4
-        text-[var(--on-surface)]
-        placeholder:text-[var(--text-muted)]
-        focus:outline-none focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-glow)]
-        transition-all duration-300
-        font-medium
-    `;
-
     return (
-        <div className="min-h-screen bg-[var(--surface)] flex flex-col md:flex-row transition-colors duration-500 overflow-hidden">
-            {/* Design Elements */}
-            <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-[var(--primary)] opacity-10 blur-[120px] rounded-full" />
-                <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--secondary)] opacity-10 blur-[100px] rounded-full" />
-            </div>
+        <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
 
-            {/* Mobile Header / Theme Toggle */}
-            <div className="absolute top-6 left-6 z-50 flex items-center gap-4">
-                <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="flex items-center gap-3"
-                >
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center shadow-lg shadow-[var(--primary-glow)]">
-                        <span className="text-white font-black text-xl">L</span>
-                    </div>
-                    <div>
-                        <h1 className="font-black text-xl text-[var(--on-surface)] tracking-tight">BillBook</h1>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] opacity-80 -mt-1">Fin-OS</p>
-                    </div>
-                </motion.div>
-            </div>
-
-            <motion.button
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+            {/* Theme Toggle — Top Right */}
+            <button
                 onClick={toggleTheme}
-                className="fixed top-6 right-6 z-50 w-12 h-12 rounded-2xl bg-[var(--surface-variant)] backdrop-blur-xl border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-lg transition-all"
+                className="fixed top-5 right-5 z-50 w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] transition-all"
+                aria-label="Toggle theme"
             >
-                <motion.div
-                    animate={{ rotate: isDark ? 0 : 180 }}
-                    transition={{ duration: 0.5, type: 'spring' }}
-                >
-                    {isDark ? <Sun size={20} /> : <Moon size={20} />}
-                </motion.div>
-            </motion.button>
+                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
 
-            {/* Left Side - Auth Form */}
-            <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 md:px-16 lg:px-24 pt-32 md:pt-0 z-10">
+            {/* Left — Auth Form */}
+            <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 z-10">
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                     className="max-w-md w-full mx-auto"
                 >
-                    <div className="mb-10 text-center md:text-left">
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={isLogin ? 'login-head' : 'signup-head'}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 20 }}
-                                transition={{ duration: 0.3 }}
-                            >
-                                <h2 className="text-4xl md:text-5xl font-black text-[var(--on-surface)] mb-4 tracking-tighter">
-                                    {isLogin ? 'Ready to Sync?' : 'Digital Horizon.'}
-                                </h2>
-                                <p className="text-[var(--text-muted)] text-lg font-medium leading-relaxed">
-                                    {isLogin ? 'Access your private financial universe.' : 'Start your journey with the worlds most powerful billing engine.'}
-                                </p>
-                            </motion.div>
-                        </AnimatePresence>
+                    {/* Brand Logo */}
+                    <div className="flex items-center gap-3 mb-10">
+                        <div className="w-11 h-11 rounded-[var(--radius-md)] bg-[var(--primary)] flex items-center justify-center shadow-[var(--shadow-md)]">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">TallyLink</h1>
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
+                        </div>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <AnimatePresence>
-                            {!isLogin && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                                    animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
-                                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                                    className="overflow-hidden"
-                                >
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2 ml-1">Full Identity</label>
-                                    <div className="relative group">
-                                        <User size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--primary)] transition-colors" />
-                                        <input
-                                            type="text"
-                                            value={fullName}
-                                            onChange={(e) => setFullName(e.target.value)}
-                                            className={`${inputClasses} pl-14`}
-                                            placeholder="Your Name"
-                                            required={!isLogin}
-                                        />
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-
-                        <div>
-                            <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2 ml-1">Terminal ID (Email)</label>
-                            <div className="relative group">
-                                <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--primary)] transition-colors" />
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className={`${inputClasses} pl-14`}
-                                    placeholder="identity@vault.com"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2 ml-1">Access Key</label>
-                            <div className="relative group">
-                                <Lock size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--primary)] transition-colors" />
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className={`${inputClasses} pl-14`}
-                                    placeholder="••••••••"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <motion.button
-                            type="submit"
-                            disabled={loading}
-                            whileHover={{ scale: 1.02, y: -2 }}
-                            whileTap={{ scale: 0.98 }}
-                            className="w-full bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white font-black py-5 rounded-2xl shadow-xl shadow-[var(--primary-glow)] hover:shadow-2xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs mt-6 disabled:opacity-50"
+                    {/* Heading */}
+                    <AnimatePresence mode="wait">
+                        <motion.div
+                            key={isLogin ? 'login' : 'signup'}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.2 }}
+                            className="mb-8"
                         >
-                            {loading ? (
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                                <>
-                                    {isLogin ? 'Initiate Link' : 'Generate Core'}
-                                    <ArrowRight size={16} />
-                                </>
-                            )}
-                        </motion.button>
-                    </form>
+                            <h2 className="text-2xl md:text-3xl font-bold text-[var(--on-surface)] tracking-tight">
+                                {isLogin ? 'Welcome back' : 'Create your account'}
+                            </h2>
+                            <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
+                                {isLogin
+                                    ? 'Sign in to access your business dashboard'
+                                    : 'Get started with TallyLink in under a minute'
+                                }
+                            </p>
+                        </motion.div>
+                    </AnimatePresence>
 
-                    {/* Divider */}
-                    <div className="flex items-center gap-4 my-6">
-                        <div className="flex-1 h-px bg-[var(--border)]" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">or</span>
-                        <div className="flex-1 h-px bg-[var(--border)]" />
-                    </div>
-
-                    {/* Google Login Button */}
-                    <motion.button
+                    {/* Google Login — Show first for quick access */}
+                    <button
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={loading}
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="w-full bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface)] font-bold py-4 rounded-2xl hover:border-[var(--primary)] transition-all flex items-center justify-center gap-3 text-sm disabled:opacity-50"
+                        className="w-full bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] font-medium py-3 px-4 rounded-[var(--radius-md)] hover:bg-[var(--surface-hover)] hover:border-[var(--outline-variant)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-[var(--shadow-xs)]"
                     >
                         <svg viewBox="0 0 24 24" width="20" height="20">
                             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -233,100 +126,164 @@ export default function LoginPage() {
                             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                         </svg>
                         Continue with Google
-                    </motion.button>
+                    </button>
 
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
-                        className="mt-8 text-center"
-                    >
+                    {/* Divider */}
+                    <div className="flex items-center gap-4 my-6">
+                        <div className="flex-1 h-px bg-[var(--border)]" />
+                        <span className="text-xs font-medium text-[var(--text-muted)]">or use email</span>
+                        <div className="flex-1 h-px bg-[var(--border)]" />
+                    </div>
+
+                    {/* Auth Form */}
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <AnimatePresence>
+                            {!isLogin && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="overflow-hidden"
+                                >
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
+                                    <div className="relative">
+                                        <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <input
+                                            type="text"
+                                            value={fullName}
+                                            onChange={(e) => setFullName(e.target.value)}
+                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            placeholder="Your full name"
+                                            required={!isLogin}
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        <div>
+                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
+                            <div className="relative">
+                                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                    placeholder="you@company.com"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
+                            <div className="relative">
+                                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                        </div>
+
                         <button
-                            onClick={() => setIsLogin(!isLogin)}
-                            className="text-[var(--text-muted)] hover:text-[var(--primary)] transition-colors text-sm font-bold flex items-center justify-center gap-2 mx-auto cursor-pointer"
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-[var(--primary)] text-[var(--on-primary)] font-semibold py-3 rounded-[var(--radius-md)] hover:bg-[var(--primary-hover)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
                         >
-                            {isLogin ? (
-                                <>New Operator? <span className="text-[var(--primary)] underline underline-offset-4">Create Identity</span></>
+                            {loading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
-                                <>Existing Identity? <span className="text-[var(--primary)] underline underline-offset-4">Sign In</span></>
+                                <>
+                                    {isLogin ? 'Sign In' : 'Create Account'}
+                                    <ArrowRight size={16} />
+                                </>
                             )}
                         </button>
-                    </motion.div>
+                    </form>
+
+                    {/* Switch Auth Mode */}
+                    <div className="mt-8 text-center">
+                        <button
+                            onClick={() => setIsLogin(!isLogin)}
+                            className="text-sm text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                        >
+                            {isLogin ? (
+                                <>Don't have an account? <span className="font-semibold text-[var(--primary)]">Sign up</span></>
+                            ) : (
+                                <>Already have an account? <span className="font-semibold text-[var(--primary)]">Sign in</span></>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Back to home */}
+                    <div className="mt-4 text-center">
+                        <button
+                            onClick={() => navigate('/')}
+                            className="text-xs text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                        >
+                            ← Back to home
+                        </button>
+                    </div>
                 </motion.div>
             </div>
 
-            {/* Right Side - Experience (Hidden on Mobile) */}
-            <div className="hidden lg:flex flex-1 relative bg-[var(--surface-variant)] overflow-hidden border-l border-[var(--border)]">
-                <div className="absolute inset-0 z-0">
-                    <div className="absolute inset-0 bg-[var(--primary)] opacity-5" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, var(--primary) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-                </div>
+            {/* Right — Trust Panel (Desktop Only) */}
+            <div className="hidden lg:flex flex-1 relative items-center justify-center bg-[var(--primary)]" style={{ maxWidth: '50%' }}>
+                {/* Subtle geometric pattern */}
+                <div
+                    className="absolute inset-0 opacity-[0.06]"
+                    style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                    }}
+                />
 
-                <div className="relative z-10 flex flex-col justify-center px-20">
+                <div className="relative z-10 px-12 xl:px-20 max-w-lg">
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.8 }}
-                        className="space-y-12"
+                        initial={{ opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6, delay: 0.2 }}
                     >
-                        <div className="space-y-6">
-                            <motion.div
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0.3 }}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--primary-glow)] border border-[var(--primary)]/20 text-[10px] font-black uppercase tracking-widest text-[var(--primary)] text-white"
-                            >
-                                <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse shadow-[0_0_8px_var(--success)]" />
-                                Quantum Link Stable
-                            </motion.div>
-
-                            <motion.h2
-                                initial={{ opacity: 0, y: 30 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.4 }}
-                                className="text-6xl font-black text-[var(--on-surface)] leading-[1.1] tracking-tighter"
-                            >
-                                Your business,<br />
-                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)]">
-                                    re-imagined.
-                                </span>
-                            </motion.h2>
-
-                            <motion.p
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.5 }}
-                                className="text-[var(--text-muted)] text-xl font-medium leading-relaxed max-w-md"
-                            >
-                                The world's first hybrid Financial OS syncing your legacy Tally ERP to the edge. Real-time, 3D analytics, and global access.
-                            </motion.p>
+                        {/* Trust badge */}
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-xs font-medium mb-8 backdrop-blur-sm">
+                            <CheckCircle2 size={14} />
+                            Trusted by 5,000+ Indian businesses
                         </div>
 
-                        <div className="grid gap-6">
-                            {features.map((f, i) => (
+                        {/* Headline */}
+                        <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-5">
+                            Your Tally data,<br />
+                            accessible <span className="text-white/80">everywhere.</span>
+                        </h2>
+
+                        <p className="text-white/70 text-base leading-relaxed mb-10">
+                            Sync your Tally ERP to the cloud. Access real-time reports, GST analytics, and business insights from any device.
+                        </p>
+
+                        {/* Feature List */}
+                        <div className="space-y-4">
+                            {highlights.map((item, i) => (
                                 <motion.div
                                     key={i}
-                                    initial={{ opacity: 0, x: 20 }}
+                                    initial={{ opacity: 0, x: 12 }}
                                     animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: 0.6 + i * 0.1 }}
-                                    whileHover={{ x: 10, scale: 1.02 }}
-                                    className="flex items-center gap-6 p-6 rounded-3xl bg-[var(--surface)] border border-[var(--border)] shadow-xl transition-all cursor-default"
+                                    transition={{ delay: 0.4 + i * 0.1 }}
+                                    className="flex items-center gap-4"
                                 >
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white flex items-center justify-center shadow-lg">
-                                        {f.icon}
+                                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-white/10 flex items-center justify-center text-white flex-shrink-0">
+                                        {item.icon}
                                     </div>
-                                    <div>
-                                        <h3 className="font-black text-[var(--on-surface)] uppercase tracking-wide text-xs">{f.title}</h3>
-                                        <p className="text-sm text-[var(--text-muted)] font-medium mt-1">{f.desc}</p>
-                                    </div>
+                                    <span className="text-white/90 text-sm font-medium">{item.text}</span>
                                 </motion.div>
                             ))}
                         </div>
                     </motion.div>
                 </div>
-
-                {/* Decorative mesh */}
-                <div className="absolute top-[20%] right-[-10%] w-[300px] h-[300px] border border-[var(--primary)]/10 rounded-full animate-[spin_20s_linear_infinite]" />
-                <div className="absolute bottom-[20%] right-[-10%] w-[500px] h-[500px] border border-[var(--secondary)]/10 rounded-full animate-[spin_30s_linear_infinite]" />
             </div>
         </div>
     );

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { companyApi } from '@/lib/supabase';
+import { motion, useScroll, useTransform, useInView, Variants } from 'framer-motion';
 import {
     ArrowRight,
     Smartphone,
@@ -19,15 +20,56 @@ import {
     Activity,
     Mail,
     Phone,
-    User
+    User,
+    Sparkles,
+    BarChart3,
+    FileText,
+    Globe,
+    Play,
+    Star
 } from 'lucide-react';
+
+// Animation variants
+const fadeInUp: Variants = {
+    hidden: { opacity: 0, y: 40 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] } }
+};
+
+const staggerContainer: Variants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+};
+
+const scaleIn: Variants = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: { opacity: 1, scale: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
+};
+
+// Animated Counter Component
+function AnimatedCounter({ value, suffix = '' }: { value: string; suffix?: string }) {
+    const ref = useRef(null);
+    const isInView = useInView(ref, { once: true });
+
+    return (
+        <span ref={ref} className="tabular-nums">
+            {isInView ? value : '0'}{suffix}
+        </span>
+    );
+}
 
 export default function LandingPage3D() {
     const navigate = useNavigate();
     const { scrollYProgress } = useScroll();
     const { user, loading } = useAuth() as any;
+    const heroRef = useRef(null);
+    const isHeroInView = useInView(heroRef, { once: true });
 
-    // Redirect logged in users to dashboard
+    // Parallax transforms
+    const y1 = useTransform(scrollYProgress, [0, 1], [0, -100]);
+    const y2 = useTransform(scrollYProgress, [0, 1], [0, -200]);
+    const opacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
+
+    // Redirect logged in users
     useEffect(() => {
         if (!loading && user) {
             navigate('/select-mode', { replace: true });
@@ -41,12 +83,28 @@ export default function LandingPage3D() {
         message: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [downloadUrl, setDownloadUrl] = useState('https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLinkSetup.exe');
+
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const { data } = await companyApi.getAppSettings();
+                if (data?.windows_app_download_url) {
+                    setDownloadUrl(data.windows_app_download_url);
+                }
+            } catch (err) {
+                console.error('Error loading download settings:', err);
+            }
+        };
+        loadSettings();
+    }, []);
 
     const handleContactSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            await axios.post('http://localhost:5000/api/v1/contact/send', formData);
+            // Direct call to Vercel serverless function (relative path)
+            await axios.post('/api/contact', formData);
             toast.success('Message sent! We will get back to you soon.');
             setFormData({ name: '', email: '', subject: '', message: '' });
         } catch (error) {
@@ -59,396 +117,714 @@ export default function LandingPage3D() {
 
     const steps = [
         {
-            icon: <Monitor size={32} />,
-            title: "Tally ERP on PC",
-            desc: "Your desktop Tally data stays secure and local.",
-            color: "blue"
+            icon: <Monitor size={28} />,
+            title: "Install TallyLink",
+            desc: "Download & run our lightweight Windows app. It connects directly to your Tally ERP.",
+            color: "from-cyan-500 to-blue-600",
+            step: "01"
         },
         {
-            icon: <Cloud size={32} />,
-            title: "Cloud Sync",
-            desc: "Encrypted real-time synchronization to our secure cloud.",
-            color: "purple"
+            icon: <Cloud size={28} />,
+            title: "Auto Cloud Sync",
+            desc: "Your data syncs automatically with military-grade encryption. No manual exports.",
+            color: "from-violet-500 to-purple-600",
+            step: "02"
         },
         {
-            icon: <Smartphone size={32} />,
-            title: "Mobile Access",
-            desc: "Access business reports anywhere, anytime on any device.",
-            color: "emerald"
+            icon: <Smartphone size={28} />,
+            title: "Access Anywhere",
+            desc: "View real-time reports on mobile, tablet, or web. Share with your CA instantly.",
+            color: "from-emerald-500 to-teal-600",
+            step: "03"
         },
     ];
 
     const stats = [
-        { label: "Active Businesses", value: "10,000+", icon: <Users className="text-blue-400" /> },
-        { label: "Uptime Reliability", value: "99.9%", icon: <Activity className="text-emerald-400" /> },
-        { label: "Vouchers Synced", value: "1M+", icon: <RefreshCw className="text-purple-400" /> },
+        { label: "Active Businesses", value: "10K", suffix: "+", icon: <Users className="text-cyan-400" size={20} /> },
+        { label: "Uptime SLA", value: "99.9", suffix: "%", icon: <Activity className="text-emerald-400" size={20} /> },
+        { label: "Vouchers Synced", value: "5M", suffix: "+", icon: <FileText className="text-violet-400" size={20} /> },
+        { label: "Data Secured", value: "256", suffix: "-bit", icon: <Shield className="text-amber-400" size={20} /> },
     ];
 
-    const detailedFeatures = [
+    const features = [
         {
             title: "Real-time Sync",
-            desc: "Every transaction you enter in Tally is instantly available on your mobile dashboard.",
-            icon: <Zap size={24} className="text-amber-400" />
+            desc: "Every transaction in Tally instantly reflects on your mobile dashboard. Zero lag.",
+            icon: <Zap size={22} />,
+            gradient: "from-amber-500/20 to-orange-500/20",
+            iconColor: "text-amber-400"
         },
         {
-            title: "AI Integrity Shield",
-            desc: "Advanced AI algorithms audit your data for errors, discrepancies, and fraud detection.",
-            icon: <Shield size={24} className="text-blue-400" />
+            title: "AI Audit Shield",
+            desc: "AI-powered anomaly detection finds discrepancies before they become problems.",
+            icon: <Shield size={22} />,
+            gradient: "from-blue-500/20 to-cyan-500/20",
+            iconColor: "text-blue-400"
         },
         {
-            title: "GST Compliance",
-            desc: "Generate GSTR-1, GSTR-3B, and Rate-wise summaries directly from your mobile.",
-            icon: <CheckCircle size={24} className="text-emerald-400" />
+            title: "GST Ready",
+            desc: "Auto-generate GSTR-1, GSTR-3B reports. Tax filing made effortless.",
+            icon: <CheckCircle size={22} />,
+            gradient: "from-emerald-500/20 to-teal-500/20",
+            iconColor: "text-emerald-400"
         },
         {
-            title: "Multi-Company Support",
-            desc: "Manage all your business branches and companies from a single login.",
-            icon: <Database size={24} className="text-purple-400" />
+            title: "Multi-Company",
+            desc: "Manage unlimited companies from a single dashboard. Perfect for CAs.",
+            icon: <Database size={22} />,
+            gradient: "from-violet-500/20 to-purple-500/20",
+            iconColor: "text-violet-400"
         },
         {
-            title: "Auto-Backup",
-            desc: "Never worry about data loss. Your encrypted data is backed up daily in the cloud.",
-            icon: <Cloud size={24} className="text-indigo-400" />
+            title: "Auto Backup",
+            desc: "Your data is continuously backed up. Never lose a single voucher.",
+            icon: <Cloud size={22} />,
+            gradient: "from-indigo-500/20 to-blue-500/20",
+            iconColor: "text-indigo-400"
         },
         {
-            title: "Enterprise Encryption",
-            desc: "Bank-grade 256-bit AES encryption ensures your financial data stays private.",
-            icon: <Lock size={24} className="text-pink-400" />
+            title: "Bank-grade Security",
+            desc: "256-bit AES encryption, SOC2 compliant infrastructure. Your data is vault-safe.",
+            icon: <Lock size={22} />,
+            gradient: "from-rose-500/20 to-pink-500/20",
+            iconColor: "text-rose-400"
+        }
+    ];
+
+    const testimonials = [
+        {
+            name: "Rajesh Sharma",
+            role: "CA, Sharma & Associates",
+            quote: "TallySync transformed how I manage 50+ clients. Reports are instant now.",
+            rating: 5
+        },
+        {
+            name: "Priya Patel",
+            role: "CFO, TechVentures",
+            quote: "Finally, I can check business health from my phone. Game changer!",
+            rating: 5
+        },
+        {
+            name: "Amit Gupta",
+            role: "Business Owner",
+            quote: "The GST reports alone save me 10 hours every month. Worth every rupee.",
+            rating: 5
         }
     ];
 
     return (
-        <div className="min-h-screen bg-[#020202] text-white selection:bg-emerald-500/30">
-            {/* Animated Background */}
+        <div className="min-h-screen bg-[#030712] text-white selection:bg-cyan-500/30 overflow-x-hidden">
+            {/* Animated Gradient Background */}
             <div className="fixed inset-0 pointer-events-none overflow-hidden">
+                {/* Primary gradient orbs */}
                 <motion.div
                     animate={{
                         scale: [1, 1.2, 1],
-                        rotate: [0, 90, 0],
-                        opacity: [0.3, 0.5, 0.3]
+                        x: [0, 50, 0],
+                        y: [0, -30, 0],
                     }}
-                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                    className="absolute top-[-20%] left-[-10%] w-[80%] h-[80%] bg-blue-600/10 rounded-full blur-[120px]"
+                    transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-gradient-to-br from-cyan-600/20 via-blue-600/10 to-transparent rounded-full blur-[120px]"
+                />
+                <motion.div
+                    animate={{
+                        scale: [1, 1.3, 1],
+                        x: [0, -40, 0],
+                        y: [0, 40, 0],
+                    }}
+                    transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-[40%] right-[-15%] w-[50%] h-[50%] bg-gradient-to-br from-violet-600/15 via-purple-600/10 to-transparent rounded-full blur-[120px]"
                 />
                 <motion.div
                     animate={{
                         scale: [1, 1.1, 1],
-                        rotate: [0, -90, 0],
-                        opacity: [0.2, 0.4, 0.2]
+                        y: [0, -50, 0],
                     }}
-                    transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                    className="absolute bottom-[-10%] right-[-10%] w-[70%] h-[70%] bg-emerald-600/10 rounded-full blur-[120px]"
+                    transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute bottom-[-10%] left-[20%] w-[40%] h-[40%] bg-gradient-to-br from-emerald-600/15 to-transparent rounded-full blur-[100px]"
+                />
+
+                {/* Grid pattern */}
+                <div
+                    className="absolute inset-0 opacity-[0.03]"
+                    style={{
+                        backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+                        backgroundSize: '60px 60px'
+                    }}
                 />
             </div>
 
             {/* Navbar */}
-            <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
-                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-blue-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                            <RefreshCw size={22} className="text-white animate-spin-slow" />
+            <motion.nav
+                initial={{ y: -100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                className="fixed top-0 left-0 right-0 z-50"
+            >
+                <div className="mx-4 mt-4">
+                    <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/[0.08]">
+                        <div className="flex items-center gap-3">
+                            <div className="relative">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-500 to-violet-500 flex items-center justify-center shadow-lg shadow-cyan-500/25">
+                                    <RefreshCw size={18} className="text-white" />
+                                </div>
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#030712] animate-pulse" />
+                            </div>
+                            <div>
+                                <span className="font-black text-lg tracking-tight">TallyLink</span>
+                                <span className="text-[8px] font-bold text-cyan-400 ml-1 uppercase tracking-widest">Pro</span>
+                            </div>
                         </div>
-                        <span className="font-black text-xl tracking-tighter uppercase italic">TallyLink</span>
-                    </div>
 
-                    <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
-                        <a href="#features" className="hover:text-white transition-colors">Features</a>
-                        <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
-                        <a href="#contact" className="hover:text-white transition-colors">Contact</a>
-                        <button
-                            onClick={() => navigate('/login')}
-                            className="px-5 py-2.5 bg-white text-black rounded-full font-bold hover:scale-105 transition-transform"
-                        >
-                            Log In
-                        </button>
+                        <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
+                            <a href="#features" className="hover:text-white transition-colors relative group">
+                                Features
+                                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-300" />
+                            </a>
+                            <a href="#how-it-works" className="hover:text-white transition-colors relative group">
+                                How it Works
+                                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-300" />
+                            </a>
+                            <a href="#testimonials" className="hover:text-white transition-colors relative group">
+                                Reviews
+                                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-300" />
+                            </a>
+                            <a href="#contact" className="hover:text-white transition-colors relative group">
+                                Contact
+                                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 group-hover:w-full transition-all duration-300" />
+                            </a>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="hidden sm:block px-5 py-2 text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+                            >
+                                Sign In
+                            </button>
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                                Get Started
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </nav>
+            </motion.nav>
 
             {/* Hero Section */}
-            <section className="relative pt-40 pb-20 px-6 text-center overflow-hidden">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.8 }}
-                    className="relative z-10 max-w-5xl mx-auto"
-                >
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-8">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Trusted by 10k+ CA & Businesses
-                    </div>
-
-                    <h1 className="text-6xl md:text-8xl font-black leading-[0.9] tracking-tighter mb-8">
-                        YOUR TALLY,<br />
-                        <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-blue-400 to-indigo-500">
-                            REIMAGINED.
-                        </span>
-                    </h1>
-
-                    <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-                        The definitive solution to sync your Tally ERP data to the cloud. Real-time reports, AI audits, and business insights, right in your pocket.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-                        <button
-                            onClick={() => navigate('/login')}
-                            className="w-full sm:w-auto px-10 py-5 bg-gradient-to-r from-emerald-500 to-blue-600 text-white font-black rounded-2xl hover:shadow-2xl hover:shadow-emerald-500/20 transition-all flex items-center justify-center gap-3 group text-lg"
+            <section ref={heroRef} className="relative pt-40 pb-20 px-6 overflow-hidden">
+                <div className="max-w-7xl mx-auto">
+                    <motion.div
+                        style={{ opacity }}
+                        className="text-center max-w-5xl mx-auto"
+                    >
+                        {/* Badge */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={isHeroInView ? { opacity: 1, y: 0 } : {}}
+                            transition={{ duration: 0.6 }}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 mb-8"
                         >
-                            GET STARTED NOW
-                            <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
-                        </button>
-                        <button
-                            onClick={() => window.open('/TallyLink.exe', '_blank')}
-                            className="w-full sm:w-auto px-10 py-5 bg-white/5 border border-white/10 font-bold rounded-2xl hover:bg-white/10 transition-all flex items-center justify-center gap-3 backdrop-blur-md text-lg"
-                        >
-                            <Monitor size={20} />
-                            DOWNLOAD SYNC APP
-                        </button>
-                    </div>
-                </motion.div>
+                            <Sparkles size={14} className="text-cyan-400" />
+                            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Trusted by 10,000+ Indian Businesses</span>
+                        </motion.div>
 
-                {/* Dashboard Preview */}
-                <motion.div
-                    initial={{ opacity: 0, y: 100 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 1 }}
-                    className="mt-24 max-w-6xl mx-auto relative px-4"
-                >
-                    <div className="absolute inset-0 bg-emerald-500/20 blur-[100px] rounded-full -z-10" />
-                    <img
-                        src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=2000"
-                        alt="Dashboard Preview"
-                        className="rounded-3xl border border-white/10 shadow-2xl shadow-black ring-1 ring-white/20"
-                    />
-                </motion.div>
+                        {/* Main Headline */}
+                        <motion.h1
+                            initial={{ opacity: 0, y: 30 }}
+                            animate={isHeroInView ? { opacity: 1, y: 0 } : {}}
+                            transition={{ duration: 0.8, delay: 0.1 }}
+                            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black leading-[0.95] tracking-tight mb-8"
+                        >
+                            Your Tally Data,
+                            <br />
+                            <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500">
+                                Everywhere.
+                            </span>
+                        </motion.h1>
+
+                        {/* Subheadline */}
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={isHeroInView ? { opacity: 1, y: 0 } : {}}
+                            transition={{ duration: 0.8, delay: 0.2 }}
+                            className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed font-medium"
+                        >
+                            Sync your Tally ERP to the cloud in real-time. Access reports, track sales,
+                            and manage your business from any device. <span className="text-white">Made for India.</span>
+                        </motion.p>
+
+                        {/* CTA Buttons */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={isHeroInView ? { opacity: 1, y: 0 } : {}}
+                            transition={{ duration: 0.8, delay: 0.3 }}
+                            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+                        >
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="group w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-2xl hover:shadow-2xl hover:shadow-cyan-500/30 transition-all flex items-center justify-center gap-3 text-lg hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                                Start Free Trial
+                                <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                            </button>
+                            <button
+                                onClick={() => window.open(downloadUrl, '_blank')}
+                                className="group w-full sm:w-auto px-8 py-4 bg-white/5 backdrop-blur-sm border border-white/10 font-bold rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all flex items-center justify-center gap-3 text-lg"
+                            >
+                                <Monitor size={20} />
+                                Download for Windows
+                            </button>
+                        </motion.div>
+
+                        {/* Trust indicators */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={isHeroInView ? { opacity: 1 } : {}}
+                            transition={{ duration: 0.8, delay: 0.5 }}
+                            className="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500"
+                        >
+                            <div className="flex items-center gap-2">
+                                <CheckCircle size={16} className="text-emerald-500" />
+                                <span>No Credit Card Required</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <CheckCircle size={16} className="text-emerald-500" />
+                                <span>14-Day Free Trial</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <CheckCircle size={16} className="text-emerald-500" />
+                                <span>Cancel Anytime</span>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+
+                    {/* Dashboard Preview */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 100, scale: 0.95 }}
+                        animate={isHeroInView ? { opacity: 1, y: 0, scale: 1 } : {}}
+                        transition={{ duration: 1, delay: 0.4 }}
+                        className="mt-20 relative"
+                    >
+                        {/* Glow effect behind */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-violet-500/20 blur-[80px] -z-10 scale-90" />
+
+                        {/* Browser frame */}
+                        <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-gradient-to-b from-white/[0.08] to-white/[0.02] backdrop-blur-sm shadow-2xl">
+                            {/* Browser header */}
+                            <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10 bg-white/[0.02]">
+                                <div className="flex gap-1.5">
+                                    <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                                    <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                                    <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                                </div>
+                                <div className="flex-1 flex justify-center">
+                                    <div className="px-4 py-1 rounded-lg bg-white/5 text-xs text-gray-500 font-mono">
+                                        app.tallylink.in
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Dashboard image */}
+                            <img
+                                src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=2000"
+                                alt="TallySync Dashboard Preview"
+                                className="w-full object-cover"
+                                style={{ maxHeight: '500px' }}
+                            />
+                        </div>
+                    </motion.div>
+                </div>
             </section>
 
             {/* Stats Section */}
-            <section className="py-20 border-y border-white/5 bg-black/30 backdrop-blur-md relative z-10">
-                <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12">
-                    {stats.map((stat, i) => (
-                        <div key={i} className="flex flex-col items-center gap-4 group">
-                            <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                {stat.icon}
-                            </div>
-                            <div className="text-center">
-                                <h4 className="text-4xl font-black mb-1">{stat.value}</h4>
-                                <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">{stat.label}</p>
-                            </div>
-                        </div>
-                    ))}
+            <section className="py-20 relative z-10">
+                <div className="max-w-7xl mx-auto px-6">
+                    <motion.div
+                        variants={staggerContainer}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true, margin: "-100px" }}
+                        className="grid grid-cols-2 md:grid-cols-4 gap-6"
+                    >
+                        {stats.map((stat, i) => (
+                            <motion.div
+                                key={i}
+                                variants={fadeInUp}
+                                className="relative group"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/[0.05] to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="relative p-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-sm text-center">
+                                    <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-white/5 flex items-center justify-center">
+                                        {stat.icon}
+                                    </div>
+                                    <h4 className="text-3xl md:text-4xl font-black mb-1">
+                                        <AnimatedCounter value={stat.value} suffix={stat.suffix} />
+                                    </h4>
+                                    <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">{stat.label}</p>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </motion.div>
                 </div>
             </section>
 
-            {/* How It Works - Animated Flow */}
-            <section id="how-it-works" className="py-32 px-6 relative z-10 bg-[#050505]">
+            {/* How It Works */}
+            <section id="how-it-works" className="py-32 px-6 relative z-10">
                 <div className="max-w-6xl mx-auto">
-                    <div className="text-center mb-24">
-                        <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-6">FLOW OF FREEDOM</h2>
-                        <p className="text-gray-500 text-lg">From your desktop to your pocket in milliseconds.</p>
-                    </div>
+                    <motion.div
+                        variants={fadeInUp}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true }}
+                        className="text-center mb-20"
+                    >
+                        <span className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 block">Simple Setup</span>
+                        <h2 className="text-4xl md:text-6xl font-black tracking-tight mb-6">
+                            Up & Running in <span className="text-cyan-400">3 Minutes</span>
+                        </h2>
+                        <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+                            No IT team required. Install, login, and your Tally data flows to the cloud automatically.
+                        </p>
+                    </motion.div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative">
-                        {/* Animated Connecting Lines (Desktop only) */}
-                        <div className="hidden lg:block absolute top-[40px] left-[25%] right-[25%] h-1 bg-gradient-to-r from-blue-500 via-emerald-500 to-purple-500 opacity-20" />
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
+                        {/* Connection line (desktop) */}
+                        <div className="hidden lg:block absolute top-[100px] left-[20%] right-[20%] h-0.5">
+                            <div className="h-full bg-gradient-to-r from-cyan-500/50 via-violet-500/50 to-emerald-500/50" />
+                        </div>
 
                         {steps.map((step, i) => (
                             <motion.div
                                 key={i}
-                                initial={{ opacity: 0, x: -50 }}
-                                whileInView={{ opacity: 1, x: 0 }}
-                                transition={{ delay: i * 0.2 }}
+                                variants={scaleIn}
+                                initial="hidden"
+                                whileInView="visible"
                                 viewport={{ once: true }}
-                                className="relative flex flex-col items-center text-center p-10 rounded-[40px] bg-white/5 border border-white/10 hover:bg-white/[0.08] transition-all"
+                                transition={{ delay: i * 0.15 }}
+                                className="relative group"
                             >
-                                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mb-8 shadow-2xl ${step.color === 'blue' ? 'bg-blue-600/20 text-blue-400' :
-                                    step.color === 'purple' ? 'bg-purple-600/20 text-purple-400' :
-                                        'bg-emerald-600/20 text-emerald-400'
-                                    }`}>
-                                    {step.icon}
+                                <div className="relative p-8 rounded-3xl bg-gradient-to-b from-white/[0.06] to-transparent border border-white/[0.08] hover:border-white/[0.15] transition-all duration-500">
+                                    {/* Step number */}
+                                    <div className="absolute -top-4 -left-4 w-10 h-10 rounded-xl bg-gradient-to-br from-gray-800 to-gray-900 border border-white/10 flex items-center justify-center text-xs font-black text-gray-400">
+                                        {step.step}
+                                    </div>
+
+                                    {/* Icon */}
+                                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${step.color} flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                                        {step.icon}
+                                    </div>
+
+                                    <h3 className="text-xl font-bold mb-3">{step.title}</h3>
+                                    <p className="text-gray-400 leading-relaxed">{step.desc}</p>
                                 </div>
-                                <h3 className="text-2xl font-bold mb-4">{step.title}</h3>
-                                <p className="text-gray-400 leading-relaxed font-medium">{step.desc}</p>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Features Detail Grid */}
-            <section id="features" className="py-32 px-6 relative z-10">
+            {/* Features Grid */}
+            <section id="features" className="py-32 px-6 relative z-10 bg-gradient-to-b from-transparent via-cyan-950/10 to-transparent">
                 <div className="max-w-7xl mx-auto">
-                    <h2 className="text-4xl md:text-7xl font-black tracking-tighter mb-20 text-center">BUILT FOR SCALE</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {detailedFeatures.map((feat, i) => (
+                    <motion.div
+                        variants={fadeInUp}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true }}
+                        className="text-center mb-20"
+                    >
+                        <span className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 block">Powerful Features</span>
+                        <h2 className="text-4xl md:text-6xl font-black tracking-tight mb-6">
+                            Everything You Need to <span className="text-cyan-400">Scale</span>
+                        </h2>
+                        <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+                            Built specifically for Indian businesses. GST-ready, CA-friendly, and blazing fast.
+                        </p>
+                    </motion.div>
+
+                    <motion.div
+                        variants={staggerContainer}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true }}
+                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    >
+                        {features.map((feat, i) => (
                             <motion.div
                                 key={i}
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                transition={{ delay: i * 0.1 }}
-                                viewport={{ once: true }}
-                                className="p-10 rounded-[32px] bg-white/[0.03] border border-white/5 hover:border-emerald-500/30 group transition-all"
+                                variants={fadeInUp}
+                                className="group relative p-8 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.12] transition-all duration-500"
                             >
-                                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-8 group-hover:scale-110 transition-transform">
-                                    {feat.icon}
+                                <div className={`absolute inset-0 bg-gradient-to-br ${feat.gradient} rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+                                <div className="relative">
+                                    <div className={`w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-5 ${feat.iconColor} group-hover:scale-110 transition-transform`}>
+                                        {feat.icon}
+                                    </div>
+                                    <h3 className="text-lg font-bold mb-2 group-hover:text-white transition-colors">{feat.title}</h3>
+                                    <p className="text-gray-500 text-sm leading-relaxed group-hover:text-gray-400 transition-colors">{feat.desc}</p>
                                 </div>
-                                <h3 className="text-xl font-black mb-4 group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{feat.title}</h3>
-                                <p className="text-gray-500 leading-relaxed font-medium">{feat.desc}</p>
+                            </motion.div>
+                        ))}
+                    </motion.div>
+                </div>
+            </section>
+
+            {/* Testimonials */}
+            <section id="testimonials" className="py-32 px-6 relative z-10">
+                <div className="max-w-6xl mx-auto">
+                    <motion.div
+                        variants={fadeInUp}
+                        initial="hidden"
+                        whileInView="visible"
+                        viewport={{ once: true }}
+                        className="text-center mb-16"
+                    >
+                        <span className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 block">Testimonials</span>
+                        <h2 className="text-4xl md:text-5xl font-black tracking-tight">
+                            Loved by <span className="text-cyan-400">Thousands</span>
+                        </h2>
+                    </motion.div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {testimonials.map((t, i) => (
+                            <motion.div
+                                key={i}
+                                variants={fadeInUp}
+                                initial="hidden"
+                                whileInView="visible"
+                                viewport={{ once: true }}
+                                transition={{ delay: i * 0.1 }}
+                                className="p-8 rounded-2xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/[0.08]"
+                            >
+                                <div className="flex gap-1 mb-4">
+                                    {[...Array(t.rating)].map((_, j) => (
+                                        <Star key={j} size={16} className="fill-yellow-400 text-yellow-400" />
+                                    ))}
+                                </div>
+                                <p className="text-gray-300 mb-6 leading-relaxed">"{t.quote}"</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+                                        {t.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-sm">{t.name}</p>
+                                        <p className="text-gray-500 text-xs">{t.role}</p>
+                                    </div>
+                                </div>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Contact Form Section */}
-            <section id="contact" className="py-32 px-6 relative z-10 bg-black/40 backdrop-blur-3xl">
-                <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-20">
-                    <div className="lg:w-1/2">
-                        <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-8 italic uppercase">Get in Touch</h2>
-                        <p className="text-gray-400 text-lg mb-12 leading-relaxed">
-                            Have questions about TallyLink? Whether you need technical support, a custom quote, or want to partner with us, our team is ready to help.
-                        </p>
-                        <div className="space-y-8">
-                            <div className="flex items-center gap-6 p-6 rounded-3xl bg-white/[0.03] border border-white/5">
-                                <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400"><Mail size={24} /></div>
-                                <div>
-                                    <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Email us at</p>
-                                    <p className="text-xl font-bold">lovneetrathi@gmail.com</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-6 p-6 rounded-3xl bg-white/[0.03] border border-white/5">
-                                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400"><Phone size={24} /></div>
-                                <div>
-                                    <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-1">Call us at</p>
-                                    <p className="text-xl font-bold">+91 9413821007</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            {/* Contact Section */}
+            <section id="contact" className="py-32 px-6 relative z-10">
+                <div className="max-w-6xl mx-auto">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                        <motion.div
+                            variants={fadeInUp}
+                            initial="hidden"
+                            whileInView="visible"
+                            viewport={{ once: true }}
+                        >
+                            <span className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 block">Get in Touch</span>
+                            <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
+                                Let's Talk <span className="text-cyan-400">Business</span>
+                            </h2>
+                            <p className="text-gray-400 text-lg mb-10 leading-relaxed">
+                                Have questions? Need a demo? Our team is ready to help you get started with TallySync.
+                            </p>
 
-                    <div className="lg:w-1/2">
-                        <form onSubmit={handleContactSubmit} className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Full Name</label>
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+                                    <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                                        <Mail size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email</p>
+                                        <p className="font-semibold">support@tallysync.in</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+                                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                                        <Phone size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Phone</p>
+                                        <p className="font-semibold">+91 9413821007</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        <motion.div
+                            variants={fadeInUp}
+                            initial="hidden"
+                            whileInView="visible"
+                            viewport={{ once: true }}
+                            transition={{ delay: 0.2 }}
+                        >
+                            <form onSubmit={handleContactSubmit} className="space-y-5">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Name</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            placeholder="Your Name"
+                                            className="w-full px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.08] focus:border-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all placeholder:text-gray-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email</label>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={formData.email}
+                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                            placeholder="you@company.com"
+                                            className="w-full px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.08] focus:border-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all placeholder:text-gray-600"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Subject</label>
                                     <input
                                         type="text"
-                                        required
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="John Doe"
-                                        className="w-full px-6 py-4 rounded-2xl bg-white/5 border border-white/10 focus:border-emerald-500/50 focus:outline-none transition-all"
+                                        value={formData.subject}
+                                        onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                                        placeholder="How can we help?"
+                                        className="w-full px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.08] focus:border-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all placeholder:text-gray-600"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Email Address</label>
-                                    <input
-                                        type="email"
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Message</label>
+                                    <textarea
+                                        rows={5}
                                         required
-                                        value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        placeholder="john@example.com"
-                                        className="w-full px-6 py-4 rounded-2xl bg-white/5 border border-white/10 focus:border-emerald-500/50 focus:outline-none transition-all"
+                                        value={formData.message}
+                                        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                                        placeholder="Tell us about your needs..."
+                                        className="w-full px-5 py-4 rounded-xl bg-white/[0.03] border border-white/[0.08] focus:border-cyan-500/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all resize-none placeholder:text-gray-600"
                                     />
                                 </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Subject</label>
-                                <input
-                                    type="text"
-                                    value={formData.subject}
-                                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                                    placeholder="Technical Support / Pricing"
-                                    className="w-full px-6 py-4 rounded-2xl bg-white/5 border border-white/10 focus:border-emerald-500/50 focus:outline-none transition-all"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-gray-500 uppercase tracking-widest ml-1">Message</label>
-                                <textarea
-                                    rows={5}
-                                    required
-                                    value={formData.message}
-                                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                                    placeholder="How can we help you today?"
-                                    className="w-full px-6 py-4 rounded-2xl bg-white/5 border border-white/10 focus:border-emerald-500/50 focus:outline-none transition-all resize-none"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full py-5 bg-gradient-to-r from-emerald-500 to-blue-600 text-white font-black rounded-2xl hover:shadow-2xl hover:shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-3 text-lg"
-                            >
-                                {isSubmitting ? (
-                                    <RefreshCw className="animate-spin" size={20} />
-                                ) : (
-                                    <>SEND MESSAGE <Mail size={20} /></>
-                                )}
-                            </button>
-                        </form>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isSubmitting ? (
+                                        <RefreshCw className="animate-spin" size={18} />
+                                    ) : (
+                                        <>Send Message <ArrowRight size={18} /></>
+                                    )}
+                                </button>
+                            </form>
+                        </motion.div>
                     </div>
                 </div>
             </section>
 
-            {/* Footer & Contact */}
-            <footer className="relative z-10 pt-32 pb-12 border-t border-white/5 bg-[#020202]">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 mb-20">
-                        <div>
-                            <div className="flex items-center gap-3 mb-8 text-2xl font-black uppercase cursor-pointer" onClick={() => navigate('/')}>
-                                <span>TallyLink</span>
-                            </div>
-                            <p className="text-gray-500 max-w-sm mb-12 text-lg leading-relaxed">
-                                Empowering Indian businesses with real-time financial transparency and AI-driven audits.
-                            </p>
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-4 text-gray-400 font-bold">
-                                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-emerald-400"><User size={18} /></div>
-                                    <span>Lavneet Rathi</span>
-                                </div>
-                                <div className="flex items-center gap-4 text-gray-400 font-bold">
-                                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-blue-400"><Mail size={18} /></div>
-                                    <span>lovneetrathi@gmail.com</span>
-                                </div>
-                                <div className="flex items-center gap-4 text-gray-400 font-bold">
-                                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-purple-400"><Phone size={18} /></div>
-                                    <span>+91 9413821007</span>
-                                </div>
-                            </div>
-                        </div>
+            {/* CTA Section */}
+            <section className="py-32 px-6 relative z-10">
+                <motion.div
+                    variants={scaleIn}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={{ once: true }}
+                    className="max-w-4xl mx-auto text-center"
+                >
+                    <div className="relative p-12 md:p-16 rounded-3xl overflow-hidden">
+                        {/* Background gradient */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-cyan-600/20 via-blue-600/20 to-violet-600/20 blur-xl" />
+                        <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent border border-white/[0.1] rounded-3xl" />
 
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-12">
-                            <div>
-                                <h5 className="text-white font-black mb-6 uppercase tracking-widest text-xs">Product</h5>
-                                <ul className="space-y-4 text-gray-500 font-bold text-sm">
-                                    <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">AI Audit</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Mobile App</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
-                                </ul>
-                            </div>
-                            <div>
-                                <h5 className="text-white font-black mb-6 uppercase tracking-widest text-xs">Legal</h5>
-                                <ul className="space-y-4 text-gray-500 font-bold text-sm">
-                                    <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition-colors">Privacy Policy</button></li>
-                                    <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Terms of Service</button></li>
-                                    <li><button onClick={() => navigate('/refund')} className="hover:text-white transition-colors">Refund Policy</button></li>
-                                </ul>
-                            </div>
-                            <div>
-                                <h5 className="text-white font-black mb-6 uppercase tracking-widest text-xs">Connect</h5>
-                                <ul className="space-y-4 text-gray-500 font-bold text-sm">
-                                    <li><a href="#" className="hover:text-white transition-colors">Telegram Bot</a></li>
-                                    <li><a href="#" className="hover:text-white transition-colors">Support</a></li>
-                                </ul>
+                        <div className="relative">
+                            <h2 className="text-4xl md:text-5xl font-black tracking-tight mb-6">
+                                Ready to Transform Your Business?
+                            </h2>
+                            <p className="text-gray-400 text-lg mb-8 max-w-2xl mx-auto">
+                                Join 10,000+ businesses already using TallyLink to modernize their financial operations.
+                            </p>
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                                <button
+                                    onClick={() => navigate('/login')}
+                                    className="px-8 py-4 bg-white text-gray-900 font-bold rounded-xl hover:scale-105 transition-transform"
+                                >
+                                    Start Free Trial
+                                </button>
+                                <button
+                                    onClick={() => navigate('/onboarding')}
+                                    className="px-8 py-4 bg-white/10 backdrop-blur-sm border border-white/20 font-bold rounded-xl hover:bg-white/20 transition-all"
+                                >
+                                    Download App
+                                </button>
                             </div>
                         </div>
                     </div>
+                </motion.div>
+            </section>
 
-                    <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-gray-600 font-black text-xs uppercase tracking-[0.2em]">
-                        <p>© 2026 LIVEKEEPING. ALL RIGHTS RESERVED.</p>
-                        <div className="flex gap-12">
-                            <span>MADE IN INDIA</span>
-                            <span>VERSION 2.0.0</span>
+            {/* Footer */}
+            <footer className="relative z-10 pt-20 pb-10 border-t border-white/[0.05]">
+                <div className="max-w-7xl mx-auto px-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-12 mb-16">
+                        {/* Brand */}
+                        <div className="lg:col-span-2">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+                                    <RefreshCw size={18} className="text-white" />
+                                </div>
+                                <span className="font-black text-xl">TallyLink</span>
+                            </div>
+                            <p className="text-gray-500 max-w-sm mb-6 leading-relaxed">
+                                Empowering Indian businesses with real-time financial transparency. Your Tally data, everywhere.
+                            </p>
+                            <div className="flex items-center gap-4 text-gray-500">
+                                <a href="#" className="hover:text-white transition-colors">
+                                    <Globe size={20} />
+                                </a>
+                                <a href="#" className="hover:text-white transition-colors">
+                                    <Mail size={20} />
+                                </a>
+                                <a href="#" className="hover:text-white transition-colors">
+                                    <Phone size={20} />
+                                </a>
+                            </div>
+                        </div>
+
+                        {/* Links */}
+                        <div>
+                            <h5 className="font-bold mb-4 text-sm uppercase tracking-wider text-gray-400">Product</h5>
+                            <ul className="space-y-3 text-gray-500">
+                                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
+                                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                                <li><a href="#" className="hover:text-white transition-colors">Mobile App</a></li>
+                                <li><a href="#" className="hover:text-white transition-colors">API</a></li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h5 className="font-bold mb-4 text-sm uppercase tracking-wider text-gray-400">Legal</h5>
+                            <ul className="space-y-3 text-gray-500">
+                                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition-colors">Privacy Policy</button></li>
+                                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition-colors">Terms of Service</button></li>
+                                <li><button onClick={() => navigate('/refund')} className="hover:text-white transition-colors">Refund Policy</button></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* Bottom */}
+                    <div className="pt-8 border-t border-white/[0.05] flex flex-col md:flex-row justify-between items-center gap-4 text-gray-600 text-sm">
+                        <p>© 2026 TallySync. All rights reserved.</p>
+                        <div className="flex items-center gap-6">
+                            <span>Made with ❤️ in India</span>
+                            <span>v2.1.0</span>
                         </div>
                     </div>
                 </div>

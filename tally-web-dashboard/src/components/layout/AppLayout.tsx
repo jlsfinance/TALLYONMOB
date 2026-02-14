@@ -6,9 +6,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
-    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock
+    Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock,
+    LineChart, Building2, Sparkles, LogOut, ArrowLeftRight
 } from 'lucide-react';
-import { Button } from '@/components/ui/GlassUI';
 
 // Navigation Item
 const NavItem = memo(({
@@ -17,16 +17,16 @@ const NavItem = memo(({
     return (
         <Link to={to}>
             <div className={`
-                flex items-center gap-3 px-3 py-3 rounded-[var(--radius-lg)] mb-1.5
-                transition-all duration-300 group
+                flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] mb-0.5
+                transition-all duration-150 group text-sm
                 ${active
-                    ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary-glow)] ring-1 ring-white/10'
-                    : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)] hover:text-[var(--on-surface)]'
+                    ? 'bg-[var(--primary)] text-white font-semibold shadow-[var(--shadow-sm)]'
+                    : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] hover:text-[var(--on-surface)] font-medium'
                 }
-                ${collapsed ? 'justify-center px-0' : ''}
+                ${collapsed ? 'justify-center px-2' : ''}
             `}>
-                <span className={`flex-shrink-0 transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>{icon}</span>
-                {!collapsed && <span className="font-bold text-xs uppercase tracking-[1px]">{label}</span>}
+                <span className="flex-shrink-0">{icon}</span>
+                {!collapsed && <span className="truncate">{label}</span>}
             </div>
         </Link>
     );
@@ -48,43 +48,53 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
 
     const handleGlobalRefresh = () => {
-        // Dispatch a custom event that pages can listen to
         window.dispatchEvent(new CustomEvent('app-refresh-trigger'));
     };
+
+    // Close mobile menu on route change
+    useEffect(() => {
+        setShowMobileMenu(false);
+    }, [location.pathname]);
 
     const isAdmin = user?.email === 'lovneetrathi@gmail.com';
 
     const tallyNavItems = useMemo(() => {
         const items = [
-            { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-            { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
-            { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
-            { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
-            { to: '/purchases', icon: <Package size={20} />, label: 'Purchases' },
-            { to: '/stock', icon: <Box size={20} />, label: 'Stock Summary' },
-            { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
-            { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
-            { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Reports' },
+            { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+            { to: '/vouchers', icon: <FileText size={18} />, label: 'Vouchers' },
+            { to: '/ledgers', icon: <Users size={18} />, label: 'Parties' },
+            { to: '/sales', icon: <TrendingUp size={18} />, label: 'Sales' },
+            { to: '/purchases', icon: <Package size={18} />, label: 'Purchases' },
+            { to: '/stock', icon: <Box size={18} />, label: 'Stock Summary' },
+            { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
+            { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
+            { to: '/sales-analytics', icon: <LineChart size={18} />, label: 'Sales Analytics' },
+            { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
+            { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
+            { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Reports' },
         ];
         if (isAdmin) {
-            items.push({ to: '/admin', icon: <Lock size={20} />, label: 'Super Admin' });
+            items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
         }
         return items;
     }, [isAdmin]);
 
     const billingNavItems = useMemo(() => {
         const items = [
-            { to: '/', icon: <LayoutDashboard size={20} />, label: 'Billing Desk' },
-            { to: '/create-invoice', icon: <Plus size={20} />, label: 'Create Invoice' },
-            { to: '/sales', icon: <FileText size={20} />, label: 'Recent Invoices' },
-            { to: '/ledgers', icon: <Users size={20} />, label: 'Customers' },
-            { to: '/stock', icon: <Box size={20} />, label: 'Inventory' },
-            { to: '/profit-loss', icon: <BarChart3 size={20} />, label: 'Profit & Loss' },
-            { to: '/balance-sheet', icon: <Scale size={20} />, label: 'Balance Sheet' },
-            { to: '/gst-reports', icon: <Shield size={20} />, label: 'GST Filing' },
+            { to: '/', icon: <LayoutDashboard size={18} />, label: 'Billing Desk' },
+            { to: '/create-invoice', icon: <Plus size={18} />, label: 'Create Invoice' },
+            { to: '/sales', icon: <FileText size={18} />, label: 'Recent Invoices' },
+            { to: '/ledgers', icon: <Users size={18} />, label: 'Customers' },
+            { to: '/stock', icon: <Box size={18} />, label: 'Inventory' },
+            { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
+            { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
+            { to: '/sales-analytics', icon: <LineChart size={18} />, label: 'Sales Analytics' },
+            { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
+            { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
+            { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Filing' },
         ];
         if (isAdmin) {
-            items.push({ to: '/admin', icon: <Lock size={20} />, label: 'Super Admin' });
+            items.push({ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' });
         }
         return items;
     }, [isAdmin]);
@@ -92,23 +102,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const navItems = appMode === 'tally' ? tallyNavItems : billingNavItems;
 
     const bottomNavItems = useMemo(() => appMode === 'tally' ? [
-        { to: '/', icon: <LayoutDashboard size={22} />, label: 'Home' },
-        { to: '/vouchers', icon: <FileText size={22} />, label: 'Vouchers' },
-        { to: '/ledgers', icon: <Users size={22} />, label: 'Parties' },
-        { to: '/sales', icon: <TrendingUp size={22} />, label: 'Sales' },
+        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
+        { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
+        { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
+        { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
     ] : [
-        { to: '/', icon: <LayoutDashboard size={22} />, label: 'Home' },
-        { to: '/create-invoice', icon: <Plus size={22} />, label: 'Bill' },
-        { to: '/sales', icon: <FileText size={22} />, label: 'Sales' },
-        { to: '/ledgers', icon: <Users size={22} />, label: 'Parties' },
+        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
+        { to: '/create-invoice', icon: <Plus size={20} />, label: 'Bill' },
+        { to: '/sales', icon: <FileText size={20} />, label: 'Sales' },
+        { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
     ], [appMode]);
 
     return (
-        <div className="flex min-h-screen relative overflow-x-hidden">
-            {/* Nebula Mesh Background */}
-            <div className="nebula-mesh" />
+        <div className="flex min-h-screen relative overflow-x-hidden bg-[var(--background)]">
 
-            {/* Mobile Sidebar Overlay */}
+            {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
             <AnimatePresence>
                 {showMobileMenu && (
                     <>
@@ -117,151 +125,161 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setShowMobileMenu(false)}
-                            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm md:hidden"
+                            className="fixed inset-0 z-[60] bg-black/40 md:hidden"
                         />
                         <motion.aside
                             initial={{ x: '-100%' }}
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="fixed top-0 left-0 h-full w-[280px] z-[70] bg-[var(--surface)] border-r border-[var(--border)] md:hidden p-6 flex flex-col pt-safe"
+                            transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+                            className="fixed top-0 left-0 h-full w-[280px] z-[70] bg-[var(--surface)] border-r border-[var(--border)] md:hidden flex flex-col"
                         >
-                            <div className="flex items-center justify-between mb-8">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white font-black shadow-lg">L</div>
-                                    <span className="font-black text-xl tracking-tight text-[var(--on-surface)]">BillBook</span>
+                            {/* Mobile Sidebar Header */}
+                            <div className="flex items-center justify-between px-5 h-16 border-b border-[var(--border)]">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--primary)] flex items-center justify-center text-white">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
+                                        </svg>
+                                    </div>
+                                    <span className="font-bold text-base text-[var(--on-surface)]">TallyLink</span>
                                 </div>
-                                <button onClick={() => setShowMobileMenu(false)} className="p-2 rounded-xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
-                                    <X size={20} />
+                                <button onClick={() => setShowMobileMenu(false)} className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
+                                    <X size={18} />
                                 </button>
                             </div>
 
                             {/* Company Selector */}
                             {selectedCompany && (
-                                <div className="mb-6 p-4 rounded-3xl bg-[var(--surface-variant)] border border-[var(--glass-border)]">
-                                    <p className="text-[9px] font-black text-[var(--primary)] uppercase tracking-widest mb-2 opacity-70">Active Company</p>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedCompany.id}
-                                            onChange={(e) => {
-                                                const company = companies.find((c: any) => c.id === e.target.value);
-                                                if (company) selectCompany(company);
-                                                setShowMobileMenu(false);
-                                            }}
-                                            className="w-full appearance-none px-0 py-1 bg-transparent text-sm font-black text-[var(--on-surface)] cursor-pointer focus:outline-none"
-                                        >
-                                            {companies.map((c: any) => (
-                                                <option key={c.id} value={c.id} className="bg-[var(--surface)] text-[var(--on-surface)]">{c.name}</option>
-                                            ))}
-                                        </select>
-                                        <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--primary)]" />
-                                    </div>
+                                <div className="mx-4 mt-4 p-3 rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)]">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">Company</p>
+                                    <select
+                                        value={selectedCompany.id}
+                                        onChange={(e) => {
+                                            const company = companies.find((c: any) => c.id === e.target.value);
+                                            if (company) selectCompany(company);
+                                        }}
+                                        className="w-full appearance-none px-0 py-0.5 bg-transparent text-sm font-semibold text-[var(--on-surface)] cursor-pointer focus:outline-none"
+                                    >
+                                        {companies.map((c: any) => (
+                                            <option key={c.id} value={c.id} className="bg-[var(--surface)] text-[var(--on-surface)]">{c.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
 
-                            <nav className="flex-1 space-y-2 overflow-y-auto">
+                            {/* Nav Items */}
+                            <nav className="flex-1 px-3 py-3 overflow-y-auto">
                                 {navItems.map((item) => (
                                     <Link
                                         key={item.to}
                                         to={item.to}
                                         onClick={() => setShowMobileMenu(false)}
-                                        className={`flex items-center gap-4 p-4 rounded-2xl transition-all ${location.pathname === item.to ? 'bg-[var(--primary)] text-white shadow-lg' : 'text-[var(--on-surface-variant)] active:bg-[var(--surface-active)]'}`}
+                                        className={`flex items-center gap-3 px-3 py-3 rounded-[var(--radius-md)] mb-0.5 transition-all text-sm ${location.pathname === item.to
+                                            ? 'bg-[var(--primary)] text-white font-semibold'
+                                            : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
+                                            }`}
                                     >
                                         {item.icon}
-                                        <span className="font-bold text-[11px] uppercase tracking-widest">{item.label}</span>
+                                        <span>{item.label}</span>
                                     </Link>
                                 ))}
                             </nav>
 
-                            <div className="pt-6 border-t border-[var(--border)] mt-6 space-y-3">
-                                {/* Theme Toggle (Moved from Header) */}
+                            {/* Bottom Actions */}
+                            <div className="p-4 border-t border-[var(--border)] space-y-2">
                                 <button
                                     onClick={toggleTheme}
-                                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-[var(--surface-active)] text-[var(--on-surface)] font-black text-[10px] uppercase tracking-widest"
+                                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-md)] bg-[var(--surface-container)] text-[var(--on-surface)] text-sm font-medium"
                                 >
-                                    <span className="flex items-center gap-3">
-                                        {isDark ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-400" />}
+                                    <span className="flex items-center gap-2.5">
+                                        {isDark ? <Sun size={16} className="text-amber-500" /> : <Moon size={16} className="text-slate-500" />}
                                         {isDark ? 'Light Mode' : 'Dark Mode'}
                                     </span>
-                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${isDark ? 'bg-amber-400/20' : 'bg-slate-400/20'}`}>
-                                        <div className={`absolute top-1 w-2 h-2 rounded-full transition-all ${isDark ? 'right-1 bg-amber-400' : 'left-1 bg-slate-400'}`} />
-                                    </div>
                                 </button>
 
-                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--surface-variant)]">
-                                    <div className="w-10 h-10 rounded-full bg-[var(--primary-glow)] flex items-center justify-center text-[var(--primary)] font-black uppercase">
-                                        {user?.email?.charAt(0)}
+                                <div className="flex items-center gap-3 p-3 rounded-[var(--radius-md)] bg-[var(--surface-container)]">
+                                    <div className="w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--primary)] flex items-center justify-center text-white font-bold text-sm">
+                                        {user?.email?.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-black text-[var(--on-surface)] uppercase truncate">{user?.email?.split('@')[0]}</p>
-                                        <button onClick={() => signOut()} className="text-[9px] font-bold text-red-500 uppercase tracking-widest mt-0.5">Logout Session</button>
+                                        <p className="text-sm font-semibold text-[var(--on-surface)] truncate">{user?.email?.split('@')[0]}</p>
+                                        <button onClick={() => signOut()} className="text-xs text-[var(--error)] font-medium mt-0.5">Sign Out</button>
                                     </div>
                                 </div>
-                                <Button className="w-full justify-center gap-2 py-4 rounded-2xl" variant="primary" onClick={() => navigate('/select-mode')}>
-                                    <RefreshCw size={16} />
+
+                                <button
+                                    onClick={() => navigate('/select-mode')}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--on-surface-variant)] text-sm font-medium hover:bg-[var(--surface-hover)] transition-colors"
+                                >
+                                    <ArrowLeftRight size={14} />
                                     Switch Mode
-                                </Button>
+                                </button>
                             </div>
                         </motion.aside>
                     </>
                 )}
             </AnimatePresence>
 
-            {/* Desktop Sidebar */}
+            {/* ===== DESKTOP SIDEBAR ===== */}
             <aside
                 className={`
                     fixed top-0 left-0 h-full z-40 hidden md:flex flex-col
-                    bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border-r border-[var(--glass-border)]
-                    transition-all duration-300
-                    ${sidebarOpen ? 'w-64' : 'w-20'}
+                    bg-[var(--surface)] border-r border-[var(--border)]
+                    transition-all duration-200
+                    ${sidebarOpen ? 'w-60' : 'w-[68px]'}
                 `}
             >
-                {/* Logo Section */}
-                <div className="h-20 flex items-center justify-between px-5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-[var(--radius-md)] bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center text-white font-black shadow-lg shadow-[var(--primary-glow)]">
-                            L
+                {/* Logo */}
+                <div className="h-16 flex items-center justify-between px-4 border-b border-[var(--border)]">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--primary)] flex items-center justify-center text-white flex-shrink-0">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
+                            </svg>
                         </div>
                         {sidebarOpen && (
                             <div>
-                                <h1 className="font-black text-lg tracking-tight text-[var(--on-surface)]">BillBook</h1>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--primary)] -mt-1 opacity-70">
-                                    {appMode === 'tally' ? 'Fin-OS' : 'Billing'}
+                                <h1 className="font-bold text-sm text-[var(--on-surface)] leading-none">TallyLink</h1>
+                                <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--primary)] mt-0.5">
+                                    {appMode === 'tally' ? 'Cloud' : 'Billing'}
                                 </p>
                             </div>
                         )}
                     </div>
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--text-muted)] transition-colors"
+                        className="p-1.5 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--text-muted)] transition-colors"
                     >
-                        {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+                        {sidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
                     </button>
                 </div>
 
                 {/* Company Selector (Desktop) */}
                 {sidebarOpen && selectedCompany && (
-                    <div className="p-4 mx-3 mb-2 rounded-[var(--radius-lg)] bg-[var(--surface-variant)] border border-[var(--glass-border)]">
-                        <div className="relative">
-                            <select
-                                value={selectedCompany.id}
-                                onChange={(e) => {
-                                    const company = companies.find((c: any) => c.id === e.target.value);
-                                    if (company) selectCompany(company);
-                                }}
-                                className="w-full appearance-none px-3 py-2 pr-8 bg-transparent text-sm font-black text-[var(--on-surface)] cursor-pointer focus:outline-none"
-                            >
-                                {companies.map((c: any) => (
-                                    <option key={c.id} value={c.id} className="bg-[var(--surface)] text-[var(--on-surface)]">{c.name}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--primary)]" />
+                    <div className="px-3 py-3">
+                        <div className="p-3 rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)]">
+                            <div className="relative">
+                                <select
+                                    value={selectedCompany.id}
+                                    onChange={(e) => {
+                                        const company = companies.find((c: any) => c.id === e.target.value);
+                                        if (company) selectCompany(company);
+                                    }}
+                                    className="w-full appearance-none pr-6 bg-transparent text-sm font-semibold text-[var(--on-surface)] cursor-pointer focus:outline-none"
+                                >
+                                    {companies.map((c: any) => (
+                                        <option key={c.id} value={c.id} className="bg-[var(--surface)] text-[var(--on-surface)]">{c.name}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* Navigation */}
-                <nav className="flex-1 p-3 overflow-y-auto">
+                <nav className="flex-1 px-3 py-2 overflow-y-auto">
                     {navItems.map((item) => (
                         <NavItem
                             key={item.to}
@@ -272,42 +290,41 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     ))}
                 </nav>
 
-                {/* Bottom Section */}
-                <div className="p-3 border-t border-[var(--border)] space-y-2">
+                {/* Bottom */}
+                <div className="px-3 py-3 border-t border-[var(--border)] space-y-1.5">
                     <button
                         onClick={toggleTheme}
                         className={`
-                            w-full flex items-center gap-3 px-3 py-3 rounded-[var(--radius-lg)]
-                            text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)] hover:text-[var(--on-surface)]
+                            w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)]
+                            text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] text-sm font-medium
                             transition-all ${sidebarOpen ? '' : 'justify-center'}
                         `}
                     >
-                        {isDark ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} className="text-indigo-400" />}
-                        {sidebarOpen && <span className="text-[10px] font-black uppercase tracking-widest">{isDark ? 'Solar Mode' : 'Lunar Mode'}</span>}
+                        {isDark ? <Sun size={18} className="text-amber-500" /> : <Moon size={18} className="text-slate-500" />}
+                        {sidebarOpen && <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>}
                     </button>
 
                     {user && sidebarOpen && (
-                        <div className="mt-4 p-4 rounded-2xl bg-[var(--surface-variant)] border border-[var(--border)] overflow-hidden relative group">
-                            <div className="absolute inset-0 bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] opacity-0 group-hover:opacity-5 transition-opacity" />
-                            <div className="relative z-10 flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center font-black text-sm shadow-lg shadow-[var(--primary-glow)]">
+                        <div className="p-3 rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)]">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--primary)] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
                                     {user.email?.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] font-black text-[var(--on-surface)] truncate uppercase tracking-tight">{user.email?.split('@')[0]}</p>
-                                    <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-xs font-semibold text-[var(--on-surface)] truncate">{user.email?.split('@')[0]}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
                                         <button
                                             onClick={() => signOut()}
-                                            className="text-[9px] font-bold text-[var(--error)] hover:underline uppercase tracking-widest"
+                                            className="text-[10px] font-medium text-[var(--error)] hover:underline"
                                         >
-                                            Logout
+                                            Sign Out
                                         </button>
-                                        <div className="w-1 h-1 rounded-full bg-[var(--border)]" />
+                                        <span className="text-[var(--border)]">•</span>
                                         <button
                                             onClick={() => navigate('/select-mode')}
-                                            className="text-[9px] font-bold text-[var(--primary)] hover:underline uppercase tracking-widest"
+                                            className="text-[10px] font-medium text-[var(--primary)] hover:underline"
                                         >
-                                            Swap
+                                            Switch
                                         </button>
                                     </div>
                                 </div>
@@ -317,55 +334,53 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
             </aside>
 
-            {/* Main Content Area */}
+            {/* ===== MAIN CONTENT ===== */}
             <main className={`
                 flex-1 min-h-screen
-                transition-all duration-300
-                ${sidebarOpen ? 'md:ml-64' : 'md:ml-20'}
+                transition-all duration-200
+                ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
-                {/* Mobile Header (Optimized) */}
-                <header className="md:hidden sticky top-0 z-50 h-16 flex items-center gap-3 px-4 bg-[var(--surface)]/95 backdrop-blur-2xl border-b border-[var(--border)] shadow-sm">
-                    {/* Left: Menu Handle */}
-                    <button onClick={() => setShowMobileMenu(true)} className="p-2.5 rounded-xl bg-[var(--surface-variant)] text-[var(--on-surface-variant)] active:scale-90 transition-all">
+                {/* Mobile Header */}
+                <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-3 px-4 bg-[var(--surface)] border-b border-[var(--border)]">
+                    <button onClick={() => setShowMobileMenu(true)} className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
                         <Menu size={20} />
                     </button>
 
-                    {/* Center: Greeting & Company Info */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-center py-1" onClick={() => setShowMobileMenu(true)}>
-                        <p className="text-[clamp(8px,2.5vw,9.5px)] font-black text-[var(--primary)] uppercase tracking-[1px] leading-none mb-1 opacity-90 truncate">
-                            {getGreeting()}, {user?.email?.split('@')[0]}
+                    <div className="flex-1 min-w-0" onClick={() => setShowMobileMenu(true)}>
+                        <p className="text-[10px] font-semibold text-[var(--primary)] uppercase tracking-wider leading-none mb-0.5">
+                            {getGreeting()}
                         </p>
-                        <h2 className="text-[clamp(11px,3.8vw,14px)] font-extrabold text-[var(--on-surface)] uppercase leading-none line-clamp-2 tracking-tighter">
+                        <h2 className="text-sm font-bold text-[var(--on-surface)] truncate leading-tight">
                             {selectedCompany?.name || 'Select Company'}
                         </h2>
                     </div>
 
-                    {/* Right: Plus Icon + Refresh (Replacing Theme) */}
-                    <div className="flex items-center gap-1.5 ml-auto">
-                        <Link to="/create-invoice" className="p-2.5 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] text-white shadow-lg active:scale-95 transition-all">
-                            <Plus size={18} />
+                    <div className="flex items-center gap-1.5">
+                        <Link to="/create-invoice" className="p-2 rounded-[var(--radius-sm)] bg-[var(--primary)] text-white shadow-[var(--shadow-sm)]">
+                            <Plus size={16} />
                         </Link>
                         <button
                             onClick={handleGlobalRefresh}
-                            className="p-2.5 rounded-xl bg-[var(--surface-active)] text-[var(--primary)] active:scale-95 transition-all shadow-sm ring-1 ring-[#0ea5e9]/10"
+                            className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
                         >
-                            <RefreshCw size={18} />
+                            <RefreshCw size={16} />
                         </button>
                     </div>
                 </header>
 
                 {/* Desktop Header */}
-                <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end px-6 bg-[var(--glass-bg)]/50 backdrop-blur-[var(--glass-blur)] border-b border-[var(--glass-border)]">
-                    <div className="flex items-center gap-3">
+                <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-[var(--surface)]/80 backdrop-blur-lg border-b border-[var(--border)]">
+                    <div />
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={toggleTheme}
-                            className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
+                            className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
                         >
-                            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                            {isDark ? <Sun size={16} /> : <Moon size={16} />}
                         </button>
-                        <button className="relative p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
-                            <Bell size={18} />
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-[var(--primary)] rounded-full ring-2 ring-[var(--surface)]" />
+                        <button className="relative p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
+                            <Bell size={16} />
+                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--error)] rounded-full" />
                         </button>
                     </div>
                 </header>
@@ -375,9 +390,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     <AnimatePresence mode="wait">
                         <motion.div
                             key={location.pathname}
-                            initial={{ opacity: 0, y: 8 }}
+                            initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -8 }}
+                            exit={{ opacity: 0 }}
                             transition={{ duration: 0.15 }}
                         >
                             {children}
@@ -386,21 +401,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
             </main>
 
-            {/* Mobile Bottom Navigation */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--glass-bg)] backdrop-blur-xl border-t border-[var(--glass-border)] safe-area-pb rounded-t-[32px] overflow-hidden shadow-[0_-8px_30px_rgb(0,0,0,0.12)]">
-                <div className="flex items-center justify-around h-20 px-4">
+            {/* ===== MOBILE BOTTOM NAV ===== */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--surface)] border-t border-[var(--border)] safe-area-pb">
+                <div className="flex items-center justify-around h-16 px-2">
                     {bottomNavItems.map((item) => {
                         const isActive = location.pathname === item.to;
                         return (
                             <Link key={item.to} to={item.to} className="flex-1">
                                 <div className={`
-                                    flex flex-col items-center justify-center gap-1.5 py-2 transition-all duration-300
-                                    ${isActive ? 'text-[var(--primary)] scale-110' : 'text-[var(--text-muted)] opacity-60'}
+                                    flex flex-col items-center justify-center gap-1 py-1.5 transition-all duration-150
+                                    ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
                                 `}>
-                                    <div className={`${isActive ? 'bg-[var(--primary-glow)] p-2 rounded-xl shadow-lg ring-1 ring-[#0ea5e9]/20' : ''}`}>
+                                    <div className={`p-1.5 rounded-[var(--radius-sm)] ${isActive ? 'bg-[var(--primary-container)]' : ''}`}>
                                         {item.icon}
                                     </div>
-                                    <span className={`text-[8px] font-black uppercase tracking-[2px] ${isActive ? 'opacity-100' : 'opacity-80'}`}>{item.label}</span>
+                                    <span className={`text-[10px] font-semibold ${isActive ? '' : 'opacity-70'}`}>{item.label}</span>
                                 </div>
                             </Link>
                         );

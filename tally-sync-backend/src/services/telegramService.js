@@ -20,6 +20,7 @@ class TelegramService {
             keyboard: [
                 [{ text: "📊 Summary" }, { text: "📡 Status" }],
                 [{ text: "📖 Ledgers" }, { text: "📑 Vouchers" }],
+                [{ text: "💰 P&L" }, { text: "🔎 Outstanding" }],
                 [{ text: "🏢 Change Company" }, { text: "🛠 Help" }]
             ],
             resize_keyboard: true,
@@ -121,16 +122,32 @@ class TelegramService {
                 await this.handleSelectCompany(chatId);
                 break;
 
+            case '💰 p&l':
+                await this.handleAIQuery(chatId, 'profit loss dikhao');
+                break;
+
+            case '🔎 outstanding':
+                await this.handleAIQuery(chatId, 'outstanding receivable report');
+                break;
+
             case '/help':
             case '🛠 help':
-                await this.sendMessage(chatId, "🛠 *TallyLink Bot Help*\n\n" +
-                    "• `/select` - Choose a specific company 🏢\n" +
-                    "• `/status` - Check sync status 📡\n" +
-                    "• `/summary` - View business summary 📊\n" +
-                    "• `/ledgers` - Top 10 ledgers 📖\n" +
-                    "• `/vouchers` - Recent entries 📑\n" +
-                    "• `/auth` - Link your account 🔑\n\n" +
-                    "You can also use the buttons below or ask me naturally!");
+                await this.sendMessage(chatId, "🛠 <b>TallyLink Bot Help</b>\n\n" +
+                    "<b>📋 Commands:</b>\n" +
+                    "• /select - Choose a company 🏢\n" +
+                    "• /status - Check sync status 📡\n" +
+                    "• /summary - Business summary 📊\n" +
+                    "• /ledgers - Top 10 ledgers 📖\n" +
+                    "• /vouchers - Recent entries 📑\n\n" +
+                    "<b>🔍 Smart Search (just type!):</b>\n" +
+                    "• <i>Ramesh ka balance</i> → Party balance\n" +
+                    "• <i>aaj ki sale</i> → Today's sales\n" +
+                    "• <i>profit dikhao</i> → P&amp;L quick view\n" +
+                    "• <i>outstanding report</i> → Receivable list\n" +
+                    "• <i>top customers</i> → Top 10 by revenue\n" +
+                    "• <i>stock Cement</i> → Item stock check\n" +
+                    "• <i>pichle mahine purchase</i> → Last month's purchases\n\n" +
+                    "💡 <i>Hindi ya English mein kuch bhi puchho!</i>");
                 break;
 
             default:
@@ -291,11 +308,11 @@ class TelegramService {
     }
 
     /**
-     * handleAIQuery - Acts as a "Free Financial AI"
-     * Analyzes natural language and fetches relevant Tally data.
+     * handleAIQuery - Smart Financial AI with Hindi + English NLP
+     * Understands natural language queries and fetches relevant Tally data
      */
     async handleAIQuery(chatId, text) {
-        const lowerText = text.toLowerCase();
+        const lowerText = text.toLowerCase().trim();
 
         try {
             const { data: user } = await supabase.from('user_profiles').select('id').eq('telegram_chat_id', chatId).single();
@@ -307,72 +324,298 @@ class TelegramService {
                 companyIds = [selected.id];
             } else {
                 const { data: companies } = await supabase.from('companies').select('id').or(`owner_id.eq.${user.id},user_id.eq.${user.id}`);
+                if (!companies || !companies.length) return this.sendMessage(chatId, "📉 No companies found.");
                 companyIds = companies.map(c => c.id);
             }
 
             if (!companyIds.length) return this.sendMessage(chatId, "📉 No companies found.");
-            let header = "🤖 <b>AI Response:</b> ";
 
-            if (selected) {
-                header += `<i>(Filtering for ${this.escapeHtml(selected.name)})</i>\n`;
-            } else {
-                header += `<i>(Across all companies)</i>\n`;
-            }
+            const companyLabel = selected ? this.escapeHtml(selected.name) : 'All Companies';
+            const header = `🤖 <b>Smart Search</b> | <i>${companyLabel}</i>\n\n`;
 
-            // 1. Check for "Balance of X" or "X balance"
-            if (lowerText.includes('balance') || lowerText.includes('kitna hai') || lowerText.includes('kaise')) {
-                // ... (existing logic)
-                let keywords = lowerText
-                    .replace('balance', '')
-                    .replace('kitna hai', '')
-                    .replace('kaise', '')
-                    .replace('batana', '')
-                    .replace('dikhao', '')
-                    .replace('tell me', '')
-                    .replace('show', '')
-                    .trim();
+            // ====== INTENT DETECTION ======
 
-                if (keywords.length > 1) {
+            // --- INTENT 1: Party/Ledger Balance ---
+            const balancePatterns = /(?:balance|bakaya|baki|hisaab|hisab|ledger|khata|account|udhar|jama)\s*(?:of|ka|ki|ke|for|dikha|batao|bata)?\s*(.*)/i;
+            const reverseBalancePatterns = /(.*?)\s*(?:ka|ki|ke)\s*(?:balance|bakaya|baki|hisaab|hisab|khata|udhar)/i;
+            const balanceMatch = lowerText.match(balancePatterns) || lowerText.match(reverseBalancePatterns);
+
+            if (balanceMatch || lowerText.includes('balance') || lowerText.includes('bakaya') || lowerText.includes('hisaab') || lowerText.includes('hisab')) {
+                let searchName = (balanceMatch ? balanceMatch[1] : '').trim();
+                // Clean common noise words
+                searchName = searchName.replace(/\b(show|me|the|mera|mere|meri|total|ka|ki|ke|hai|kya|kitna|kitni|please|bhai|sir|ji|do|de|batao|bata|dikha|dikhao)\b/gi, '').trim();
+
+                if (searchName.length > 1) {
                     const { data: ledgers } = await supabase
                         .from('ledgers')
-                        .select('name, closing_balance')
+                        .select('name, current_balance, parent, phone, email, gstin')
                         .in('company_id', companyIds)
-                        .ilike('name', `%${keywords}%`)
-                        .limit(5);
+                        .ilike('name', `%${searchName}%`)
+                        .limit(8);
 
                     if (ledgers && ledgers.length === 1) {
-                        const ledger = ledgers[0];
-                        const bal = Number(ledger.closing_balance);
-                        return this.sendMessage(chatId, `${header}The current balance for <b>${this.escapeHtml(ledger.name)}</b> is <b>₹${Math.abs(bal).toLocaleString('en-IN')} ${bal >= 0 ? 'Dr' : 'Cr'}</b>.`);
+                        const l = ledgers[0];
+                        const bal = Number(l.current_balance || 0);
+                        let msg = `${header}📒 <b>${this.escapeHtml(l.name)}</b>\n\n`;
+                        msg += `💰 Balance: <b>₹${Math.abs(bal).toLocaleString('en-IN')} ${bal >= 0 ? 'Dr' : 'Cr'}</b>\n`;
+                        if (l.parent) msg += `📁 Group: ${this.escapeHtml(l.parent)}\n`;
+                        if (l.gstin) msg += `🔖 GSTIN: <code>${this.escapeHtml(l.gstin)}</code>\n`;
+                        if (l.phone) msg += `📞 Phone: ${this.escapeHtml(l.phone)}\n`;
+                        if (l.email) msg += `📧 Email: ${this.escapeHtml(l.email)}\n`;
+                        return this.sendMessage(chatId, msg);
                     } else if (ledgers && ledgers.length > 1) {
-                        let suggestionMsg = `🔍 Mujhse milte-julte <b>${ledgers.length}</b> account mile hain. Aap kiski baat kar rahe hain?\n\n`;
-                        ledgers.forEach(l => {
-                            suggestionMsg += `• <code>${this.escapeHtml(l.name)}</code>\n`;
+                        let msg = `${header}🔍 <b>${ledgers.length} matching accounts found:</b>\n\n`;
+                        ledgers.forEach((l, i) => {
+                            const bal = Number(l.current_balance || 0);
+                            msg += `${i + 1}. <b>${this.escapeHtml(l.name)}</b> — ₹${Math.abs(bal).toLocaleString('en-IN')} ${bal >= 0 ? 'Dr' : 'Cr'}\n`;
                         });
-                        suggestionMsg += `\n<i>Tip: Inme se koi bhi naam copy karke mujhe bhejie, main uska balance nikaal dunga!</i>`;
-                        return this.sendMessage(chatId, suggestionMsg);
+                        msg += `\n<i>💡 Zyada specific naam bhejein for full details</i>`;
+                        return this.sendMessage(chatId, msg);
+                    } else {
+                        return this.sendMessage(chatId, `${header}❌ "<b>${this.escapeHtml(searchName)}</b>" naam se koi account nahi mila.\n\n<i>Try: "Ramesh ka balance" ya "Cash balance"</i>`);
                     }
                 }
             }
 
-            // 2. Check for "Total Sales" or "Kamai"
-            if (lowerText.includes('sales') || lowerText.includes('kamai') || lowerText.includes('becha')) {
-                const { data: sales } = await supabase.from('sales').select('net_amount').in('company_id', companyIds);
-                const total = sales.reduce((s, i) => s + Number(i.net_amount), 0);
-                return this.sendMessage(chatId, `🤖 *AI Response:* Your total sales across all companies is *₹${total.toLocaleString('en-IN')}*. 📈`);
+            // --- INTENT 2: Sales / Revenue Query ---
+            if (/\b(sales|sale|revenue|kamai|bikri|becha|biki|turnover|sell)\b/i.test(lowerText)) {
+                const { start, end, label } = this.extractDateRange(lowerText);
+                const { data: vouchers } = await supabase
+                    .from('vouchers')
+                    .select('grand_total, total_amount')
+                    .in('company_id', companyIds)
+                    .ilike('voucher_type', '%Sales%')
+                    .gte('voucher_date', start)
+                    .lte('voucher_date', end);
+
+                const total = (vouchers || []).reduce((s, v) => s + Math.abs(Number(v.grand_total || v.total_amount || 0)), 0);
+                const count = (vouchers || []).length;
+                let msg = `${header}📈 <b>Sales Summary (${label})</b>\n\n`;
+                msg += `💰 Total Sales: <b>₹${total.toLocaleString('en-IN')}</b>\n`;
+                msg += `📑 Invoices: <b>${count}</b>\n`;
+                if (count > 0) msg += `📊 Avg Invoice: <b>₹${Math.round(total / count).toLocaleString('en-IN')}</b>`;
+                return this.sendMessage(chatId, msg);
             }
 
-            // 3. Check for "Recent Transactions"
-            if (lowerText.includes('transaction') || lowerText.includes('voucher') || lowerText.includes('entry')) {
+            // --- INTENT 3: Purchase Query ---
+            if (/\b(purchase|khareed|khareedari|kharid|buying|buy)\b/i.test(lowerText)) {
+                const { start, end, label } = this.extractDateRange(lowerText);
+                const { data: vouchers } = await supabase
+                    .from('vouchers')
+                    .select('grand_total, total_amount')
+                    .in('company_id', companyIds)
+                    .ilike('voucher_type', '%Purchase%')
+                    .gte('voucher_date', start)
+                    .lte('voucher_date', end);
+
+                const total = (vouchers || []).reduce((s, v) => s + Math.abs(Number(v.grand_total || v.total_amount || 0)), 0);
+                let msg = `${header}🛒 <b>Purchase Summary (${label})</b>\n\n`;
+                msg += `💸 Total Purchases: <b>₹${total.toLocaleString('en-IN')}</b>\n`;
+                msg += `📑 Bills: <b>${(vouchers || []).length}</b>`;
+                return this.sendMessage(chatId, msg);
+            }
+
+            // --- INTENT 4: Profit / Loss ---
+            if (/\b(profit|loss|munafa|nuksan|fayda|margin|nafa|p&l|p\s*and\s*l|kamai)\b/i.test(lowerText)) {
+                const { data: ledgers } = await supabase
+                    .from('ledgers')
+                    .select('name, current_balance, parent')
+                    .in('company_id', companyIds);
+
+                let salesTotal = 0, purchaseTotal = 0, directExp = 0, indirectExp = 0, directInc = 0, indirectInc = 0;
+                (ledgers || []).forEach(l => {
+                    const bal = Math.abs(Number(l.current_balance || 0));
+                    const group = (l.parent || '').toLowerCase();
+                    if (group.includes('sales accounts')) salesTotal += bal;
+                    else if (group.includes('purchase accounts')) purchaseTotal += bal;
+                    else if (group.includes('direct expenses')) directExp += bal;
+                    else if (group.includes('indirect expenses')) indirectExp += bal;
+                    else if (group.includes('direct incomes')) directInc += bal;
+                    else if (group.includes('indirect incomes')) indirectInc += bal;
+                });
+
+                const grossProfit = (salesTotal + directInc) - (purchaseTotal + directExp);
+                const netProfit = grossProfit + indirectInc - indirectExp;
+
+                let msg = `${header}📊 <b>Profit &amp; Loss Quick View</b>\n\n`;
+                msg += `💰 Sales: <b>₹${salesTotal.toLocaleString('en-IN')}</b>\n`;
+                msg += `🛒 Purchases: <b>₹${purchaseTotal.toLocaleString('en-IN')}</b>\n`;
+                msg += `📦 Direct Expenses: ₹${directExp.toLocaleString('en-IN')}\n`;
+                msg += `🏢 Indirect Expenses: ₹${indirectExp.toLocaleString('en-IN')}\n\n`;
+                msg += `${grossProfit >= 0 ? '📈' : '📉'} Gross Profit: <b>₹${Math.abs(grossProfit).toLocaleString('en-IN')} ${grossProfit >= 0 ? '' : '(Loss)'}</b>\n`;
+                msg += `${netProfit >= 0 ? '✅' : '❌'} <b>Net ${netProfit >= 0 ? 'Profit' : 'Loss'}: ₹${Math.abs(netProfit).toLocaleString('en-IN')}</b>`;
+                return this.sendMessage(chatId, msg);
+            }
+
+            // --- INTENT 5: Outstanding / Receivable ---
+            if (/\b(outstanding|receivable|vasool|lena|dena|baaki|pending|udhar|debtors|creditors)\b/i.test(lowerText)) {
+                const isPayable = /\b(dena|pay|creditor|payable)\b/i.test(lowerText);
+                const { data: ledgers } = await supabase
+                    .from('ledgers')
+                    .select('name, current_balance, parent')
+                    .in('company_id', companyIds)
+                    .ilike('parent', isPayable ? '%Sundry Creditors%' : '%Sundry Debtors%')
+                    .order('current_balance', { ascending: isPayable });
+
+                const filtered = (ledgers || []).filter(l => Math.abs(Number(l.current_balance || 0)) > 0);
+                const total = filtered.reduce((s, l) => s + Math.abs(Number(l.current_balance || 0)), 0);
+
+                let msg = `${header}${isPayable ? '💸' : '💰'} <b>${isPayable ? 'Payable (Dena)' : 'Receivable (Lena)'} Report</b>\n\n`;
+                msg += `📊 Total: <b>₹${total.toLocaleString('en-IN')}</b>\n`;
+                msg += `👥 Parties: <b>${filtered.length}</b>\n\n`;
+
+                filtered.slice(0, 10).forEach((l, i) => {
+                    msg += `${i + 1}. ${this.escapeHtml(l.name)} — <b>₹${Math.abs(Number(l.current_balance)).toLocaleString('en-IN')}</b>\n`;
+                });
+
+                if (filtered.length > 10) msg += `\n... and ${filtered.length - 10} more`;
+                return this.sendMessage(chatId, msg);
+            }
+
+            // --- INTENT 6: Top Customers ---
+            if (/\b(top|best|sabse|zyada|biggest)\b.*\b(customer|party|grahak|client)\b/i.test(lowerText)) {
+                const { data: vouchers } = await supabase
+                    .from('vouchers')
+                    .select('party_name, grand_total, total_amount')
+                    .in('company_id', companyIds)
+                    .ilike('voucher_type', '%Sales%');
+
+                const customerMap = {};
+                (vouchers || []).forEach(v => {
+                    const name = v.party_name || 'Cash';
+                    customerMap[name] = (customerMap[name] || 0) + Math.abs(Number(v.grand_total || v.total_amount || 0));
+                });
+                const sorted = Object.entries(customerMap).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+                let msg = `${header}👥 <b>Top 10 Customers</b>\n\n`;
+                sorted.forEach(([name, amount], i) => {
+                    msg += `${i + 1}. <b>${this.escapeHtml(name)}</b> — ₹${Number(amount).toLocaleString('en-IN')}\n`;
+                });
+                return this.sendMessage(chatId, msg);
+            }
+
+            // --- INTENT 7: Top Items / Products ---
+            if (/\b(top|best|sabse|zyada|biggest)\b.*\b(item|product|stock|maal|saman)\b/i.test(lowerText)) {
+                const { data: items } = await supabase
+                    .from('stock_items')
+                    .select('name, closing_value, current_stock, rate')
+                    .in('company_id', companyIds)
+                    .order('closing_value', { ascending: false })
+                    .limit(10);
+
+                let msg = `${header}📦 <b>Top 10 Stock Items</b>\n\n`;
+                (items || []).forEach((item, i) => {
+                    const val = Number(item.closing_value || (item.current_stock * item.rate) || 0);
+                    msg += `${i + 1}. <b>${this.escapeHtml(item.name)}</b>\n`;
+                    msg += `   Qty: ${item.current_stock || 0} | Value: ₹${val.toLocaleString('en-IN')}\n`;
+                });
+                return this.sendMessage(chatId, msg);
+            }
+
+            // --- INTENT 8: Stock Check ---
+            if (/\b(stock|inventory|maal|saman|godown)\b/i.test(lowerText)) {
+                let searchItem = lowerText.replace(/\b(stock|inventory|maal|saman|godown|check|kya|hai|kitna|kitni|of|ka|ki|ke|show|me|the)\b/gi, '').trim();
+                if (searchItem.length > 1) {
+                    const { data: items } = await supabase
+                        .from('stock_items')
+                        .select('name, current_stock, rate, unit, closing_value')
+                        .in('company_id', companyIds)
+                        .ilike('name', `%${searchItem}%`)
+                        .limit(5);
+
+                    if (items && items.length > 0) {
+                        let msg = `${header}📦 <b>Stock Search: "${this.escapeHtml(searchItem)}"</b>\n\n`;
+                        items.forEach(item => {
+                            msg += `• <b>${this.escapeHtml(item.name)}</b>\n`;
+                            msg += `  Qty: ${item.current_stock || 0} ${item.unit || ''} | Rate: ₹${Number(item.rate || 0).toLocaleString('en-IN')}\n`;
+                            msg += `  Value: ₹${Number(item.closing_value || 0).toLocaleString('en-IN')}\n\n`;
+                        });
+                        return this.sendMessage(chatId, msg);
+                    }
+                }
+                // Fallback: show stock summary
+                const { data: items } = await supabase
+                    .from('stock_items')
+                    .select('closing_value')
+                    .in('company_id', companyIds);
+                const totalVal = (items || []).reduce((s, i) => s + Number(i.closing_value || 0), 0);
+                return this.sendMessage(chatId, `${header}📦 <b>Stock Summary</b>\n\nTotal Items: <b>${(items || []).length}</b>\nTotal Value: <b>₹${totalVal.toLocaleString('en-IN')}</b>\n\n<i>Specific item search karo jaise: "stock Sugar" ya "Cement ka stock"</i>`);
+            }
+
+            // --- INTENT 9: Voucher / Transaction Query ---
+            if (/\b(transaction|voucher|entry|recent|aaj|today|kal)\b/i.test(lowerText)) {
                 return this.handleVouchersCommand(chatId);
+            }
+
+            // --- INTENT 10: Direct name search (fuzzy ledger match) ---
+            // If nothing else matches, try to find a ledger with the user's text
+            const cleanedText = lowerText.replace(/\b(ka|ki|ke|hai|kya|show|me|the|tell|mera|mere|meri|please|bhai|sir|ji|do|de|batao|bata|dikha|dikhao)\b/gi, '').trim();
+            if (cleanedText.length > 2) {
+                const { data: ledgers } = await supabase
+                    .from('ledgers')
+                    .select('name, current_balance, parent')
+                    .in('company_id', companyIds)
+                    .ilike('name', `%${cleanedText}%`)
+                    .limit(5);
+
+                if (ledgers && ledgers.length > 0) {
+                    if (ledgers.length === 1) {
+                        const l = ledgers[0];
+                        const bal = Number(l.current_balance || 0);
+                        return this.sendMessage(chatId, `${header}📒 <b>${this.escapeHtml(l.name)}</b>\n\n💰 Balance: <b>₹${Math.abs(bal).toLocaleString('en-IN')} ${bal >= 0 ? 'Dr' : 'Cr'}</b>\n📁 Group: ${this.escapeHtml(l.parent || '-')}`);
+                    }
+                    let msg = `${header}🔍 Ye accounts mile hain:\n\n`;
+                    ledgers.forEach((l, i) => {
+                        const bal = Number(l.current_balance || 0);
+                        msg += `${i + 1}. <b>${this.escapeHtml(l.name)}</b> — ₹${Math.abs(bal).toLocaleString('en-IN')} ${bal >= 0 ? 'Dr' : 'Cr'}\n`;
+                    });
+                    msg += `\n<i>Kisi ek ka poora naam bhejein for details</i>`;
+                    return this.sendMessage(chatId, msg);
+                }
             }
 
             // Fallback to knowledge base
             await this.sendMessage(chatId, this.getSmartResponse(lowerText));
         } catch (error) {
             console.error('AI Query Error:', error);
-            await this.sendMessage(chatId, "🤖 I'm thinking... but I hit a snag. Try asking 'What is my balance?' or 'Show me sales summary'.");
+            await this.sendMessage(chatId, "🤖 Kuch gadbad ho gayi. Try: <i>'Ramesh ka balance'</i> ya <i>'aaj ki sale'</i> ya <i>'profit dikhao'</i>");
         }
+    }
+
+    /**
+     * extractDateRange - Extracts date range from natural language
+     * Supports: today, yesterday, this month, last month, this year, etc.
+     */
+    extractDateRange(text) {
+        const now = new Date();
+        const lower = text.toLowerCase();
+
+        if (/\b(aaj|today)\b/.test(lower)) {
+            const d = now.toISOString().split('T')[0];
+            return { start: d, end: d, label: 'Today' };
+        }
+        if (/\b(kal|yesterday)\b/.test(lower)) {
+            const d = new Date(now - 86400000).toISOString().split('T')[0];
+            return { start: d, end: d, label: 'Yesterday' };
+        }
+        if (/\b(is\s*hafte|this\s*week)\b/.test(lower)) {
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - now.getDay());
+            return { start: weekStart.toISOString().split('T')[0], end: now.toISOString().split('T')[0], label: 'This Week' };
+        }
+        if (/\b(is\s*mahine|this\s*month)\b/.test(lower)) {
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            return { start: monthStart.toISOString().split('T')[0], end: now.toISOString().split('T')[0], label: 'This Month' };
+        }
+        if (/\b(pichle?\s*mahine|last\s*month)\b/.test(lower)) {
+            const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const lmEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+            return { start: lm.toISOString().split('T')[0], end: lmEnd.toISOString().split('T')[0], label: 'Last Month' };
+        }
+
+        // Default: Full Financial Year
+        const fyYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        return { start: `${fyYear}-04-01`, end: `${fyYear + 1}-03-31`, label: `FY ${fyYear}-${(fyYear + 1).toString().slice(2)}` };
     }
 
     async handleAuthCommand(chatId, email) {

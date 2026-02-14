@@ -178,27 +178,56 @@ namespace TallySyncApp.Services
             {
                 var voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
                 
-                var voucherType = transaction.TransactionType;
+                // Normalize voucher type - database may store table names like "VOUCHERS"
+                var rawType = transaction.TransactionType?.Trim().ToUpper() ?? "";
+                
+                // Try to get actual type from voucher data first
+                var typeFromData = voucherData["voucher_type_name"]?.ToString() ??
+                                   voucherData["voucher_type"]?.ToString() ??
+                                   voucherData["type"]?.ToString();
+                
+                if (!string.IsNullOrEmpty(typeFromData))
+                {
+                    rawType = typeFromData.Trim().ToUpper();
+                }
+                
                 var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
                 var partyName = voucherData["party_name"]?.ToString() ?? "";
                 var narration = voucherData["narration"]?.ToString() ?? "";
 
-                // Build the XML based on voucher type
-                switch (voucherType.ToUpper())
+                // Build the XML based on normalized voucher type
+                switch (rawType)
                 {
                     case "SALES":
+                    case "SALE":
+                    case "SALES INVOICE":
                         return GenerateSalesVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                     case "PURCHASE":
+                    case "PURCHASES":
+                    case "PURCHASE INVOICE":
                         return GeneratePurchaseVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                     case "RECEIPT":
+                    case "RECEIPTS":
                         return GenerateReceiptVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                     case "PAYMENT":
+                    case "PAYMENTS":
                         return GeneratePaymentVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                     case "JOURNAL":
+                    case "JOURNALS":
                         return GenerateJournalVoucherXml(companyName, voucherData, voucherDate, narration);
+                    case "VOUCHERS":
+                    case "TRANSACTION":
+                    case "ENTRY":
+                        // Generic type - try to infer from data
+                        if (voucherData["items"] != null)
+                            return GenerateSalesVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
+                        else if (voucherData["cash_bank_ledger"] != null)
+                            return GenerateReceiptVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
+                        else
+                            return GenerateReceiptVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                     default:
-                        SyncLogger.Log($"⚠️ Unsupported voucher type: {voucherType}");
-                        return "";
+                        SyncLogger.Log($"⚠️ Unsupported voucher type: {transaction.TransactionType}, defaulting to Receipt");
+                        return GenerateReceiptVoucherXml(companyName, voucherData, voucherDate, partyName, narration);
                 }
             }
             catch (Exception ex)

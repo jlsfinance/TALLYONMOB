@@ -80,7 +80,7 @@ const AdminDashboardPage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            // Load all companies (admin sees all)
+            // Load all companies (admin sees all) - including address, gstin, phone, email
             const { data: companies } = await supabase
                 .from('companies')
                 .select('*')
@@ -95,12 +95,37 @@ const AdminDashboardPage = () => {
                     if (!userMap[c.owner_id]) {
                         userMap[c.owner_id] = {
                             id: c.owner_id,
-                            companiesCount: 0
+                            email: c.owner_email || null,
+                            companiesCount: 0,
+                            companyNames: []
                         };
                     }
                     userMap[c.owner_id].companiesCount++;
+                    userMap[c.owner_id].companyNames.push(c.name);
                 }
             });
+
+            // Try to fetch user profiles/emails from profiles table
+            try {
+                const ownerIds = Object.keys(userMap);
+                if (ownerIds.length > 0) {
+                    const { data: profiles } = await supabase
+                        .from('profiles')
+                        .select('id, email, full_name, phone')
+                        .in('id', ownerIds);
+
+                    (profiles || []).forEach(p => {
+                        if (userMap[p.id]) {
+                            userMap[p.id].email = p.email || userMap[p.id].email;
+                            userMap[p.id].fullName = p.full_name;
+                            userMap[p.id].phone = p.phone;
+                        }
+                    });
+                }
+            } catch (e) {
+                console.log('Profiles table may not exist, using owner_id only');
+            }
+
             setAllUsers(Object.values(userMap));
 
             // Load settings
@@ -148,39 +173,57 @@ const AdminDashboardPage = () => {
         setSelectedUser(userId);
     };
 
-    // Load full company data
+    // Switch admin to browse a specific company's data in the main app
+    const switchToCompany = (company) => {
+        // Store the company in localStorage so AuthContext picks it up
+        localStorage.setItem('selectedCompanyId', company.id);
+        localStorage.setItem('appMode', 'tally');
+        window.location.href = '/dashboard';
+    };
+
+    // Load full company data with FULL access (no 100 limit)
     const loadCompanyData = async (company) => {
         setLoadingCompanyData(true);
         setSelectedCompany(company);
 
         try {
-            // Load all related data
-            const [ledgers, vouchers, stockItems, groups] = await Promise.all([
-                supabase.from('ledgers').select('*').eq('company_id', company.id).limit(100),
-                supabase.from('vouchers').select('*').eq('company_id', company.id).order('invoice_date', { ascending: false }).limit(100),
-                supabase.from('stock_items').select('*').eq('company_id', company.id).limit(100),
-                supabase.from('groups').select('*').eq('company_id', company.id).limit(100)
+            // Load all related data - admin gets full access (5000 limit)
+            const [ledgers, vouchers, stockItems, pendingTxns] = await Promise.all([
+                supabase.from('ledgers').select('*').eq('company_id', company.id).order('name').limit(5000),
+                supabase.from('vouchers').select('*').eq('company_id', company.id).eq('is_deleted', false).order('voucher_date', { ascending: false }).limit(5000),
+                supabase.from('stock_items').select('*').eq('company_id', company.id).order('name').limit(5000),
+                supabase.from('pending_transactions').select('*').eq('company_id', company.id).order('created_at', { ascending: false }).limit(100)
             ]);
 
-            // Calculate stats
+            // Calculate stats using grand_total (correct field)
             const salesVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Sales');
             const purchaseVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Purchase');
+            const receiptVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Receipt');
+            const paymentVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Payment');
 
-            const totalSales = salesVouchers.reduce((sum, v) => sum + (parseFloat(v.net_amount) || 0), 0);
-            const totalPurchase = purchaseVouchers.reduce((sum, v) => sum + (parseFloat(v.net_amount) || 0), 0);
+            const totalSales = salesVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.grand_total) || parseFloat(v.total_amount) || 0), 0);
+            const totalPurchase = purchaseVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.grand_total) || parseFloat(v.total_amount) || 0), 0);
+            const totalReceipts = receiptVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.total_amount) || 0), 0);
+            const totalPayments = paymentVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.total_amount) || 0), 0);
+
+            // Stock values
+            const totalStockValue = (stockItems.data || []).reduce((sum, s) => sum + Math.abs(parseFloat(s.closing_value) || 0), 0);
 
             setCompanyData({
                 ledgers: ledgers.data || [],
                 vouchers: vouchers.data || [],
                 stockItems: stockItems.data || [],
-                groups: groups.data || [],
+                pendingTxns: pendingTxns.data || [],
                 stats: {
                     ledgersCount: (ledgers.data || []).length,
                     vouchersCount: (vouchers.data || []).length,
                     stockItemsCount: (stockItems.data || []).length,
-                    groupsCount: (groups.data || []).length,
+                    pendingCount: (pendingTxns.data || []).length,
                     totalSales,
                     totalPurchase,
+                    totalReceipts,
+                    totalPayments,
+                    totalStockValue,
                     salesCount: salesVouchers.length,
                     purchaseCount: purchaseVouchers.length
                 }
@@ -272,11 +315,17 @@ const AdminDashboardPage = () => {
                     <div className="modal-header">
                         <div>
                             <h2>{selectedCompany.name}</h2>
-                            <p>GSTIN: {selectedCompany.gstin || 'N/A'} | Owner: {selectedCompany.owner_id?.substring(0, 8)}</p>
+                            <p>GSTIN: {selectedCompany.gstin || 'N/A'} | Phone: {selectedCompany.phone || 'N/A'} | Email: {selectedCompany.email || 'N/A'}</p>
+                            {selectedCompany.address && <p style={{ fontSize: '12px', opacity: 0.7, marginTop: 4 }}>📍 {selectedCompany.address}</p>}
                         </div>
-                        <button className="close-btn" onClick={closeCompanyView}>
-                            <X size={24} />
-                        </button>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <button className="action-btn view" style={{ padding: '8px 16px' }} onClick={() => switchToCompany(selectedCompany)}>
+                                <LayoutDashboard size={16} /> Switch to Company
+                            </button>
+                            <button className="close-btn" onClick={closeCompanyView}>
+                                <X size={24} />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Company Stats */}
@@ -338,8 +387,20 @@ const AdminDashboardPage = () => {
                                     <span className="big-number">{companyData.stats.purchaseCount}</span>
                                 </div>
                                 <div className="overview-card">
-                                    <h4>Groups</h4>
-                                    <span className="big-number">{companyData.stats.groupsCount}</span>
+                                    <h4>Receipts</h4>
+                                    <span className="big-number green">{formatCurrency(companyData.stats.totalReceipts || 0)}</span>
+                                </div>
+                                <div className="overview-card">
+                                    <h4>Payments</h4>
+                                    <span className="big-number orange">{formatCurrency(companyData.stats.totalPayments || 0)}</span>
+                                </div>
+                                <div className="overview-card">
+                                    <h4>Stock Value</h4>
+                                    <span className="big-number">{formatCurrency(companyData.stats.totalStockValue || 0)}</span>
+                                </div>
+                                <div className="overview-card">
+                                    <h4>Pending Entries</h4>
+                                    <span className="big-number">{companyData.stats.pendingCount || 0}</span>
                                 </div>
                             </div>
                         )}
@@ -583,7 +644,16 @@ const AdminDashboardPage = () => {
                             <div className="settings-form">
                                 <div className="form-group">
                                     <label>Download URL</label>
-                                    <input type="url" value={downloadUrl} onChange={(e) => setDownloadUrl(e.target.value)} placeholder="https://..." />
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input type="url" value={downloadUrl} onChange={(e) => setDownloadUrl(e.target.value)} placeholder="https://..." style={{ flex: 1 }} />
+                                        <button
+                                            onClick={() => setDownloadUrl('/TallyLinkSetup.exe')}
+                                            style={{ padding: '0 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}
+                                            title="Use /TallyLinkSetup.exe from public folder"
+                                        >
+                                            Use Local Installer
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="form-group">
                                     <label>App Version</label>
@@ -635,7 +705,8 @@ const AdminDashboardPage = () => {
                         <table>
                             <thead>
                                 <tr>
-                                    <th>User ID</th>
+                                    <th>User</th>
+                                    <th>Email</th>
                                     <th>Companies</th>
                                     <th>Actions</th>
                                 </tr>
@@ -643,7 +714,13 @@ const AdminDashboardPage = () => {
                             <tbody>
                                 {allUsers.map(u => (
                                     <tr key={u.id} className="clickable" onClick={() => loadUserCompanies(u.id)}>
-                                        <td className="user-id">{u.id.substring(0, 20)}...</td>
+                                        <td className="user-id">
+                                            <div>
+                                                <strong>{u.fullName || u.id.substring(0, 12) + '...'}</strong>
+                                                {u.phone && <small style={{ display: 'block', opacity: 0.6 }}>📱 {u.phone}</small>}
+                                            </div>
+                                        </td>
+                                        <td>{u.email || 'N/A'}</td>
                                         <td>
                                             <span className="count-badge">{u.companiesCount} companies</span>
                                         </td>

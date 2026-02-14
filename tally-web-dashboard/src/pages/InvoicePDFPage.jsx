@@ -101,7 +101,7 @@ export default function InvoicePDFPage() {
                     .select('ledger_name, amount')
                     .eq('voucher_id', voucherData.id);
 
-                console.log('Ledger entries:', ledgerEntries);
+
 
                 // Calculate GST from items if not in voucher data
                 let cgstAmount = Number(voucherData.cgst_amount) || 0;
@@ -123,7 +123,7 @@ export default function InvoicePDFPage() {
                         }
                     });
 
-                    console.log('GST from ledgers:', { cgstAmount, sgstAmount, igstAmount });
+
                 }
 
                 // If still no GST from ledgers, try calculating from items
@@ -145,7 +145,7 @@ export default function InvoicePDFPage() {
                         }
                     });
 
-                    console.log('GST from items:', { hasGSTRates, totalGST });
+
 
                     // If no GST from items, check voucher totals
                     if (!hasGSTRates || totalGST === 0) {
@@ -158,7 +158,7 @@ export default function InvoicePDFPage() {
                         } else if (grandTotal > totalAmount && totalAmount > 0) {
                             totalGST = grandTotal - totalAmount;
                         }
-                        console.log('Fallback GST:', { grandTotal, taxableValue, totalAmount, totalGST });
+
                     }
 
                     if (totalGST > 0) {
@@ -171,7 +171,7 @@ export default function InvoicePDFPage() {
                     }
                 }
 
-                console.log('Final GST:', { cgstAmount, sgstAmount, igstAmount });
+
 
                 // Calculate taxable amount (excluding GST)
                 const totalGSTAmount = cgstAmount + sgstAmount + igstAmount;
@@ -205,15 +205,20 @@ export default function InvoicePDFPage() {
         setLoading(false);
     };
 
-    // Smart column detection
+    // Smart column detection — Tally-style: hide every column with no data
     const columnVisibility = useMemo(() => {
-        const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-');
-        const hasGST = items.some(i => i.gst_rate > 0) || invoice?.cgst_amount > 0 || invoice?.igst_amount > 0;
-        // Show discount if any item has discount OR if specifically requested (could add setting later)
-        const hasDiscount = items.some(i => i.discount > 0);
-        const hasUnit = items.some(i => i.unit);
-        const isIGST = invoice?.igst_amount > 0;
-        return { hasHSN, hasGST, hasDiscount, hasUnit, isIGST };
+        const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-' && i.hsn_code.trim() !== '');
+        const hasGST = items.some(i => Number(i.gst_rate) > 0) || Number(invoice?.cgst_amount) > 0 || Number(invoice?.igst_amount) > 0;
+        const hasDiscount = items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+        const hasUnit = items.some(i => i.unit && i.unit.trim() !== '');
+        const hasRate = items.some(i => Number(i.rate) > 0);
+        const hasQty = items.some(i => Number(i.quantity) > 0);
+        const isIGST = Number(invoice?.igst_amount) > 0;
+        const hasCGST = Number(invoice?.cgst_amount) > 0;
+        const hasSGST = Number(invoice?.sgst_amount) > 0;
+        const hasRoundOff = Number(invoice?.round_off) > 0 && Math.abs(Number(invoice?.round_off)) > 0.001;
+        const hasBankDetails = !!(invoice?.selectedCompany?.bank_name || invoice?.selectedCompany?.bank_account);
+        return { hasHSN, hasGST, hasDiscount, hasUnit, hasRate, hasQty, isIGST, hasCGST, hasSGST, hasRoundOff, hasBankDetails };
     }, [items, invoice]);
 
     // HSN Summary calculation - distribute invoice GST proportionally
@@ -352,6 +357,12 @@ export default function InvoicePDFPage() {
             y += 5;
         }
 
+        const phone = companyInfo?.phone || selectedCompany?.phone || '';
+        if (phone) {
+            doc.text(`Phone: ${phone}`, pageWidth / 2, y, { align: 'center' });
+            y += 5;
+        }
+
         y += 5;
 
         // --- TITLE ---
@@ -373,10 +384,6 @@ export default function InvoicePDFPage() {
         // doc.rect(margin, contentStartY, pageWidth - 2 * margin, contentEndY - contentStartY);
 
         // --- INVOICE INFO SECTION ---
-        // Top Section: 
-        // Left: Invoice Details
-        // Right: Date/Terms
-
         const topSectionY = y;
         const leftColX = margin + 2;
         const rightColX = pageWidth / 2 + 2;
@@ -424,10 +431,6 @@ export default function InvoicePDFPage() {
         const partyStartY = y;
         y += 5;
 
-        // Buyer (Bill To) - Full Width for now or Tally Style (Buyer is usually bottom left, Consignee top left if different)
-        // Standard Tally often puts Buyer on Right and Consignee on Left, or just one block.
-        // Let's do simple Buyer block.
-
         doc.setFont('helvetica', 'bold');
         const partyLabel = isPurchase ? 'Supplier (Bill From):' : 'Buyer (Bill To):';
         doc.text(partyLabel, leftColX, y);
@@ -463,28 +466,35 @@ export default function InvoicePDFPage() {
         doc.rect(margin, contentStartY, pageWidth - 2 * margin, y - contentStartY); // Draw box around header part
 
         // --- ITEMS TABLE ---
-        // --- ITEMS TABLE ---
+        // Force visibility checks directly on current items to ensure columns appear
+        const hasItems = items.length > 0;
+        const _hasHSN = hasItems && items.some(i => i.hsn_code); 
+        const _hasGST = hasItems; // Always show GST column if items exist
+        const _hasRate = hasItems; 
+        const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+
         const tableColumns = [
             { header: 'SI No.', dataKey: 'sno' },
             { header: 'Description of Goods', dataKey: 'desc' },
-            { header: 'HSN/SAC', dataKey: 'hsn' },
-            { header: 'GST Rate', dataKey: 'gst' }, // Added
-            { header: 'Quantity', dataKey: 'qty' },
-            { header: 'Rate', dataKey: 'rate' },
-            { header: 'Per', dataKey: 'unit' },
-            { header: 'Disc %', dataKey: 'disc' },   // Added
-            { header: 'Amount', dataKey: 'amount' }
         ];
+        
+        if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' }); 
+        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' }); 
+        tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
+        tableColumns.push({ header: 'Rate', dataKey: 'rate' });
+        tableColumns.push({ header: 'Per', dataKey: 'unit' });
+        if (_hasDisc) tableColumns.push({ header: 'Disc %', dataKey: 'disc' });
+        tableColumns.push({ header: 'Amount', dataKey: 'amount' });
 
         const tableBody = items.map((item, index) => ({
             sno: index + 1,
-            desc: item.stock_item_name,
-            hsn: item.hsn_code || '',
-            gst: item.gst_rate ? `${item.gst_rate}%` : '', // Map GST
-            qty: item.quantity,
+            desc: item.stock_item_name || 'Item',
+            hsn: item.hsn_code || '-',
+            gst: item.gst_rate ? `${item.gst_rate}%` : '0%',
+            qty: item.quantity || 0,
             rate: formatNumber(item.rate),
-            unit: item.unit,
-            disc: item.discount ? `${item.discount}%` : '', // Map Discount
+            unit: item.unit || '',
+            disc: item.discount ? `${item.discount}%` : '',
             amount: formatNumber(item.amount)
         }));
 
@@ -511,42 +521,36 @@ export default function InvoicePDFPage() {
             columnStyles: {
                 sno: { halign: 'center', cellWidth: 10 },
                 desc: { halign: 'left' },
-                hsn: { halign: 'center', cellWidth: 18 },
-                gst: { halign: 'center', cellWidth: 12 }, // Width for GST
-                qty: { halign: 'right', cellWidth: 18 },
-                rate: { halign: 'right', cellWidth: 22 },
-                unit: { halign: 'center', cellWidth: 12 },
-                disc: { halign: 'center', cellWidth: 12 }, // Width for Disc
-                amount: { halign: 'right', cellWidth: 28 }
+                hsn: { halign: 'center', cellWidth: 20 },
+                gst: { halign: 'center', cellWidth: 15 },
+                qty: { halign: 'right', cellWidth: 20 },
+                rate: { halign: 'right', cellWidth: 25 },
+                unit: { halign: 'center', cellWidth: 15 },
+                disc: { halign: 'center', cellWidth: 15 },
+                amount: { halign: 'right', cellWidth: 30 }
             },
             margin: { left: margin, right: margin },
             tableLineWidth: 0.1,
             tableLineColor: [0, 0, 0],
-            didDrawPage: (data) => {
-                // Determine layout on new pages if multipage
-            }
         });
 
         y = doc.lastAutoTable.finalY;
 
         // --- TOTALS ROW ---
-        // Draw a line for total
         doc.line(margin, y, pageWidth - margin, y);
-        y += 1; // padding
+        y += 1;
 
-        // Total Qty
-        const totalQty = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+        const totalQtyVal = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 
         doc.setFont('helvetica', 'bold');
         doc.text('Total', margin + 60, y + 4, { align: 'right' });
-        doc.text(totalQty.toString(), pageWidth - margin - 85, y + 4, { align: 'right' }); // Approx position aligned with Qty col
+        doc.text(totalQtyVal.toString(), pageWidth - margin - 85, y + 4, { align: 'right' });
         doc.text(formatNumber(invoice.taxable_amount), pageWidth - margin - 2, y + 4, { align: 'right' });
 
         y += 6;
         doc.line(margin, y, pageWidth - margin, y);
 
         // --- AMOUNT IN WORDS & TAXES ---
-        // Box for bottom section
         const bottomSectionStart = y;
 
         // Left: Amount in words
@@ -560,10 +564,9 @@ export default function InvoicePDFPage() {
 
         // Right: Tax Breakdown
         let rightY = y + 2;
-        const rightXStart = pageWidth - 80; // approx start of right block
+        const rightXStart = pageWidth - 80;
 
-        // Draw vertical separator
-        doc.line(rightXStart, y, rightXStart, y + 40); // fixed height approx
+        doc.line(rightXStart, y, rightXStart, y + 40); 
 
         const drawTaxRow = (label, amount) => {
             if (amount > 0) {
@@ -587,34 +590,9 @@ export default function InvoicePDFPage() {
         doc.text(formatNumber(invoice.net_amount), pageWidth - margin - 2, rightY, { align: 'right' });
 
         y = Math.max(y + 20, rightY + 5);
-        // Ensure y is below the vertical line
         y = Math.max(y, bottomSectionStart + 40);
 
-        doc.line(margin, y, pageWidth - margin, y); // End of Tax/Words section
-
-        // --- HSN SUMMARY (Optional) ---
-        if (columnVisibility.hasGST && hsnSummary.length > 0) {
-            y += 2;
-            doc.setFontSize(8);
-            doc.setFont('helvetica', 'normal');
-            doc.text('HSN/SAC', margin + 2, y + 3);
-            doc.text('Taxable', margin + 25, y + 3, { align: 'right' });
-            doc.text('Rate', margin + 40, y + 3, { align: 'right' });
-            doc.text('Tax Amt', margin + 60, y + 3, { align: 'right' });
-
-            y += 4;
-            doc.line(margin, y, margin + 70, y); // Small table underline
-
-            hsnSummary.forEach(row => {
-                y += 4;
-                doc.text(row.hsn, margin + 2, y);
-                doc.text(formatNumber(row.taxable), margin + 25, y, { align: 'right' });
-                doc.text(`${row.gst_rate}%`, margin + 40, y, { align: 'right' });
-                doc.text(formatNumber(row.total - row.taxable), margin + 60, y, { align: 'right' });
-            });
-            y += 4;
-            doc.line(margin, y, pageWidth - margin, y);
-        }
+        doc.line(margin, y, pageWidth - margin, y); 
 
         // --- FOOTER (Bank & Sign) ---
         const footerY = y;
@@ -626,9 +604,12 @@ export default function InvoicePDFPage() {
         doc.setFontSize(9);
         doc.text('Company\'s Bank Details', margin + 2, footerY + 4);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Bank Name: ${selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
-        doc.text(`A/C No: ${selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
-        doc.text(`IFS Code: ${selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
+        doc.text(`Bank Name: ${companyInfo?.bank_name || selectedCompany?.bank_name || '-'}`, margin + 2, footerY + 9);
+        doc.text(`A/C No: ${companyInfo?.bank_account || selectedCompany?.bank_account || '-'}`, margin + 2, footerY + 14);
+        doc.text(`IFS Code: ${companyInfo?.bank_ifsc || selectedCompany?.bank_ifsc || '-'}`, margin + 2, footerY + 19);
+        if (companyInfo?.bank_branch || selectedCompany?.bank_branch) {
+            doc.text(`Branch: ${companyInfo?.bank_branch || selectedCompany?.bank_branch}`, margin + 2, footerY + 24);
+        }
         doc.setFont('helvetica', 'normal');
 
         // Right: Signature
@@ -823,53 +804,88 @@ export default function InvoicePDFPage() {
                     {/* Tally Style Border Container */}
                     <div className="border-2 border-black h-full flex flex-col">
 
-                        {/* Header Section */}
+                        {/* Header Section — Tally Style: Only show fields that have data */}
                         <div className="grid grid-cols-2 border-b-2 border-black">
                             {/* Company Info - Left */}
                             <div className="p-4 border-r-2 border-black flex flex-col justify-center">
                                 <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name || selectedCompany?.name}</h1>
 
-                                <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
-                                    {companyInfo?.address || selectedCompany?.address || 'Address Not Available'}
-                                </p>
+                                {(companyInfo?.address || selectedCompany?.address) && (
+                                    <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
+                                        {companyInfo?.address || selectedCompany?.address}
+                                    </p>
+                                )}
 
                                 <div className="text-xs space-y-0.5">
-                                    <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo?.gstin || selectedCompany?.gstin || 'N/A'}</p>
-                                    <p><span className="font-semibold">State Name:</span> {companyInfo?.state || selectedCompany?.state || 'Unknown'}</p>
-                                    <p><span className="font-semibold">E-Mail:</span> {companyInfo?.email || selectedCompany?.email || '-'}</p>
+                                    {(companyInfo?.gstin || selectedCompany?.gstin) && (
+                                        <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo?.gstin || selectedCompany?.gstin}</p>
+                                    )}
+                                    {(companyInfo?.state || selectedCompany?.state) && (
+                                        <p><span className="font-semibold">State Name:</span> {companyInfo?.state || selectedCompany?.state}</p>
+                                    )}
+                                    {(companyInfo?.email || selectedCompany?.email) && (
+                                        <p><span className="font-semibold">E-Mail:</span> {companyInfo?.email || selectedCompany?.email}</p>
+                                    )}
+                                    {(companyInfo?.phone || selectedCompany?.phone) && (
+                                        <p><span className="font-semibold">Contact:</span> {companyInfo?.phone || selectedCompany?.phone}</p>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Invoice Info - Right */}
+                            {/* Invoice Info - Right (Tally: only show filled fields) */}
                             <div className="flex flex-col">
                                 <div className="p-2 border-b-2 border-black text-center bg-gray-50">
-                                    <h2 className="text-base font-bold uppercase tracking-wider">Tax Invoice</h2>
+                                    <h2 className="text-base font-bold uppercase tracking-wider">
+                                        {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
+                                    </h2>
                                 </div>
-                                <div className="grid grid-cols-2 flex-grow text-xs">
-                                    <div className="p-2 border-r border-black border-b border-black">
-                                        <p className="font-semibold">Invoice No</p>
-                                        <p className="font-bold text-sm">{invoice.invoice_number}</p>
+                                <div className="flex-grow text-xs">
+                                    {/* Invoice No & Date — always shown */}
+                                    <div className="grid grid-cols-2">
+                                        <div className="p-2 border-r border-black border-b border-black">
+                                            <p className="font-semibold">Invoice No.</p>
+                                            <p className="font-bold text-sm">{invoice.invoice_number}</p>
+                                        </div>
+                                        <div className="p-2 border-b border-black">
+                                            <p className="font-semibold">Dated</p>
+                                            <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
+                                        </div>
                                     </div>
-                                    <div className="p-2 border-b border-black">
-                                        <p className="font-semibold">Dated</p>
-                                        <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
-                                    </div>
-                                    <div className="p-2 border-r border-black border-b border-black">
-                                        <p className="font-semibold">Delivery Note</p>
-                                        <p>-</p>
-                                    </div>
-                                    <div className="p-2 border-b border-black">
-                                        <p className="font-semibold">Mode/Terms of Payment</p>
-                                        <p>{invoice.voucher_type}</p>
-                                    </div>
-                                    <div className="p-2 border-r border-black">
-                                        <p className="font-semibold">Buyer's Order No.</p>
-                                        <p>-</p>
-                                    </div>
-                                    <div className="p-2">
-                                        <p className="font-semibold">Dated</p>
-                                        <p>-</p>
-                                    </div>
+                                    {/* Only show Delivery Note / Mode of Payment if data exists */}
+                                    {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
+                                        <div className="grid grid-cols-2">
+                                            {invoice.delivery_note ? (
+                                                <div className="p-2 border-r border-black border-b border-black">
+                                                    <p className="font-semibold">Delivery Note</p>
+                                                    <p>{invoice.delivery_note}</p>
+                                                </div>
+                                            ) : (
+                                                <div className="p-2 border-r border-black border-b border-black"></div>
+                                            )}
+                                            <div className="p-2 border-b border-black">
+                                                <p className="font-semibold">Mode/Terms</p>
+                                                <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Buyer's Order — only if exists */}
+                                    {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
+                                        <div className="grid grid-cols-2">
+                                            <div className="p-2 border-r border-black">
+                                                {invoice.buyers_order_number && (
+                                                    <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
+                                                )}
+                                                {invoice.dispatch_through && (
+                                                    <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
+                                                )}
+                                            </div>
+                                            <div className="p-2">
+                                                {invoice.destination && (
+                                                    <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -887,7 +903,7 @@ export default function InvoicePDFPage() {
                             </div>
                         </div>
 
-                        {/* Items Table */}
+                        {/* Items Table — Tally Style: only show columns that have data */}
                         <div className="flex-grow flex flex-col border-b-2 border-black relative">
                             {/* Table Header */}
                             <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
@@ -895,9 +911,9 @@ export default function InvoicePDFPage() {
                                 <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
                                 {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
                                 {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
-                                <div className="w-14 p-2 border-r border-black">Quantity</div>
-                                <div className="w-20 p-2 border-r border-black">Rate</div>
-                                <div className="w-10 p-2 border-r border-black">Per</div>
+                                {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black">Quantity</div>}
+                                {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black">Rate</div>}
+                                {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black">Per</div>}
                                 {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
                                 <div className="w-24 p-2 text-right">Amount</div>
                             </div>
@@ -905,7 +921,6 @@ export default function InvoicePDFPage() {
                             {/* Table Body - Rows */}
                             <div className="flex-grow text-xs relative">
                                 {items.map((item, idx) => {
-                                    // Calculate Display GST Rate
                                     const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
                                     const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
 
@@ -913,33 +928,31 @@ export default function InvoicePDFPage() {
                                         <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
                                             <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
                                             <div className="flex-1 p-2 border-r border-black font-semibold text-left">{item.stock_item_name}</div>
-                                            {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || '-'}</div>}
+                                            {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
                                             {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
-                                            <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>
-                                            <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>
-                                            <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>
+                                            {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
+                                            {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>}
+                                            {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>}
                                             {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
-                                                {(item.discount > 0 || item.discount_percent > 0) ? (item.discount || item.discount_percent) + '%' : '-'}
+                                                {(Number(item.discount) > 0 || Number(item.discount_percent) > 0) ? (item.discount || item.discount_percent) + '%' : ''}
                                             </div>}
                                             <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
                                         </div>
                                     );
                                 })}
-
-                                {/* Vertical Lines Overlay (to span full height) - CSS trick or simplified */}
                             </div>
 
                             {/* Totals Row */}
-                            <div className="flex border-t border-black font-bold text-xs bg-gray-50">
+                            <div className="flex border-t-2 border-black font-bold text-xs bg-gray-50">
                                 <div className="w-10 p-2 border-r border-black text-center"></div>
-                                <div className="flex-1 p-2 border-r border-black text-right">Total</div>
+                                <div className="flex-1 p-2 border-r border-black text-right font-bold">Total</div>
                                 {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
                                 {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
-                                <div className="w-14 p-2 border-r border-black text-center">{totalQty}</div>
-                                <div className="w-20 p-2 border-r border-black"></div>
-                                <div className="w-10 p-2 border-r border-black"></div>
+                                {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{totalQty}</div>}
+                                {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black"></div>}
+                                {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black"></div>}
                                 {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
-                                <div className="w-24 p-2 text-right">{formatNumber(invoice.taxable_amount)}</div>
+                                <div className="w-24 p-2 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
                             </div>
                         </div>
 
@@ -977,7 +990,6 @@ export default function InvoicePDFPage() {
                                 </div>
                             </div>
                         </div>
-
                         {/* HSN/SAC Summary (If GST) */}
                         {columnVisibility.hasGST && (
                             <div className="border-b-2 border-black p-2">
@@ -1047,16 +1059,18 @@ export default function InvoicePDFPage() {
                             </div>
                         )}
 
-                        {/* Footer Section */}
+                        {/* Footer Section — Tally: only show bank if filled */}
                         <div className="grid grid-cols-2 flex-grow h-32">
                             {/* Bank & Terms */}
                             <div className="border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
-                                <div>
-                                    <p className="font-bold underline mb-1">Company's Bank Details:</p>
-                                    <p>Bank Name: <span className="font-semibold">{selectedCompany?.bank_name}</span></p>
-                                    <p>A/C No.: <span className="font-semibold">{selectedCompany?.bank_account}</span></p>
-                                    <p>Branch & IFS Code: <span className="font-semibold">{selectedCompany?.bank_ifsc}</span></p>
-                                </div>
+                                {(selectedCompany?.bank_name || selectedCompany?.bank_account) ? (
+                                    <div>
+                                        <p className="font-bold underline mb-1">Company's Bank Details:</p>
+                                        {selectedCompany?.bank_name && <p>Bank Name: <span className="font-semibold">{selectedCompany.bank_name}</span></p>}
+                                        {selectedCompany?.bank_account && <p>A/C No.: <span className="font-semibold">{selectedCompany.bank_account}</span></p>}
+                                        {selectedCompany?.bank_ifsc && <p>Branch & IFS Code: <span className="font-semibold">{selectedCompany.bank_ifsc}</span></p>}
+                                    </div>
+                                ) : <div />}
                                 <div className="mt-2 text-[10px]">
                                     <p className="underline mb-0.5">Declaration:</p>
                                     <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>

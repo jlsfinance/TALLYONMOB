@@ -282,7 +282,7 @@ export default function InvoiceDetailPage() {
                 )}
             </GlassCard>
 
-            <p className="text-center text-xs text-gray-600 print:hidden">LiveKeeping • {selectedCompany?.name}</p>
+            <p className="text-center text-xs text-gray-600 print:hidden">TallySync • {selectedCompany?.name}</p>
         </div>
     );
 }

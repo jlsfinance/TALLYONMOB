@@ -1,0 +1,48 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="primaryGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+    <linearGradient id="glowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="20" />
+      <feOffset dx="0" dy="10" result="offsetblur" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.5" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="200" fill="#030712" />
+  
+  <!-- Decorative Ring -->
+  <circle cx="512" cy="512" r="400" stroke="url(#primaryGradient)" stroke-width="20" opacity="0.1" />
+  
+  <!-- Main Symbol (Intertwined T and L for TallyLink) -->
+  <g filter="url(#shadow)">
+    <!-- Vertical bar for T -->
+    <rect x="440" y="260" width="144" height="504" rx="72" fill="url(#primaryGradient)" />
+    <!-- Horizontal bar for T -->
+    <rect x="260" y="260" width="504" height="144" rx="72" fill="url(#primaryGradient)" />
+    
+    <!-- L shape that links into T -->
+    <path d="M440 680C440 719.766 472.234 752 512 752H764C783.882 752 800 735.882 800 716V716C800 696.118 783.882 680 764 680H512C472.234 680 440 680 440 680Z" fill="url(#glowGradient)" />
+  </g>
+  
+  <!-- Sync Arrows -->
+  <g opacity="0.8">
+    <path d="M850 512C850 698.67 698.67 850 512 850" stroke="url(#glowGradient)" stroke-width="40" stroke-linecap="round" />
+    <path d="M174 512C174 325.33 325.33 174 512 174" stroke="url(#primaryGradient)" stroke-width="40" stroke-linecap="round" />
+    <path d="M850 480L820 520L880 520Z" fill="url(#glowGradient)" />
+    <path d="M174 544L204 504L144 504Z" fill="url(#primaryGradient)" />
+  </g>
+</svg>

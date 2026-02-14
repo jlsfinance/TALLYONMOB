@@ -72,7 +72,7 @@ class _CompanySelectionScreenState extends State<CompanySelectionScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.business_outlined,
                         size: 64,
                         color: AppColors.textMuted,

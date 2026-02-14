@@ -19,7 +19,14 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Install Squirrel Tool
+<<<<<<< HEAD
       run: dotnet tool install --global Clowd.Squirrel.Tool
+=======
+      run: |
+        dotnet tool install --global Clowd.Squirrel.Tool
+        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+      shell: bash
+>>>>>>> thebaap
 
     - name: Publish App
       run: dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput

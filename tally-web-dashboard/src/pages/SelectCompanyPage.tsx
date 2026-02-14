@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, Building2, Calendar, ArrowRight, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Building2, ArrowRight, RefreshCw, ArrowLeft, Clock, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 
@@ -14,20 +14,6 @@ export default function SelectCompanyPage() {
     useEffect(() => {
         refreshCompanies();
     }, []);
-
-    // Redirect new users with no companies to onboarding
-    // Redirect logic removed as per user request
-    // useEffect(() => {
-    //     if (companies.length === 0) {
-    //         const timer = setTimeout(() => {
-    //             if (companies.length === 0) {
-    //                 navigate('/onboarding');
-    //             }
-    //         }, 1500);
-    //         return () => clearTimeout(timer);
-    //     }
-    // }, [companies, navigate]);
-
 
     const handleBack = () => {
         setAppMode(null);
@@ -55,106 +41,107 @@ export default function SelectCompanyPage() {
         }
     };
 
-    return (
-        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-            {/* Background Effects */}
-            <div className="absolute top-[-400px] left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-blue-600/10 rounded-full blur-[150px]" />
+    const getInitialColor = (name: string) => {
+        const colors = [
+            'bg-blue-600', 'bg-emerald-600', 'bg-amber-600',
+            'bg-rose-600', 'bg-indigo-600', 'bg-teal-600',
+        ];
+        const index = name.charCodeAt(0) % colors.length;
+        return colors[index];
+    };
 
-            <div className="relative z-10 w-full max-w-4xl">
-                {/* Back to Modules */}
+    return (
+        <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-6 transition-colors duration-300">
+
+            <div className="w-full max-w-4xl">
+                {/* Back Button */}
                 <motion.button
-                    initial={{ opacity: 0, x: -20 }}
+                    initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     onClick={handleBack}
-                    className="absolute -top-12 left-0 flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
+                    className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors mb-8 group"
                 >
                     <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
                     <span className="text-sm font-medium">Change Module</span>
                 </motion.button>
 
                 {/* Header */}
-                <div className="text-center mb-12">
+                <div className="mb-10">
                     <motion.div
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-gray-400 mb-6"
+                        className="flex items-center gap-2.5 mb-3"
                     >
-                        <Building2 size={14} />
-                        Workspace Selection
+                        <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--primary-container)] flex items-center justify-center text-[var(--primary)]">
+                            <Building2 size={16} />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Workspace Selection</span>
                     </motion.div>
 
                     <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-4xl md:text-5xl font-bold text-white mb-4"
+                        transition={{ delay: 0.05 }}
+                        className="text-2xl md:text-3xl font-bold text-[var(--on-surface)] tracking-tight"
                     >
-                        Choose a workspace
+                        Select a company
                     </motion.h1>
 
                     <motion.p
-                        initial={{ opacity: 0, y: 20 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="text-gray-500 max-w-md mx-auto"
+                        transition={{ delay: 0.1 }}
+                        className="text-[var(--text-muted)] mt-1.5 text-sm"
                     >
-                        Select a Tally company to manage or connect a new instance.
+                        Choose a Tally company to manage, or connect a new one.
                     </motion.p>
                 </div>
 
                 {/* Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
                     {/* Add New Card */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
+                    <div
                         onClick={() => navigate('/onboarding')}
-                        className="group cursor-pointer"
+                        className="cursor-pointer group"
                     >
-                        <div className="h-52 bg-[#121214] border-2 border-dashed border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-500/50 hover:bg-blue-500/5 transition-all duration-300">
-                            <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4 group-hover:scale-110 transition-transform">
-                                <Plus size={28} />
+                        <div className="h-48 bg-[var(--surface)] border-2 border-dashed border-[var(--outline-variant)] rounded-[var(--radius-lg)] p-6 flex flex-col items-center justify-center text-center hover:border-[var(--primary)] hover:bg-[var(--primary-glow)] transition-all duration-200">
+                            <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--primary-container)] flex items-center justify-center text-[var(--primary)] mb-3 group-hover:scale-105 transition-transform">
+                                <Plus size={24} />
                             </div>
-                            <h3 className="font-semibold text-white mb-1">Add Company</h3>
-                            <p className="text-xs text-gray-500">Download Sync App</p>
+                            <h3 className="font-semibold text-[var(--on-surface)] text-sm">Add Company</h3>
+                            <p className="text-xs text-[var(--text-muted)] mt-1">Download Sync App</p>
                         </div>
-                    </motion.div>
+                    </div>
 
                     {/* Company Cards */}
                     {companies.map((company, index) => (
-                        <motion.div
+                        <div
                             key={company.id}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.3 + (index * 0.05) }}
                             onClick={() => handleSelect(company)}
-                            className="group cursor-pointer"
+                            className="cursor-pointer group"
                         >
-                            <div className="h-52 bg-[#121214] border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-white/20 hover:bg-[#1a1a1d] transition-all duration-300 relative overflow-hidden">
-                                {/* Hover gradient */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/0 to-purple-600/0 group-hover:from-blue-600/5 group-hover:to-purple-600/5 transition-all duration-500" />
+                            <div className="h-48 bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 flex flex-col justify-between hover:border-[var(--outline)] hover:shadow-[var(--shadow-md)] transition-all duration-200 relative overflow-hidden">
 
-                                <div className="relative z-10">
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-700 border border-white/10 flex items-center justify-center text-white font-bold text-lg">
+                                <div>
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className={`w-10 h-10 rounded-[var(--radius-md)] ${getInitialColor(company.name)} flex items-center justify-center text-white font-bold text-sm`}>
                                             {company.name.charAt(0)}
                                         </div>
                                         <button
                                             onClick={(e) => handleDelete(e, company.id)}
-                                            className="p-2 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                            className="p-1.5 rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error-bg)] transition-colors opacity-0 group-hover:opacity-100"
                                             title="Delete"
                                         >
-                                            <Trash2 size={16} />
+                                            <Trash2 size={14} />
                                         </button>
                                     </div>
 
-                                    <h3 className="font-bold text-white text-lg truncate group-hover:text-blue-400 transition-colors">
+                                    <h3 className="font-semibold text-[var(--on-surface)] text-base truncate group-hover:text-[var(--primary)] transition-colors">
                                         {company.name}
                                     </h3>
 
-                                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
-                                        <RefreshCw size={12} />
+                                    <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] mt-2">
+                                        <Clock size={12} />
                                         <span>
                                             {company.last_sync_at
                                                 ? `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`
@@ -163,16 +150,16 @@ export default function SelectCompanyPage() {
                                     </div>
                                 </div>
 
-                                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-white/5">
-                                    <span className="text-[10px] font-mono text-gray-600 uppercase tracking-wider">
-                                        ID: {company.id.substring(0, 8)}
+                                <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+                                    <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider">
+                                        {company.id.substring(0, 8)}
                                     </span>
-                                    <span className="flex items-center gap-1 text-sm font-medium text-blue-400 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all">
-                                        Open <ArrowRight size={14} />
+                                    <span className="flex items-center gap-1 text-xs font-medium text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Open <ArrowRight size={12} />
                                     </span>
                                 </div>
                             </div>
-                        </motion.div>
+                        </div>
                     ))}
                 </div>
             </div>

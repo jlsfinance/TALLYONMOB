@@ -58,9 +58,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _formatCurrency(num? amount) {
     if (amount == null) return '₹0';
-    if (amount >= 10000000)
+    if (amount >= 10000000) {
       return '₹${(amount / 10000000).toStringAsFixed(2)} Cr';
-    if (amount >= 100000) return '₹${(amount / 100000).toStringAsFixed(2)} L';
+    }
+    if (amount >= 100000) {
+      return '₹${(amount / 100000).toStringAsFixed(2)} L';
+    }
     return '₹${amount.toStringAsFixed(0)}';
   }
 

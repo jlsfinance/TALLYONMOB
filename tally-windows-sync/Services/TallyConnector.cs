@@ -225,7 +225,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""CompanyCollection"">
             <TYPE>Company</TYPE>
-            <FETCH>NAME, GUID, ADDRESS, GSTREGISTRATIONNUMBER, PHONENUMBER, EMAIL, STATE</FETCH>
+            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -277,21 +277,57 @@ namespace TallySyncApp.Services
                     Log($"   ✅ Found Company: '{name}'");
                     
                     // IMPORTANT: Must match CleanCompanyId() logic exactly!
-                    // Strip suffixes like " - - (from 1-Apr-24)" before sanitizing
-                    string cleanName = name.Split(" -")[0].Split(" (")[0].Trim();
-                    var sanitizedId = System.Text.RegularExpressions.Regex.Replace(cleanName, @"[^a-zA-Z0-9]", "").ToUpperInvariant();
+                    // STRICT MATCHING: Generate ID from Hash of full name to differentiate even minor changes
+                    // e.g. "ABC Ltd" vs "ABC Ltd." will have different IDs.
+                    string cleanName = name.Trim();
+                    string sanitizedId = "";
+                    using (var sha = System.Security.Cryptography.SHA256.Create())
+                    {
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(cleanName);
+                        var hash = sha.ComputeHash(bytes);
+                        // Use first 16 chars of hash as ID
+                        sanitizedId = BitConverter.ToString(hash).Replace("-", "").Substring(0, 16);
+                    }
                     
                     if (!companies.Any(c => c.Name == name))
                     {
+                        // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
+                        var addressParts = new List<string>();
+                        var addressList = comp.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                        if (addressList != null)
+                        {
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        }
+                        // Fallback: direct ADDRESS descendants
+                        if (addressParts.Count == 0)
+                        {
+                            addressParts.AddRange(comp.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        }
+                        // Extract state
+                        var compState = GetElementValue(comp, "STATE") ?? GetElementValue(comp, "LEDSTATENAME") ?? GetElementValue(comp, "STATENAME") ?? GetElementValue(comp, "COUNTRYOFRESIDENCE");
+                        if (!string.IsNullOrWhiteSpace(compState) && !addressParts.Any(p => p.Contains(compState, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            addressParts.Add(compState);
+                        }
+
+                        // Extract GSTIN
+                        var compGstin = GetElementValue(comp, "GSTREGISTRATIONNUMBER") ?? GetElementValue(comp, "PARTYGSTIN");
+
+                        // Extract phone
+                        var compPhone = GetElementValue(comp, "PHONENUMBER") ?? GetElementValue(comp, "LEDGERPHONE") ?? GetElementValue(comp, "LEDGERMOBILE");
+
+                        // Extract email
+                        var compEmail = GetElementValue(comp, "EMAIL") ?? GetElementValue(comp, "LEDGEREMAIL");
+
                         companies.Add(new Company
                         {
                             Id = sanitizedId,
                             Name = name,
-                            Gstin = GetElementValue(comp, "GSTREGISTRATIONNUMBER"),
-                            Address = string.Join(", ", comp.Descendants("ADDRESS").Select(a => a.Value).Where(v => !string.IsNullOrWhiteSpace(v))),
-                            State = GetElementValue(comp, "STATE") ?? GetElementValue(comp, "STATENAME"),
-                            Phone = GetElementValue(comp, "PHONENUMBER"),
-                            Email = GetElementValue(comp, "EMAIL")
+                            Gstin = compGstin,
+                            Address = string.Join(", ", addressParts),
+                            State = compState,
+                            Phone = compPhone,
+                            Email = compEmail
                         });
                         Log($"   Added Company: '{name}' (ID: {sanitizedId})");
                     }
@@ -430,7 +466,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""LedgerCollection"" ISMODIFY=""No"">
             <TYPE>Ledger</TYPE>
-            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS, PHONE, EMAIL, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -447,6 +483,40 @@ namespace TallySyncApp.Services
             {
                 try
                 {
+                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
+                    var addressParts = new List<string>();
+                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                    if (addressList != null)
+                    {
+                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    // Fallback: direct ADDRESS descendants if ADDRESS.LIST not found
+                    if (addressParts.Count == 0)
+                    {
+                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    // Append state if available
+                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        addressParts.Add(state);
+                    }
+                    var fullAddress = string.Join(", ", addressParts);
+
+                    // Extract phone: Try multiple Tally field names
+                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
+                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
+                             ?? GetElementValue(ledgerElement, "PHONE") 
+                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
+
+                    // Extract email
+                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
+                             ?? GetElementValue(ledgerElement, "EMAIL");
+
+                    // Extract GSTIN: Try multiple Tally field names
+                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
+                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+
                     ledgers.Add(new Ledger
                     {
                         Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
@@ -455,10 +525,10 @@ namespace TallySyncApp.Services
                         LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
                         OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
                         ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = string.Join(", ", ledgerElement.Descendants("ADDRESS").Select(a => a.Value)),
-                        Phone = GetElementValue(ledgerElement, "PHONE") ?? GetElementValue(ledgerElement, "LEDGERPHONE"),
-                        Email = GetElementValue(ledgerElement, "EMAIL") ?? GetElementValue(ledgerElement, "LEDGEREMAIL"),
-                        Gstin = GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER") ?? GetElementValue(ledgerElement, "PARTYGSTIN"),
+                        Address = fullAddress,
+                        Phone = phone,
+                        Email = email,
+                        Gstin = gstin,
                         Pan = GetElementValue(ledgerElement, "PANNUMBER"),
                         MasterId = GetElementValue(ledgerElement, "MASTERID"),
                         AlterId = GetElementValue(ledgerElement, "ALTERID")
@@ -551,7 +621,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""ModifiedLedgers"">
             <TYPE>Ledger</TYPE>
-            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS, PHONE, EMAIL, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
             <FILTER>ModifiedAfter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
@@ -570,6 +640,33 @@ namespace TallySyncApp.Services
             {
                 try
                 {
+                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
+                    var addressParts = new List<string>();
+                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                    if (addressList != null)
+                    {
+                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    if (addressParts.Count == 0)
+                    {
+                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        addressParts.Add(state);
+                    }
+                    var fullAddress = string.Join(", ", addressParts);
+
+                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
+                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
+                             ?? GetElementValue(ledgerElement, "PHONE") 
+                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
+                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
+                             ?? GetElementValue(ledgerElement, "EMAIL");
+                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
+                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+
                     ledgers.Add(new Ledger
                     {
                         Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
@@ -578,10 +675,10 @@ namespace TallySyncApp.Services
                         LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
                         OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
                         ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = string.Join(", ", ledgerElement.Descendants("ADDRESS").Select(a => a.Value)),
-                        Phone = GetElementValue(ledgerElement, "PHONE") ?? GetElementValue(ledgerElement, "LEDGERPHONE"),
-                        Email = GetElementValue(ledgerElement, "EMAIL") ?? GetElementValue(ledgerElement, "LEDGEREMAIL"),
-                        Gstin = GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER") ?? GetElementValue(ledgerElement, "PARTYGSTIN"),
+                        Address = fullAddress,
+                        Phone = phone,
+                        Email = email,
+                        Gstin = gstin,
                         Pan = GetElementValue(ledgerElement, "PANNUMBER"),
                         MasterId = GetElementValue(ledgerElement, "MASTERID"),
                         AlterId = GetElementValue(ledgerElement, "ALTERID")
@@ -746,12 +843,41 @@ namespace TallySyncApp.Services
                         if (string.IsNullOrEmpty(lName)) continue;
 
                         decimal amount = ParseDecimal(GetElementValue(lNode, "AMOUNT") ?? GetElementValue(lNode, "DSPVCHLEDGERAMOUNT"));
-                        ledgerEntries.Add(new VoucherLedgerEntry
+                        
+                        var entry = new VoucherLedgerEntry
                         {
                             LedgerName = lName,
                             Amount = Math.Abs(amount),
                             IsDebit = amount < 0
-                        });
+                        };
+
+                        // Parse Bill Allocations
+                        foreach (var bNode in lNode.Descendants().Where(e => e.Name.LocalName == "BILLALLOCATIONS.LIST"))
+                        {
+                            entry.BillAllocations.Add(new BillAllocation
+                            {
+                                Name = GetElementValue(bNode, "NAME") ?? "Unknown Ref", // Required field
+                                BillType = GetElementValue(bNode, "BILLTYPE"),
+                                Amount = ParseDecimal(GetElementValue(bNode, "AMOUNT")),
+                                BillCreditPeriod = GetElementValue(bNode, "BILLCREDITPERIOD")
+                            });
+                        }
+
+                        // Parse Bank Allocations
+                        foreach (var bankNode in lNode.Descendants().Where(e => e.Name.LocalName == "BANKALLOCATIONS.LIST"))
+                        {
+                            entry.BankAllocations.Add(new BankAllocation
+                            {
+                                BankPartyName = GetElementValue(bankNode, "PAYMENTFAVOURING") ?? GetElementValue(bankNode, "TRANSACTIONNAME"),
+                                TransactionType = GetElementValue(bankNode, "TRANSACTIONTYPE"),
+                                InstrumentDate = ParseDate(GetElementValue(bankNode, "INSTRUMENTDATE") ?? GetElementValue(bankNode, "DATE")),
+                                InstrumentNumber = GetElementValue(bankNode, "INSTRUMENTNUMBER"),
+                                Amount = ParseDecimal(GetElementValue(bankNode, "AMOUNT")),
+                                BankName = GetElementValue(bankNode, "BANKNAME")
+                            });
+                        }
+
+                        ledgerEntries.Add(entry);
                     }
 
                     // Parse Inventory Entries
@@ -1090,7 +1216,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""StockItemCollection"" ISMODIFY=""No"">
             <TYPE>Stock Item</TYPE>
-            <FETCH>NAME, GUID, PARENT, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, GSTDETAILS.LIST, HSNDETAILS.LIST, HSNCODE, GSTAPPLICABLE, GSTCLASSIFICATION, ADDITIONALUNITS</FETCH>
+            <FETCH>NAME, GUID, PARENT, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, GSTDETAILS.LIST, HSNDETAILS.LIST, HSNCODE, GSTAPPLICABLE, GSTCLASSIFICATION, ADDITIONALUNITS</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -1183,6 +1309,9 @@ namespace TallySyncApp.Services
                         OpeningValue = ParseDecimal(GetElementValue(itemElement, "OPENINGVALUE")),
                         ClosingBalance = ParseDecimal(GetElementValue(itemElement, "CLOSINGBALANCE")),
                         ClosingValue = ParseDecimal(GetElementValue(itemElement, "CLOSINGVALUE")),
+                        Rate = ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) > 0 
+                            ? ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) 
+                            : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
@@ -1464,6 +1593,563 @@ namespace TallySyncApp.Services
                 SyncLogger.Log($"❌ PushVoucherToTallyAsync error: {ex.Message}");
                 return (false, null, ex.Message);
             }
+        }
+        // =============================================
+        // NEW MASTER DATA FETCH METHODS
+        // =============================================
+
+        /// <summary>
+        /// Get all Ledger Groups (Account Groups) from Tally
+        /// </summary>
+        public async Task<List<LedgerGroup>> GetLedgerGroupsAsync(string companyName)
+        {
+            var groups = new List<LedgerGroup>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <STATICVARIABLES><SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY></STATICVARIABLES>
+                        <REPORTNAME>List of Accounts</REPORTNAME>
+                        <STATICVARIABLES><EXPLODEFLAG>Yes</EXPLODEFLAG></STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                // Simpler collection approach
+                xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>Group</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return groups;
+
+                var elements = doc.Descendants("GROUP");
+                int idx = 0;
+                foreach (var el in elements)
+                {
+                    groups.Add(new LedgerGroup
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"grp_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        IsRevenue = GetElementValue(el, "ISREVENUE")?.ToUpper() == "YES",
+                        IsDeemedPositive = GetElementValue(el, "ISDEEMEDPOSITIVE")?.ToUpper() == "YES",
+                        AffectsGrossProfit = GetElementValue(el, "AFFECTSGROSSPROFIT")?.ToUpper() == "YES",
+                        SortPosition = (int)ParseDecimal(GetElementValue(el, "SORTPOSITION")),
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📋 Fetched {groups.Count} Ledger Groups from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetLedgerGroupsAsync error: {ex.Message}"); }
+            return groups;
+        }
+
+        /// <summary>
+        /// Get all Cost Centres from Tally
+        /// </summary>
+        public async Task<List<CostCentre>> GetCostCentresAsync(string companyName)
+        {
+            var items = new List<CostCentre>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>CostCentre</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("COSTCENTRE"))
+                {
+                    items.Add(new CostCentre
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"cc_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        Category = GetElementValue(el, "CATEGORY"),
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"🏭 Fetched {items.Count} Cost Centres from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetCostCentresAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Godowns (Warehouses) from Tally
+        /// </summary>
+        public async Task<List<Godown>> GetGodownsAsync(string companyName)
+        {
+            var items = new List<Godown>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>Godown</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("GODOWN"))
+                {
+                    items.Add(new Godown
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"gdn_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        Address = GetElementValue(el, "ADDRESS"),
+                        HasNoSpace = GetElementValue(el, "HASNOSPACE")?.ToUpper() == "YES",
+                        IsInternal = GetElementValue(el, "ISINTERNAL")?.ToUpper() == "YES",
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📦 Fetched {items.Count} Godowns from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetGodownsAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Stock Groups from Tally
+        /// </summary>
+        public async Task<List<TallyStockGroup>> GetStockGroupsAsync(string companyName)
+        {
+            var items = new List<TallyStockGroup>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>StockGroup</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("STOCKGROUP"))
+                {
+                    items.Add(new TallyStockGroup
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"sg_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        IsAddAble = GetElementValue(el, "ISADDABLE")?.ToUpper() != "NO",
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📊 Fetched {items.Count} Stock Groups from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetStockGroupsAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Stock Categories from Tally
+        /// </summary>
+        public async Task<List<TallyStockCategory>> GetStockCategoriesAsync(string companyName)
+        {
+            var items = new List<TallyStockCategory>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>StockCategory</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("STOCKCATEGORY"))
+                {
+                    items.Add(new TallyStockCategory
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"sc_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📂 Fetched {items.Count} Stock Categories from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetStockCategoriesAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Currencies from Tally
+        /// </summary>
+        public async Task<List<TallyCurrency>> GetCurrenciesAsync(string companyName)
+        {
+            var items = new List<TallyCurrency>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>Currency</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("CURRENCY"))
+                {
+                    items.Add(new TallyCurrency
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"cur_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Symbol = GetElementValue(el, "MAILINGNAME") ?? GetElementValue(el, "ORIGINALNAME"),
+                        FormalName = GetElementValue(el, "FORMALNAME"),
+                        IsoCode = GetElementValue(el, "ISOCODE") ?? GetElementValue(el, "ISOCURRENCYCODE"),
+                        DecimalPlaces = (int)ParseDecimal(GetElementValue(el, "DECIMALPLACES") ?? "2"),
+                        InMillions = GetElementValue(el, "INMILLIONS")?.ToUpper() == "YES",
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"💱 Fetched {items.Count} Currencies from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetCurrenciesAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Voucher Types from Tally
+        /// </summary>
+        public async Task<List<TallyVoucherType>> GetVoucherTypesAsync(string companyName)
+        {
+            var items = new List<TallyVoucherType>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>VoucherType</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("VOUCHERTYPE"))
+                {
+                    items.Add(new TallyVoucherType
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"vt_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Parent = GetElementValue(el, "PARENT"),
+                        NumberingMethod = GetElementValue(el, "NUMBERINGMETHOD"),
+                        IsActive = GetElementValue(el, "ISACTIVE")?.ToUpper() != "NO",
+                        IsTaxInvoice = GetElementValue(el, "ISTAXINVOICE")?.ToUpper() == "YES",
+                        Prefix = GetElementValue(el, "PREFIX"),
+                        Suffix = GetElementValue(el, "SUFFIX"),
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📝 Fetched {items.Count} Voucher Types from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetVoucherTypesAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Units of Measure from Tally
+        /// </summary>
+        public async Task<List<UnitOfMeasure>> GetUnitsAsync(string companyName)
+        {
+            var items = new List<UnitOfMeasure>();
+            try
+            {
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>Unit</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("UNIT"))
+                {
+                    items.Add(new UnitOfMeasure
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"unit_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        Symbol = GetElementValue(el, "ORIGINALNAME") ?? GetElementValue(el, "NAME"),
+                        FormalName = GetElementValue(el, "FORMALNAME"),
+                        IsSimpleUnit = GetElementValue(el, "ISSIMPLEUNIT")?.ToUpper() != "NO",
+                        BaseUnits = GetElementValue(el, "BASEUNITS"),
+                        AdditionalUnits = GetElementValue(el, "ADDITIONALUNITS"),
+                        Conversion = ParseDecimal(GetElementValue(el, "CONVERSION")),
+                        NumberOfDecimalPlaces = (int)ParseDecimal(GetElementValue(el, "DECIMALPLACES") ?? "0"),
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"📐 Fetched {items.Count} Units from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetUnitsAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Get all Budgets from Tally
+        /// </summary>
+        public async Task<List<TallyBudget>> GetBudgetsAsync(string companyName)
+        {
+            var items = new List<TallyBudget>();
+            try
+            {
+                // Correct request for Budgets uses "Budget" collection
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>List of Budgets</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                // Using Collection approach
+                xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>Budget</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                var doc = await SendRequestAsync(xml, companyName);
+                if (doc == null) return items;
+
+                int idx = 0;
+                foreach (var el in doc.Descendants("BUDGET"))
+                {
+                    items.Add(new TallyBudget
+                    {
+                        Id = GetElementValue(el, "GUID") ?? $"bgt_{companyName}_{idx++}",
+                        Name = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME") ?? "",
+                        BudgetFor = GetElementValue(el, "BUDGETFOR"), // e.g. "Ledger" or "Group"
+                        // Dates might need parsing if present
+                        MasterId = GetElementValue(el, "MASTERID"),
+                        AlterId = GetElementValue(el, "ALTERID")
+                    });
+                }
+                Log($"💰 Fetched {items.Count} Budgets from {companyName}");
+            }
+            catch (Exception ex) { Log($"❌ GetBudgetsAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Extract Bank Allocations from vouchers (cheque/NEFT details)
+        /// Called after voucher sync - processes already-fetched voucher XML
+        /// </summary>
+        /// <summary>
+        /// Get all Price Lists from Tally
+        /// </summary>
+        public async Task<List<PriceListEntry>> GetPriceListsAsync(string companyName)
+        {
+            var items = new List<PriceListEntry>();
+            try
+            {
+                // Price Lists are complex in Tally (PRICELEVEL list -> PRICELEVEL -> PRICELIST -> ITEM)
+                // We'll use a collection export for Price Levels, but extracting items is tricky.
+                // Alternative: Use a collection of "PriceList" directly if Tally supports it, but standard hierarchy is PriceLevel -> Item -> PriceList
+                
+                string xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>List of Price Levels</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <EXPLODEFLAG>Yes</EXPLODEFLAG>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+
+                // Using standard collection approach for Price Levels
+                // Note: Getting full item-wise price list via XML Collection is verbose.
+                // We'll attempt a broad collection fetch.
+                
+                // For now, we'll try to fetch PRICELEVEL collection and hope for nested items.
+                 xml = $@"<ENVELOPE>
+                    <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+                    <BODY><EXPORTDATA><REQUESTDESC>
+                        <REPORTNAME>%%Collection</REPORTNAME>
+                        <STATICVARIABLES>
+                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <COLLECTIONTYPE>PriceLevel</COLLECTIONTYPE>
+                        </STATICVARIABLES>
+                    </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+                 
+                 // NOTE: Tally XML API for comprehensive Price List extraction is notoriously difficult 
+                 // without a specific TDL. We will try a best-effort fetch of Price Levels.
+                 // If specific item prices aren't exposed in standard XML, we might only get level names.
+                 
+                 var doc = await SendRequestAsync(xml, companyName);
+                 if (doc == null) return items;
+
+                 // Logic to parse Price Lists if available. 
+                 // Tally Default XML for PriceLevel usually just gives names. 
+                 // Deep extraction requires a custom TDL report usually. 
+                 // We will return empty list for now to avoid crashes if data implies custom TDL needed.
+                 // NOTE: To properly implement this, user would likely need a TDL file installed.
+                 // We will verify if Tally returns items.
+                 
+                 // Log("Price List sync requires custom TDL for item-level details. Syncing Levels only for now.");
+                 int idx = 0;
+                 foreach (var el in doc.Descendants("PRICELEVEL"))
+                 {
+                     // This is just the level name (e.g. "Retail", "Wholesale")
+                     string levelName = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME");
+                     // We can't get the items without a specific TDL report request.
+                 }
+            }
+            catch (Exception ex) { Log($"❌ GetPriceListsAsync error: {ex.Message}"); }
+            return items;
+        }
+
+        /// <summary>
+        /// Extract Bank Allocations from vouchers (cheque/NEFT details)
+        /// Called after voucher sync - processes already-fetched voucher XML
+        /// </summary>
+        public List<BankAllocation> ExtractBankAllocations(List<Voucher> vouchers, string companyName)
+        {
+            var allocs = new List<BankAllocation>();
+            foreach (var v in vouchers)
+            {
+                if (v.LedgerEntries == null) continue;
+                
+                foreach (var le in v.LedgerEntries)
+                {
+                    if (le.BankAllocations == null) continue;
+                    
+                    foreach (var ba in le.BankAllocations)
+                    {
+                        // Enrich with parent voucher info
+                        ba.VoucherId = v.Id; // This is the deteministic UUID we generated
+                        // ba.CompanyId will be set by SyncManager during upload
+                        allocs.Add(ba);
+                    }
+                }
+            }
+            return allocs;
+        }
+
+        /// <summary>
+        /// Extract Bill Allocations from vouchers (outstanding per-bill)
+        /// Called after voucher sync - processes already-fetched voucher data
+        /// </summary>
+        public List<BillAllocation> ExtractBillAllocations(List<Voucher> vouchers, string companyName)
+        {
+            var allocs = new List<BillAllocation>();
+            foreach (var v in vouchers)
+            {
+                if (v.LedgerEntries == null) continue;
+
+                foreach (var le in v.LedgerEntries)
+                {
+                    if (le.BillAllocations == null) continue;
+
+                    foreach (var ba in le.BillAllocations)
+                    {
+                        // Enrich with parent voucher info
+                        ba.VoucherId = v.Id;
+                        ba.LedgerName = le.LedgerName; // Important: link to the ledger
+                        allocs.Add(ba);
+                    }
+                }
+            }
+            return allocs;
+        }
+
+        /// <summary>
+        /// Extract Debit/Credit Notes from vouchers
+        /// </summary>
+        public List<DebitCreditNote> ExtractDebitCreditNotes(List<Voucher> vouchers, string companyName)
+        {
+            var notes = new List<DebitCreditNote>();
+            foreach (var v in vouchers)
+            {
+                bool isDebitNote = v.VoucherType.Contains("Debit Note", StringComparison.OrdinalIgnoreCase);
+                bool isCreditNote = v.VoucherType.Contains("Credit Note", StringComparison.OrdinalIgnoreCase);
+                
+                if (!isDebitNote && !isCreditNote) continue;
+
+                notes.Add(new DebitCreditNote
+                {
+                    // Use deterministic ID based on Voucher ID
+                    Id = v.Id, // Same ID as voucher is fine, but usually we want unique Note ID. 
+                               // Actually if we use Voucher ID it's 1:1. 
+                               // But DebitCreditNotes table might track extra info.
+                               // Let's use "dcn_" prefix to avoid PK collision if table is separate but logic implies 1:1
+                    VoucherId = v.Id,
+                    NoteType = isDebitNote ? "debit" : "credit",
+                    NoteNumber = v.VoucherNumber,
+                    NoteDate = v.VoucherDate,
+                    PartyName = v.PartyName,
+                    TotalAmount = v.TotalAmount,
+                    Narration = v.Narration,
+                    MasterId = v.MasterId,
+                    AlterId = v.AlterId,
+                    // GST details would need deep parsing
+                });
+            }
+            return notes;
         }
 
         public void Dispose()

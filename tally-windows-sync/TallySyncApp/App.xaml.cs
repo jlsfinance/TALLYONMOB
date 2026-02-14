@@ -7,6 +7,9 @@ using TallySyncApp.Models;
 using TallySyncApp.Views;
 using Newtonsoft.Json;
 using System.Windows.Threading;
+using Clowd.Squirrel;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace TallySyncApp
 {
@@ -24,8 +27,15 @@ namespace TallySyncApp
         public static AuthService AuthService => _authService!;
         public static AppSettings Settings => _settings!;
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
+            // [CRITICAL] Handle Squirrel Install/Update events
+            SquirrelAwareApp.HandleEvents(
+                onInitialInstall: (v, t) => CreateShortcuts(),
+                onAppUpdate: (v, t) => CreateShortcuts(),
+                onAppUninstall: (v, t) => RemoveShortcuts()
+            );
+
             base.OnStartup(e);
 
             // Prevent app from closing when LoginWindow closes before MainWindow opens
@@ -36,6 +46,9 @@ namespace TallySyncApp
 
             // Initialize logging
             InitializeLogging();
+
+            // Check for updates in background (Silent)
+            _ = Task.Run(async () => await CheckForUpdates());
 
             // Initialize auth service
             InitializeAuth();
@@ -61,6 +74,57 @@ namespace TallySyncApp
                 // Show login window
                 ShowLoginWindow();
             }
+        }
+
+        private async Task CheckForUpdates()
+        {
+            try
+            {
+                // GitHub Repo URL (Using correct format for Clowd.Squirrel)
+                string repoUrl = "https://github.com/jlsfinance/TALLYONMOB";
+
+                using (var mgr = await UpdateManager.GitHubUpdateManager(repoUrl))
+                {
+                    var updateInfo = await mgr.CheckForUpdate();
+
+                    if (updateInfo.ReleasesToApply.Any())
+                    {
+                        _logger?.LogInformation($"Update found! Silently downloading in background...");
+
+                        // Silent download and apply
+                        await mgr.DownloadReleases(updateInfo.ReleasesToApply);
+                        await mgr.ApplyReleases(updateInfo);
+                        
+                        _logger?.LogInformation("Update applied successfully. Changes will take effect on next restart.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // NEVER crash app if update fails, just log it
+                _logger?.LogError($"Silent update check failed: {ex.Message}");
+            }
+        }
+
+        private void CreateShortcuts()
+        {
+            using (var mgr = new UpdateManager(""))
+            {
+                mgr.CreateShortcutForThisExe(ShortcutLocation.Desktop | ShortcutLocation.StartMenu);
+            }
+        }
+
+        private void RemoveShortcuts()
+        {
+            using (var mgr = new UpdateManager(""))
+            {
+                mgr.RemoveShortcutForThisExe(ShortcutLocation.Desktop | ShortcutLocation.StartMenu);
+            }
+        }
+        
+        private void ShowWelcomeMessage()
+        {
+            MessageBox.Show("Welcome to TallyLink! Installation Complete.", "TallyLink", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void LoadSettings()

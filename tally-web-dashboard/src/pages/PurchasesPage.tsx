@@ -50,7 +50,7 @@ export default function PurchasesPage() {
     const loadPurchases = async () => {
         setLoading(true);
         try {
-            console.log('Loading purchases for range:', dateRange);
+
             const { data, error } = await supabase.from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
@@ -62,7 +62,7 @@ export default function PurchasesPage() {
             if (error) throw error;
 
             const purchaseData = data || [];
-            console.log('Purchases loaded:', purchaseData.length);
+
             setPurchases(purchaseData);
 
             const total = purchaseData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);
