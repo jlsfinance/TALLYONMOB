@@ -19,3 +19,6 @@ Allow: /
 
 User-agent: Googlebot
 Allow: /
+
+# LLM Optimized Content
+Sitemap: https://tallyonmob.vercel.app/llms.txt
