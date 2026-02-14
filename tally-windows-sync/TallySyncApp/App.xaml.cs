@@ -351,7 +351,5 @@ namespace TallySyncApp
             // Trigger actual sync logic here from SyncManager
             ShowNotification("TallyLink", "Sync completed successfully!");
         }
-
-        }
     }
 }
