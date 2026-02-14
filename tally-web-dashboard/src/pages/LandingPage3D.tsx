@@ -574,9 +574,15 @@ export default function LandingPage3D() {
                             {/* Dashboard image */}
                             <img
                                 src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=2000"
-                                alt="TallyLink FREE Dashboard Preview"
-                                className="w-full object-cover"
+                                srcSet="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=600 600w, https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200 1200w"
+                                sizes="(max-width: 600px) 100vw, 1200px"
+                                alt="TallyLink FREE Dashboard - Real-time Tally on Mobile"
+                                className="w-full object-cover aspect-video"
                                 style={{ maxHeight: '500px' }}
+                                width="1200"
+                                height="675"
+                                loading="eager"
+                                fetchPriority="high"
                             />
                         </div>
                     </motion.div>
