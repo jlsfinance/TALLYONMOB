@@ -4,9 +4,10 @@
 [Setup]
 AppId={{D3B2A1E4-7C9F-4A9B-B8D2-E4F5A6B7C8D9}
 AppName=TallyLink Sync
-AppVersion=2.0.0
-AppPublisher=TallyLink
-AppPublisherURL=https://tallylink.com
+AppVersion=2.0.1
+AppPublisher=Shaurya Tech Sol
+AppPublisherURL=https://shauryatechsol.com
+AppComments=Finance & Accounting Sync Tool
 DefaultDirName={autopf}\TallyLink\Sync
 DefaultGroupName=TallyLink Sync
 AllowNoIcons=yes

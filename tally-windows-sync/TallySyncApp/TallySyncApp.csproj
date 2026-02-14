@@ -13,10 +13,12 @@
 
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallyLink</RootNamespace>
-    <Version>1.1.0</Version>
-    <Authors>TallyLink</Authors>
-    <Description>TallyLink Limitless Sync</Description>
-    <Copyright>Copyright © 2026 TallyLink</Copyright>
+    <Version>2.0.1</Version>
+    <Authors>Shaurya Tech Sol</Authors>
+    <Company>Shaurya Tech Sol</Company>
+    <Product>TallyLink Sync</Product>
+    <Description>Finance Management &amp; Sync Tool for Tally</Description>
+    <Copyright>Copyright © 2026 Shaurya Tech Sol</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
