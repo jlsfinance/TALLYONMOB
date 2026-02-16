@@ -64,6 +64,7 @@ import ReportBuilderPage from './pages/ReportBuilderPage';
 import InvoiceViewPage from './pages/InvoiceViewPage';
 import LegalTemplatePage from './pages/LegalTemplatePage';
 import SettingsPage from './pages/SettingsPage';
+import StockItemDetailPage from './pages/StockItemDetailPage';
 import { LanguageProvider } from './contexts/LanguageContext';
 
 
@@ -207,6 +208,7 @@ function AppContent() {
                                 <Route path="/purchases" element={<PurchasesPage />} />
                                 <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
                                 <Route path="/stock" element={<StockPage />} />
+                                <Route path="/stock/:id" element={<StockItemDetailPage />} />
                                 <Route path="/sync-history" element={<SyncHistoryPage />} />
                                 <Route path="/gst-reports" element={<GSTReportsPage />} />
                                 <Route path="/ledger-statement/:id" element={<LedgerStatementPage />} />

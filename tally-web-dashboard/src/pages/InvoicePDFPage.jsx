@@ -94,7 +94,7 @@ export default function InvoicePDFPage() {
                 if (voucherData.party_ledger_id) {
                     const { data: pData, error: pErr } = await supabase
                         .from('ledgers')
-                        .select('address, gstin, email, phone')
+                        .select('id, address, gstin, email, phone')
                         .eq('id', voucherData.party_ledger_id)
                         .single();
                     if (pErr) console.error('DEBUG: Party Ledger Fetch Error:', pErr);
@@ -102,7 +102,7 @@ export default function InvoicePDFPage() {
                 } else if (voucherData.party_name) {
                     const { data: pData, error: pErr } = await supabase
                         .from('ledgers')
-                        .select('address, gstin, email, phone')
+                        .select('id, address, gstin, email, phone')
                         .eq('company_id', voucherData.company_id)
                         .ilike('name', voucherData.party_name.trim())
                         .maybeSingle();
@@ -160,7 +160,7 @@ export default function InvoicePDFPage() {
 
                 const { data: stockItems } = await supabase
                     .from('stock_items')
-                    .select('name, hsn_code, unit, gst_rate')
+                    .select('id, name, hsn_code, unit, gst_rate')
                     .eq('company_id', voucherData.company_id);
 
                 const stockLookup = {};
@@ -173,10 +173,11 @@ export default function InvoicePDFPage() {
                     const master = stockLookup[item.item_name || item.stock_item_name] || {};
                     const gstRate = Number(item.gst_rate) || Number(master.gst_rate) || 0;
                     const amount = Number(item.amount) || 0;
-                    const taxable = amount; // Item amount is typically taxable
+                    const taxable = amount;
 
                     return {
                         ...item,
+                        stock_item_id: master.id,
                         stock_item_name: item.item_name || item.stock_item_name || 'Item',
                         hsn_code: item.hsn_code || master.hsn_code || '',
                         unit: item.unit || master.unit || '',
@@ -279,6 +280,7 @@ export default function InvoicePDFPage() {
                     invoice_number: voucherData.voucher_number,
                     invoice_date: voucherData.voucher_date,
                     party_ledger_name: voucherData.party_name,
+                    party_ledger_id: partyDetails.id || voucherData.party_ledger_id,
                     party_gstin: voucherData.party_gstin || partyDetails.gstin || '',
                     party_address: voucherData.party_address || partyDetails.address || '',
                     party_state: voucherData.party_state || voucherData.place_of_supply || partyDetails.state || '',
@@ -1070,7 +1072,12 @@ export default function InvoicePDFPage() {
                                 <div className="border-b-2 border-black p-0">
                                     <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
                                     <div className="p-3 text-xs">
-                                        <p className="font-bold text-sm uppercase">{invoice.party_ledger_name}</p>
+                                        <p
+                                            className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
+                                            onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
+                                        >
+                                            {invoice.party_ledger_name}
+                                        </p>
                                         <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
                                         <div className="flex gap-4 mt-2">
                                             {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
@@ -1105,7 +1112,14 @@ export default function InvoicePDFPage() {
                                             return (
                                                 <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
                                                     <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
-                                                    <div className="flex-1 p-2 border-r border-black font-semibold text-left">{item.stock_item_name}</div>
+                                                    <div className="flex-1 p-2 border-r border-black font-semibold text-left">
+                                                        <span
+                                                            className="cursor-pointer hover:text-blue-600 transition-colors"
+                                                            onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
+                                                        >
+                                                            {item.stock_item_name}
+                                                        </span>
+                                                    </div>
                                                     {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
                                                     {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
                                                     {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
