@@ -1,9 +1,11 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { supabase } from './lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import MobileLandingPage from './pages/MobileLandingPage';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import AppLayout from './components/layout/AppLayout';
 import './App.css';
@@ -61,12 +63,13 @@ import PortalLinksPage from './pages/PortalLinksPage';
 import ReportBuilderPage from './pages/ReportBuilderPage';
 import InvoiceViewPage from './pages/InvoiceViewPage';
 import LegalTemplatePage from './pages/LegalTemplatePage';
+import SettingsPage from './pages/SettingsPage';
 import { LanguageProvider } from './contexts/LanguageContext';
 
 
 // Protected Route Wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading, selectedCompany, appMode, companies } = useAuth() as any;
+    const { user, loading, selectedCompany, appMode } = useAuth() as any;
     const location = useLocation();
 
     if (loading) {
@@ -85,7 +88,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
 
     // First force mode selection if not set (allow onboarding and admin pages)
-    // Only redirect if we are strictly on the root path or trying to access protected areas without mode
     if (!appMode &&
         location.pathname !== '/select-mode' &&
         location.pathname !== '/onboarding' &&
@@ -95,13 +97,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
 
     // If in Tally mode and no company selected, redirect to select-company
-    // This allows users to land on Select Company page even if they have 0 companies
     if (appMode === 'tally' && !selectedCompany &&
         location.pathname !== '/select-company' &&
         location.pathname !== '/onboarding' &&
         location.pathname !== '/admin' &&
         !location.pathname.startsWith('/create-invoice') &&
-        location.pathname !== '/select-mode' &&  // Added: prevent redirect loop when trying to switch mode
+        location.pathname !== '/select-mode' &&
         location.pathname !== '/') {
         return <Navigate to="/select-company" replace />;
     }
@@ -109,7 +110,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
 }
 
-function App() {
+// Redirects home based on auth state
+function HomeRedirect() {
+    const { user, loading } = useAuth() as any;
+
+    if (loading) return null;
+
+    if (user) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return Capacitor.isNativePlatform() ? <MobileLandingPage /> : <LandingPage3D />;
+}
+
+// Sub-component to handle hooks that require Router/Auth context
+function AppContent() {
+    const navigate = useNavigate();
+
     useEffect(() => {
         // Handle Capacitor deep links (for social login/magic links)
         const handleDeepLink = async (data: any) => {
@@ -127,7 +144,11 @@ function App() {
                         refresh_token: refreshToken
                     });
 
-                    if (error) console.error('Error setting session from deep link:', error);
+                    if (!error) {
+                        navigate('/dashboard');
+                    } else {
+                        console.error('Error setting session from deep link:', error);
+                    }
                 }
             }
         };
@@ -141,8 +162,87 @@ function App() {
         return () => {
             CapApp.removeAllListeners();
         };
-    }, []);
+    }, [navigate]);
 
+    return (
+        <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />
+
+            {/* Protected Routes */}
+            <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
+            <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
+
+            {/* Landing & Legal Pages (Public) */}
+            <Route path="/" element={<HomeRedirect />} />
+            <Route path="/privacy" element={<PrivacyPolicyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/refund" element={<RefundPolicyPage />} />
+            <Route path="/legal/:slug" element={<LegalTemplatePage />} />
+
+            {/* Public Customer Portal */}
+            <Route path="/portal/view" element={<CustomerPortalPage />} />
+            <Route path="/portal/invoice/:id" element={<InvoiceViewPage />} />
+
+            <Route
+                path="/*"
+                element={
+                    <ProtectedRoute>
+                        <AppLayout>
+                            <Routes>
+                                <Route path="/dashboard" element={<DashboardPage />} />
+                                {/* Legacy redirect */}
+                                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                                <Route path="/dashboard-3d" element={<Dashboard3DPage />} />
+                                <Route path="/ledgers" element={<LedgersPage />} />
+                                <Route path="/ledgers/:id" element={<LedgerDetailPage />} />
+                                <Route path="/vouchers" element={<VouchersPage />} />
+                                <Route path="/vouchers/:voucherId" element={<VoucherDetailPage />} />
+                                <Route path="/sales" element={<SalesPage />} />
+                                <Route path="/create-invoice" element={<CreateInvoicePage />} />
+                                <Route path="/edit-invoice/:id" element={<EditVoucherPage />} />
+                                <Route path="/sales/:id" element={<InvoiceDetailPage />} />
+                                <Route path="/purchases" element={<PurchasesPage />} />
+                                <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
+                                <Route path="/stock" element={<StockPage />} />
+                                <Route path="/sync-history" element={<SyncHistoryPage />} />
+                                <Route path="/gst-reports" element={<GSTReportsPage />} />
+                                <Route path="/ledger-statement/:id" element={<LedgerStatementPage />} />
+                                <Route path="/aging-report" element={<AgingReportPage />} />
+                                <Route path="/sales-dashboard" element={<SalesDashboardPage />} />
+                                <Route path="/invoice/:id" element={<InvoicePDFPage />} />
+                                <Route path="/profit-loss" element={<ProfitLossPage />} />
+                                <Route path="/balance-sheet" element={<BalanceSheetPage />} />
+                                <Route path="/sales-analytics" element={<SalesAnalyticsPage />} />
+                                <Route path="/bank-reconciliation" element={<BankReconciliationPage />} />
+                                <Route path="/ai-entry" element={<AIEntryPage />} />
+                                <Route path="/payment-reminders" element={<PaymentRemindersPage />} />
+                                <Route path="/inactive-customers" element={<InactiveCustomersPage />} />
+                                <Route path="/ai-assistant" element={<AIAssistantPage />} />
+                                <Route path="/create-voucher" element={<CreateVoucherPage />} />
+                                <Route path="/eway-bill" element={<EWayBillPage />} />
+                                <Route path="/sales-team" element={<SalesTeamPage />} />
+                                <Route path="/invoice-templates" element={<InvoiceTemplatePage />} />
+                                <Route path="/team-management" element={<TeamManagementPage />} />
+                                <Route path="/backup-restore" element={<BackupRestorePage />} />
+                                <Route path="/invoice-scanner" element={<InvoiceScannerPage />} />
+                                <Route path="/payment-links" element={<PaymentLinksPage />} />
+                                <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
+                                <Route path="/portal-links" element={<PortalLinksPage />} />
+                                <Route path="/report-builder" element={<ReportBuilderPage />} />
+                                <Route path="/settings" element={<SettingsPage />} />
+                            </Routes>
+                        </AppLayout>
+                    </ProtectedRoute>
+                }
+            />
+        </Routes>
+    );
+}
+
+function App() {
     return (
         <ThemeProvider>
             <LanguageProvider>
@@ -174,79 +274,7 @@ function App() {
                                 },
                             }}
                         />
-                        <Routes>
-                            <Route path="/login" element={<LoginPage />} />
-                            <Route path="/auth/callback" element={<AuthCallback />} />
-                            <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
-                            <Route path="/admin" element={<ProtectedRoute><AdminDashboardPage /></ProtectedRoute>} />
-
-                            {/* Protected Routes */}
-                            <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
-                            <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
-
-                            {/* Landing & Legal Pages (Public) */}
-                            <Route path="/" element={<LandingPage3D />} />
-                            <Route path="/privacy" element={<PrivacyPolicyPage />} />
-                            <Route path="/terms" element={<TermsPage />} />
-                            <Route path="/refund" element={<RefundPolicyPage />} />
-                            <Route path="/legal/:slug" element={<LegalTemplatePage />} />
-
-                            {/* Public Customer Portal */}
-                            <Route path="/portal/view" element={<CustomerPortalPage />} />
-                            <Route path="/portal/invoice/:id" element={<InvoiceViewPage />} />
-
-                            <Route
-                                path="/*"
-                                element={
-                                    <ProtectedRoute>
-                                        <AppLayout>
-                                            <Routes>
-                                                <Route path="/dashboard" element={<DashboardPage />} />
-                                                {/* Legacy redirect */}
-                                                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                                                <Route path="/dashboard-3d" element={<Dashboard3DPage />} />
-                                                <Route path="/ledgers" element={<LedgersPage />} />
-                                                <Route path="/ledgers/:id" element={<LedgerDetailPage />} />
-                                                <Route path="/vouchers" element={<VouchersPage />} />
-                                                <Route path="/vouchers/:voucherId" element={<VoucherDetailPage />} />
-                                                <Route path="/sales" element={<SalesPage />} />
-                                                <Route path="/create-invoice" element={<CreateInvoicePage />} />
-                                                <Route path="/edit-invoice/:id" element={<EditVoucherPage />} />
-                                                <Route path="/sales/:id" element={<InvoiceDetailPage />} />
-                                                <Route path="/purchases" element={<PurchasesPage />} />
-                                                <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
-                                                <Route path="/stock" element={<StockPage />} />
-                                                <Route path="/sync-history" element={<SyncHistoryPage />} />
-                                                <Route path="/gst-reports" element={<GSTReportsPage />} />
-                                                <Route path="/ledger-statement/:id" element={<LedgerStatementPage />} />
-                                                <Route path="/aging-report" element={<AgingReportPage />} />
-                                                <Route path="/sales-dashboard" element={<SalesDashboardPage />} />
-                                                <Route path="/invoice/:id" element={<InvoicePDFPage />} />
-                                                <Route path="/profit-loss" element={<ProfitLossPage />} />
-                                                <Route path="/balance-sheet" element={<BalanceSheetPage />} />
-                                                <Route path="/sales-analytics" element={<SalesAnalyticsPage />} />
-                                                <Route path="/bank-reconciliation" element={<BankReconciliationPage />} />
-                                                <Route path="/ai-entry" element={<AIEntryPage />} />
-                                                <Route path="/payment-reminders" element={<PaymentRemindersPage />} />
-                                                <Route path="/inactive-customers" element={<InactiveCustomersPage />} />
-                                                <Route path="/ai-assistant" element={<AIAssistantPage />} />
-                                                <Route path="/create-voucher" element={<CreateVoucherPage />} />
-                                                <Route path="/eway-bill" element={<EWayBillPage />} />
-                                                <Route path="/sales-team" element={<SalesTeamPage />} />
-                                                <Route path="/invoice-templates" element={<InvoiceTemplatePage />} />
-                                                <Route path="/team-management" element={<TeamManagementPage />} />
-                                                <Route path="/backup-restore" element={<BackupRestorePage />} />
-                                                <Route path="/invoice-scanner" element={<InvoiceScannerPage />} />
-                                                <Route path="/payment-links" element={<PaymentLinksPage />} />
-                                                <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
-                                                <Route path="/portal-links" element={<PortalLinksPage />} />
-                                                <Route path="/report-builder" element={<ReportBuilderPage />} />
-                                            </Routes>
-                                        </AppLayout>
-                                    </ProtectedRoute>
-                                }
-                            />
-                        </Routes>
+                        <AppContent />
                     </AuthProvider>
                 </Router>
             </LanguageProvider>

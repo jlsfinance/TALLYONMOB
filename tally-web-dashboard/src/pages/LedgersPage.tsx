@@ -12,6 +12,7 @@ import {
 } from '../components/ui/GlassUI';
 import TransactionSlider from '../components/shared/TransactionSlider';
 import { FinancialYearFilter } from '../components/shared/FinancialYearFilter';
+import { toast } from 'react-hot-toast';
 
 export default function LedgersPage() {
     const { selectedCompany } = useAuth() as any;
@@ -70,7 +71,8 @@ export default function LedgersPage() {
             setLedgers(sortedData);
 
             if (sortedData.length > 0) {
-                fetchRecentTransactions(sortedData.slice(0, 15));
+                // Increased limit from 15 to 100 based on user feedback
+                fetchRecentTransactions(sortedData.slice(0, 100));
             }
         } catch (error) {
             console.error('Error in loadLedgers:', error);
@@ -95,6 +97,18 @@ export default function LedgersPage() {
             }, {});
             setPartyTransactions(prev => ({ ...prev, ...grouped }));
         }
+    };
+
+    const sendWhatsAppReminder = (ledger: any) => {
+        if (!ledger.phone) {
+            toast.error('No phone number found for this party');
+            return;
+        }
+        const bal = Math.abs(ledger.current_balance || 0);
+        const type = ledger.current_balance >= 0 ? 'Dr' : 'Cr';
+        const message = `Namaste ${ledger.name}, your outstanding balance with ${selectedCompany.name} is ₹${bal.toLocaleString('en-IN')} ${type}. Please settle at the earliest. Thank you!`;
+        const url = `https://wa.me/${ledger.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
     };
 
     const formatCurrency = (amount: number) => {
@@ -202,7 +216,10 @@ export default function LedgersPage() {
 
                                     {/* Quick Actions */}
                                     <div className="flex items-center gap-2 mt-4">
-                                        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); sendWhatsAppReminder(ledger); }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase hover:bg-emerald-500/20 transition-colors"
+                                        >
                                             <MessageCircle size={12} /> WhatsApp
                                         </button>
                                         <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-500 text-[9px] font-black uppercase">

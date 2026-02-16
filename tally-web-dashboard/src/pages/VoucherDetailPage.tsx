@@ -5,7 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
     ArrowLeft, MessageCircle, Share2, Download,
     Calendar, User, FileText, Edit, RefreshCw, CheckCircle2,
-    MoreVertical, Info, Package, Hash, Tag, Trash2, Printer
+    MoreVertical, Info, Package, Hash, Tag, Trash2, Printer,
+    ArrowUpRight, Share, Box
 } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/GlassUI';
 import { pendingTransactionApi } from '@/lib/supabase';
@@ -151,6 +152,7 @@ export default function VoucherDetailPage() {
                     unit: item.unit || item.Unit || stockData.unit || 'pcs',
                     quantity: item.quantity || item.Quantity || 0,
                     rate: item.rate || item.Rate || 0,
+                    gst_rate: item.gst_rate || item.GSTRate || stockData.gst_rate || 0,
                     discount: item.discount_percent || item.DiscountPercent || item.discount_amount || 0,
                     amount: item.amount || item.Amount || ((item.quantity || item.Quantity || 0) * (item.rate || item.Rate || 0)) || 0
                 };
@@ -208,16 +210,16 @@ export default function VoucherDetailPage() {
     };
 
     if (loading) return (
-        <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
+        <div className="min-h-screen flex flex-col items-center justify-center space-y-4 bg-[var(--background)]">
             <RefreshCw className="w-8 h-8 text-[var(--primary)] animate-spin" />
-            <p className="text-[10px] font-black uppercase tracking-[3px] text-gray-400">Loading Bill Details...</p>
+            <p className="text-[10px] font-black uppercase tracking-[3px] text-[var(--text-muted)]">Loading...</p>
         </div>
     );
 
     if (!voucher) return (
-        <div className="p-10 text-center space-y-4">
-            <Info size={48} className="mx-auto text-gray-400" />
-            <p className="font-black text-xl uppercase tracking-tighter">Bill Not Found</p>
+        <div className="min-h-screen p-10 flex flex-col items-center justify-center text-center space-y-4 bg-[var(--background)]">
+            <Info size={48} className="text-[var(--text-muted)] opacity-50" />
+            <p className="font-black text-xl text-[var(--on-surface)] uppercase tracking-tighter">Bill Not Found</p>
             <Button onClick={() => navigate(-1)}>Go Back</Button>
         </div>
     );
@@ -226,196 +228,176 @@ export default function VoucherDetailPage() {
     const status = (voucher.sync_status || 'Synced') === 'Synced' ? 'SYNCED' : 'PENDING';
 
     return (
-        <div className="min-h-screen bg-[var(--background)] pb-40">
-            {/* Nav Bar (Print Hidden) */}
-            <header className="sticky top-0 z-50 bg-[var(--background)]/80 backdrop-blur-xl border-b border-[var(--border)] px-4 py-4 print:hidden">
-                <div className="max-w-4xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => navigate(-1)} className="p-2.5 rounded-2xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
-                            <ArrowLeft size={20} />
-                        </button>
-                        <div>
-                            <h1 className="text-xl font-black text-[var(--on-surface)] tracking-tight">View Bill</h1>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                                <div className={`w-1.5 h-1.5 rounded-full ${status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
-                                <span className={`text-[9px] font-black uppercase tracking-widest ${status === 'SYNCED' ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                    {status === 'SYNCED' ? 'Synced to Tally' : 'Pending Sync'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <button className="p-2.5 rounded-2xl bg-[var(--surface-variant)] text-[var(--on-surface)]">
-                        <MoreVertical size={20} />
-                    </button>
-                </div>
-            </header>
-
-            {/* Bill Template (Optimized for Screen & Print) */}
-            <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8 print:p-0">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-[40px] overflow-hidden shadow-2xl print:shadow-none print:border-none print:rounded-none"
+        <div className="min-h-screen bg-[var(--background)] pb-32 font-['Inter',sans-serif]">
+            {/* Header - Transparent & Sticky */}
+            <header className="sticky top-0 z-50 px-4 py-4 md:py-6 flex items-center justify-between bg-[var(--background)]/80 backdrop-blur-md">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="p-3 -ml-2 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
                 >
-                    {/* 1. Header Section - Vertical Spacing Added */}
-                    <div className="p-8 md:p-12 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/80 dark:to-slate-900/80 border-b border-[var(--border)] space-y-8">
-                        <div className="flex flex-col md:flex-row justify-between items-start gap-8">
-                            <div className="space-y-4">
-                                <Badge className="bg-blue-500 text-white border-none text-[9px] font-black px-3 py-1 tracking-[2px]">
-                                    {voucher.voucher_type.toUpperCase()} INVOICE
-                                </Badge>
-                                <h2 className="text-4xl font-black text-slate-900 dark:text-white uppercase tracking-tighter leading-none max-w-md">
-                                    {voucher.party_name || 'Cash Sales'}
-                                </h2>
-                                <div className="flex flex-wrap items-center gap-6 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                                    <span className="flex items-center gap-2"><Calendar size={14} className="text-blue-500" /> {format(new Date(voucher.voucher_date), 'dd MMM yyyy')}</span>
-                                    <span className="flex items-center gap-2"><Hash size={14} className="text-blue-500" /> NO: {voucher.voucher_number}</span>
-                                </div>
-                            </div>
-                            <div className="md:text-right space-y-2">
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-[4px]">Total Payable</p>
-                                <p className="text-5xl font-black text-[var(--primary)] tracking-tight">
-                                    {formatCurrency(voucher.total_amount)}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <ArrowLeft size={24} />
+                </button>
 
-                    {/* 2. Items Table Section - Vertical Spacing Added */}
-                    <div className="p-8 md:p-12 space-y-10">
-                        {/* Mobile View Items - Enhanced Reading */}
-                        <div className="space-y-6 md:hidden">
-                            <p className="text-[10px] font-black uppercase tracking-[3px] text-slate-400 border-b pb-2">Item Breakdown</p>
-                            {items.map((item: any, idx: number) => (
-                                <div key={idx} className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 space-y-3">
-                                    <h4 className="font-black text-base text-slate-900 dark:text-white uppercase leading-tight">{item.stock_item_name || item.name}</h4>
-                                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 uppercase">
-                                        <span className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-[8px]">HSN CODE: {item.hsn_code}</span>
-                                        {item.discount > 0 && <span className="text-emerald-500">Disc: {item.discount}%</span>}
-                                    </div>
-                                    <div className="flex justify-between items-end pt-2 border-t border-slate-200/50">
-                                        <div className="text-xs font-bold text-slate-400">
-                                            {item.quantity} {item.unit} × {formatCurrency(item.rate)}
-                                        </div>
-                                        <div className="text-lg font-black text-slate-900 dark:text-white">
-                                            {formatCurrency(item.amount || (item.quantity * item.rate))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Desktop Table View - Higher Contrast & HSN/Discount added */}
-                        <div className="hidden md:block print:block">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b-2 border-slate-200 dark:border-slate-800">
-                                        <th className="py-5 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">Description</th>
-                                        <th className="py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">HSN CODE</th>
-                                        <th className="py-5 text-center text-[10px] font-black uppercase text-slate-400 tracking-widest">Qty</th>
-                                        <th className="py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Rate</th>
-                                        <th className="py-5 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                    {items.map((item: any, idx: number) => (
-                                        <tr key={idx} className="group">
-                                            <td className="py-6">
-                                                <p className="font-black text-slate-900 dark:text-white text-base">{item.stock_item_name || item.name}</p>
-                                                {item.discount > 0 && <p className="text-[9px] font-bold text-emerald-500 uppercase mt-1">Discount Applied: {item.discount}%</p>}
-                                            </td>
-                                            <td className="py-6 text-center font-bold text-slate-400 text-sm">{item.hsn_code}</td>
-                                            <td className="py-6 text-center font-black text-slate-900 dark:text-white">{item.quantity} {item.unit}</td>
-                                            <td className="py-6 text-right font-medium text-slate-500">{formatCurrency(item.rate)}</td>
-                                            <td className="py-6 text-right font-black text-slate-900 dark:text-white text-lg">{formatCurrency(item.amount || (item.quantity * item.rate))}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* 3. Summary Section - Better Separation */}
-                        <div className="mt-12 border-t-4 border-double border-slate-200 dark:border-slate-800 pt-10 flex flex-col md:flex-row justify-between items-start gap-10">
-                            <div className="space-y-4 max-w-xs">
-                                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Narration / Notes</p>
-                                    <p className="text-xs font-medium text-slate-600 dark:text-slate-400 italic">
-                                        {voucher.narration || 'No additional notes provided for this transaction.'}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="w-full md:w-80 space-y-4">
-                                <div className="flex justify-between text-sm font-bold text-slate-400 uppercase tracking-wider">
-                                    <span>Subtotal</span>
-                                    <span>{formatCurrency(voucher.total_amount)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm font-black text-emerald-500 uppercase tracking-wider">
-                                    <span>Taxes (GST Included)</span>
-                                    <span>₹0</span>
-                                </div>
-                                <div className="flex justify-between items-end pt-6 border-t-2 border-slate-900 dark:border-white">
-                                    <span className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Grand Total</span>
-                                    <span className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">
-                                        {formatCurrency(voucher.total_amount)}
-                                    </span>
-                                </div>
-                                <p className="text-[9px] font-black text-slate-400 text-right uppercase tracking-[2px] pt-2">
-                                    * Amount inclusive of all duties
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
-
-                {/* Footer Info (Print Hidden) */}
-                <div className="flex flex-wrap justify-center gap-6 print:hidden py-4 opacity-50">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        <CheckCircle2 size={14} className="text-emerald-500" /> Digital Sign Verified
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        <Printer size={14} className="text-blue-500" /> Standard A4 Export
-                    </div>
-                </div>
-            </div>
-
-            {/* STICKY BOTTOM ACTION BAR (Mobile & Desktop) */}
-            <div className="fixed bottom-0 left-0 right-0 z-[60] p-4 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent print:hidden">
-                <div className="max-w-4xl mx-auto flex items-center gap-3">
+                <div className="flex items-center gap-2">
                     <button
-                        onClick={handleWhatsApp}
-                        className="flex-1 h-14 bg-emerald-500 text-white rounded-[20px] shadow-xl shadow-emerald-500/20 font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all active:scale-95"
+                        onClick={() => navigate(`/edit-invoice/${voucherId}`)}
+                        className="p-3 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
                     >
-                        <MessageCircle size={18} /> WhatsApp
+                        <Edit size={22} />
                     </button>
                     <button
                         onClick={handleDownloadPDF}
                         disabled={generatingPdf}
-                        className="flex-1 h-14 bg-blue-500 text-white rounded-[20px] shadow-xl shadow-blue-500/20 font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50"
+                        className="p-3 -mr-2 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
                     >
-                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
-                        {generatingPdf ? 'Working...' : 'Get PDF'}
+                        {generatingPdf ? <RefreshCw size={20} className="animate-spin" /> : <Printer size={22} />}
                     </button>
+                </div>
+            </header>
+
+            <main className="px-5 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+                {/* 1. Hero Amount Section - Centered & Bold */}
+                <div className="text-center space-y-2 py-4">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[3px] text-[var(--text-muted)] opacity-60">Total Payable</p>
+                    <h1 className="text-5xl md:text-6xl font-black text-[var(--on-surface)] tracking-tighter tabular-nums leading-none">
+                        {formatCurrency(voucher.total_amount).replace('.00', '')}
+                    </h1>
+                    <div className="flex justify-center pt-2">
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${status === 'SYNCED' ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-amber-500/30 text-amber-500 bg-amber-500/5'}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                            {status === 'SYNCED' ? 'Synced' : 'Pending'}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Bill Context Card */}
+                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[32px] p-6 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <Hash size={120} />
+                    </div>
+
+                    <div className="relative z-10 space-y-6">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Bill To</p>
+                            <h3 className="text-2xl font-black text-[var(--on-surface)] leading-tight">{voucher.party_name}</h3>
+                            {voucher.party_gst_number && (
+                                <p className="text-[10px] font-bold text-[var(--text-muted)] mt-1 uppercase tracking-wide">GSTIN: {voucher.party_gst_number}</p>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Invoice No</p>
+                                <p className="text-sm font-black text-[var(--on-surface)]">#{voucher.voucher_number}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Date</p>
+                                <p className="text-sm font-black text-[var(--on-surface)]">{format(new Date(voucher.voucher_date), 'dd MMM, yyyy')}</p>
+                            </div>
+                        </div>
+
+                        {/* Company Bank Details (If visible/available) */}
+                        {selectedCompany.bank_details && (
+                            <div className="pt-4 border-t border-[var(--border)]/50">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Pay To</p>
+                                <p className="text-xs font-bold text-[var(--on-surface)]">{selectedCompany.bank_name}</p>
+                                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">A/C: {selectedCompany.account_number} • IFSC: {selectedCompany.ifsc_code}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 3. Items List - Minimal Cards */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between px-2">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Items Included ({items.length})</h4>
+                    </div>
+
+                    <div className="space-y-3">
+                        {items.length === 0 ? (
+                            <div className="py-12 text-center border-2 border-dashed border-[var(--border)] rounded-[24px]">
+                                <Package size={32} className="mx-auto text-[var(--text-muted)] opacity-20 mb-3" />
+                                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">No Items Found</p>
+                            </div>
+                        ) : (
+                            items.map((item: any, idx: number) => (
+                                <div
+                                    key={idx}
+                                    className="bg-[var(--surface)] border border-[var(--border)] rounded-[24px] p-5 active:scale-[0.98] transition-transform flex justify-between items-start gap-4"
+                                >
+                                    <div className="space-y-1.5 flex-1">
+                                        <p className="text-sm font-bold text-[var(--on-surface)] leading-snug">{item.stock_item_name || item.name}</p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="bg-[var(--surface-variant)] px-2.5 py-1 rounded-lg text-[10px] font-bold text-[var(--on-surface)]">
+                                                {item.quantity} {item.unit}
+                                            </div>
+                                            <span className="text-[10px] text-[var(--text-muted)] font-medium">@ {formatCurrency(item.rate)}</span>
+                                            {item.gst_rate > 0 && <span className="text-[9px] font-black text-amber-500 uppercase">GST {item.gst_rate}%</span>}
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-sm font-black text-[var(--on-surface)]">
+                                            {formatCurrency(item.amount || (item.quantity * item.rate))}
+                                        </p>
+                                        {item.discount > 0 && (
+                                            <p className="text-[9px] font-bold text-emerald-500 mt-1">Disc -{item.discount}%</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* 4. Notes Section */}
+                {voucher.narration && (
+                    <div className="px-2">
+                        <div className="bg-[var(--surface-variant)]/30 rounded-2xl p-5 border border-[var(--border)]">
+                            <div className="flex items-center gap-2 mb-2 text-[var(--text-muted)]">
+                                <Info size={12} />
+                                <p className="text-[10px] font-black uppercase tracking-widest">Notes</p>
+                            </div>
+                            <p className="text-xs font-medium text-[var(--on-surface)] italic leading-relaxed opacity-80">"{voucher.narration}"</p>
+                        </div>
+                    </div>
+                )}
+            </main>
+
+            {/* FLOATING BOTTOM BAR */}
+            <div className="fixed bottom-8 left-0 right-0 z-40 flex justify-center px-4">
+                <div className="flex items-center p-1.5 bg-[var(--on-surface)] rounded-full shadow-2xl shadow-black/20 backdrop-blur-xl max-w-sm w-full">
                     <button
-                        onClick={() => navigate(`/edit-invoice/${voucher.id}`)}
-                        className="h-14 w-14 bg-[var(--surface-variant)] text-[var(--on-surface)] rounded-[20px] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-active)] transition-all active:scale-95"
+                        onClick={handleWhatsApp}
+                        className="flex-1 h-12 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--on-surface)] flex items-center justify-center gap-2 transition-all active:scale-95"
                     >
-                        <Edit size={20} />
+                        <MessageCircle size={18} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">WhatsApp</span>
+                    </button>
+
+                    <div className="w-px h-6 bg-[var(--border)] mx-1 opacity-20"></div>
+
+                    <button
+                        onClick={handleDownloadPDF}
+                        disabled={generatingPdf}
+                        className="flex-1 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center gap-2 transition-all hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-500/20"
+                    >
+                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Share size={18} />}
+                        <span className="text-[10px] font-black uppercase tracking-widest">Share PDF</span>
                     </button>
                 </div>
             </div>
 
-            {/* Sync Overlay (Only for non-synced) */}
-            {status !== 'SYNCED' && (
-                <div className="fixed bottom-24 left-4 right-4 z-50">
-                    <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className="w-full h-12 bg-amber-500 text-white rounded-xl shadow-lg font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 animate-bounce"
-                    >
-                        <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                        {syncing ? 'Connecting...' : 'Pending Sync: Tap to Push'}
-                    </button>
-                </div>
+            {/* Sync Overlay Logic */}
+            {status !== 'SYNCED' && !syncing && (
+                <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    onClick={handleSync}
+                    className="fixed bottom-24 right-6 w-12 h-12 bg-amber-500 text-white rounded-full shadow-xl shadow-amber-500/30 flex items-center justify-center z-30 animate-pulse"
+                >
+                    <RefreshCw size={20} />
+                </motion.button>
             )}
         </div>
     );

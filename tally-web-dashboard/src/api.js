@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/v1/data';
+import { Capacitor } from '@capacitor/core';
+const API_URL = Capacitor.isNativePlatform()
+    ? 'https://tallyonmob.vercel.app/api/v1/data'
+    : (import.meta.env.VITE_API_URL || 'https://tallyonmob.vercel.app/api/v1/data');
 
 // Simplified ID based on latest sync logic
 const COMPANY_ID = 'MAHESHWARI_FOOTWEAR';

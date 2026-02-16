@@ -149,6 +149,26 @@ type TranslationKeys = {
     'report_builder.select_table': string;
     'report_builder.select_fields': string;
     'report_builder.run_report': string;
+
+    // Dashboard Extras
+    'dashboard.overview': string;
+    'dashboard.revenue_trend': string;
+    'dashboard.last_6_months': string;
+    'dashboard.quick_actions': string;
+    'dashboard.no_recent': string;
+    'dashboard.view_all_transactions': string;
+    'dashboard.new_invoice': string;
+
+    // New Settings Keys
+    'settings.payment_qr': string;
+    'settings.payment_qr_desc': string;
+    'settings.payment_config': string;
+    'settings.backup_data': string;
+    'settings.team_management': string;
+    'settings.general': string;
+    'settings.upi_placeholder': string;
+    'settings.save_upi': string;
+    'settings.upi_saved': string;
 };
 
 type Translations = Record<Language, TranslationKeys>;
@@ -268,6 +288,25 @@ export const translations: Translations = {
         'report_builder.select_table': 'Select Data Source',
         'report_builder.select_fields': 'Select Fields',
         'report_builder.run_report': 'Run Report',
+
+        'dashboard.overview': 'Overview for',
+        'dashboard.revenue_trend': 'Revenue Trend',
+        'dashboard.last_6_months': 'Last 6 months',
+        'dashboard.quick_actions': 'Quick Actions',
+        'dashboard.no_recent': 'No recent activity',
+        'dashboard.view_all_transactions': 'View All Transactions',
+        'dashboard.new_invoice': 'New Invoice',
+
+        // Settings
+        'settings.payment_qr': 'Payment QR Code',
+        'settings.payment_qr_desc': 'Configure UPI QR Code for Invoices',
+        'settings.payment_config': 'Payment Configuration',
+        'settings.backup_data': 'Data Backup & Restore',
+        'settings.team_management': 'Team Management',
+        'settings.general': 'General Settings',
+        'settings.upi_placeholder': 'Enter Company UPI ID (e.g. name@upi)',
+        'settings.save_upi': 'Save UPI ID',
+        'settings.upi_saved': 'UPI ID Saved Successfully',
     },
 
     hi: {
@@ -384,6 +423,25 @@ export const translations: Translations = {
         'report_builder.select_table': 'डेटा स्रोत चुनें',
         'report_builder.select_fields': 'फ़ील्ड चुनें',
         'report_builder.run_report': 'रिपोर्ट चलाएं',
+
+        'dashboard.overview': 'अवलोकन',
+        'dashboard.revenue_trend': 'राजस्व रुझान',
+        'dashboard.last_6_months': 'पिछले 6 महीने',
+        'dashboard.quick_actions': 'त्वरित कार्य',
+        'dashboard.no_recent': 'कोई हालिया गतिविधि नहीं',
+        'dashboard.view_all_transactions': 'सभी लेनदेन देखें',
+        'dashboard.new_invoice': 'नया इनवॉइस',
+
+        // Settings
+        'settings.payment_qr': 'भुगतान QR कोड',
+        'settings.payment_qr_desc': 'इनवॉइस के लिए UPI QR कॉन्फ़िगर करें',
+        'settings.payment_config': 'भुगतान कॉन्फ़िगरेशन',
+        'settings.backup_data': 'डेटा बैकअप और रिस्टोर',
+        'settings.team_management': 'टीम प्रबंधन',
+        'settings.general': 'सामान्य सेटिंग्स',
+        'settings.upi_placeholder': 'कंपनी UPI आयडी दर्ज करें',
+        'settings.save_upi': 'UPI आयडी सहेजें',
+        'settings.upi_saved': 'UPI आयडी सफलतापूर्वक सहेजा गया',
     },
 
     gu: {
@@ -416,7 +474,24 @@ export const translations: Translations = {
         'settings.language': 'ભાષા', 'settings.theme': 'થીમ', 'settings.company': 'કંપની', 'settings.profile': 'પ્રોફાઇલ',
         'recurring.title': 'આવર્તી ઇનવોઇસ', 'recurring.frequency': 'આવર્તન', 'recurring.next_date': 'આગામી ઇનવોઇસ તારીખ', 'recurring.active': 'સક્રિય', 'recurring.paused': 'થોભેલું', 'recurring.create': 'આવર્તી ઇનવોઇસ બનાવો',
         'portal.title': 'ગ્રાહક પોર્ટલ', 'portal.statement': 'ખાતા વિવરણ', 'portal.pay_now': 'હમણાં ચૂકવો', 'portal.download_invoice': 'ઇનવોઇસ ડાઉનલોડ',
-        'report_builder.title': 'રિપોર્ટ બિલ્ડર', 'report_builder.select_table': 'ડેટા સ્ત્રોત', 'report_builder.select_fields': 'ફીલ્ડ પસંદ કરો', 'report_builder.run_report': 'રિપોર્ટ ચલાવો',
+        'report_builder.title': 'રિપોર્ટ બિલ્ડર', 'report_builder.select_table': 'ડેટા સ્ત્રોત', 'report_builder.select_fields': 'ફીલ્ડ પસંદ કરો',
+        'report_builder.run_report': 'રિપોર્ટ ચલાવો',
+        'dashboard.overview': 'Overview for',
+        'dashboard.revenue_trend': 'Revenue Trend',
+        'dashboard.last_6_months': 'Last 6 months',
+        'dashboard.quick_actions': 'Quick Actions',
+        'dashboard.no_recent': 'No recent activity',
+        'dashboard.view_all_transactions': 'View All Transactions',
+        'dashboard.new_invoice': 'New Invoice',
+        'settings.payment_qr': 'Payment QR Code',
+        'settings.payment_qr_desc': 'Configure UPI QR Code for Invoices',
+        'settings.payment_config': 'Payment Configuration',
+        'settings.backup_data': 'Data Backup & Restore',
+        'settings.team_management': 'Team Management',
+        'settings.general': 'General Settings',
+        'settings.upi_placeholder': 'Enter Company UPI ID (e.g. name@upi)',
+        'settings.save_upi': 'Save UPI ID',
+        'settings.upi_saved': 'UPI ID Saved Successfully',
     },
 
     mr: {
@@ -449,7 +524,24 @@ export const translations: Translations = {
         'settings.language': 'भाषा', 'settings.theme': 'थीम', 'settings.company': 'कंपनी', 'settings.profile': 'प्रोफाइल',
         'recurring.title': 'आवर्ती बिले', 'recurring.frequency': 'वारंवारता', 'recurring.next_date': 'पुढील बिल तारीख', 'recurring.active': 'सक्रिय', 'recurring.paused': 'थांबलेले', 'recurring.create': 'आवर्ती बिल तयार करा',
         'portal.title': 'ग्राहक पोर्टल', 'portal.statement': 'खाते विवरण', 'portal.pay_now': 'आता पैसे द्या', 'portal.download_invoice': 'बिल डाउनलोड',
-        'report_builder.title': 'अहवाल बिल्डर', 'report_builder.select_table': 'डेटा स्रोत', 'report_builder.select_fields': 'फील्ड निवडा', 'report_builder.run_report': 'अहवाल चालवा',
+        'report_builder.title': 'अहवाल बिल्डर', 'report_builder.select_table': 'डेटा स्रोत', 'report_builder.select_fields': 'फील्ड निवडा',
+        'report_builder.run_report': 'अहवाल चालवा',
+        'dashboard.overview': 'Overview for',
+        'dashboard.revenue_trend': 'Revenue Trend',
+        'dashboard.last_6_months': 'Last 6 months',
+        'dashboard.quick_actions': 'Quick Actions',
+        'dashboard.no_recent': 'No recent activity',
+        'dashboard.view_all_transactions': 'View All Transactions',
+        'dashboard.new_invoice': 'New Invoice',
+        'settings.payment_qr': 'Payment QR Code',
+        'settings.payment_qr_desc': 'Configure UPI QR Code for Invoices',
+        'settings.payment_config': 'Payment Configuration',
+        'settings.backup_data': 'Data Backup & Restore',
+        'settings.team_management': 'Team Management',
+        'settings.general': 'General Settings',
+        'settings.upi_placeholder': 'Enter Company UPI ID (e.g. name@upi)',
+        'settings.save_upi': 'Save UPI ID',
+        'settings.upi_saved': 'UPI ID Saved Successfully',
     },
 
     ta: {
@@ -482,7 +574,24 @@ export const translations: Translations = {
         'settings.language': 'மொழி', 'settings.theme': 'தீம்', 'settings.company': 'நிறுவனம்', 'settings.profile': 'சுயவிவரம்',
         'recurring.title': 'தொடர் விலைப்பட்டி', 'recurring.frequency': 'அதிர்வெண்', 'recurring.next_date': 'அடுத்த பில் தேதி', 'recurring.active': 'செயலில்', 'recurring.paused': 'நிறுத்தப்பட்டது', 'recurring.create': 'தொடர் பில் உருவாக்கு',
         'portal.title': 'வாடிக்கையாளர் போர்ட்டல்', 'portal.statement': 'கணக்கு அறிக்கை', 'portal.pay_now': 'இப்போது செலுத்து', 'portal.download_invoice': 'பில் பதிவிறக்கு',
-        'report_builder.title': 'அறிக்கை உருவாக்கி', 'report_builder.select_table': 'தரவு மூலம்', 'report_builder.select_fields': 'புலங்கள் தேர்வு', 'report_builder.run_report': 'அறிக்கை இயக்கு',
+        'report_builder.title': 'அறிக்கை உருவாக்கி', 'report_builder.select_table': 'தரவு மூலம்', 'report_builder.select_fields': 'புலங்கள் தேர்வு',
+        'report_builder.run_report': 'அறிக்கை இயக்கு',
+        'dashboard.overview': 'Overview for',
+        'dashboard.revenue_trend': 'Revenue Trend',
+        'dashboard.last_6_months': 'Last 6 months',
+        'dashboard.quick_actions': 'Quick Actions',
+        'dashboard.no_recent': 'No recent activity',
+        'dashboard.view_all_transactions': 'View All Transactions',
+        'dashboard.new_invoice': 'New Invoice',
+        'settings.payment_qr': 'Payment QR Code',
+        'settings.payment_qr_desc': 'Configure UPI QR Code for Invoices',
+        'settings.payment_config': 'Payment Configuration',
+        'settings.backup_data': 'Data Backup & Restore',
+        'settings.team_management': 'Team Management',
+        'settings.general': 'General Settings',
+        'settings.upi_placeholder': 'Enter Company UPI ID (e.g. name@upi)',
+        'settings.save_upi': 'Save UPI ID',
+        'settings.upi_saved': 'UPI ID Saved Successfully',
     },
 
     te: {
@@ -515,6 +624,23 @@ export const translations: Translations = {
         'settings.language': 'భాష', 'settings.theme': 'థీమ్', 'settings.company': 'కంపెనీ', 'settings.profile': 'ప్రొఫైల్',
         'recurring.title': 'రికరింగ్ ఇన్వాయిస్', 'recurring.frequency': 'ఫ్రీక్వెన్సీ', 'recurring.next_date': 'తదుపరి బిల్ తేదీ', 'recurring.active': 'సక్రియ', 'recurring.paused': 'ఆగింది', 'recurring.create': 'రికరింగ్ బిల్ సృష్టించు',
         'portal.title': 'కస్టమర్ పోర్టల్', 'portal.statement': 'ఖాతా వివరణ', 'portal.pay_now': 'ఇప్పుడు చెల్లించు', 'portal.download_invoice': 'బిల్ డౌన్‌లోడ్',
-        'report_builder.title': 'రిపోర్ట్ బిల్డర్', 'report_builder.select_table': 'డేటా మూలం', 'report_builder.select_fields': 'ఫీల్డ్‌లు ఎంచుకోండి', 'report_builder.run_report': 'నివేదిక రన్ చేయండి',
+        'report_builder.title': 'రిపోర్ట్ బిల్డర్', 'report_builder.select_table': 'డేటా మూలం', 'report_builder.select_fields': 'ఫీల్డ్‌లు ఎంచుకోండి',
+        'report_builder.run_report': 'నివేదిక రన్ చేయండి',
+        'dashboard.overview': 'Overview for',
+        'dashboard.revenue_trend': 'Revenue Trend',
+        'dashboard.last_6_months': 'Last 6 months',
+        'dashboard.quick_actions': 'Quick Actions',
+        'dashboard.no_recent': 'No recent activity',
+        'dashboard.view_all_transactions': 'View All Transactions',
+        'dashboard.new_invoice': 'New Invoice',
+        'settings.payment_qr': 'Payment QR Code',
+        'settings.payment_qr_desc': 'Configure UPI QR Code for Invoices',
+        'settings.payment_config': 'Payment Configuration',
+        'settings.backup_data': 'Data Backup & Restore',
+        'settings.team_management': 'Team Management',
+        'settings.general': 'General Settings',
+        'settings.upi_placeholder': 'Enter Company UPI ID (e.g. name@upi)',
+        'settings.save_upi': 'Save UPI ID',
+        'settings.upi_saved': 'UPI ID Saved Successfully',
     },
 };

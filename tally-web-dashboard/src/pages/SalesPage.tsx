@@ -50,7 +50,8 @@ export default function SalesPage() {
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
-                .order('voucher_date', { ascending: false });
+                .order('voucher_date', { ascending: false })
+                .limit(50000);
 
             // Fetch pending and failed transactions
             const { data: pendingData } = await supabase.from('pending_transactions')

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, pendingTransactionApi } from '../lib/supabase';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,8 +20,9 @@ export default function VouchersPage() {
     const [searchParams] = useSearchParams();
     const [vouchers, setVouchers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(searchParams.get('party') || '');
     const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
+    const [syncStatusFilter, setSyncStatusFilter] = useState<string | null>(null);
 
     // Calculate current FY dynamically (FY starts in April)
     const getCurrentFy = () => {
@@ -40,6 +41,7 @@ export default function VouchersPage() {
         { key: 'Purchase', label: 'Purchase', icon: <ArrowDownLeft size={12} /> },
         { key: 'Receipt', label: 'Receipt', icon: <Zap size={12} /> },
         { key: 'Payment', label: 'Payment', icon: <Zap size={12} /> },
+        { key: 'Pending', label: 'Pending Sync', icon: <Activity size={12} /> },
     ];
 
     // Generate months for the selected FY
@@ -59,16 +61,33 @@ export default function VouchersPage() {
                 end: format(endOfMonth(date), 'yyyy-MM-dd')
             });
         }
-        return months.reverse(); // Show latest months first
+        // Add an "ALL" option for the full year
+        const allOption = {
+            key: 'all',
+            label: 'ALL',
+            fullLabel: 'Full Financial Year',
+            start: `${startYear}-04-01`,
+            end: `${startYear + 1}-03-31`
+        };
+
+        return [allOption, ...months.reverse()]; // Show ALL then latest months first
     }, [selectedFy]);
 
-    // Auto-select the most recent month that has vouchers
+    // Auto-select "ALL" if there is a search term (party filter), otherwise find recent month
     useEffect(() => {
         const findMonthWithVouchers = async () => {
             if (!selectedCompany || monthsInFy.length === 0) return;
 
+            // If searching for a party, default to "ALL" to show full history
+            if (searchTerm) {
+                setSelectedMonth('all');
+                return;
+            }
+
             // Check each month starting from most recent to find one with vouchers
             for (const month of monthsInFy) {
+                if (month.key === 'all') continue; // Skip ALL check for auto-selection
+
                 const { count } = await supabase
                     .from('vouchers')
                     .select('*', { count: 'exact', head: true })
@@ -81,12 +100,12 @@ export default function VouchersPage() {
                     return;
                 }
             }
-            // Fallback to first month if none have vouchers
-            setSelectedMonth(monthsInFy[0].key);
+            // Fallback to ALL if no specific month has data
+            setSelectedMonth('all');
         };
 
         findMonthWithVouchers();
-    }, [monthsInFy, selectedCompany]);
+    }, [monthsInFy, selectedCompany, searchTerm]); // Add searchTerm dependency
 
     useEffect(() => {
         if (selectedMonth && selectedCompany) loadVouchers();
@@ -94,8 +113,38 @@ export default function VouchersPage() {
 
     const loadVouchers = async () => {
         setLoading(true);
-        const monthObj = monthsInFy.find(m => m.key === selectedMonth);
-        if (!monthObj) return;
+
+        // Handle Pending Transactions explicitly
+        if (selectedType === 'Pending') {
+            try {
+                const { data, error } = await pendingTransactionApi.list(selectedCompany.id, 'pending');
+                if (error) throw error;
+
+                const mapped = (data || []).map((current: any) => ({
+                    id: current.id,
+                    voucher_number: current.voucher_data?.voucher_number || 'PENDING',
+                    party_name: current.voucher_data?.party_name || 'Unknown',
+                    voucher_type: current.transaction_type,
+                    voucher_date: current.voucher_data?.voucher_date || current.created_at,
+                    total_amount: current.voucher_data?.grand_total || 0,
+                    sync_status: 'Pending'
+                }));
+
+                setVouchers(mapped);
+            } catch (err) {
+                console.error('Failed to load pending vouchers:', err);
+                setVouchers([]);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        const monthObj = monthsInFy.find((m: any) => m.key === selectedMonth);
+        if (!monthObj) {
+            setLoading(false);
+            return;
+        }
 
         try {
             let query = supabase.from('vouchers')
@@ -104,16 +153,15 @@ export default function VouchersPage() {
                 .gte('voucher_date', monthObj.start)
                 .lte('voucher_date', monthObj.end)
                 .order('voucher_date', { ascending: false })
-                .limit(1000);
+                .limit(50000); // Increased limit for full year views
 
             if (selectedType !== 'all') {
                 query = query.eq('voucher_type', selectedType);
             }
 
             const { data, error } = await query;
-            if (error) {
-                console.error('Error loading vouchers:', error);
-            }
+            if (error) throw error;
+
             setVouchers(data || []);
         } catch (err) {
             console.error('Failed to load vouchers:', err);

@@ -13,7 +13,7 @@ class DataProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   String? _error;
-  
+
   // Data
   List<Company> _companies = [];
   List<Ledger> _ledgers = [];
@@ -46,9 +46,8 @@ class DataProvider extends ChangeNotifier {
           .select()
           .order('created_at', ascending: false);
 
-      _companies = (response as List)
-          .map((json) => Company.fromJson(json))
-          .toList();
+      _companies =
+          (response as List).map((json) => Company.fromJson(json)).toList();
     } catch (e) {
       _error = 'Failed to load companies: $e';
       // Try loading from cache
@@ -70,22 +69,33 @@ class DataProvider extends ChangeNotifier {
       final responses = await Future.wait([
         _supabase.from('ledgers').select('id').eq('company_id', companyId),
         _supabase.from('vouchers').select('id').eq('company_id', companyId),
-        _supabase.from('sales').select('amount').eq('company_id', companyId),
-        _supabase.from('purchases').select('amount').eq('company_id', companyId),
-        _supabase.from('stock').select('closing_value').eq('company_id', companyId),
+        _supabase
+            .from('sales')
+            .select('net_amount')
+            .eq('company_id', companyId),
+        _supabase
+            .from('purchases')
+            .select('net_amount')
+            .eq('company_id', companyId),
+        _supabase
+            .from('stock_items')
+            .select('closing_value')
+            .eq('company_id', companyId),
       ]);
 
       final ledgerCount = (responses[0] as List).length;
       final voucherCount = (responses[1] as List).length;
-      
-      final totalSales = (responses[2] as List)
-          .fold<double>(0, (sum, item) => sum + ((item['amount'] as num?)?.toDouble() ?? 0));
-      
-      final totalPurchases = (responses[3] as List)
-          .fold<double>(0, (sum, item) => sum + ((item['amount'] as num?)?.toDouble() ?? 0));
-      
-      final totalStock = (responses[4] as List)
-          .fold<double>(0, (sum, item) => sum + ((item['closing_value'] as num?)?.toDouble() ?? 0));
+
+      final totalSales = (responses[2] as List).fold<double>(0,
+          (sum, item) => sum + ((item['net_amount'] as num?)?.toDouble() ?? 0));
+
+      final totalPurchases = (responses[3] as List).fold<double>(0,
+          (sum, item) => sum + ((item['net_amount'] as num?)?.toDouble() ?? 0));
+
+      final totalStock = (responses[4] as List).fold<double>(
+          0,
+          (sum, item) =>
+              sum + ((item['closing_value'] as num?)?.toDouble() ?? 0));
 
       _dashboardSummary = DashboardSummary(
         totalLedgers: ledgerCount,
@@ -115,19 +125,18 @@ class DataProvider extends ChangeNotifier {
   }
 
   /// Fetch ledgers for a company
-  Future<void> fetchLedgers(String companyId, {String? group, String? search}) async {
+  Future<void> fetchLedgers(String companyId,
+      {String? group, String? search}) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      var query = _supabase
-          .from('ledgers')
-          .select()
-          .eq('company_id', companyId);
+      var query =
+          _supabase.from('ledgers').select().eq('company_id', companyId);
 
       if (group != null && group.isNotEmpty) {
-        query = query.eq('ledger_group', group);
+        query = query.eq('parent', group);
       }
 
       if (search != null && search.isNotEmpty) {
@@ -136,9 +145,8 @@ class DataProvider extends ChangeNotifier {
 
       final response = await query.order('name');
 
-      _ledgers = (response as List)
-          .map((json) => Ledger.fromJson(json))
-          .toList();
+      _ledgers =
+          (response as List).map((json) => Ledger.fromJson(json)).toList();
 
       // Cache
       await _cacheBox.put('ledgers_$companyId', response);
@@ -152,34 +160,33 @@ class DataProvider extends ChangeNotifier {
   }
 
   /// Fetch vouchers for a company
-  Future<void> fetchVouchers(String companyId, {String? type, DateTime? dateFrom, DateTime? dateTo}) async {
+  Future<void> fetchVouchers(String companyId,
+      {String? type, DateTime? dateFrom, DateTime? dateTo}) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      var query = _supabase
-          .from('vouchers')
-          .select()
-          .eq('company_id', companyId);
+      var query =
+          _supabase.from('vouchers').select().eq('company_id', companyId);
 
       if (type != null && type.isNotEmpty) {
         query = query.eq('voucher_type', type);
       }
 
       if (dateFrom != null) {
-        query = query.gte('vch_date', dateFrom.toIso8601String());
+        query = query.gte('voucher_date', dateFrom.toIso8601String());
       }
 
       if (dateTo != null) {
-        query = query.lte('vch_date', dateTo.toIso8601String());
+        query = query.lte('voucher_date', dateTo.toIso8601String());
       }
 
-      final response = await query.order('vch_date', ascending: false).limit(100);
+      final response =
+          await query.order('voucher_date', ascending: false).limit(100);
 
-      _vouchers = (response as List)
-          .map((json) => Voucher.fromJson(json))
-          .toList();
+      _vouchers =
+          (response as List).map((json) => Voucher.fromJson(json)).toList();
 
       // Cache
       await _cacheBox.put('vouchers_$companyId', response);
@@ -203,12 +210,10 @@ class DataProvider extends ChangeNotifier {
           .from('sales')
           .select()
           .eq('company_id', companyId)
-          .order('synced_at', ascending: false)
+          .order('created_at', ascending: false)
           .limit(100);
 
-      _sales = (response as List)
-          .map((json) => Sale.fromJson(json))
-          .toList();
+      _sales = (response as List).map((json) => Sale.fromJson(json)).toList();
     } catch (e) {
       _error = 'Failed to load sales: $e';
     } finally {
@@ -228,12 +233,11 @@ class DataProvider extends ChangeNotifier {
           .from('purchases')
           .select()
           .eq('company_id', companyId)
-          .order('synced_at', ascending: false)
+          .order('created_at', ascending: false)
           .limit(100);
 
-      _purchases = (response as List)
-          .map((json) => Purchase.fromJson(json))
-          .toList();
+      _purchases =
+          (response as List).map((json) => Purchase.fromJson(json)).toList();
     } catch (e) {
       _error = 'Failed to load purchases: $e';
     } finally {
@@ -250,14 +254,13 @@ class DataProvider extends ChangeNotifier {
       notifyListeners();
 
       final response = await _supabase
-          .from('stock')
+          .from('stock_items')
           .select()
           .eq('company_id', companyId)
-          .order('item_name');
+          .order('name');
 
-      _stockItems = (response as List)
-          .map((json) => Stock.fromJson(json))
-          .toList();
+      _stockItems =
+          (response as List).map((json) => Stock.fromJson(json)).toList();
     } catch (e) {
       _error = 'Failed to load stock: $e';
     } finally {
@@ -277,10 +280,7 @@ class DataProvider extends ChangeNotifier {
 
   /// Get unique voucher types
   List<String> getVoucherTypes() {
-    return _vouchers
-        .map((v) => v.voucherType ?? 'Unknown')
-        .toSet()
-        .toList()
+    return _vouchers.map((v) => v.voucherType ?? 'Unknown').toSet().toList()
       ..sort();
   }
 

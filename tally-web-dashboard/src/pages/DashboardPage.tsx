@@ -7,15 +7,25 @@ import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns
 import {
     TrendingUp, TrendingDown, Wallet, CreditCard, FileText, Users,
     BarChart3, Plus, RefreshCw, ArrowRight, Activity, Calendar, Zap,
-    ArrowUpRight, ArrowDownRight, IndianRupee
+    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle
 } from 'lucide-react';
 import { Spinner } from '../components/ui/GlassUI';
 import { BarChart3D } from '../components/3d';
 import BillingDashboard from './BillingDashboard';
 import { subMonths, startOfMonth as startOfMonthDate, endOfMonth as endOfMonthDate } from 'date-fns';
+import { useLanguage } from '../contexts/LanguageContext';
+import {
+    PieChart, Pie, Cell, ResponsiveContainer,
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend
+} from 'recharts';
+import { toast } from 'react-hot-toast';
+import { sendEodReport } from '../lib/whatsapp';
+
+const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
 export default function DashboardPage() {
     const { selectedCompany, user, appMode } = useAuth() as any;
+    const { t } = useLanguage();
     const { isDark } = useTheme();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
@@ -29,6 +39,8 @@ export default function DashboardPage() {
     const [kpiRatios, setKpiRatios] = useState({ collection: 0, expense: 0, profit: 0 });
     const [todaySales, setTodaySales] = useState(0);
     const [salesTrend, setSalesTrend] = useState({ value: 0, direction: 'neutral' });
+    const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
+    const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
 
     const periodFilters = [
         { key: 'today', label: 'Today' },
@@ -72,9 +84,9 @@ export default function DashboardPage() {
         try {
             let sales = 0, purchases = 0, salesCount = 0, purchaseCount = 0, receivables = 0, payables = 0;
 
-            const { data: vSales } = await supabase
+            const { data: vSales, count: sCount } = await supabase
                 .from('vouchers')
-                .select('total_amount, grand_total, voucher_date')
+                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', from)
@@ -82,9 +94,9 @@ export default function DashboardPage() {
                 .eq('is_deleted', false)
                 .limit(50000);
 
-            const { data: vPurchases } = await supabase
+            const { data: vPurchases, count: pCount } = await supabase
                 .from('vouchers')
-                .select('total_amount, grand_total, voucher_date')
+                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', from)
@@ -96,8 +108,8 @@ export default function DashboardPage() {
             const pData = vPurchases || [];
             sales = sData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             purchases = pData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            salesCount = sData.length;
-            purchaseCount = pData.length;
+            salesCount = sCount || 0;
+            purchaseCount = pCount || 0;
 
             const { data: debtorLedgers } = await supabase
                 .from('ledgers')
@@ -141,7 +153,7 @@ export default function DashboardPage() {
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', sixMonthsAgo)
                 .eq('is_deleted', false)
-                .limit(10000);
+                .limit(50000);
 
             const monthlyData: any[] = [];
             for (let i = 5; i >= 0; i--) {
@@ -154,6 +166,66 @@ export default function DashboardPage() {
                 monthlyData.push({ label: format(month, 'MMM'), value: monthSales });
             }
             setMonthlySales(monthlyData);
+
+            // Fetch Expense Groups for Pie Chart
+            const { data: expenseEntries } = await supabase
+                .from('voucher_ledger_entries')
+                .select('ledger_name, amount, vouchers!inner(voucher_type, voucher_date)')
+                .eq('company_id', selectedCompany.id)
+                .in('vouchers.voucher_type', ['Payment', 'Purchase'])
+                .gte('vouchers.voucher_date', from)
+                .lte('vouchers.voucher_date', to)
+                .eq('is_debit', true)
+                .limit(1000);
+
+            const groupedExpenses = (expenseEntries || []).reduce((acc: any, entry: any) => {
+                let name = entry.ledger_name;
+                // Basic characterization
+                if (name.toLowerCase().includes('salary')) name = 'Salaries';
+                else if (name.toLowerCase().includes('rent')) name = 'Rent';
+                else if (name.toLowerCase().includes('electricity') || name.toLowerCase().includes('power')) name = 'Utilities';
+                else if (name.toLowerCase().includes('purchase')) name = 'Purchases';
+                else if (name.toLowerCase().includes('tax') || name.toLowerCase().includes('gst')) name = 'Taxes';
+                else if (name.toLowerCase().includes('travel') || name.toLowerCase().includes('conveyance')) name = 'Travel';
+
+                acc[name] = (acc[name] || 0) + Math.abs(Number(entry.amount) || 0);
+                return acc;
+            }, {});
+
+            const pieData = Object.entries(groupedExpenses)
+                .map(([name, value]) => ({ name, value }))
+                .sort((a: any, b: any) => (b.value as number) - (a.value as number))
+                .slice(0, 6);
+
+            setExpenseGroups(pieData);
+
+            // Fetch Cash Flow Trend (Last 30 days)
+            const { data: cfData } = await supabase
+                .from('vouchers')
+                .select('voucher_date, voucher_type, total_amount, grand_total')
+                .eq('company_id', selectedCompany.id)
+                .in('voucher_type', ['Receipt', 'Payment'])
+                .gte('voucher_date', subDays(new Date(), 30).toISOString())
+                .eq('is_deleted', false)
+                .order('voucher_date', { ascending: true });
+
+            const dailyFlow: any = {};
+            // Initialize last 30 days
+            for (let i = 29; i >= 0; i--) {
+                const date = format(subDays(new Date(), i), 'MMM dd');
+                dailyFlow[date] = { date, income: 0, expense: 0 };
+            }
+
+            (cfData || []).forEach(v => {
+                const dateKey = format(new Date(v.voucher_date), 'MMM dd');
+                if (dailyFlow[dateKey]) {
+                    const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
+                    if (v.voucher_type === 'Receipt') dailyFlow[dateKey].income += amt;
+                    else dailyFlow[dateKey].expense += amt;
+                }
+            });
+
+            setCashFlowTrend(Object.values(dailyFlow));
 
             const todayStr = format(new Date(), 'yyyy-MM-dd');
             const { data: tSales } = await supabase
@@ -267,10 +339,10 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h1 className="text-xl md:text-2xl font-bold text-[var(--on-surface)] tracking-tight">
-                        Dashboard
+                        {t('dashboard.title')}
                     </h1>
                     <p className="text-[var(--text-muted)] text-sm mt-0.5">
-                        Overview for <span className="font-medium text-[var(--on-surface)]">{selectedCompany.name}</span>
+                        {t('dashboard.overview')} <span className="font-medium text-[var(--on-surface)]">{selectedCompany.name}</span>
                     </p>
                 </div>
 
@@ -307,7 +379,7 @@ export default function DashboardPage() {
                         className="stitch-button"
                     >
                         <Plus size={16} />
-                        <span className="hidden sm:inline">New Invoice</span>
+                        <span className="hidden sm:inline">{t('dashboard.new_invoice')}</span>
                     </button>
                 </div>
             </div>
@@ -357,7 +429,7 @@ export default function DashboardPage() {
                     {/* KEY METRICS */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 stagger-children">
                         <MetricCard
-                            title="Total Sales"
+                            title={t('dashboard.total_sales')}
                             value={stats.sales}
                             icon={<TrendingUp size={18} />}
                             trend={salesTrend}
@@ -366,7 +438,7 @@ export default function DashboardPage() {
                             onClick={() => navigate('/sales')}
                         />
                         <MetricCard
-                            title="Total Purchases"
+                            title={t('dashboard.total_purchases')}
                             value={stats.purchases}
                             icon={<TrendingDown size={18} />}
                             subtitle={`${stats.purchaseCount} bills`}
@@ -374,7 +446,7 @@ export default function DashboardPage() {
                             onClick={() => navigate('/purchases')}
                         />
                         <MetricCard
-                            title="Receivables"
+                            title={t('dashboard.receivable')}
                             value={stats.receivables}
                             icon={<Wallet size={18} />}
                             subtitle="Pending collection"
@@ -382,7 +454,7 @@ export default function DashboardPage() {
                             onClick={() => navigate('/ledgers?group=Sundry Debtors')}
                         />
                         <MetricCard
-                            title="Payables"
+                            title={t('dashboard.payable')}
                             value={stats.payables}
                             icon={<CreditCard size={18} />}
                             subtitle="Outstanding"
@@ -398,8 +470,8 @@ export default function DashboardPage() {
                         <div className="lg:col-span-2">
                             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
                                 <div className="flex items-center justify-between mb-5">
-                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">Revenue Trend</h3>
-                                    <span className="text-xs text-[var(--text-muted)]">Last 6 months</span>
+                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.revenue_trend')}</h3>
+                                    <span className="text-xs text-[var(--text-muted)]">{t('dashboard.last_6_months')}</span>
                                 </div>
                                 <div className="h-[280px] w-full rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)] p-3">
                                     <BarChart3D
@@ -410,6 +482,91 @@ export default function DashboardPage() {
                                     />
                                 </div>
                             </div>
+
+                            {/* New Row: Cash Flow & Expenses */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                                {/* Cash Flow Trend */}
+                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h3 className="text-sm font-semibold text-[var(--on-surface)]">Cash Flow (Last 30 Days)</h3>
+                                        <Activity size={16} className="text-blue-500" />
+                                    </div>
+                                    <div className="h-[250px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={cashFlowTrend}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#E2E8F0'} />
+                                                <XAxis
+                                                    dataKey="date"
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                    interval={6}
+                                                />
+                                                <YAxis
+                                                    axisLine={false}
+                                                    tickLine={false}
+                                                    tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                    tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
+                                                />
+                                                <RechartsTooltip
+                                                    contentStyle={{
+                                                        backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                                                        border: '1px solid #334155',
+                                                        borderRadius: '8px',
+                                                        fontSize: '11px'
+                                                    }}
+                                                />
+                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                                                <Line type="monotone" dataKey="income" stroke="#10B981" strokeWidth={3} dot={false} animationDuration={1500} />
+                                                <Line type="monotone" dataKey="expense" stroke="#EF4444" strokeWidth={3} dot={false} animationDuration={1500} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+
+                                {/* Expense Breakdown */}
+                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h3 className="text-sm font-semibold text-[var(--on-surface)]">Expense Distribution</h3>
+                                        <BarChart3 size={16} className="text-amber-500" />
+                                    </div>
+                                    <div className="h-[250px] w-full flex items-center">
+                                        <div className="w-1/2 h-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie
+                                                        data={expenseGroups}
+                                                        cx="50%"
+                                                        cy="50%"
+                                                        innerRadius={50}
+                                                        outerRadius={80}
+                                                        paddingAngle={5}
+                                                        dataKey="value"
+                                                    >
+                                                        {expenseGroups.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <RechartsTooltip />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="w-1/2 flex flex-col gap-2 pl-4">
+                                            {expenseGroups.map((group, idx) => (
+                                                <div key={group.name} className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></div>
+                                                        <span className="text-[10px] font-bold text-[var(--on-surface-variant)] truncate max-w-[80px] text-left">{group.name}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-[var(--on-surface)]">
+                                                        {(group.value / (expenseGroups.reduce((s, g) => s + g.value, 0) || 1) * 100).toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Right Column */}
@@ -417,23 +574,31 @@ export default function DashboardPage() {
 
                             {/* Quick Actions */}
                             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
-                                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Quick Actions</h3>
+                                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">{t('dashboard.quick_actions')}</h3>
                                 <div className="grid grid-cols-2 gap-2.5">
-                                    <QuickAction title="Invoice" icon={<FileText size={20} />} to="/create-invoice" />
-                                    <QuickAction title="Vouchers" icon={<CreditCard size={20} />} to="/vouchers" />
-                                    <QuickAction title="Parties" icon={<Users size={20} />} to="/ledgers" />
-                                    <QuickAction title="Reports" icon={<BarChart3 size={20} />} to="/sales-dashboard" />
+                                    <QuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
+                                    <QuickAction title={t('nav.vouchers')} icon={<CreditCard size={20} />} to="/vouchers" />
+                                    <QuickAction title="Sync Status" icon={<RefreshCw size={20} />} to="/sync-history" />
+                                    <button
+                                        onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)}
+                                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 transition-all"
+                                    >
+                                        <div className="p-2 rounded-lg bg-emerald-500 text-white shadow-lg mb-2">
+                                            <MessageCircle size={20} />
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase">Send EOD</span>
+                                    </button>
                                 </div>
                             </div>
 
                             {/* Recent Activity */}
                             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden">
                                 <div className="px-5 py-3.5 border-b border-[var(--border)]">
-                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">Recent Transactions</h3>
+                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.recent_vouchers')}</h3>
                                 </div>
                                 <div className="divide-y divide-[var(--border)]">
                                     {recentVouchers.length === 0 ? (
-                                        <div className="p-8 text-center text-[var(--text-muted)] text-sm">No recent activity</div>
+                                        <div className="p-8 text-center text-[var(--text-muted)] text-sm">{t('dashboard.no_recent')}</div>
                                     ) : (
                                         recentVouchers.map((v, idx) => (
                                             <div
@@ -469,7 +634,7 @@ export default function DashboardPage() {
                                         onClick={() => navigate('/vouchers')}
                                         className="text-xs font-medium text-[var(--primary)] hover:underline"
                                     >
-                                        View All Transactions →
+                                        {t('dashboard.view_all_transactions')} →
                                     </button>
                                 </div>
                             </div>

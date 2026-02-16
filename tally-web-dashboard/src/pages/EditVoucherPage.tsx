@@ -385,6 +385,21 @@ export default function EditVoucherPage() {
             </header>
 
             <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
+                {!isPending && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex gap-4 items-start animate-in fade-in slide-in-from-top-2">
+                        <div className="p-2 bg-amber-500/20 rounded-lg text-amber-500 flex-shrink-0">
+                            <AlertCircle size={20} />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-amber-500">Live Sync Modification</p>
+                            <p className="text-xs text-amber-500/80 mt-1 leading-relaxed">
+                                This voucher is already synced with Tally. Your edits will be saved locally
+                                and queued for synchronization. Tally Desktop app will pick these changes
+                                during the next sync cycle.
+                            </p>
+                        </div>
+                    </div>
+                )}
                 {/* Voucher Type */}
                 <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
                     <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3 block">Voucher Type</label>

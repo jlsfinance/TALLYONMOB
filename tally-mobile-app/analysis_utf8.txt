@@ -1,0 +1,19 @@
+Analyzing tally-mobile-app...                                   
+
+   info - The imported package 'tally_mobile_app' isn't a dependency of the importing package - lib\screens\dashboard_screen.dart:7:8 - depend_on_referenced_packages
+  error - Target of URI doesn't exist: 'package:tally_mobile_app/screens/voucher_list_screen.dart' - lib\screens\dashboard_screen.dart:7:8 - uri_does_not_exist
+   info - The imported package 'tally_mobile_app' isn't a dependency of the importing package - lib\screens\dashboard_screen.dart:8:8 - depend_on_referenced_packages
+  error - Target of URI doesn't exist: 'package:tally_mobile_app/screens/stock_list_screen.dart' - lib\screens\dashboard_screen.dart:8:8 - uri_does_not_exist
+   info - The imported package 'tally_mobile_app' isn't a dependency of the importing package - lib\screens\dashboard_screen.dart:9:8 - depend_on_referenced_packages
+  error - Target of URI doesn't exist: 'package:tally_mobile_app/screens/reports_screen.dart' - lib\screens\dashboard_screen.dart:9:8 - uri_does_not_exist
+  error - The name 'VoucherListScreen' isn't a class - lib\screens\dashboard_screen.dart:185:13 - creation_with_non_type
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\dashboard_screen.dart:247:41 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\dashboard_screen.dart:256:28 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\ledger_list_screen.dart:122:56 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\reports_screen.dart:78:26 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\stock_list_screen.dart:137:52 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\voucher_list_screen.dart:149:32 - deprecated_member_use
+warning - Unused import: 'package:flutter/services.dart' - lib\services\pdf_service.dart:2:8 - unused_import
+   info - 'Share' is deprecated and shouldn't be used. Use SharePlus instead - lib\services\pdf_service.dart:165:11 - deprecated_member_use
+   info - 'shareXFiles' is deprecated and shouldn't be used. Use SharePlus.instance.share() instead - lib\services\pdf_service.dart:165:17 - deprecated_member_use
+

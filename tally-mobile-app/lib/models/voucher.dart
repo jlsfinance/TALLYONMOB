@@ -28,15 +28,15 @@ class Voucher {
       companyId: json['company_id'] as String,
       voucherNumber: json['voucher_number'] as String?,
       voucherType: json['voucher_type'] as String?,
-      vchDate: json['vch_date'] != null
-          ? DateTime.parse(json['vch_date'])
+      vchDate: json['voucher_date'] != null
+          ? DateTime.parse(json['voucher_date'])
           : null,
-      amount: (json['amount'] as num?)?.toDouble(),
+      amount: (json['total_amount'] as num?)?.toDouble(),
       narration: json['narration'] as String?,
-      syncedAt: json['synced_at'] != null
-          ? DateTime.parse(json['synced_at'])
+      syncedAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
-      rawData: json['raw_data'] as Map<String, dynamic>?,
+      rawData: json,
     );
   }
 
@@ -46,10 +46,10 @@ class Voucher {
       'company_id': companyId,
       'voucher_number': voucherNumber,
       'voucher_type': voucherType,
-      'vch_date': vchDate?.toIso8601String(),
-      'amount': amount,
+      'voucher_date': vchDate?.toIso8601String(),
+      'total_amount': amount,
       'narration': narration,
-      'synced_at': syncedAt?.toIso8601String(),
+      'created_at': syncedAt?.toIso8601String(),
       'raw_data': rawData,
     };
   }

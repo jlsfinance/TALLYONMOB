@@ -3,6 +3,10 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/data_provider.dart';
 import '../config/theme.dart';
+import 'ledger_list_screen.dart';
+import 'voucher_list_screen.dart';
+import 'stock_list_screen.dart';
+import 'reports_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -28,24 +32,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final authProvider = context.read<AuthProvider>();
       final dataProvider = context.read<DataProvider>();
 
-      await dataProvider.fetchDashboard(authProvider.selectedCompanyId!);
-      final ds = dataProvider.dashboardSummary;
-      final summary = ds != null
-          ? {
-              'totalSales': ds.totalSalesAmount,
-              'totalPurchases': ds.totalPurchasesAmount,
-              'ledgerCount': ds.totalLedgers,
-              'stockCount': ds.totalStockValue,
-            }
-          : null;
+      if (authProvider.selectedCompanyId != null) {
+        await dataProvider.fetchDashboard(authProvider.selectedCompanyId!);
+        final ds = dataProvider.dashboardSummary;
+        final summary = ds != null
+            ? {
+                'totalSales': ds.totalSalesAmount,
+                'totalPurchases': ds.totalPurchasesAmount,
+                'ledgerCount': ds.totalLedgers,
+                'stockCount': ds.totalStockValue,
+              }
+            : null;
 
-      setState(() {
-        _summary = summary;
-        _isLoading = false;
-      });
+        if (mounted) {
+          setState(() {
+            _summary = summary;
+            _isLoading = false;
+          });
+        }
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
       if (mounted) {
+        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load data: $e'),
@@ -54,6 +62,104 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     }
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  Widget _buildHomeContent() {
+    return RefreshIndicator(
+      onRefresh: _loadDashboardData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Welcome message
+            const Text(
+              'Welcome back! 👋',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Here\'s your business overview',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Stats cards
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.3,
+              children: [
+                _buildStatCard(
+                  'Total Sales',
+                  _formatCurrency(_summary?['totalSales']),
+                  Icons.trending_up,
+                  AppColors.secondary,
+                ),
+                _buildStatCard(
+                  'Total Purchases',
+                  _formatCurrency(_summary?['totalPurchases']),
+                  Icons.trending_down,
+                  AppColors.error,
+                ),
+                _buildStatCard(
+                  'Ledgers',
+                  '${_summary?['ledgerCount'] ?? 0}',
+                  Icons.account_balance_wallet,
+                  AppColors.info,
+                ),
+                _buildStatCard(
+                  'Stock Value',
+                  _formatCurrency(_summary?['stockCount']),
+                  Icons.inventory_2,
+                  AppColors.warning,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // Quick actions
+            const Text(
+              'Quick Actions',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _buildQuickAction('Vouchers', Icons.receipt_long,
+                    () => setState(() => _currentIndex = 1)),
+                _buildQuickAction('Parties', Icons.people,
+                    () => setState(() => _currentIndex = 2)),
+                _buildQuickAction('Items', Icons.inventory_2,
+                    () => setState(() => _currentIndex = 3)),
+                _buildQuickAction(
+                    'Reports',
+                    Icons.analytics,
+                    () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ReportsScreen()))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _formatCurrency(num? amount) {
@@ -70,6 +176,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+
+    // Define screens based on index
+    final List<Widget> screens = [
+      _buildHomeContent(),
+      const VoucherListScreen(),
+      const LedgerListScreen(),
+      const StockListScreen(),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -90,91 +204,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: _isLoading
+      body: _isLoading && _currentIndex == 0
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadDashboardData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Welcome message
-                    Text(
-                      'Welcome back! 👋',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Here\'s your business overview',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Stats cards
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 1.3,
-                      children: [
-                        _buildStatCard(
-                          'Total Sales',
-                          _formatCurrency(_summary?['totalSales']),
-                          Icons.trending_up,
-                          AppColors.secondary,
-                        ),
-                        _buildStatCard(
-                          'Total Purchases',
-                          _formatCurrency(_summary?['totalPurchases']),
-                          Icons.trending_down,
-                          AppColors.error,
-                        ),
-                        _buildStatCard(
-                          'Ledgers',
-                          '${_summary?['ledgerCount'] ?? 0}',
-                          Icons.account_balance_wallet,
-                          AppColors.info,
-                        ),
-                        _buildStatCard(
-                          'Stock Items',
-                          '${_summary?['stockCount'] ?? 0}',
-                          Icons.inventory_2,
-                          AppColors.warning,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Quick actions
-                    Text(
-                      'Quick Actions',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _buildQuickAction('Vouchers', Icons.receipt_long),
-                        _buildQuickAction('Ledgers', Icons.people),
-                        _buildQuickAction('Stock', Icons.inventory),
-                        _buildQuickAction('Reports', Icons.analytics),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          : screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
@@ -204,7 +242,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,7 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
+              color: color.withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: color, size: 20),
@@ -223,13 +261,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Text(
                 value,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               Text(
                 title,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
               ),
             ],
           ),
@@ -238,11 +282,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildQuickAction(String title, IconData icon) {
+  Widget _buildQuickAction(String title, IconData icon, VoidCallback onTap) {
     return InkWell(
-      onTap: () {
-        // TODO: Navigate to respective screens
-      },
+      onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -255,7 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Icon(icon, size: 18, color: AppColors.primary),
             const SizedBox(width: 8),
-            Text(title, style: Theme.of(context).textTheme.bodyMedium),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
           ],
         ),
       ),

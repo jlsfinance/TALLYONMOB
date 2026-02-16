@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mailService = require('../services/mailService');
 
-router.post('/send', async (req, res) => {
+router.post('/', async (req, res) => {
     try {
         const { name, email, subject, message } = req.body;
 

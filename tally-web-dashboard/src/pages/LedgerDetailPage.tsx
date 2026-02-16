@@ -6,7 +6,7 @@ import {
     ArrowLeft, Phone, Plus, Share2, Bell, FileText, Receipt,
     MessageCircle, Calendar, Printer, TrendingUp, TrendingDown,
     ChevronRight, Package, ShoppingCart, CreditCard, Wallet,
-    Edit3, Send, Clock
+    Edit3, Send, Clock, ArrowUpRight
 } from 'lucide-react';
 import { GlassCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
 import { format, parseISO } from 'date-fns';
@@ -93,7 +93,7 @@ export default function LedgerDetailPage() {
     const [ledger, setLedger] = useState<any>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'ledger' | 'summary' | 'notes'>('ledger');
+    const [activeTab, setActiveTab] = useState<'ledger' | 'summary' | 'notes' | 'items'>('ledger');
     const [fromDate, setFromDate] = useState(getFYStart());
     const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
     const [openingBalance, setOpeningBalance] = useState(0);
@@ -104,6 +104,12 @@ export default function LedgerDetailPage() {
     const [voucherSummary, setVoucherSummary] = useState<Record<string, number>>({});
     const [itemsSold, setItemsSold] = useState<any[]>([]);
     const [itemsPurchased, setItemsPurchased] = useState<any[]>([]);
+    const [itemsViewType, setItemsViewType] = useState<'sold' | 'purchased'>('sold');
+
+    // Item History View State
+    const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
+    const [itemHistory, setItemHistory] = useState<any[]>([]);
+    const [itemHistoryLoading, setItemHistoryLoading] = useState(false);
 
     const [summary, setSummary] = useState({
         totalDebit: 0,
@@ -240,6 +246,29 @@ export default function LedgerDetailPage() {
         }
     };
 
+    const fetchItemHistory = async (itemName: string) => {
+        setSelectedItemName(itemName);
+        setItemHistoryLoading(true);
+        try {
+            // Join vouchers to get date and voucher number
+            const { data, error } = await supabase
+                .from('voucher_stock_entries')
+                .select('*, vouchers!inner(id, voucher_date, voucher_number, voucher_type, party_name)')
+                .eq('vouchers.company_id', selectedCompany.id)
+                .eq('vouchers.party_name', ledger.name)
+                .eq('stock_item_name', itemName)
+                .order('vouchers(voucher_date)', { ascending: false });
+
+            if (error) throw error;
+            setItemHistory(data || []);
+        } catch (err) {
+            console.error('Error fetching item history:', err);
+            toast.error('Failed to load item history');
+        } finally {
+            setItemHistoryLoading(false);
+        }
+    };
+
     const handleCall = () => {
         if (ledger?.phone) {
             window.open(`tel:${ledger.phone}`, '_self');
@@ -343,6 +372,7 @@ export default function LedgerDetailPage() {
                 <div className="flex border-t border-[var(--border)]">
                     {[
                         { id: 'ledger', label: 'Ledger' },
+                        { id: 'items', label: 'Items' }, // New Items Tab
                         { id: 'summary', label: 'Summary' },
                         { id: 'notes', label: `Notes (${notes ? notes.split('\n').length : 0})` }
                     ].map(tab => (
@@ -453,19 +483,25 @@ export default function LedgerDetailPage() {
                             )}
                         </div>
 
-                        {/* Items Sold Section */}
+                        {/* Items Summary Quick Link */}
                         <div className="bg-[var(--surface)] border-b border-[var(--border)] mt-2">
-                            <SectionHeader title="Items" />
+                            <SectionHeader title="Items Summary" />
                             <SummaryRow
-                                label="Sold"
-                                value={itemsSold.length > 0 ? `${itemsSold.length} items` : '-'}
-                                onClick={() => { }}
+                                label="Items Sold"
+                                value={itemsSold.length > 0 ? `${itemsSold.length} unique items` : '-'}
+                                onClick={() => {
+                                    setItemsViewType('sold');
+                                    setActiveTab('items');
+                                }}
                                 hasArrow={itemsSold.length > 0}
                             />
                             <SummaryRow
-                                label="Purchase"
-                                value={itemsPurchased.length > 0 ? `${itemsPurchased.length} items` : '-'}
-                                onClick={() => { }}
+                                label="Items Purchased"
+                                value={itemsPurchased.length > 0 ? `${itemsPurchased.length} unique items` : '-'}
+                                onClick={() => {
+                                    setItemsViewType('purchased');
+                                    setActiveTab('items');
+                                }}
                                 hasArrow={itemsPurchased.length > 0}
                             />
                         </div>
@@ -497,6 +533,122 @@ export default function LedgerDetailPage() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* ITEMS TAB */}
+                {activeTab === 'items' && (
+                    <motion.div
+                        key="items"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="pb-20" // Extra padding for spacing
+                    >
+                        {/* Toggle Sold/Purchased */}
+                        {!selectedItemName && (
+                            <div className="flex p-4 gap-2 bg-[var(--surface)] border-b border-[var(--border)]">
+                                <button
+                                    onClick={() => setItemsViewType('sold')}
+                                    className={`flex-1 py-2 text-xs font-bold rounded-lg border ${itemsViewType === 'sold' ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-[var(--surface-variant)] text-[var(--text-muted)] border-[var(--border)]'}`}
+                                >
+                                    Sold ({itemsSold.length})
+                                </button>
+                                <button
+                                    onClick={() => setItemsViewType('purchased')}
+                                    className={`flex-1 py-2 text-xs font-bold rounded-lg border ${itemsViewType === 'purchased' ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-[var(--surface-variant)] text-[var(--text-muted)] border-[var(--border)]'}`}
+                                >
+                                    Purchased ({itemsPurchased.length})
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Item Details Header (Back Button) */}
+                        {selectedItemName && (
+                            <div className="sticky top-[118px] z-30 bg-[var(--surface)] border-b border-[var(--border)] px-4 py-3 flex items-center gap-3">
+                                <button
+                                    onClick={() => setSelectedItemName(null)}
+                                    className="p-2 -ml-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]"
+                                >
+                                    <ArrowLeft size={18} />
+                                </button>
+                                <div>
+                                    <h3 className="text-sm font-black text-[var(--on-surface)]">{selectedItemName}</h3>
+                                    <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Transaction History</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="p-4 space-y-3">
+                            {selectedItemName ? (
+                                // Item History View
+                                itemHistoryLoading ? (
+                                    <div className="py-16 flex justify-center"><Spinner /></div>
+                                ) : itemHistory.length === 0 ? (
+                                    <div className="py-16 text-center text-xs text-[var(--text-muted)] font-bold uppercase tracking-widest">No history found</div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {itemHistory.map((entry, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => navigate(`/vouchers/${entry.vouchers?.id}`)}
+                                                className="w-full text-left p-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)] shadow-sm hover:bg-[var(--surface-hover)] transition-all active:scale-[0.99] group"
+                                            >
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                            <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-wider">
+                                                                {format(new Date(entry.vouchers?.voucher_date), 'dd MMM yyyy')}
+                                                            </p>
+                                                            <ArrowUpRight size={10} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                        </div>
+                                                        <p className="text-sm font-black text-[var(--on-surface)]">
+                                                            {entry.vouchers?.voucher_type} #{entry.vouchers?.voucher_number}
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-sm font-black text-[var(--primary)]">
+                                                        {formatCurrency(entry.amount)}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-3 mt-2">
+                                                    <span className="px-3 py-1.5 bg-[var(--surface-variant)] rounded-lg text-xs font-bold text-[var(--on-surface)]">
+                                                        Qty: {entry.quantity} {entry.unit || 'Units'}
+                                                    </span>
+                                                    <span className="px-3 py-1.5 bg-[var(--surface-variant)] rounded-lg text-xs font-bold text-[var(--on-surface)]">
+                                                        Rate: ₹{entry.rate}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )
+                            ) : (
+                                // Items List View
+                                (itemsViewType === 'sold' ? itemsSold : itemsPurchased).length === 0 ? (
+                                    <div className="text-center py-20 text-[var(--text-muted)] text-xs font-bold uppercase tracking-widest">No items found</div>
+                                ) : (
+                                    (itemsViewType === 'sold' ? itemsSold : itemsPurchased).map((item, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => fetchItemHistory(item.name)}
+                                            className="w-full text-left flex justify-between items-center p-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-all active:scale-[0.99]"
+                                        >
+                                            <div>
+                                                <p className="text-sm font-black text-[var(--on-surface)] mb-1">{item.name}</p>
+                                                <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wide">{item.quantity} units total</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-black text-[var(--primary)]">{formatCurrency(item.amount)}</p>
+                                                <div className="flex items-center justify-end gap-1 mt-1 text-[var(--primary)] opacity-80">
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider">History</span>
+                                                    <ChevronRight size={12} />
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))
+                                )
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -564,6 +716,8 @@ export default function LedgerDetailPage() {
                     <MessageCircle size={24} fill="white" />
                 </button>
             </div>
-        </div>
+
+            {/* Modal removed - fully using Tabs for items view now */}
+        </div >
     );
 }

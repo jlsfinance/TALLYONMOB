@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { supabase, salesApi } from '@/lib/supabase';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, FileText, Printer, Share2, MessageCircle, Download, User, Calendar, Hash } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassUI';
+import { ArrowLeft, Printer, Share2, MessageCircle, Edit, MapPin, Hash } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'react-hot-toast';
 
 export default function InvoiceDetailPage() {
     const { id } = useParams();
@@ -12,10 +12,27 @@ export default function InvoiceDetailPage() {
     const { selectedCompany } = useAuth() as any;
     const [invoice, setInvoice] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [upiId, setUpiId] = useState('');
+    const [isEditingUpi, setIsEditingUpi] = useState(false);
 
     useEffect(() => {
         if (id) loadInvoice();
     }, [id]);
+
+    useEffect(() => {
+        if (selectedCompany?.id) {
+            const savedUpi = localStorage.getItem(`upi_${selectedCompany.id}`);
+            if (savedUpi) setUpiId(savedUpi);
+        }
+    }, [selectedCompany]);
+
+    const saveUpiId = () => {
+        if (selectedCompany?.id) {
+            localStorage.setItem(`upi_${selectedCompany.id}`, upiId);
+            setIsEditingUpi(false);
+            toast.success('UPI ID Saved');
+        }
+    };
 
     const loadInvoice = async () => {
         try {
@@ -43,10 +60,10 @@ export default function InvoiceDetailPage() {
                     invoice_number: voucherData.voucher_number,
                     invoice_date: voucherData.voucher_date,
                     party_ledger_name: voucherData.party_name,
+                    party_gstin: voucherData.party_gst_number || '', // Use mapped GST
                     net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     gross_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
-                    party_gstin: voucherData.party_gstin || '',
                     place_of_supply: voucherData.place_of_supply || '',
                     cgst_amount: Number(voucherData.cgst_amount) || 0,
                     sgst_amount: Number(voucherData.sgst_amount) || 0,
@@ -65,7 +82,7 @@ export default function InvoiceDetailPage() {
                 // Get stock items lookup
                 const { data: stockItems } = await supabase
                     .from('stock_items')
-                    .select('name, hsn_code, unit')
+                    .select('name, hsn_code, unit, gst_rate')
                     .eq('company_id', voucherData.company_id);
 
                 const stockLookup: any = {};
@@ -81,7 +98,7 @@ export default function InvoiceDetailPage() {
                     rate: item.rate || item.unit_price || 0,
                     amount: item.amount || (item.quantity * item.rate) || 0,
                     discount_percent: item.discount_percent || 0,
-                    tax_rate: item.tax_rate || 0
+                    tax_rate: item.gst_rate || stockLookup[item.item_name]?.gst_rate || item.tax_rate || 0
                 }));
 
                 salesData.sales_items = finalItems;
@@ -119,170 +136,238 @@ export default function InvoiceDetailPage() {
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-gray-500">Loading invoice...</p>
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+                <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="text-xs uppercase font-bold tracking-widest text-gray-500">Generating Invoice...</p>
             </div>
         );
     }
 
-    if (!invoice) {
-        return (
-            <div className="text-center py-20 text-gray-500">
-                <FileText size={48} className="mx-auto mb-4 opacity-30" />
-                <p className="font-medium">Invoice not found</p>
-                <button onClick={() => navigate('/sales')} className="mt-4 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10">
-                    ← Back to Sales
-                </button>
-            </div>
-        );
-    }
+    if (!invoice) return null;
+
+    // QR Code Generation
+    const upiLink = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(selectedCompany.name)}&am=${invoice.net_amount}&cu=INR`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}`;
 
     return (
-        <div className="space-y-6 print:p-8 print:bg-white">
-            {/* Action Bar */}
-            <div className="flex items-center justify-between gap-4 print:hidden">
-                <button onClick={() => navigate('/sales')} className="flex items-center gap-2 text-gray-400 hover:text-white">
-                    <ArrowLeft size={20} />
-                    Back to Sales
+        <div className="min-h-screen bg-gray-100 flex flex-col items-center py-8 font-sans text-gray-900 md:py-12 px-4 print:p-0 print:bg-white box-border">
+            {/* Header Actions (No Print) */}
+            <div className="w-full max-w-[210mm] flex justify-between items-center mb-6 print:hidden">
+                <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-gray-900">
+                    <ArrowLeft size={18} /> Back
                 </button>
-                <div className="flex gap-2">
-                    <Link to={`/invoice/${id}`} className="px-4 py-2 bg-gradient-to-r from-[#1e3a5f] to-[#0d7377] border border-teal-500/30 rounded-xl text-white font-bold hover:opacity-90 flex items-center gap-2">
-                        <Download size={16} /> Get PDF
-                    </Link>
-                    <button onClick={handlePrint} className="px-4 py-2 bg-[#121214] border border-white/10 rounded-xl text-gray-400 hover:text-white hover:bg-[#1C1C1F] flex items-center gap-2">
-                        <Printer size={16} /> Print
+                <div className="flex gap-3">
+                    <button onClick={() => navigate(`/edit-invoice/${id}`)} className="px-4 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-amber-600 transition-colors flex items-center gap-2">
+                        <Edit size={14} /> Edit
                     </button>
-                    <button onClick={handleShare} className="px-4 py-2 bg-[#121214] border border-white/10 rounded-xl text-gray-400 hover:text-white hover:bg-[#1C1C1F] flex items-center gap-2">
-                        <Share2 size={16} /> Share
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-900 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-black transition-colors flex items-center gap-2">
+                        <Printer size={14} /> Print / Save PDF
                     </button>
-                    <button onClick={handleWhatsApp} className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-2">
-                        <MessageCircle size={16} /> WhatsApp
+                    <button onClick={handleWhatsApp} className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-emerald-600 transition-colors flex items-center gap-2">
+                        <MessageCircle size={14} /> WhatsApp
                     </button>
                 </div>
             </div>
 
-            {/* Invoice Card */}
-            <GlassCard className="p-0 overflow-hidden print:shadow-none print:border">
-                {/* Header */}
-                <div className="p-6 border-b border-white/5 bg-gradient-to-r from-emerald-500/10 to-blue-500/10 print:bg-gray-50">
-                    <div className="flex justify-between items-start">
+            {/* A4 Invoice Paper */}
+            <div className="bg-white w-full max-w-[210mm] min-h-[297mm] shadow-2xl print:shadow-none print:w-full print:max-w-none print:min-h-0 relative flex flex-col">
+
+                {/* 1. Header Area */}
+                <div className="p-8 md:p-12 border-b-2 border-gray-100 flex justify-between items-start">
+                    <div className="space-y-4">
                         <div>
-                            <h1 className="text-2xl font-bold text-white print:text-gray-900">TAX INVOICE</h1>
-                            <p className="text-gray-400 print:text-gray-600">{selectedCompany?.name || 'Company Name'}</p>
-                            {selectedCompany?.address && (
-                                <p className="text-sm text-gray-500 mt-1 max-w-md">{selectedCompany.address}</p>
-                            )}
-                            {selectedCompany?.gstin && (
-                                <p className="text-sm text-gray-500 mt-1">GSTIN: {selectedCompany.gstin}</p>
-                            )}
+                            <h1 className="text-3xl font-black text-gray-900 tracking-tight uppercase">{selectedCompany?.name || 'Company Name'}</h1>
+                            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 mt-2">
+                                {selectedCompany?.address && <span className="flex items-center gap-1"><MapPin size={12} /> {selectedCompany.address}</span>}
+                            </div>
+                            <div className="flex flex-wrap gap-4 mt-1 text-xs font-bold text-gray-600 uppercase tracking-wide">
+                                {selectedCompany?.gstin && <span>GSTIN: {selectedCompany.gstin}</span>}
+                                {selectedCompany?.phone_number && <span>Ph: {selectedCompany.phone_number}</span>}
+                            </div>
                         </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-500 uppercase font-bold">Invoice No.</p>
-                            <p className="text-2xl font-bold text-emerald-400 print:text-emerald-600">{invoice.invoice_number}</p>
-                            <p className="text-sm text-gray-400 mt-2 flex items-center justify-end gap-1">
-                                <Calendar size={14} />
-                                {format(new Date(invoice.invoice_date), 'dd MMM yyyy')}
-                            </p>
+                    </div>
+                    <div className="text-right">
+                        <h2 className="text-xl font-black text-gray-400 uppercase tracking-[0.2em] mb-4">TAX INVOICE</h2>
+                        <div className="space-y-1">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Invoice No</p>
+                            <p className="text-lg font-black text-gray-900">#{invoice.invoice_number}</p>
+                        </div>
+                        <div className="space-y-1 mt-3">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Date</p>
+                            <p className="text-base font-bold text-gray-900">{format(new Date(invoice.invoice_date), 'dd MMM yyyy')}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Party & Amount */}
-                <div className="p-6 grid md:grid-cols-2 gap-6 border-b border-white/5">
-                    <div className="bg-white/[0.02] rounded-xl p-4 border border-white/5 print:border-gray-200 print:bg-gray-50">
-                        <p className="text-xs text-gray-500 uppercase font-bold mb-2 flex items-center gap-1"><User size={12} /> Bill To</p>
-                        <p className="font-semibold text-white text-lg print:text-gray-900">{invoice.party_ledger_name}</p>
-                        {invoice.party_gstin && <p className="text-sm text-gray-400 mt-1">GSTIN: {invoice.party_gstin}</p>}
-                        {invoice.place_of_supply && <p className="text-sm text-gray-500 mt-1">Place of Supply: {invoice.place_of_supply}</p>}
+                {/* 2. Bill To Section */}
+                <div className="p-8 md:p-12 bg-gray-50 border-b border-gray-100 flex flex-col md:flex-row gap-12">
+                    <div className="flex-1 space-y-3">
+                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-2">Bill To</p>
+                        <h3 className="text-xl font-black text-gray-900">{invoice.party_ledger_name}</h3>
+                        <div className="text-xs font-medium text-gray-600 space-y-1">
+                            {invoice.party_gstin && (
+                                <p className="font-bold flex items-center gap-2"><Hash size={12} /> GSTIN: {invoice.party_gstin}</p>
+                            )}
+                            {/* Placeholder for address if available in future */}
+                            <p className="flex items-center gap-2 opacity-50"><MapPin size={12} /> Billing Address</p>
+                        </div>
                     </div>
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-right print:bg-emerald-50 print:border-emerald-200">
-                        <p className="text-xs text-emerald-400 uppercase font-bold mb-2">Invoice Amount</p>
-                        <p className="text-4xl font-bold text-emerald-400 print:text-emerald-600">{formatCurrency(invoice.net_amount)}</p>
+                    <div className="flex-1 space-y-3">
+                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-2">Shipping / Supply</p>
+                        <p className="text-sm font-bold text-gray-900">Place of Supply: {invoice.place_of_supply || 'N/A'}</p>
+                        <p className="text-xs font-medium text-gray-500">Shipping Address Same as Billing</p>
                     </div>
                 </div>
 
-                {/* Items Table */}
-                <div className="overflow-x-auto">
+                {/* 3. Items Table */}
+                <div className="p-8 md:p-12 flex-1">
                     <table className="w-full text-sm">
-                        <thead className="bg-white/[0.02] text-left text-xs text-gray-500 uppercase tracking-wider print:bg-gray-100 print:text-gray-600">
+                        <thead className="bg-gray-100 print:bg-gray-100">
                             <tr>
-                                <th className="px-6 py-4 w-10">#</th>
-                                <th className="px-6 py-4">Item</th>
-                                <th className="px-6 py-4 text-center">HSN CODE</th>
-                                <th className="px-6 py-4 text-center">Qty</th>
-                                <th className="px-6 py-4 text-right">Rate</th>
-                                <th className="px-6 py-4 text-center">Disc %</th>
-                                <th className="px-6 py-4 text-right">Amount</th>
+                                <th className="py-3 px-4 text-left font-black text-gray-900 uppercase tracking-wider text-xs w-12 rounded-l-lg">#</th>
+                                <th className="py-3 text-left font-black text-gray-900 uppercase tracking-wider text-xs">Description</th>
+                                <th className="py-3 text-center font-black text-gray-900 uppercase tracking-wider text-xs">HSN</th>
+                                <th className="py-3 text-center font-black text-gray-900 uppercase tracking-wider text-xs">Qty</th>
+                                <th className="py-3 text-right font-black text-gray-900 uppercase tracking-wider text-xs">Rate</th>
+                                <th className="py-3 text-center font-black text-gray-900 uppercase tracking-wider text-xs">GST %</th>
+                                <th className="py-3 px-4 text-right font-black text-gray-900 uppercase tracking-wider text-xs rounded-r-lg">Amount</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-white/5 print:divide-gray-200">
-                            {(invoice.sales_items && invoice.sales_items.length > 0) ? (
-                                invoice.sales_items.map((item: any, idx: number) => (
-                                    <tr key={item.id || idx} className="hover:bg-white/[0.02] print:hover:bg-gray-50">
-                                        <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
-                                        <td className="px-6 py-4 font-medium text-white print:text-gray-900">{item.stock_item_name || item.name || 'Unknown'}</td>
-                                        <td className="px-6 py-4 text-center text-gray-400 font-mono text-[10px]">{item.hsn_code || '-'}</td>
-                                        <td className="px-6 py-4 text-center"><span className="font-semibold text-white print:text-gray-900">{item.quantity}</span><span className="text-xs text-gray-500 ml-1">{item.unit}</span></td>
-                                        <td className="px-6 py-4 text-right font-mono text-gray-300 print:text-gray-700">{formatCurrency(item.rate)}</td>
-                                        <td className="px-6 py-4 text-center text-orange-400">{Number(item.discount_percent) > 0 ? `${item.discount_percent}%` : '-'}</td>
-                                        <td className="px-6 py-4 text-right font-semibold text-white print:text-gray-900">{formatCurrency(item.amount)}</td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">No items found</td>
+                        <tbody className="divide-y divide-gray-100">
+                            {invoice.sales_items?.map((item: any, idx: number) => (
+                                <tr key={idx}>
+                                    <td className="py-4 px-4 text-gray-500 font-medium">{idx + 1}</td>
+                                    <td className="py-4">
+                                        <p className="font-bold text-gray-900">{item.stock_item_name}</p>
+                                        {Number(item.discount_percent) > 0 && (
+                                            <p className="text-[10px] text-emerald-600 font-bold mt-1">Includes Discount: {item.discount_percent}%</p>
+                                        )}
+                                    </td>
+                                    <td className="py-4 text-center text-gray-500 text-xs font-mono">{item.hsn_code}</td>
+                                    <td className="py-4 text-center font-bold text-gray-700">{item.quantity} {item.unit}</td>
+                                    <td className="py-4 text-right font-medium text-gray-600">{formatCurrency(item.rate)}</td>
+                                    <td className="py-4 text-center text-xs font-bold text-gray-500">{item.tax_rate}%</td>
+                                    <td className="py-4 px-4 text-right font-black text-gray-900">{formatCurrency(item.amount)}</td>
                                 </tr>
-                            )}
+                            ))}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Summary */}
-                <div className="p-6 border-t border-white/5">
-                    <div className="ml-auto max-w-xs space-y-2">
-                        {/* Calculate gross from items (qty * rate without discount) */}
-                        {(() => {
-                            const grossFromItems = invoice.sales_items?.reduce((sum: number, item: any) => sum + (Number(item.quantity) * Number(item.rate)), 0) || 0;
-                            const totalDiscount = grossFromItems - (invoice.taxable_amount || invoice.gross_amount || 0);
-                            const hasItemDiscount = invoice.sales_items?.some((item: any) => Number(item.discount_percent) > 0);
-
-                            return (
-                                <>
-                                    <div className="flex justify-between text-gray-400"><span>Gross Amount</span><span className="font-mono text-white print:text-gray-900">{formatCurrency(grossFromItems > 0 ? grossFromItems : invoice.gross_amount)}</span></div>
-
-                                    {(hasItemDiscount || totalDiscount > 0 || invoice.discount_amount > 0) && (
-                                        <div className="flex justify-between text-orange-400"><span>Discount</span><span className="font-mono">-{formatCurrency(totalDiscount > 0 ? totalDiscount : invoice.discount_amount || 0)}</span></div>
-                                    )}
-                                </>
-                            );
-                        })()}
-                        <div className="border-t border-white/5 pt-2 mt-2">
-                            <div className="flex justify-between text-gray-400"><span>Taxable Value</span><span className="font-mono text-white print:text-gray-900">{formatCurrency(invoice.taxable_amount)}</span></div>
-                            {invoice.cgst_amount > 0 && <div className="flex justify-between text-gray-500"><span>CGST</span><span className="font-mono">{formatCurrency(invoice.cgst_amount)}</span></div>}
-                            {invoice.sgst_amount > 0 && <div className="flex justify-between text-gray-500"><span>SGST</span><span className="font-mono">{formatCurrency(invoice.sgst_amount)}</span></div>}
-                            {invoice.igst_amount > 0 && <div className="flex justify-between text-gray-500"><span>IGST</span><span className="font-mono">{formatCurrency(invoice.igst_amount)}</span></div>}
+                {/* 4. Footer & Totals */}
+                <div className="bg-gray-50 p-8 md:p-12 border-t border-gray-200 break-inside-avoid">
+                    <div className="flex flex-col md:flex-row gap-12">
+                        {/* Left: Bank & Notes */}
+                        <div className="flex-1 space-y-8">
+                            <div>
+                                <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Bank Details</h4>
+                                <div className="bg-white border border-gray-200 p-4 rounded-xl space-y-1 shadow-sm">
+                                    <p className="text-sm font-bold text-gray-900 uppercase">{selectedCompany.bank_name || 'Bank Not Added'}</p>
+                                    <div className="text-xs font-medium text-gray-500 grid grid-cols-2 gap-2 mt-2">
+                                        <span>A/C No: {selectedCompany.account_number || '-'}</span>
+                                        <span>IFSC: {selectedCompany.ifsc_code || '-'}</span>
+                                        <span className="col-span-2">Branch: {selectedCompany.branch_name || '-'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Terms & Notes</h4>
+                                <p className="text-xs text-gray-500 italic leading-relaxed">
+                                    {invoice.narration || "Thank you for doing business with us."}
+                                </p>
+                            </div>
                         </div>
-                        {invoice.round_off !== 0 && (
-                            <div className="flex justify-between text-gray-500 border-t border-white/5 pt-2"><span>Round Off</span><span className="font-mono">{invoice.round_off > 0 ? '+' : ''}{formatCurrency(invoice.round_off)}</span></div>
-                        )}
-                        <div className="flex justify-between font-bold text-lg border-t border-white/5 pt-3 mt-2 text-emerald-400 print:text-emerald-600">
-                            <span>Net Amount</span>
-                            <span className="font-mono">{formatCurrency(invoice.net_amount)}</span>
+
+                        {/* MIDDLE: QR CODE */}
+                        <div className="w-32 flex flex-col items-center justify-end pb-2">
+                            {upiId && !isEditingUpi ? (
+                                <div className="text-center group relative">
+                                    <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm inline-block">
+                                        <img src={qrCodeUrl} alt="UPI QR" className="w-24 h-24 mix-blend-multiply" />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-gray-500 mt-2 uppercase tracking-wide">Scan to Pay</p>
+
+                                    {/* Edit Button (Hidden in Print) */}
+                                    <button
+                                        onClick={() => setIsEditingUpi(true)}
+                                        className="absolute -top-2 -right-2 bg-gray-900 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity print:hidden"
+                                        title="Change UPI ID"
+                                    >
+                                        <Edit size={12} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col justify-end items-center print:hidden">
+                                    {isEditingUpi ? (
+                                        <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-lg w-48">
+                                            <p className="text-[10px] font-bold uppercase mb-2">Company UPI ID</p>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. name@upi"
+                                                value={upiId}
+                                                onChange={(e) => setUpiId(e.target.value)}
+                                                className="w-full text-xs p-2 border rounded-lg mb-2"
+                                            />
+                                            <button onClick={saveUpiId} className="w-full bg-emerald-500 text-white text-xs font-bold py-1.5 rounded-lg active:scale-95 transition-transform">
+                                                {upiId ? 'Update & Apply to All' : 'Save for All Invoices'}
+                                            </button>
+                                            <button onClick={() => setIsEditingUpi(false)} className="w-full mt-1 text-[10px] font-bold text-gray-400 hover:text-gray-600">Cancel</button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setIsEditingUpi(true)}
+                                            className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-colors"
+                                        >
+                                            + Add Payment QR
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Right: Totals (W-64 to accommodate QR) */}
+                        <div className="w-full md:w-64 space-y-3">
+                            <div className="flex justify-between text-sm font-bold text-gray-500">
+                                <span>Sub Total</span>
+                                <span>{formatCurrency(invoice.net_amount - (invoice.cgst_amount + invoice.sgst_amount + invoice.igst_amount))}</span>
+                            </div>
+
+                            {(invoice.cgst_amount > 0 || invoice.sgst_amount > 0) ? (
+                                <>
+                                    <div className="flex justify-between text-xs font-medium text-gray-500">
+                                        <span>CGST</span>
+                                        <span>{formatCurrency(invoice.cgst_amount)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs font-medium text-gray-500">
+                                        <span>SGST</span>
+                                        <span>{formatCurrency(invoice.sgst_amount)}</span>
+                                    </div>
+                                </>
+                            ) : invoice.igst_amount > 0 && (
+                                <div className="flex justify-between text-xs font-medium text-gray-500">
+                                    <span>IGST</span>
+                                    <span>{formatCurrency(invoice.igst_amount)}</span>
+                                </div>
+                            )}
+
+                            <div className="border-t-2 border-gray-900 pt-4 mt-2 flex justify-between items-end">
+                                <div className="text-left">
+                                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Payable</p>
+                                    <p className="text-[10px] text-gray-400 font-medium">Incl. of all taxes</p>
+                                </div>
+                                <p className="text-3xl font-black text-gray-900 leading-none">{formatCurrency(invoice.net_amount)}</p>
+                            </div>
+
+                            {/* Sign Area */}
+                            <div className="pt-12 mt-8 border-t border-gray-200 text-center">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Authorized Signatory</p>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Narration */}
-                {invoice.narration && (
-                    <div className="px-6 py-4 bg-white/[0.02] border-t border-white/5 print:bg-gray-50">
-                        <span className="text-xs text-gray-500 uppercase font-bold mr-2">Remarks:</span>
-                        <span className="text-gray-400 print:text-gray-600">{invoice.narration}</span>
-                    </div>
-                )}
-            </GlassCard>
-
-            <p className="text-center text-xs text-gray-600 print:hidden">TallySync • {selectedCompany?.name}</p>
+            <p className="mt-8 text-xs font-medium text-gray-400 print:hidden">Generated via BillBook Web</p>
         </div>
     );
 }

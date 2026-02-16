@@ -17,10 +17,13 @@ export default function InvoicePDFPage() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [template, setTemplate] = useState('professional');
+    const [upiId, setUpiId] = useState('');
 
     useEffect(() => {
         if (id && selectedCompany?.id) {
             loadInvoice();
+            const savedUpi = localStorage.getItem(`upi_${selectedCompany.id}`);
+            if (savedUpi) setUpiId(savedUpi);
         }
     }, [id, selectedCompany]);
 
@@ -390,7 +393,7 @@ export default function InvoicePDFPage() {
     };
 
     // Generate Professional PDF using jsPDF
-    const handleDownloadPDF = () => {
+    const generatePDF = async (action = 'download') => {
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -402,142 +405,126 @@ export default function InvoicePDFPage() {
         doc.setFontSize(16);
         doc.setTextColor(0, 0, 0);
 
-        // --- COMPANY HEADER ---
+        // --- HEADER ---
+        // Header Box
+        const headerH = 30; // Compact height
+        doc.rect(margin, y, pageWidth - 2 * margin, headerH);
+
+        // Vertical Divider
+        const midX = margin + (pageWidth - 2 * margin) * 0.55; // 55% Left, 45% Right for better balance
+        doc.line(midX, y, midX, y + headerH);
+
+        // LEFT: Company Info
+        let leftY = y + 5;
+        const leftX = margin + 4;
+        const maxLeftW = midX - leftX - 2;
+
+        doc.setFontSize(12); // Slightly smaller but bold
+        doc.setFont('helvetica', 'bold');
+
+        // Handle long company names by wrapping
         const companyName = companyInfo?.name || 'Company Name';
-        doc.text(companyName, pageWidth / 2, y, { align: 'center' });
-        y += 6;
+        const nameLines = doc.splitTextToSize(companyName, maxLeftW);
+        doc.text(nameLines, leftX, leftY);
+        leftY += (nameLines.length * 5); // Dynamic height adjustment
 
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        const companyAddr = companyInfo?.address || '';
-        const addrLines = doc.splitTextToSize(companyAddr, 120);
-        doc.text(addrLines, pageWidth / 2, y, { align: 'center' });
-        y += (addrLines.length * 4) + 2;
-
-        const gstin = companyInfo?.gstin || 'N/A';
-        doc.text(`GSTIN/UIN: ${gstin}`, pageWidth / 2, y, { align: 'center' });
-        y += 5;
-
-        const email = companyInfo?.email || '';
-        if (email) {
-            doc.text(`E-Mail: ${email}`, pageWidth / 2, y, { align: 'center' });
-            y += 5;
+        if (companyInfo?.phone) {
+            doc.text(`Contact: ${companyInfo.phone}`, leftX, leftY);
+            leftY += 4;
+        }
+        if (companyInfo?.address) {
+            const addrLines = doc.splitTextToSize(companyInfo.address, maxLeftW);
+            doc.text(addrLines, leftX, leftY);
+            // leftY += (addrLines.length * 4); // Not strictly needed as nothing follows currently
         }
 
-        const phone = companyInfo?.phone || '';
-        if (phone) {
-            doc.text(`Phone: ${phone}`, pageWidth / 2, y, { align: 'center' });
-            y += 5;
-        }
-
-        y += 5;
-
-        // --- TITLE ---
+        // RIGHT: Invoice Title & Details
+        let rightY = y + 6;
+        const rightX = midX + 4;
         const isPurchase = invoice?.voucher_type?.toLowerCase().includes('purchase') || invoice?.voucher_type?.toLowerCase().includes('payment');
         const title = isPurchase ? 'PURCHASE VOUCHER' : 'TAX INVOICE';
 
+        doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text(title, pageWidth / 2, y, { align: 'center' });
-        y += 2;
+        doc.text(title, midX + ((pageWidth - margin - midX) / 2), rightY, { align: 'center' });
+
+        const subY1 = y + 10;
+        const subY2 = y + 22; // Compacted rows
+
+        doc.line(midX, subY1, pageWidth - margin, subY1);
+        doc.line(midX, subY2, pageWidth - margin, subY2);
+
+        // Invoice No | Date
+        const subMidX = midX + ((pageWidth - margin - midX) / 2);
+        doc.line(subMidX, subY1, subMidX, y + headerH);
+
+        // Row 1: Invoice No | Date
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text("Invoice No.", rightX, subY1 + 4);
+        doc.text("Dated", subMidX + 2, subY1 + 4);
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(invoice?.invoice_number || '-', rightX, subY1 + 9);
+        doc.text(formatDate(invoice?.invoice_date), subMidX + 2, subY1 + 9);
+
+        // Row 2: Mode/Terms
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text("Mode/Terms of Payment", rightX, subY2 + 4);
+
+        y += headerH;
 
         // --- BORDERS & GRID ---
-        // Main Box
         const contentStartY = y;
-        const footerHeight = 45; // Space for sign/bank
-        const contentEndY = pageHeight - margin - footerHeight;
 
-        // Draw main outer border
-        // doc.rect(margin, contentStartY, pageWidth - 2 * margin, contentEndY - contentStartY);
+        // --- BILL TO / BUYER SECTION ---
+        // Auto-calculate height based on address length
+        doc.setFontSize(9);
+        const partyAddrLines = invoice?.party_address ? doc.splitTextToSize(invoice.party_address, pageWidth - 2 * margin - 10) : [];
+        const partySectionH = Math.max(25, 15 + (partyAddrLines.length * 4)); // Compact dynamic height
 
-        // --- INVOICE INFO SECTION ---
-        const topSectionY = y;
-        const leftColX = margin + 2;
-        const rightColX = pageWidth / 2 + 2;
+        doc.rect(margin, y, pageWidth - 2 * margin, partySectionH);
 
-        // Horizontal Line below Title
-        doc.setLineWidth(0.1);
-        doc.line(margin, y, pageWidth - margin, y);
-        y += 5;
+        let partyY = y + 5;
+        // const leftX = margin + 4; // Reusing leftX from above
 
-        // Left Side: Invoice No
-        doc.setFontSize(10);
+        doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
-        doc.text('Invoice No:', leftColX, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(invoice?.invoice_number || '-', leftColX + 25, y);
-
-        // Right Side: Date
-        doc.setFont('helvetica', 'bold');
-        doc.text('Dated:', rightColX, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(formatDate(invoice?.invoice_date), rightColX + 30, y);
-
-        y += 6;
-
-        // Left: Delivery Note
-        doc.text('Delivery Note:', leftColX, y);
-        // Right: Mode/Terms
-        doc.text('Mode/Terms of Payment:', rightColX, y);
-
-        y += 6;
-
-        // Left: Supplier Ref (empty usually)
-        doc.text('Supplier\'s Ref:', leftColX, y);
-        // Right: Other Ref
-        doc.text('Other References:', rightColX, y);
-
-        y += 6;
-
-        // Separator Line
-        doc.line(margin, y, pageWidth - margin, y);
-        // Vertical Separator
-        doc.line(pageWidth / 2, topSectionY, pageWidth / 2, y);
-
-        // --- PARTY DETAILS ---
-        const partyStartY = y;
-        y += 5;
-
-        doc.setFont('helvetica', 'bold');
-        const partyLabel = isPurchase ? 'Supplier (Bill From):' : 'Buyer (Bill To):';
-        doc.text(partyLabel, leftColX, y);
-        y += 5;
+        const partyLabel = isPurchase ? 'SUPPLIER (BILL FROM)' : 'BUYER (BILL TO)';
+        doc.text(partyLabel, leftX, partyY);
+        partyY += 5;
 
         doc.setFontSize(10);
-        doc.text(invoice?.party_ledger_name || 'Cash', leftColX, y);
-        y += 5;
+        doc.text(invoice?.party_ledger_name || 'Cash', leftX, partyY);
+        partyY += 5;
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        if (invoice?.party_address) {
-            const lines = doc.splitTextToSize(invoice.party_address, pageWidth - 2 * margin - 10);
-            doc.text(lines, leftColX, y);
-            y += (lines.length * 4);
+        if (partyAddrLines.length > 0) {
+            doc.text(partyAddrLines, leftX, partyY);
+            partyY += (partyAddrLines.length * 4);
         }
 
-        y += 2;
+        partyY += 2;
         if (invoice?.party_gstin) {
             doc.setFont('helvetica', 'bold');
-            doc.text(`GSTIN/UIN: ${invoice.party_gstin}`, leftColX, y);
+            doc.text(`GSTIN/UIN: ${invoice.party_gstin}`, leftX, partyY);
+            if (invoice?.party_state || invoice?.place_of_supply) {
+                doc.text(`State Name: ${invoice?.party_state || invoice?.place_of_supply}`, leftX + 80, partyY);
+            }
             doc.setFont('helvetica', 'normal');
-            y += 5;
-        }
-        if (invoice?.party_state || invoice?.place_of_supply) {
-            doc.text(`State: ${invoice?.party_state || invoice?.place_of_supply}`, leftColX, y);
-            y += 5;
         }
 
-        y += 2;
-        // Separator Line above Items
-        doc.line(margin, y, pageWidth - margin, y);
-        doc.rect(margin, contentStartY, pageWidth - 2 * margin, y - contentStartY); // Draw box around header part
+        y += partySectionH; // Move Y past party section
 
         // --- ITEMS TABLE ---
-        // Force visibility checks directly on current items to ensure columns appear
         const hasItems = items.length > 0;
         const _hasHSN = hasItems && items.some(i => i.hsn_code);
-        const _hasGST = hasItems; // Always show GST column if items exist
-        const _hasRate = hasItems;
+        const _hasGST = hasItems;
         const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
 
         const tableColumns = [
@@ -546,24 +533,35 @@ export default function InvoicePDFPage() {
         ];
 
         if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' });
-        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' });
+        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' }); // Corrected logic below
         tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
         tableColumns.push({ header: 'Rate', dataKey: 'rate' });
         tableColumns.push({ header: 'Per', dataKey: 'unit' });
         if (_hasDisc) tableColumns.push({ header: 'Disc %', dataKey: 'disc' });
         tableColumns.push({ header: 'Amount', dataKey: 'amount' });
 
-        const tableBody = items.map((item, index) => ({
-            sno: index + 1,
-            desc: item.stock_item_name || 'Item',
-            hsn: item.hsn_code || '-',
-            gst: item.gst_rate ? `${item.gst_rate}%` : '0%',
-            qty: item.quantity || 0,
-            rate: formatNumber(item.rate),
-            unit: item.unit || '',
-            disc: item.discount ? `${item.discount}%` : '',
-            amount: formatNumber(item.amount)
-        }));
+        const tableBody = items.map((item, index) => {
+            // Logic to find valid GST Rate: Item Rate > Master Rate > HSN Summary Rate
+            let displayGst = 0;
+            if (Number(item.gst_rate) > 0) {
+                displayGst = Number(item.gst_rate);
+            } else {
+                const hsnMatch = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
+                if (hsnMatch && hsnMatch.gst_rate > 0) displayGst = hsnMatch.gst_rate;
+            }
+
+            return {
+                sno: index + 1,
+                desc: item.stock_item_name || 'Item',
+                hsn: item.hsn_code || '-',
+                gst: displayGst > 0 ? `${displayGst}%` : '0%', // Format cleanly
+                qty: item.quantity || 0,
+                rate: formatNumber(item.rate),
+                unit: item.unit || '',
+                disc: item.discount ? `${item.discount}%` : '',
+                amount: formatNumber(item.amount)
+            };
+        });
 
         autoTable(doc, {
             startY: y,
@@ -575,7 +573,8 @@ export default function InvoicePDFPage() {
                 lineColor: [0, 0, 0],
                 textColor: [0, 0, 0],
                 fontSize: 9,
-                valign: 'top',
+                valign: 'middle', // Better vertical alignment
+                cellPadding: 2,   // More breathing room
             },
             headStyles: {
                 fillColor: [255, 255, 255],
@@ -609,10 +608,11 @@ export default function InvoicePDFPage() {
 
         const totalQtyVal = items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 
+        // Align totals with columns - simplified approach
         doc.setFont('helvetica', 'bold');
-        doc.text('Total', margin + 60, y + 4, { align: 'right' });
-        doc.text(totalQtyVal.toString(), pageWidth - margin - 85, y + 4, { align: 'right' });
-        doc.text(formatNumber(invoice.taxable_amount), pageWidth - margin - 2, y + 4, { align: 'right' });
+        doc.text('Total', margin + 60, y + 5, { align: 'right' });
+        doc.text(totalQtyVal.toString(), pageWidth - margin - 85, y + 5, { align: 'right' }); // Approx Qty col
+        doc.text(formatNumber(invoice.taxable_amount), pageWidth - margin - 2, y + 5, { align: 'right' }); // Amount col
 
         y += 6;
         doc.line(margin, y, pageWidth - margin, y);
@@ -630,7 +630,7 @@ export default function InvoicePDFPage() {
         doc.text(wordLines, margin + 2, y + 9);
 
         // Right: Tax Breakdown
-        let rightY = y + 2;
+        let taxY = y + 2;
         const rightXStart = pageWidth - 80;
 
         doc.line(rightXStart, y, rightXStart, y + 40);
@@ -638,10 +638,10 @@ export default function InvoicePDFPage() {
         const drawTaxRow = (label, amount) => {
             if (amount > 0) {
                 doc.setFont('helvetica', 'normal');
-                doc.text(label, rightXStart + 2, rightY + 3);
+                doc.text(label, rightXStart + 2, taxY + 3);
                 doc.setFont('helvetica', 'bold');
-                doc.text(formatNumber(amount), pageWidth - margin - 2, rightY + 3, { align: 'right' });
-                rightY += 5;
+                doc.text(formatNumber(amount), pageWidth - margin - 2, taxY + 3, { align: 'right' });
+                taxY += 5;
             }
         };
 
@@ -651,21 +651,128 @@ export default function InvoicePDFPage() {
         if (invoice?.round_off) drawTaxRow('Round Off', invoice.round_off);
 
         // Grand Total Line
-        doc.line(rightXStart, rightY, pageWidth - margin, rightY);
-        rightY += 5;
-        doc.text('Total (INR)', rightXStart + 2, rightY);
-        doc.text(formatNumber(invoice.net_amount), pageWidth - margin - 2, rightY, { align: 'right' });
+        doc.line(rightXStart, taxY, pageWidth - margin, taxY);
+        taxY += 5;
+        doc.text('Total (INR)', rightXStart + 2, taxY);
+        doc.text(formatNumber(invoice.net_amount), pageWidth - margin - 2, taxY, { align: 'right' });
 
-        y = Math.max(y + 20, rightY + 5);
-        y = Math.max(y, bottomSectionStart + 40);
+        y = Math.max(y + 10, taxY + 2);
+        y = Math.max(y, bottomSectionStart + 30); // Reduced min height
 
         doc.line(margin, y, pageWidth - margin, y);
 
+        // --- TAX ANALYSIS (HSN SUMMARY) ---
+        if (columnVisibility.hasGST && hsnSummary.length > 0) {
+            y += 4;
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Tax Analysis:", margin, y);
+            y += 2;
+
+            const taxColumns = [
+                { header: 'HSN/SAC', dataKey: 'hsn' },
+                { header: 'Taxable Value', dataKey: 'taxable', halign: 'right' },
+            ];
+
+            if (columnVisibility.isIGST) {
+                taxColumns.push({ header: 'IGST Rate', dataKey: 'rate', halign: 'center' });
+                taxColumns.push({ header: 'IGST Amount', dataKey: 'tax', halign: 'right' });
+            } else {
+                taxColumns.push({ header: 'CGST Rate', dataKey: 'crate', halign: 'center' });
+                taxColumns.push({ header: 'CGST Amount', dataKey: 'cval', halign: 'right' });
+                taxColumns.push({ header: 'SGST Rate', dataKey: 'srate', halign: 'center' });
+                taxColumns.push({ header: 'SGST Amount', dataKey: 'sval', halign: 'right' });
+            }
+            taxColumns.push({ header: 'Total Tax', dataKey: 'total_tax', halign: 'right' });
+
+            const taxBody = hsnSummary.map(row => {
+                const base = {
+                    hsn: row.hsn,
+                    taxable: formatNumber(row.taxable),
+                    total_tax: formatNumber(row.total - row.taxable)
+                };
+
+                if (columnVisibility.isIGST) {
+                    return { ...base, rate: `${row.gst_rate}%`, tax: formatNumber(row.igst) };
+                } else {
+                    return {
+                        ...base,
+                        crate: `${row.gst_rate / 2}%`,
+                        cval: formatNumber(row.cgst),
+                        srate: `${row.gst_rate / 2}%`,
+                        sval: formatNumber(row.sgst)
+                    };
+                }
+            });
+
+            autoTable(doc, {
+                startY: y,
+                columns: taxColumns,
+                body: taxBody,
+                theme: 'plain',
+                styles: { lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], fontSize: 7, cellPadding: 1, overflow: 'linebreak' },
+                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0], halign: 'center' },
+                columnStyles: {
+                    hsn: { halign: 'center' },
+                    taxable: { halign: 'right' },
+                    rate: { halign: 'center' },
+                    tax: { halign: 'right' },
+                    crate: { halign: 'center' },
+                    cval: { halign: 'right' },
+                    srate: { halign: 'center' },
+                    sval: { halign: 'right' },
+                    total_tax: { halign: 'right' }
+                },
+                margin: { left: margin, right: margin },
+                tableLineWidth: 0.1,
+                tableLineColor: [0, 0, 0],
+            });
+
+            y = doc.lastAutoTable.finalY + 2;
+        } else {
+            y += 2;
+        }
+
         // --- FOOTER (Bank & Sign) ---
         const footerY = y;
-        const middleX = pageWidth / 2;
+        const footerH = 30;
+        const contentW = pageWidth - 2 * margin;
 
-        doc.line(middleX, footerY, middleX, footerY + 30); // Vertical split
+        if (upiId) {
+            // 3 Columns: Bank (40%), QR (20%), Sign (40%)
+            const col1X = margin + (contentW * 0.4);
+            const col2X = margin + (contentW * 0.6);
+
+            doc.line(col1X, footerY, col1X, footerY + footerH);
+            doc.line(col2X, footerY, col2X, footerY + footerH);
+
+            // Fetch and Draw QR
+            try {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`;
+
+                const loadImage = (src) => new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous";
+                    img.onload = () => resolve(img);
+                    img.onerror = reject;
+                    img.src = src;
+                });
+
+                const qrImg = await loadImage(qrUrl);
+                const qrSize = 20;
+                const qrX = col1X + ((col2X - col1X) - qrSize) / 2;
+                const qrY = footerY + (footerH - qrSize) / 2 - 2;
+                doc.addImage(qrImg, 'PNG', qrX, qrY, qrSize, qrSize);
+                doc.setFontSize(8);
+                doc.text("Scan to Pay", col1X + ((col2X - col1X) / 2), qrY + qrSize + 4, { align: 'center' });
+
+            } catch (err) {
+                console.error("Failed to load QR for PDF", err);
+            }
+        } else {
+            const middleX = pageWidth / 2;
+            doc.line(middleX, footerY, middleX, footerY + footerH); // Vertical split
+        }
 
         // Left: Bank Details
         doc.setFontSize(9);
@@ -687,7 +794,25 @@ export default function InvoicePDFPage() {
         // Bottom border
         doc.rect(margin, contentStartY, pageWidth - 2 * margin, (footerY + 30) - contentStartY); // Re-draw outer box to be sure it covers all
 
-        doc.save(`Invoice_${invoice?.invoice_number || 'Draft'}.pdf`);
+        const filename = `Invoice_${invoice?.invoice_number || 'Draft'}.pdf`;
+
+        if (action === 'share') {
+            const blob = doc.output('blob');
+            const file = new File([blob], filename, { type: 'application/pdf' });
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: filename,
+                    text: `Invoice #${invoice?.invoice_number} from ${companyInfo?.name}`
+                });
+            } else {
+                console.warn('Web Share API not supported or validation failed');
+                // Fallback to download
+                doc.save(filename);
+            }
+        } else {
+            doc.save(filename);
+        }
     };
 
     const handleWhatsAppShare = () => {
@@ -756,6 +881,13 @@ export default function InvoicePDFPage() {
 
                 <div className="flex gap-3">
                     <button
+                        onClick={() => navigate(`/edit-invoice/${id}`)}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                        Edit
+                    </button>
+                    <button
                         onClick={handleWhatsAppShare}
                         className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow transition-colors font-medium text-sm"
                     >
@@ -763,7 +895,14 @@ export default function InvoicePDFPage() {
                         WhatsApp
                     </button>
                     <button
-                        onClick={handleDownloadPDF}
+                        onClick={() => generatePDF('share')}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                        Share PDF
+                    </button>
+                    <button
+                        onClick={() => generatePDF('download')}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors font-medium text-sm"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -1127,9 +1266,9 @@ export default function InvoicePDFPage() {
                         )}
 
                         {/* Footer Section — Tally: only show bank if filled */}
-                        <div className="grid grid-cols-2 flex-grow h-32">
-                            {/* Bank & Terms */}
-                            <div className="border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
+                        <div className="grid grid-cols-5 flex-grow h-32">
+                            {/* Bank & Terms (40%) */}
+                            <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
                                 {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
                                     <div>
                                         <p className="font-bold underline mb-1">Company's Bank Details:</p>
@@ -1144,8 +1283,25 @@ export default function InvoicePDFPage() {
                                 </div>
                             </div>
 
-                            {/* Signatory */}
-                            <div className="p-2 flex flex-col justify-between h-full text-center">
+                            {/* QR Code (20%) */}
+                            <div className="col-span-1 border-r-2 border-black flex flex-col items-center justify-center p-2">
+                                {upiId && (
+                                    <>
+                                        <div className="bg-white p-1">
+                                            <img
+                                                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
+                                                alt="UPI QR"
+                                                className="w-20 h-20 mix-blend-multiply"
+                                                crossOrigin="anonymous"
+                                            />
+                                        </div>
+                                        <p className="text-[9px] font-bold mt-1 text-center uppercase tracking-tight">Scan to Pay</p>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Signatory (40%) */}
+                            <div className="col-span-2 p-2 flex flex-col justify-between h-full text-center">
                                 <p className="text-right text-xs font-bold">for {companyInfo?.name}</p>
                                 <div className="h-16"></div>
                                 <div className="text-right">

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
+import AIFloatingButton from '../AIFloatingButton';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
@@ -11,8 +12,9 @@ import {
     LineChart, Building2, Sparkles, LogOut, ArrowLeftRight,
     Bot, UserX, MessageCircle, ClipboardList, Truck, MapPin,
     Palette, CreditCard, ScanLine, Database, ShieldCheck,
-    Repeat, Globe, FileSpreadsheet
+    Repeat, Globe, FileSpreadsheet, Settings
 } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 // Navigation Item
 const NavItem = memo(({
@@ -62,58 +64,50 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     const isAdmin = user?.email === 'lovneetrathi@gmail.com';
 
+    const { t } = useLanguage();
+    // ... (rest of code)
+
     const tallyNavGroups = useMemo(() => {
         const groups = [
             {
-                label: 'Main',
+                label: t('nav.dashboard'), // Main
                 items: [
-                    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
-                    { to: '/vouchers', icon: <FileText size={18} />, label: 'Vouchers' },
-                    { to: '/ledgers', icon: <Users size={18} />, label: 'Parties' },
+                    { to: '/', icon: <LayoutDashboard size={18} />, label: t('nav.dashboard') },
+                    { to: '/sync-history', icon: <RefreshCw size={18} />, label: 'Sync Status' },
+                    { to: '/vouchers', icon: <FileText size={18} />, label: t('nav.vouchers') },
+                    { to: '/ledgers', icon: <Users size={18} />, label: t('nav.parties') },
                 ]
             },
             {
-                label: 'Financials',
+                label: t('nav.sales'), // Financials
                 items: [
-                    { to: '/sales', icon: <TrendingUp size={18} />, label: 'Sales' },
-                    { to: '/purchases', icon: <Package size={18} />, label: 'Purchases' },
-                    { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
-                    { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
-                    { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Reports' },
-                    { to: '/bank-reconciliation', icon: <Building2 size={18} />, label: 'Bank Recon' },
+                    { to: '/sales', icon: <TrendingUp size={18} />, label: t('nav.sales') },
+                    { to: '/purchases', icon: <Package size={18} />, label: t('nav.purchases') },
+                    { to: '/profit-loss', icon: <BarChart3 size={18} />, label: t('reports.profit_loss') },
+                    { to: '/balance-sheet', icon: <Scale size={18} />, label: t('reports.balance_sheet') },
+                    { to: '/gst-reports', icon: <Shield size={18} />, label: t('nav.gst_reports') },
                 ]
             },
             {
-                label: 'CRM & Portal',
+                label: t('stock.title'), // Inventory
                 items: [
-                    { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
-                    { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
-                    { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Reminders' },
-                    { to: '/inactive-customers', icon: <UserX size={18} />, label: 'Inactive List' },
-                ]
-            },
-            {
-                label: 'Inventory',
-                items: [
-                    { to: '/stock', icon: <Box size={18} />, label: 'Stock Summary' },
+                    { to: '/stock', icon: <Box size={18} />, label: t('nav.stock') },
                     { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
                 ]
             },
             {
-                label: 'Intelligence',
+                label: t('ai.title'), // Intelligence
                 items: [
-                    { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
-                    { to: '/ai-entry', icon: <Sparkles size={18} />, label: 'AI Auto Entry' },
+                    { to: '/ai-assistant', icon: <Bot size={18} />, label: t('nav.ai_assistant') },
+                    { to: '/ai-entry', icon: <Sparkles size={18} />, label: t('dashboard.recent_vouchers') }, // Using appropriate label or add new
                     { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
                 ]
             },
             {
-                label: 'Operations',
+                label: t('nav.settings'), // Settings & Misc
                 items: [
-                    { to: '/create-voucher', icon: <Plus size={18} />, label: 'Create Voucher' },
-                    { to: '/recurring-invoices', icon: <Repeat size={18} />, label: 'Recurring' },
-                    { to: '/report-builder', icon: <FileSpreadsheet size={18} />, label: 'Reports' },
-                    { to: '/backup-restore', icon: <Database size={18} />, label: 'Backup' },
+                    { to: '/settings', icon: <Settings size={18} />, label: t('nav.settings') },
+                    { to: '/recurring-invoices', icon: <Repeat size={18} />, label: t('nav.recurring') },
                 ]
             }
         ];
@@ -124,48 +118,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             });
         }
         return groups;
-    }, [isAdmin]);
+    }, [isAdmin, t]);
 
     const billingNavGroups = useMemo(() => {
         const groups = [
             {
-                label: 'Main',
+                label: t('nav.dashboard'),
                 items: [
-                    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Billing Desk' },
-                    { to: '/create-invoice', icon: <Plus size={18} />, label: 'Create Bill' },
-                    { to: '/ledgers', icon: <Users size={18} />, label: 'Customers' },
+                    { to: '/', icon: <LayoutDashboard size={18} />, label: t('nav.dashboard') },
+                    { to: '/sync-history', icon: <RefreshCw size={18} />, label: 'Sync Status' },
+                    { to: '/create-invoice', icon: <Plus size={18} />, label: t('sales.create_invoice') },
+                    { to: '/ledgers', icon: <Users size={18} />, label: t('nav.parties') },
                 ]
             },
             {
-                label: 'Sales & Inventory',
+                label: t('nav.sales'),
                 items: [
-                    { to: '/sales', icon: <TrendingUp size={18} />, label: 'Recent Bills' },
-                    { to: '/stock', icon: <Box size={18} />, label: 'Inventory' },
-                    { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
+                    { to: '/sales', icon: <TrendingUp size={18} />, label: t('nav.sales') },
+                    { to: '/stock', icon: <Box size={18} />, label: t('nav.stock') },
                 ]
             },
             {
-                label: 'Finance',
+                label: t('nav.settings'),
                 items: [
-                    { to: '/profit-loss', icon: <BarChart3 size={18} />, label: 'Profit & Loss' },
-                    { to: '/balance-sheet', icon: <Scale size={18} />, label: 'Balance Sheet' },
-                    { to: '/gst-reports', icon: <Shield size={18} />, label: 'GST Filing' },
-                ]
-            },
-            {
-                label: 'CRM',
-                items: [
-                    { to: '/portal-links', icon: <Globe size={18} />, label: 'Customer Portal' },
-                    { to: '/payment-links', icon: <CreditCard size={18} />, label: 'Payment Links' },
-                    { to: '/payment-reminders', icon: <MessageCircle size={18} />, label: 'Reminders' },
-                ]
-            },
-            {
-                label: 'Tools',
-                items: [
-                    { to: '/ai-assistant', icon: <Bot size={18} />, label: 'AI Assistant' },
-                    { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
-                    { to: '/invoice-templates', icon: <Palette size={18} />, label: 'Templates' },
+                    { to: '/settings', icon: <Settings size={18} />, label: t('nav.settings') },
                 ]
             }
         ];
@@ -176,7 +152,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             });
         }
         return groups;
-    }, [isAdmin]);
+    }, [isAdmin, t]);
 
     const navGroups = appMode === 'tally' ? tallyNavGroups : billingNavGroups;
 
@@ -263,8 +239,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                                     to={item.to}
                                                     onClick={() => setShowMobileMenu(false)}
                                                     className={`flex items-center gap-3.5 px-3 py-3 rounded-xl transition-all duration-200 ${location.pathname === item.to
-                                                            ? 'bg-[var(--primary)] text-white font-bold shadow-md'
-                                                            : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
+                                                        ? 'bg-[var(--primary)] text-white font-bold shadow-md'
+                                                        : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] font-medium'
                                                         }`}
                                                 >
                                                     <span className={`${location.pathname === item.to ? 'text-white' : 'text-[var(--primary)]'}`}>
@@ -525,6 +501,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     })}
                 </div>
             </nav>
+
+            <AIFloatingButton />
         </div>
     );
 }

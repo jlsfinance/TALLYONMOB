@@ -27,14 +27,18 @@ export default function LoginPage() {
                 const { error } = await signIn(email, password);
                 if (error) throw error;
                 toast.success('Welcome back!');
-                navigate('/');
+                navigate('/dashboard');
             } else {
                 const { error } = await signUp(email, password, fullName);
                 if (error) throw error;
                 toast.success('Account created! Please check your email.');
             }
         } catch (error: any) {
-            toast.error(error.message || 'Authentication failed');
+            console.error('Login Error:', error);
+            const errorMsg = error.message || 'Unknown error';
+            toast.error(`Login Failed: ${errorMsg}`);
+            // DEBUG: Show detailed error
+            alert(`Debug Error: ${JSON.stringify(error)} \nMsg: ${errorMsg}`);
         } finally {
             setLoading(false);
         }

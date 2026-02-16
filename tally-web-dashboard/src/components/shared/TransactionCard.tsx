@@ -136,11 +136,10 @@ const TransactionCard: React.FC<TransactionCardProps> = ({
                     {(isSales || isReceipt) ? '+' : '-'} {formatCurrency(amount)}
                 </p>
                 <div className="mt-1">
-                    <Badge 
-                        variant={status?.toLowerCase() === 'synced' ? 'success' : (status?.toLowerCase() === 'failed' ? 'error' : 'default')} 
-                        className={`text-[8px] font-black px-1.5 py-0 h-4 ${
-                            status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' : ''
-                        }`}
+                    <Badge
+                        variant={status?.toLowerCase() === 'synced' ? 'success' : (status?.toLowerCase() === 'failed' ? 'error' : (status?.toLowerCase() === 'pending' ? 'warning' : 'default'))}
+                        className={`text-[8px] font-black px-1.5 py-0 h-4 ${status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' : ''
+                            }`}
                     >
                         {(status || 'SYNCED').toUpperCase()}
                     </Badge>

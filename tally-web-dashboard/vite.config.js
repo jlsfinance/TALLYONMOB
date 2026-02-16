@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename)
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    base: './', // CRITICAL for Capacitor to load assets from relative path
     plugins: [react()],
     server: {
         port: 3000,

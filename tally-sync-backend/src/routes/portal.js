@@ -17,7 +17,7 @@ router.get('/party', async (req, res) => {
 
         const { data, error } = await supabase
             .from('ledgers')
-            .select('id, name, closing_balance, email, phone, address, gstin')
+            .select('id, name, current_balance, email, phone, address, gstin')
             .eq('company_id', company_id)
             .eq('name', decodeURIComponent(party_name))
             .single();
@@ -145,6 +145,87 @@ router.post('/generate-link', async (req, res) => {
         const portalLink = `${frontendUrl}/portal/view?c=${company_id}&p=${encodedName}`;
 
         res.json({ success: true, link: portalLink });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get Full Invoice Details (Public)
+router.get('/invoice/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Fetch Voucher
+        const { data: voucher, error: vError } = await supabase
+            .from('vouchers')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (vError) throw vError;
+
+        // 2. Fetch Company (for display)
+        const { data: company } = await supabase
+            .from('companies')
+            .select('name, address, phone, email, gstin')
+            .eq('id', voucher.company_id)
+            .single();
+
+        // 2b. Fetch Party Details
+        let party = null;
+        if (voucher.party_ledger_id) {
+            const { data: partyData } = await supabase
+                .from('ledgers')
+                .select('name, address, phone, email, gstin')
+                .eq('id', voucher.party_ledger_id)
+                .single();
+            party = partyData;
+        } else if (voucher.party_name) {
+            // Fallback to name match if id missing
+            const { data: partyData } = await supabase
+                .from('ledgers')
+                .select('name, address, phone, email, gstin')
+                .eq('company_id', voucher.company_id)
+                .eq('name', voucher.party_name)
+                .maybeSingle(); // maybeSingle avoids error if not found/multiple
+            party = partyData;
+        }
+
+        // 3. Fetch Items from voucher_stock_entries
+        const { data: items, error: iError } = await supabase
+            .from('voucher_stock_entries')
+            .select('*')
+            .eq('voucher_id', id);
+
+        if (iError) throw iError;
+
+        // 4. Fetch Aliases from tally_stock
+        // Get unique item names
+        const itemNames = [...new Set(items ? items.map(i => i.stock_item_name) : [])];
+        let aliasesMap = {};
+
+        if (itemNames.length > 0) {
+            const { data: stockData, error: sError } = await supabase
+                .from('tally_stock')
+                .select('name, alias')
+                .in('name', itemNames)
+                .eq('company_id', voucher.company_id);
+
+            if (!sError && stockData) {
+                stockData.forEach(s => {
+                    aliasesMap[s.name] = s.alias;
+                });
+            }
+        }
+
+        // 5. Attach alias to items
+        const itemsWithAlias = (items || []).map(i => ({
+            ...i,
+            alias: aliasesMap[i.stock_item_name] || ''
+        }));
+
+        res.json({ success: true, data: { ...voucher, company, party, items: itemsWithAlias } });
+
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

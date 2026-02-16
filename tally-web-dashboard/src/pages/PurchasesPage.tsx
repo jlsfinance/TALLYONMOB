@@ -57,7 +57,8 @@ export default function PurchasesPage() {
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
-                .order('voucher_date', { ascending: false });
+                .order('voucher_date', { ascending: false })
+                .limit(50000);
 
             if (error) throw error;
 

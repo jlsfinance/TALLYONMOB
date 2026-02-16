@@ -25,13 +25,13 @@ class Ledger {
       id: json['id'] as String,
       companyId: json['company_id'] as String,
       name: json['name'] as String,
-      ledgerGroup: json['ledger_group'] as String?,
+      ledgerGroup: json['parent'] as String?,
       openingBalance: (json['opening_balance'] as num?)?.toDouble(),
       currentBalance: (json['current_balance'] as num?)?.toDouble(),
-      syncedAt: json['synced_at'] != null
-          ? DateTime.parse(json['synced_at'])
+      syncedAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
-      rawData: json['raw_data'] as Map<String, dynamic>?,
+      rawData: json,
     );
   }
 
@@ -40,10 +40,10 @@ class Ledger {
       'id': id,
       'company_id': companyId,
       'name': name,
-      'ledger_group': ledgerGroup,
+      'parent': ledgerGroup,
       'opening_balance': openingBalance,
       'current_balance': currentBalance,
-      'synced_at': syncedAt?.toIso8601String(),
+      'created_at': syncedAt?.toIso8601String(),
       'raw_data': rawData,
     };
   }

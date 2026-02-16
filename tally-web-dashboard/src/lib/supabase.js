@@ -2,14 +2,32 @@ import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 
 // Fallback to hardcoded values for Capacitor/Mobile builds where .env might be missing
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lcsehcwocqvxrrgbmhcz.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: false // Important for mobile apps to prevent deep link errors
+        detectSessionInUrl: false,
+        flowType: 'pkce'
+    },
+    global: {
+        fetch: async (url, options) => {
+            try {
+                const response = await fetch(url, options);
+                return response;
+            } catch (error) {
+                console.error('Supabase Fetch Error Details:', {
+                    url,
+                    method: options?.method,
+                    error: error.message,
+                    name: error.name,
+                    status: error.status
+                });
+                throw error;
+            }
+        }
     }
 });
 
@@ -284,7 +302,7 @@ export const masterApi = {
     getLedgers: async (companyId) => {
         const { data, error } = await supabase
             .from('ledgers')
-            .select('id, name, parent_group, current_balance')
+            .select('id, name, parent, current_balance')
             .eq('company_id', companyId)
             .order('name')
             .limit(10000);

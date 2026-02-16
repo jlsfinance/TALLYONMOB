@@ -22,13 +22,13 @@ class Sale {
     return Sale(
       id: json['id'] as String,
       companyId: json['company_id'] as String,
-      vchNumber: json['vch_number'] as String?,
-      partyLedger: json['party_ledger'] as String?,
-      amount: (json['amount'] as num?)?.toDouble(),
-      syncedAt: json['synced_at'] != null
-          ? DateTime.parse(json['synced_at'])
+      vchNumber: json['invoice_number'] as String?,
+      partyLedger: json['party_ledger_name'] as String?,
+      amount: (json['net_amount'] as num?)?.toDouble(),
+      syncedAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
-      rawData: json['raw_data'] as Map<String, dynamic>?,
+      rawData: json,
     );
   }
 
@@ -36,10 +36,10 @@ class Sale {
     return {
       'id': id,
       'company_id': companyId,
-      'vch_number': vchNumber,
-      'party_ledger': partyLedger,
-      'amount': amount,
-      'synced_at': syncedAt?.toIso8601String(),
+      'invoice_number': vchNumber,
+      'party_ledger_name': partyLedger,
+      'net_amount': amount,
+      'created_at': syncedAt?.toIso8601String(),
       'raw_data': rawData,
     };
   }
@@ -69,13 +69,13 @@ class Purchase {
     return Purchase(
       id: json['id'] as String,
       companyId: json['company_id'] as String,
-      vchNumber: json['vch_number'] as String?,
-      partyLedger: json['party_ledger'] as String?,
-      amount: (json['amount'] as num?)?.toDouble(),
-      syncedAt: json['synced_at'] != null
-          ? DateTime.parse(json['synced_at'])
+      vchNumber: json['invoice_number'] as String?,
+      partyLedger: json['party_ledger_name'] as String?,
+      amount: (json['net_amount'] as num?)?.toDouble(),
+      syncedAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
-      rawData: json['raw_data'] as Map<String, dynamic>?,
+      rawData: json,
     );
   }
 
@@ -83,10 +83,10 @@ class Purchase {
     return {
       'id': id,
       'company_id': companyId,
-      'vch_number': vchNumber,
-      'party_ledger': partyLedger,
-      'amount': amount,
-      'synced_at': syncedAt?.toIso8601String(),
+      'invoice_number': vchNumber,
+      'party_ledger_name': partyLedger,
+      'net_amount': amount,
+      'created_at': syncedAt?.toIso8601String(),
       'raw_data': rawData,
     };
   }
@@ -118,14 +118,14 @@ class Stock {
     return Stock(
       id: json['id'] as String,
       companyId: json['company_id'] as String,
-      itemName: json['item_name'] as String,
-      closingStock: (json['closing_stock'] as num?)?.toDouble(),
+      itemName: json['name'] as String,
+      closingStock: (json['current_stock'] as num?)?.toDouble(),
       closingValue: (json['closing_value'] as num?)?.toDouble(),
-      baseUnit: json['base_unit'] as String?,
-      syncedAt: json['synced_at'] != null
-          ? DateTime.parse(json['synced_at'])
+      baseUnit: json['unit'] as String?,
+      syncedAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
           : null,
-      rawData: json['raw_data'] as Map<String, dynamic>?,
+      rawData: json,
     );
   }
 
@@ -133,11 +133,11 @@ class Stock {
     return {
       'id': id,
       'company_id': companyId,
-      'item_name': itemName,
-      'closing_stock': closingStock,
+      'name': itemName,
+      'current_stock': closingStock,
       'closing_value': closingValue,
-      'base_unit': baseUnit,
-      'synced_at': syncedAt?.toIso8601String(),
+      'unit': baseUnit,
+      'created_at': syncedAt?.toIso8601String(),
       'raw_data': rawData,
     };
   }
