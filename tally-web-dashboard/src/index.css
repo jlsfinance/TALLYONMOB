@@ -350,3 +350,15 @@ body {
     display: none !important;
   }
 }
+
+/* ===== HEADER OVERRIDE LOGIC ===== */
+#header-title-mobile:not(:empty)+.default-header-content {
+  display: none !important;
+}
+
+/* Hide default actions if ANY portal action/filter/search is present */
+#header-search-mobile:not(:empty)~.default-header-actions,
+#header-filters-mobile:not(:empty)~.default-header-actions,
+#header-actions-mobile:not(:empty)~.default-header-actions {
+  display: none !important;
+}

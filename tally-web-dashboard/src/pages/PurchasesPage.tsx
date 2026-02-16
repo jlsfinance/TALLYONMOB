@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Search, Plus, IndianRupee, FileText, Filter, ArrowDownLeft } from 'lucide-react';
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
 import TransactionCard from '@/components/shared/TransactionCard';
-import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
+import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 export default function PurchasesPage() {
     const { selectedCompany } = useAuth() as any;
@@ -25,23 +26,53 @@ export default function PurchasesPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
+    const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
 
-    // Initial state: Set correct dates immediately based on FY
-    const getDatesForFy = (fy: string) => {
-        const fyYear = parseInt(fy.split(' ')[1].split('-')[0]);
-        return {
-            start: format(new Date(fyYear, 3, 1), 'yyyy-MM-dd'),
-            end: format(new Date(fyYear + 1, 2, 31), 'yyyy-MM-dd')
+    // Generate months for the selected FY
+    const monthsInFy = useMemo(() => {
+        const startYearText = selectedFy.split(' ')[1].split('-')[0];
+        const startYear = parseInt(startYearText);
+        const months = [];
+
+        for (let i = 0; i < 12; i++) {
+            const date = new Date(startYear, 3 + i, 1);
+            months.push({
+                key: format(date, 'yyyy-MM'),
+                label: format(date, 'MMM'),
+                fullLabel: format(date, 'MMMM yyyy'),
+                start: format(startOfMonth(date), 'yyyy-MM-dd'),
+                end: format(endOfMonth(date), 'yyyy-MM-dd')
+            });
+        }
+
+        const allOption = {
+            key: 'all',
+            label: 'ALL',
+            fullLabel: 'Full Financial Year',
+            start: `${startYear}-04-01`,
+            end: `${startYear + 1}-03-31`
         };
-    };
 
-    const [dateRange, setDateRange] = useState(getDatesForFy(getCurrentFy()));
-    const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
-
-    useEffect(() => {
-        // Update dates when FY changes
-        setDateRange(getDatesForFy(selectedFy));
+        return [allOption, ...months.reverse()];
     }, [selectedFy]);
+
+    const dateRange = useMemo(() => {
+        const monthObj = monthsInFy.find(m => m.key === selectedMonth);
+        if (monthObj) {
+            return {
+                start: monthObj.start,
+                end: monthObj.end
+            };
+        }
+        // Fallback to full year
+        const startYear = parseInt(selectedFy.split(' ')[1].split('-')[0]);
+        return {
+            start: `${startYear}-04-01`,
+            end: `${startYear + 1}-03-31`
+        };
+    }, [selectedMonth, monthsInFy, selectedFy]);
+
+    const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     useEffect(() => {
         if (selectedCompany) loadPurchases();
@@ -90,23 +121,69 @@ export default function PurchasesPage() {
         p.voucher_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const [showSearch, setShowSearch] = useState(false);
+
     if (!selectedCompany) return null;
 
     return (
         <div className="space-y-4 max-w-7xl mx-auto pb-24">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Expense Stream</h1>
-                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name}</p>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Expense Stream</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
                 </div>
-                {/* Link to Vouchers filtered by Purchase */}
-                <button
-                    onClick={() => navigate('/vouchers?type=Purchase')}
-                    className="flex items-center gap-2 px-5 py-3 bg-[var(--primary)] text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-[var(--primary-glow)]"
-                >
-                    <Plus size={14} /> New Record
-                </button>
-            </header>
+            </HeaderPortal>
+
+            <HeaderPortal type="search">
+                <div className="flex items-center gap-2">
+                    <AnimatePresence>
+                        {showSearch ? (
+                            <motion.div
+                                initial={{ width: 0, opacity: 0 }}
+                                animate={{ width: '200px', opacity: 1 }}
+                                exit={{ width: 0, opacity: 0 }}
+                                className="relative overflow-hidden"
+                            >
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)]" />
+                                <input
+                                    autoFocus
+                                    placeholder="Search..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onBlur={() => !searchTerm && setShowSearch(false)}
+                                    className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-9 pr-3 text-[11px] font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                />
+                            </motion.div>
+                        ) : (
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"
+                            >
+                                <Search size={18} />
+                            </button>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-2">
+                    <CompactDateFilter
+                        selectedFy={selectedFy}
+                        onFyChange={setSelectedFy}
+                        selectedMonth={selectedMonth}
+                        onMonthChange={setSelectedMonth}
+                        monthsInFy={monthsInFy}
+                    />
+                    <button
+                        onClick={() => navigate('/vouchers?type=Purchase')}
+                        className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
+                        title="New Record"
+                    >
+                        <Plus size={18} />
+                    </button>
+                </div>
+            </HeaderPortal>
 
             {/* Performance Indicators */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -120,21 +197,7 @@ export default function PurchasesPage() {
                 </div>
             </div>
 
-            {/* Global FY Slider */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
 
-            {/* Filter Hub */}
-            <div className="space-y-4">
-                <div className="relative group/search">
-                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within/search:text-[var(--primary)] transition-colors" />
-                    <input
-                        placeholder="Search Supplier or Bill Number..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-4 pl-12 pr-6 text-xs font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)] transition-all placeholder:text-[var(--text-muted)] placeholder:uppercase placeholder:text-[9px]"
-                    />
-                </div>
-            </div>
 
             {/* Transaction Logic */}
             <AnimatePresence mode="wait">
@@ -149,7 +212,7 @@ export default function PurchasesPage() {
                         description="Try another Finance Year or search term."
                     />
                 ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                         {filteredPurchases.map((purchase, idx) => (
                             <TransactionCard
                                 key={purchase.voucher_id}

@@ -12,6 +12,7 @@ import { Badge, Button } from '@/components/ui/GlassUI';
 import { pendingTransactionApi } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
@@ -229,29 +230,46 @@ export default function VoucherDetailPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)] pb-32 font-['Inter',sans-serif]">
-            {/* Header - Transparent & Sticky */}
-            <header className="sticky top-0 z-50 px-4 py-4 md:py-6 flex items-center justify-between bg-[var(--background)]/80 backdrop-blur-md">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="p-3 -ml-2 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
-                >
-                    <ArrowLeft size={24} />
-                </button>
-
-                <div className="flex items-center gap-2">
+            {/* Header Actions Portal */}
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-0.5 md:gap-1">
                     <button
-                        onClick={() => navigate(`/edit-invoice/${voucherId}`)}
-                        className="p-3 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
+                        onClick={handleWhatsApp}
+                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                        title="WhatsApp"
                     >
-                        <Edit size={22} />
+                        <MessageCircle size={18} />
                     </button>
                     <button
                         onClick={handleDownloadPDF}
                         disabled={generatingPdf}
-                        className="p-3 -mr-2 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all hover:bg-[var(--surface-variant)]"
+                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                        title="Share PDF"
                     >
-                        {generatingPdf ? <RefreshCw size={20} className="animate-spin" /> : <Printer size={22} />}
+                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Share size={18} />}
                     </button>
+                    <button
+                        onClick={() => navigate(`/edit-invoice/${voucherId}`)}
+                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                        title="Edit Invoice"
+                    >
+                        <Edit size={18} />
+                    </button>
+                </div>
+            </HeaderPortal>
+
+            {/* Local Sticky Header - Simplified with only Back Button */}
+            <header className="sticky top-0 z-50 px-4 py-3 flex items-center justify-between bg-[var(--background)]/80 backdrop-blur-md border-b border-[var(--border)]/50">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="p-2 -ml-2 rounded-full active:bg-[var(--surface-variant)] text-[var(--on-surface)] transition-all"
+                >
+                    <ArrowLeft size={20} />
+                </button>
+                <div className="flex-1 px-4">
+                    <p className="text-[10px] font-black uppercase tracking-[2px] text-[var(--text-muted)] truncate">
+                        {voucher.voucher_type} #{voucher.voucher_number}
+                    </p>
                 </div>
             </header>
 
@@ -364,29 +382,6 @@ export default function VoucherDetailPage() {
                 )}
             </main>
 
-            {/* FLOATING BOTTOM BAR */}
-            <div className="fixed bottom-8 left-0 right-0 z-40 flex justify-center px-4">
-                <div className="flex items-center p-1.5 bg-[var(--on-surface)] rounded-full shadow-2xl shadow-black/20 backdrop-blur-xl max-w-sm w-full">
-                    <button
-                        onClick={handleWhatsApp}
-                        className="flex-1 h-12 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--on-surface)] flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                        <MessageCircle size={18} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">WhatsApp</span>
-                    </button>
-
-                    <div className="w-px h-6 bg-[var(--border)] mx-1 opacity-20"></div>
-
-                    <button
-                        onClick={handleDownloadPDF}
-                        disabled={generatingPdf}
-                        className="flex-1 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center gap-2 transition-all hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-500/20"
-                    >
-                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Share size={18} />}
-                        <span className="text-[10px] font-black uppercase tracking-widest">Share PDF</span>
-                    </button>
-                </div>
-            </div>
 
             {/* Sync Overlay Logic */}
             {status !== 'SYNCED' && !syncing && (

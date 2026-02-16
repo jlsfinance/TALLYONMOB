@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { Building, Wallet, CreditCard, Landmark, PiggyBank, Scale, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import { GlassCard, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
+import { CompactYearFilter } from '@/components/shared/CompactYearFilter';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 interface LedgerItem {
     name: string;
@@ -261,25 +262,30 @@ export default function BalanceSheetPage() {
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-24">
-            {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)] uppercase tracking-tighter">Balance Sheet</h1>
-                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-1">
-                        As on {fyDateRange.end} • {selectedCompany.name}
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] uppercase tracking-tighter leading-none">Balance Sheet</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
+                        {selectedCompany.name} • As on {fyDateRange.end}
                     </p>
                 </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="filters">
+                <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
                 <button
                     onClick={exportBalanceSheet}
                     disabled={!bsData || loading}
-                    className="px-6 py-3 bg-[var(--primary)] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 disabled:opacity-50 hover:scale-105 transition-transform"
+                    className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform disabled:opacity-50"
+                    title="Export Report"
                 >
-                    <Download size={16} /> Export Report
+                    <Download size={18} />
                 </button>
-            </header>
+            </HeaderPortal>
 
-            {/* FY Filter */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
 
             <AnimatePresence mode="wait">
                 {loading ? (

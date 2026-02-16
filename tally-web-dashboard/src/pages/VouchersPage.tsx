@@ -12,7 +12,8 @@ import {
     Spinner, EmptyState
 } from '../components/ui/GlassUI';
 import TransactionCard from '../components/shared/TransactionCard';
-import { FinancialYearFilter } from '../components/shared/FinancialYearFilter';
+import { CompactDateFilter } from '../components/shared/CompactDateFilter';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 
 export default function VouchersPage() {
     const { selectedCompany } = useAuth() as any;
@@ -33,7 +34,7 @@ export default function VouchersPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+    const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
 
     const voucherTypes = [
         { key: 'all', label: 'All', icon: <Activity size={12} /> },
@@ -73,39 +74,12 @@ export default function VouchersPage() {
         return [allOption, ...months.reverse()]; // Show ALL then latest months first
     }, [selectedFy]);
 
-    // Auto-select "ALL" if there is a search term (party filter), otherwise find recent month
+    // Simplified auto-selection (Default to ALL as per user request)
     useEffect(() => {
-        const findMonthWithVouchers = async () => {
-            if (!selectedCompany || monthsInFy.length === 0) return;
-
-            // If searching for a party, default to "ALL" to show full history
-            if (searchTerm) {
-                setSelectedMonth('all');
-                return;
-            }
-
-            // Check each month starting from most recent to find one with vouchers
-            for (const month of monthsInFy) {
-                if (month.key === 'all') continue; // Skip ALL check for auto-selection
-
-                const { count } = await supabase
-                    .from('vouchers')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('company_id', selectedCompany.id)
-                    .gte('voucher_date', month.start)
-                    .lte('voucher_date', month.end);
-
-                if (count && count > 0) {
-                    setSelectedMonth(month.key);
-                    return;
-                }
-            }
-            // Fallback to ALL if no specific month has data
+        if (searchTerm) {
             setSelectedMonth('all');
-        };
-
-        findMonthWithVouchers();
-    }, [monthsInFy, selectedCompany, searchTerm]); // Add searchTerm dependency
+        }
+    }, [searchTerm]);
 
     useEffect(() => {
         if (selectedMonth && selectedCompany) loadVouchers();
@@ -176,55 +150,63 @@ export default function VouchersPage() {
         v.voucher_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const [showSearch, setShowSearch] = useState(false);
+
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-4 max-w-7xl mx-auto pb-24 px-4">
-            <div className="flex items-center justify-between">
+        <div className="space-y-4 max-w-7xl mx-auto pb-24">
+            <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Transactions</h1>
-                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Journal Node</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
                 </div>
-            </div>
+            </HeaderPortal>
 
-            {/* Global FY Slider */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            <HeaderPortal type="search">
+                <div className="flex items-center gap-2">
+                    <AnimatePresence>
+                        {showSearch ? (
+                            <motion.div
+                                initial={{ width: 0, opacity: 0 }}
+                                animate={{ width: '200px', opacity: 1 }}
+                                exit={{ width: 0, opacity: 0 }}
+                                className="relative overflow-hidden"
+                            >
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)]" />
+                                <input
+                                    autoFocus
+                                    placeholder="Search..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onBlur={() => !searchTerm && setShowSearch(false)}
+                                    className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-9 pr-3 text-[11px] font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                />
+                            </motion.div>
+                        ) : (
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"
+                            >
+                                <Search size={18} />
+                            </button>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </HeaderPortal>
 
-            {/* Month Filter for Selected FY - Compact Horizontal Scroller */}
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide py-2 -mx-2 px-2">
-                {monthsInFy.map((m) => {
-                    const isActive = selectedMonth === m.key;
-                    return (
-                        <button
-                            key={m.key}
-                            onClick={() => setSelectedMonth(m.key)}
-                            className={`
-                                min-w-[60px] flex flex-col items-center py-2 px-3 rounded-2xl text-[9px] font-black uppercase transition-all border
-                                ${isActive
-                                    ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] border-none text-white shadow-lg scale-105 z-10'
-                                    : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-active)] opacity-70'
-                                }
-                            `}
-                        >
-                            <Calendar size={12} className={isActive ? 'mb-1 opacity-100' : 'mb-1 opacity-40'} />
-                            {m.label}
-                        </button>
-                    );
-                })}
-            </div>
+            <HeaderPortal type="filters">
+                <CompactDateFilter
+                    selectedFy={selectedFy}
+                    onFyChange={setSelectedFy}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                    monthsInFy={monthsInFy}
+                />
+            </HeaderPortal>
 
             {/* Sticky Header Section for Mobile */}
             <div className="sticky top-0 z-20 bg-[var(--background)]/80 backdrop-blur-md pt-2 pb-3 -mx-4 px-4 space-y-3 shadow-xl shadow-[var(--background)]">
-                {/* Search Bar - Most critical for mobile UX */}
-                <div className="relative group">
-                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--primary)] opacity-50" />
-                    <input
-                        placeholder="SEARCH PARTY OR VOUCHER..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-3.5 pl-11 pr-4 text-[11px] font-black text-[var(--on-surface)] focus:ring-2 focus:ring-[var(--primary)]/20 focus:border-[var(--primary)] focus:outline-none transition-all placeholder:text-[var(--text-muted)] placeholder:font-black"
-                    />
-                </div>
 
                 {/* Type Filter - Compact Chips */}
                 <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
@@ -235,15 +217,17 @@ export default function VouchersPage() {
                                 key={type.key}
                                 onClick={() => setSelectedType(type.key)}
                                 className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border
+                                    flex items-center gap-1.5 md:gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border
                                     ${isActive
-                                        ? 'bg-[var(--on-surface)] text-[var(--surface)] border-[var(--on-surface)] shadow-md'
+                                        ? 'bg-[var(--on-surface)] text-[var(--surface)] border-[var(--on-surface)] shadow-lg ring-2 ring-[var(--on-surface)]/10 scale-105'
                                         : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-active)]'
                                     }
                                 `}
                             >
-                                {type.icon}
-                                {type.label}
+                                <span className="flex-shrink-0 scale-110 md:scale-100">{type.icon}</span>
+                                <span className={`${isActive ? 'block' : 'hidden md:block'} transition-all duration-300`}>
+                                    {type.label}
+                                </span>
                             </button>
                         );
                     })}
@@ -260,7 +244,7 @@ export default function VouchersPage() {
                 ) : filteredVouchers.length === 0 ? (
                     <EmptyState icon={<FileText size={48} />} title="No Records" description="Try another month or FY" />
                 ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-1.5">
                         {filteredVouchers.map((v, idx) => (
                             <TransactionCard
                                 key={v.voucher_id || v.id || idx}

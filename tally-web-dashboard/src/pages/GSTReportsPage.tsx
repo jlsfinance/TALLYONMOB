@@ -6,7 +6,8 @@ import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { FileText, Download, Building2, User, Package, Receipt, Calendar, ShieldCheck, PieChart, Activity } from 'lucide-react';
 import { GlassCard, MetricCard, Badge, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
+import { CompactYearFilter } from '../components/shared/CompactYearFilter';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 // Helper component for empty states
 const EmptyState = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
@@ -280,13 +281,27 @@ export default function GSTReportsPage() {
 
     return (
         <div className="space-y-4 max-w-7xl mx-auto pb-24">
-            <header className="flex flex-col gap-1">
-                <h1 className="text-2xl font-black text-[var(--on-surface)] uppercase tracking-tighter">Compliance Hub</h1>
-                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name}</p>
-            </header>
+            <HeaderPortal type="title">
+                <div>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] uppercase tracking-tighter leading-none">Compliance Hub</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name} • GST</p>
+                </div>
+            </HeaderPortal>
 
-            {/* Global FY Slider */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-2">
+                    <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-3 py-2 text-[var(--success)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--success)]/20 shadow-sm">
+                        <Download size={14} /> <span className="hidden sm:inline">GSTR-1</span>
+                    </button>
+                    <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 text-[var(--primary)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--primary)]/20 shadow-sm">
+                        <Download size={14} /> <span className="hidden sm:inline">GSTR-3B</span>
+                    </button>
+                </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="filters">
+                <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            </HeaderPortal>
 
             {/* Month Segment Slider */}
             <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1">
@@ -304,15 +319,6 @@ export default function GSTReportsPage() {
                 })}
             </div>
 
-            {/* Quick Export Bar */}
-            <div className="flex items-center gap-2 p-2 bg-[var(--surface-variant)]/50 rounded-2xl border border-[var(--border)] justify-end">
-                <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-4 py-2 text-[var(--success)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-2">
-                    <Download size={14} /> GSTR-1 JSON
-                </button>
-                <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-4 py-2 text-[var(--primary)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-2">
-                    <Download size={14} /> GSTR-3B JSON
-                </button>
-            </div>
 
             {/* Navigation Matrix */}
             <div className="flex gap-2 p-1.5 bg-[var(--surface-variant)] rounded-2xl border border-[var(--border)] overflow-x-auto scrollbar-hide">

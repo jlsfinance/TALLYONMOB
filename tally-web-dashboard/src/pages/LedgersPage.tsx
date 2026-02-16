@@ -11,7 +11,8 @@ import {
     Badge, Spinner, EmptyState
 } from '../components/ui/GlassUI';
 import TransactionSlider from '../components/shared/TransactionSlider';
-import { FinancialYearFilter } from '../components/shared/FinancialYearFilter';
+import { CompactYearFilter } from '../components/shared/CompactYearFilter';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { toast } from 'react-hot-toast';
 
 export default function LedgersPage() {
@@ -132,117 +133,137 @@ export default function LedgersPage() {
         );
     }, [ledgers, searchTerm]);
 
+    const [showSearch, setShowSearch] = useState(false);
+
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-4 pb-24 max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Parties</h1>
-                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
-                        Closing Net: <span className="text-[var(--primary)] font-black">₹{Math.abs(stats.total).toLocaleString()} {stats.total >= 0 ? 'Dr' : 'Cr'}</span>
-                    </p>
+        <div className="space-y-4 max-w-7xl mx-auto pb-24 px-4">
+            <HeaderPortal type="title">
+                <div className="flex flex-col">
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Global Ledger</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
                 </div>
-            </div>
+            </HeaderPortal>
 
-            {/* FY Filter Slider */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            <HeaderPortal type="search">
+                <div className="flex items-center gap-2">
+                    <AnimatePresence>
+                        {showSearch ? (
+                            <motion.div
+                                initial={{ width: 0, opacity: 0 }}
+                                animate={{ width: '200px', opacity: 1 }}
+                                exit={{ width: 0, opacity: 0 }}
+                                className="relative overflow-hidden"
+                            >
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)]" />
+                                <input
+                                    autoFocus
+                                    placeholder="Search..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onBlur={() => !searchTerm && setShowSearch(false)}
+                                    className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-9 pr-3 text-[11px] font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                />
+                            </motion.div>
+                        ) : (
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"
+                            >
+                                <Search size={18} />
+                            </button>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </HeaderPortal>
 
-            {/* Search */}
-            <div className="relative group">
-                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--primary)] transition-colors" />
-                <input
-                    placeholder="Search Customers, Suppliers..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-[var(--surface-variant)]/50 border border-[var(--border)] rounded-xl py-3 pl-10 pr-4 text-xs font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)] transition-all placeholder:text-[var(--text-muted)] placeholder:uppercase placeholder:text-[9px]"
-                />
-            </div>
+            <HeaderPortal type="filters">
+                <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+            </HeaderPortal>
+
 
             {/* High-Density Filters */}
             <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                {groupFilters.map((filter) => (
-                    <button
-                        key={filter.key}
-                        onClick={() => setSelectedGroup(filter.key)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${selectedGroup === filter.key ? 'bg-[var(--primary)] text-white shadow-lg' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] border border-[var(--border)]'}`}
-                    >
-                        {filter.icon} {filter.label}
-                    </button>
-                ))}
+                {groupFilters.map((filter) => {
+                    const isActive = selectedGroup === filter.key;
+                    return (
+                        <button
+                            key={filter.key}
+                            onClick={() => setSelectedGroup(filter.key)}
+                            className={`
+                                flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap
+                                ${isActive
+                                    ? 'bg-[var(--primary)] text-white shadow-lg scale-105'
+                                    : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] border border-[var(--border)]'
+                                }
+                            `}
+                        >
+                            {filter.icon}
+                            <span className={isActive ? 'block' : 'hidden md:block'}>
+                                {filter.label}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Parties List */}
-            {loading ? (
-                <div className="flex flex-col items-center justify-center py-24">
-                    <Spinner size="md" />
-                    <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)] mt-4">Crunching Balances...</p>
-                </div>
-            ) : filteredLedgers.length === 0 ? (
-                <EmptyState icon={<Users size={48} />} title="No Parties Found" description="Try clarifying your search" />
-            ) : (
-                <div className="grid grid-cols-1 gap-3">
-                    {filteredLedgers.map((ledger: any, idx) => {
-                        const bal = formatCurrency(ledger.current_balance);
-                        const transactions = partyTransactions[ledger.name] || [];
+            {
+                loading ? (
+                    <div className="flex flex-col items-center justify-center py-24">
+                        <Spinner size="md" />
+                        <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)] mt-4">Crunching Balances...</p>
+                    </div>
+                ) : filteredLedgers.length === 0 ? (
+                    <EmptyState icon={<Users size={48} />} title="No Parties Found" description="Try clarifying your search" />
+                ) : (
+                    <div className="grid grid-cols-1 gap-1.5">
+                        {filteredLedgers.map((ledger: any, idx) => {
+                            const bal = formatCurrency(ledger.current_balance);
+                            const transactions = partyTransactions[ledger.name] || [];
 
-                        return (
-                            <motion.div
-                                key={ledger.id || idx}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: (idx % 20) * 0.02 }}
-                                className="group bg-[var(--surface-variant)]/40 border border-[var(--border)] rounded-[24px] overflow-hidden hover:border-[var(--primary)]/40 transition-all"
-                            >
-                                <div className="p-4" onClick={() => navigate(`/ledgers/${ledger.id}`)}>
-                                    <div className="flex justify-between items-start gap-3">
-                                        <div className="min-w-0 flex-1">
-                                            <h3 className="text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-1">{ledger.name || `Ledger (${ledger.parent || 'Unknown Group'})`}</h3>
-                                            {/* Prominent Balance Below Name */}
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={`text-base font-black ${bal.color}`}>
-                                                    {bal.formatted}
-                                                </span>
-                                                <Badge variant={ledger.current_balance >= 0 ? 'info' : 'error'} className="text-[8px] font-black px-1.5 py-0.5 border-none">
-                                                    {bal.suffix}
-                                                </Badge>
+                            return (
+                                <motion.div
+                                    key={ledger.id || idx}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: (idx % 20) * 0.02 }}
+                                    className="group bg-[var(--surface-variant)]/40 border border-[var(--border)] rounded-2xl overflow-hidden hover:border-[var(--primary)]/40 transition-all"
+                                >
+                                    <div className="p-2.5" onClick={() => navigate(`/ledgers/${ledger.id}`)}>
+                                        <div className="flex justify-between items-center gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="text-[10px] md:text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-0.5">{ledger.name || `Ledger (${ledger.parent || 'Unknown Group'})`}</h3>
+                                                {/* Prominent Balance Below Name */}
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`text-[12px] md:text-base font-black ${bal.color}`}>
+                                                        {bal.formatted}
+                                                    </span>
+                                                    <Badge variant={ledger.current_balance >= 0 ? 'info' : 'error'} className="text-[7px] md:text-[8px] font-black px-1 md:px-1.5 py-0 h-3 md:h-4 border-none">
+                                                        {bal.suffix}
+                                                    </Badge>
+                                                </div>
                                             </div>
+                                            <button className="p-1 md:p-2 rounded-lg md:rounded-xl bg-[var(--surface-active)] text-[var(--on-surface-variant)] border border-[var(--border)]">
+                                                <ChevronRight size={10} className="md:w-[14px] md:h-[14px]" />
+                                            </button>
                                         </div>
-                                        <button className="p-2 rounded-xl bg-[var(--surface-active)] text-[var(--on-surface-variant)] border border-[var(--border)]">
-                                            <ChevronRight size={14} />
-                                        </button>
+
                                     </div>
 
-                                    {/* Quick Actions */}
-                                    <div className="flex items-center gap-2 mt-4">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); sendWhatsAppReminder(ledger); }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-[9px] font-black uppercase hover:bg-emerald-500/20 transition-colors"
-                                        >
-                                            <MessageCircle size={12} /> WhatsApp
-                                        </button>
-                                        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-500 text-[9px] font-black uppercase">
-                                            <FileText size={12} /> Statement
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Compact Transaction Slider */}
-                                {transactions.length > 0 && (
-                                    <div className="bg-[var(--surface)]/20 border-t border-[var(--border)] pt-2 pb-0">
-                                        <div className="px-4 flex justify-between items-center mb-2">
-                                            <span className="text-[7px] font-black uppercase tracking-[2px] text-[var(--text-muted)]">Recent Stream</span>
-                                            <span className="text-[7px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{transactions.length} items</span>
+                                    {/* Compact Transaction Slider Integrated */}
+                                    {transactions.length > 0 && (
+                                        <div className="-mt-1">
+                                            <TransactionSlider transactions={transactions} compact={true} />
                                         </div>
-                                        <TransactionSlider transactions={transactions} compact={true} />
-                                    </div>
-                                )}
-                            </motion.div>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
+                                    )}
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                )
+            }
+        </div >
     );
 }

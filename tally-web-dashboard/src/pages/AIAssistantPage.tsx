@@ -7,6 +7,7 @@ import {
     ArrowUp, Trash2, Copy, Check, RefreshCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 
 interface Message {
     id: string;
@@ -70,7 +71,7 @@ export default function AIAssistantPage() {
                 .order('voucher_date', { ascending: false })
                 .limit(500),
             supabase.from('ledgers')
-                .select('name, parent, closing_balance')
+                .select('name, parent, current_balance')
                 .eq('company_id', selectedCompany.id)
                 .limit(5000),
             supabase.from('stock_items')
@@ -110,7 +111,7 @@ export default function AIAssistantPage() {
                     companyData: {
                         salesCount: data.sales.length,
                         topSales: data.sales.slice(0, 20),
-                        topLedgers: data.ledgers.filter((l: any) => Math.abs(l.closing_balance) > 0).slice(0, 50),
+                        topLedgers: data.ledgers.filter((l: any) => Math.abs(l.current_balance) > 0).slice(0, 50),
                         lowStock: data.stock.filter((s: any) => (s.current_stock || 0) < 10).slice(0, 20),
                         companyName: data.companyName
                     }
@@ -132,6 +133,23 @@ export default function AIAssistantPage() {
         const q = query.toLowerCase();
         const today = new Date().toISOString().split('T')[0];
         const todayDate = new Date();
+        const searchWords = q.replace('ledger', '').replace('khata', '').replace('party', '').replace('ka', '').replace('dikhao', '').replace('batao', '').replace('bata', '').replace('search', '').trim().split(/\s+/).filter(w => w.length > 2);
+
+        // Explicit Ledger Search
+        if (q.includes('ledger') || q.includes('khata') || q.includes('party') || searchWords.length > 0) {
+            const ledgerMatch = data.ledgers.find((l: any) =>
+                searchWords.some(word => l.name.toLowerCase().includes(word))
+            );
+
+            if (ledgerMatch && (q.includes('ledger') || q.includes('khata') || q.includes('party') || q.includes('balance'))) {
+                const bal = ledgerMatch.current_balance;
+                const type = bal >= 0 ? 'Debit (Receivable)' : 'Credit (Payable)';
+                return `📖 **Ledger Details: ${ledgerMatch.name}**\n\n` +
+                    `💰 Balance: **₹${Math.abs(bal).toLocaleString('en-IN')}** (${type})\n` +
+                    `📁 Group: **${ledgerMatch.parent}**\n\n` +
+                    `Aap is party ki transactions dekhne ke liye "Transactions of ${ledgerMatch.name}" puch sakte hain.`;
+            }
+        }
 
         // Today's sales
         if (q.includes('aaj') && (q.includes('sale') || q.includes('sell') || q.includes('bik'))) {
@@ -150,16 +168,16 @@ export default function AIAssistantPage() {
         // Outstanding
         if (q.includes('outstanding') || q.includes('bakaya') || q.includes('baki') || q.includes('pending payment')) {
             const debtors = data.ledgers
-                .filter((l: any) => ['Sundry Debtors', 'sundry debtors'].includes(l.parent) && l.closing_balance > 0)
-                .sort((a: any, b: any) => b.closing_balance - a.closing_balance);
+                .filter((l: any) => ['Sundry Debtors', 'sundry debtors'].includes(l.parent) && l.current_balance > 0)
+                .sort((a: any, b: any) => b.current_balance - a.current_balance);
 
-            const total = debtors.reduce((sum: number, d: any) => sum + d.closing_balance, 0);
+            const total = debtors.reduce((sum: number, d: any) => sum + d.current_balance, 0);
 
             return `💰 **Outstanding Report**\n\n` +
                 `Total Outstanding: **₹${total.toLocaleString('en-IN')}**\n` +
                 `Parties with dues: **${debtors.length}**\n\n` +
                 `**Top 10 Outstanding:**\n${debtors.slice(0, 10).map((d: any, i: number) =>
-                    `${i + 1}. ${d.name} — ₹${d.closing_balance.toLocaleString('en-IN')}`
+                    `${i + 1}. ${d.name} — ₹${d.current_balance.toLocaleString('en-IN')}`
                 ).join('\n')}`;
         }
 
@@ -242,12 +260,12 @@ export default function AIAssistantPage() {
         // Cash flow prediction
         if (q.includes('cash flow') || q.includes('prediction') || q.includes('forecast')) {
             const receivables = data.ledgers
-                .filter((l: any) => ['Sundry Debtors', 'sundry debtors'].includes(l.parent) && l.closing_balance > 0)
-                .reduce((sum: number, l: any) => sum + l.closing_balance, 0);
+                .filter((l: any) => ['Sundry Debtors', 'sundry debtors'].includes(l.parent) && l.current_balance > 0)
+                .reduce((sum: number, l: any) => sum + l.current_balance, 0);
 
             const payables = data.ledgers
-                .filter((l: any) => ['Sundry Creditors', 'sundry creditors'].includes(l.parent) && l.closing_balance > 0)
-                .reduce((sum: number, l: any) => sum + l.closing_balance, 0);
+                .filter((l: any) => ['Sundry Creditors', 'sundry creditors'].includes(l.parent) && l.current_balance > 0)
+                .reduce((sum: number, l: any) => sum + l.current_balance, 0);
 
             const avgDailySales = data.sales.length > 0
                 ? data.sales.reduce((sum: number, s: any) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0) / 30
@@ -386,24 +404,30 @@ export default function AIAssistantPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)] bg-[var(--background)]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex flex-col h-[calc(100vh-64px)] md:h-[calc(100vh-80px)] bg-[var(--background)]">
+            <HeaderPortal type="title">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
-                        <Bot className="w-5 h-5 text-white" />
+                    <div className="hidden md:flex w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 items-center justify-center">
+                        <Bot className="w-4 h-4 text-white" />
                     </div>
                     <div>
-                        <h1 className="font-semibold text-[var(--on-surface)]">AI Business Assistant</h1>
-                        <p className="text-xs text-[var(--text-muted)]">
-                            Ask anything about {selectedCompany?.name || 'your business'}
+                        <h1 className="text-sm md:text-base font-bold text-[var(--on-surface)]">AI Assistant</h1>
+                        <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
+                            Sense your business
                         </p>
                     </div>
                 </div>
-                <button onClick={clearChat} className="p-2 text-[var(--text-muted)] hover:text-red-400 transition-colors">
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <button
+                    onClick={clearChat}
+                    className="p-2 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                    title="Clear Chat"
+                >
                     <Trash2 className="w-4 h-4" />
                 </button>
-            </div>
+            </HeaderPortal>
 
             {/* Quick Prompts */}
             {messages.length <= 1 && (
@@ -427,8 +451,8 @@ export default function AIAssistantPage() {
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                                ? 'bg-blue-500 text-white rounded-tr-sm'
-                                : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] rounded-tl-sm'
+                            ? 'bg-blue-500 text-white rounded-tr-sm'
+                            : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] rounded-tl-sm'
                             }`}>
                             <div className="text-sm whitespace-pre-wrap leading-relaxed">
                                 {msg.content.split('\n').map((line, i) => {
@@ -478,8 +502,8 @@ export default function AIAssistantPage() {
                     <button
                         onClick={toggleVoice}
                         className={`p-2.5 rounded-xl transition-all ${isListening
-                                ? 'bg-red-500 text-white animate-pulse'
-                                : 'bg-[var(--background)] text-[var(--text-muted)] hover:text-[var(--on-surface)]'
+                            ? 'bg-red-500 text-white animate-pulse'
+                            : 'bg-[var(--background)] text-[var(--text-muted)] hover:text-[var(--on-surface)]'
                             }`}
                     >
                         {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}

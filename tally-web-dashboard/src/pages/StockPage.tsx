@@ -5,6 +5,7 @@ import { Package, Search, AlertTriangle, Grid, List, TrendingUp, Filter, Activit
 import { Card, Badge, Spinner, EmptyState, MetricCard, ListItem } from '../components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subDays, format } from 'date-fns';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 
 export default function StockPage() {
     const { selectedCompany } = useAuth() as any;
@@ -149,31 +150,82 @@ export default function StockPage() {
         item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const [showSearch, setShowSearch] = useState(false);
+
     if (!selectedCompany) return null;
 
     return (
         <div className="space-y-8 max-w-7xl mx-auto">
-            {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-3xl font-black text-[var(--on-surface)] tracking-tighter uppercase">Warehouse Node</h1>
-                    <p className="text-[var(--text-muted)] font-bold text-[10px] uppercase tracking-[3px] mt-1">Inventory Management System • {stats.totalItems} Active SKU</p>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Warehouse Node</h1>
+                    <p className="hidden md:block text-[var(--text-muted)] font-bold text-[9px] uppercase tracking-widest mt-0.5">{stats.totalItems} Active SKU • {selectedCompany.name}</p>
                 </div>
-                <div className="flex items-center gap-3 bg-[var(--surface-variant)] p-1.5 rounded-2xl border border-[var(--border)]">
-                    <button
-                        onClick={() => setViewMode('grid')}
-                        className={`p-2.5 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-[var(--primary)] text-white shadow-lg' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
-                    >
-                        <Grid size={18} />
-                    </button>
-                    <button
-                        onClick={() => setViewMode('list')}
-                        className={`p-2.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-lg' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
-                    >
-                        <List size={18} />
-                    </button>
+            </HeaderPortal>
+
+            <HeaderPortal type="search">
+                <div className="flex items-center gap-2">
+                    <AnimatePresence>
+                        {showSearch ? (
+                            <motion.div
+                                initial={{ width: 0, opacity: 0 }}
+                                animate={{ width: '200px', opacity: 1 }}
+                                exit={{ width: 0, opacity: 0 }}
+                                className="relative overflow-hidden"
+                            >
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--primary)]" />
+                                <input
+                                    autoFocus
+                                    placeholder="Search..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onBlur={() => !searchTerm && setShowSearch(false)}
+                                    className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-9 pr-3 text-[11px] font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                />
+                            </motion.div>
+                        ) : (
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-[var(--primary)] transition-all"
+                            >
+                                <Search size={18} />
+                            </button>
+                        )}
+                    </AnimatePresence>
                 </div>
-            </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-2">
+                    {activeTab === 'inventory' && (
+                        <div className="relative group/select">
+                            <Filter size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                            <select
+                                value={selectedGroup}
+                                onChange={(e) => setSelectedGroup(e.target.value)}
+                                className="bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-8 pr-6 text-[10px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer min-w-[120px]"
+                            >
+                                <option value="all">Groups</option>
+                                {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-1 bg-[var(--surface-variant)] p-1 rounded-xl border border-[var(--border)]">
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-1 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                        >
+                            <Grid size={12} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                        >
+                            <List size={12} />
+                        </button>
+                    </div>
+                </div>
+            </HeaderPortal>
 
             {/* Performance Indicators */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -215,29 +267,6 @@ export default function StockPage() {
 
             {activeTab === 'inventory' ? (
                 <>
-                    {/* Search & Intelligence */}
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
-                        <div className="lg:col-span-3 relative group">
-                            <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--primary)] transition-colors" />
-                            <input
-                                placeholder="Search SKU identity, category, or attributes..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-5 pl-14 pr-6 text-sm font-bold text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary-glow)] transition-all placeholder:text-[var(--text-muted)] placeholder:font-black placeholder:uppercase placeholder:tracking-widest"
-                            />
-                        </div>
-                        <div className="relative group">
-                            <Filter size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                            <select
-                                value={selectedGroup}
-                                onChange={(e) => setSelectedGroup(e.target.value)}
-                                className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-2xl py-5 pl-12 pr-6 text-[10px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer"
-                            >
-                                <option value="all">All Clusters</option>
-                                {groups.map(g => <option key={g} value={g}>{g}</option>)}
-                            </select>
-                        </div>
-                    </div>
 
                     <AnimatePresence mode="wait">
                         {loading ? (

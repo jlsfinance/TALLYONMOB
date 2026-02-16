@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { format, startOfYear, endOfYear, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
 
 const formatCurrency = (amount: number) => {
@@ -242,46 +243,51 @@ export default function ProfitLossPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)]">
-            {/* Tally-style Header */}
-            <div className="bg-gradient-to-r from-[#1e3a8a] to-[#1e40af] text-white">
-                <div className="max-w-7xl mx-auto px-4 py-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-xl font-black tracking-tight">Profit & Loss A/c</h1>
-                            <p className="text-blue-200 text-sm">{selectedCompany?.name} - (from {format(new Date(selectedCompany?.fy_start || new Date()), 'd-MMM-yy')})</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                                <Calendar size={16} />
-                                <input
-                                    type="date"
-                                    value={dateRange.from}
-                                    onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
-                                    className="bg-transparent text-sm outline-none w-28"
-                                />
-                                <span className="text-blue-200">to</span>
-                                <input
-                                    type="date"
-                                    value={dateRange.to}
-                                    onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
-                                    className="bg-transparent text-sm outline-none w-28"
-                                />
-                            </div>
-                            <button
-                                onClick={() => loadPLData()}
-                                className="p-2 bg-white/10 rounded-lg hover:bg-white/20"
-                            >
-                                <RefreshCw size={16} />
-                            </button>
-                        </div>
-                    </div>
+            <HeaderPortal type="title">
+                <div>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tight uppercase leading-none">Profit & Loss</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
+                        {selectedCompany?.name} • Statement
+                    </p>
                 </div>
-            </div>
+            </HeaderPortal>
 
-            {/* Period Bar */}
-            <div className="bg-[#1e3a5f] text-white text-center py-2 text-sm font-bold">
-                {format(new Date(dateRange.from), 'd-MMM-yy')} to {format(new Date(dateRange.to), 'd-MMM-yy')}
-            </div>
+            <HeaderPortal type="filters">
+                <div className="flex items-center gap-1.5 bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl px-2 py-1">
+                    <Calendar size={12} className="text-[var(--text-muted)]" />
+                    <input
+                        type="date"
+                        value={dateRange.from}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                        className="bg-transparent text-[9px] font-bold uppercase outline-none w-20 text-[var(--on-surface)]"
+                    />
+                    <span className="text-[var(--text-muted)] text-[8px] font-black italic">TO</span>
+                    <input
+                        type="date"
+                        value={dateRange.to}
+                        onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                        className="bg-transparent text-[9px] font-bold uppercase outline-none w-20 text-[var(--on-surface)]"
+                    />
+                    <div className="w-px h-4 bg-[var(--border)] mx-1" />
+                    <button
+                        onClick={() => loadPLData()}
+                        className="p-1 rounded-lg hover:bg-[var(--surface-active)] text-[var(--on-surface-variant)] transition-colors"
+                        title="Refresh"
+                    >
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    </button>
+                </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <button
+                    className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
+                    title="Export Report"
+                >
+                    <Download size={18} />
+                </button>
+            </HeaderPortal>
+
 
             {/* T-Account Layout */}
             <div className="max-w-7xl mx-auto p-4">

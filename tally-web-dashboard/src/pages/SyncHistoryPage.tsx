@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { syncHistoryApi, companyApi, supabase } from '@/lib/supabase';
 import { RefreshCw, Trash2, CheckCircle, XCircle, Clock, ArrowLeft, AlertTriangle, FileEdit, Monitor } from 'lucide-react';
 import { GlassCard, MetricCard } from '@/components/ui/GlassUI';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
 
 export default function SyncHistoryPage() {
@@ -108,27 +109,27 @@ export default function SyncHistoryPage() {
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <HeaderPortal type="title">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="p-2 rounded-xl bg-[#121214] border border-white/10 text-gray-400 hover:text-white">
-                        <ArrowLeft size={20} />
+                    <button onClick={() => navigate(-1)} className="p-1.5 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:text-[var(--primary)] transition-colors">
+                        <ArrowLeft size={16} />
                     </button>
                     <div>
-                        <h1 className="text-3xl font-bold text-white">Sync Status</h1>
-                        <p className="text-gray-500 mt-1">{selectedCompany.name}</p>
+                        <h1 className="text-sm md:text-xl font-bold text-[var(--on-surface)]">Sync Status</h1>
+                        <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany.name}</p>
                     </div>
                 </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => setShowDeleteAllModal(true)}
-                        className="px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl hover:bg-red-500/20 transition-colors flex items-center gap-2"
-                    >
-                        <Trash2 size={16} />
-                        Reset Data
-                    </button>
-                </div>
-            </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <button
+                    onClick={() => setShowDeleteAllModal(true)}
+                    className="px-3 py-1.5 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-600 transition-colors flex items-center gap-2"
+                >
+                    <Trash2 size={14} />
+                    Reset Data
+                </button>
+            </HeaderPortal>
 
             {/* Tab Switcher */}
             <div className="flex p-1 bg-white/5 rounded-xl w-fit border border-white/10">

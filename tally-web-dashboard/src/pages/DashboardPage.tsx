@@ -7,11 +7,12 @@ import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns
 import {
     TrendingUp, TrendingDown, Wallet, CreditCard, FileText, Users,
     BarChart3, Plus, RefreshCw, ArrowRight, Activity, Calendar, Zap,
-    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle
+    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle, Clock
 } from 'lucide-react';
 import { Spinner } from '../components/ui/GlassUI';
 import { BarChart3D } from '../components/3d';
 import BillingDashboard from './BillingDashboard';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { subMonths, startOfMonth as startOfMonthDate, endOfMonth as endOfMonthDate } from 'date-fns';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -43,10 +44,10 @@ export default function DashboardPage() {
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
 
     const periodFilters = [
-        { key: 'today', label: 'Today' },
-        { key: 'month', label: 'Month' },
-        { key: '30days', label: '30 Days' },
-        { key: 'year', label: 'FY' },
+        { key: 'today', label: 'Today', icon: <Clock size={12} /> },
+        { key: 'month', label: 'Month', icon: <Calendar size={12} /> },
+        { key: '30days', label: '30 Days', icon: <Activity size={12} /> },
+        { key: 'year', label: 'FY', icon: <TrendingUp size={12} /> },
     ];
 
     useEffect(() => {
@@ -334,55 +335,59 @@ export default function DashboardPage() {
 
     return (
         <div className="max-w-[1400px] mx-auto space-y-6">
-
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-xl md:text-2xl font-bold text-[var(--on-surface)] tracking-tight">
+                    <h1 className="text-sm md:text-xl font-bold text-[var(--on-surface)] tracking-tight">
                         {t('dashboard.title')}
                     </h1>
-                    <p className="text-[var(--text-muted)] text-sm mt-0.5">
-                        {t('dashboard.overview')} <span className="font-medium text-[var(--on-surface)]">{selectedCompany.name}</span>
+                    <p className="hidden md:block text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-widest mt-0.5">
+                        {selectedCompany.name}
                     </p>
                 </div>
+            </HeaderPortal>
 
-                <div className="flex items-center gap-2.5">
-                    {/* Period Filter */}
-                    <div className="flex bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)]">
-                        {periodFilters.map((filter) => (
-                            <button
-                                key={filter.key}
-                                onClick={() => setPeriod(filter.key)}
-                                className={`
-                                    px-3 py-1.5 rounded-[var(--radius-sm)] text-xs font-medium transition-all
-                                    ${period === filter.key
-                                        ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)]'
-                                        : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
-                                    }
-                                `}
-                            >
+            <HeaderPortal type="filters">
+                <div className="flex bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-90 md:scale-100 origin-right">
+                    {periodFilters.map((filter) => (
+                        <button
+                            key={filter.key}
+                            onClick={() => setPeriod(filter.key)}
+                            className={`
+                                flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
+                                ${period === filter.key
+                                    ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)] scale-105'
+                                    : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
+                                }
+                            `}
+                        >
+                            {filter.icon}
+                            <span className={period === filter.key ? 'block' : 'hidden md:block'}>
                                 {filter.label}
-                            </button>
-                        ))}
-                    </div>
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </HeaderPortal>
 
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-2">
                     <button
                         onClick={handleRefresh}
-                        className="stitch-icon-btn border border-[var(--border)]"
+                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
                         title="Refresh"
                     >
-                        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
                     </button>
 
                     <button
                         onClick={() => navigate('/create-invoice')}
-                        className="stitch-button"
+                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
+                        title={t('dashboard.new_invoice')}
                     >
                         <Plus size={16} />
-                        <span className="hidden sm:inline">{t('dashboard.new_invoice')}</span>
                     </button>
                 </div>
-            </div>
+            </HeaderPortal>
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-3">

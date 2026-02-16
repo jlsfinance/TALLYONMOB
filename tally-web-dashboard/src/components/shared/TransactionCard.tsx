@@ -102,43 +102,51 @@ const TransactionCard: React.FC<TransactionCardProps> = ({
             whileTap={{ scale: 0.98 }}
             onClick={onClick}
             className={`
-                grid grid-cols-[auto_1fr_auto] items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-300
+                grid grid-cols-[auto_1fr_auto] items-center gap-2 md:gap-3 p-2 md:p-3 rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300
                 ${highlighted
-                    ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] border-none shadow-xl shadow-[var(--primary-glow)]'
+                    ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] border-none shadow-lg shadow-[var(--primary-glow)]'
                     : 'bg-[var(--surface-variant)] border border-[var(--border)] hover:border-[var(--primary)]'
                 }
             `}
         >
             {/* 1. Icon Column */}
-            <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${highlighted ? 'bg-white/20' : 'bg-[var(--surface-active)]'}`}>
+            <div className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg md:rounded-xl shrink-0 ${highlighted ? 'bg-white/20' : 'bg-[var(--surface-active)]'}`}>
                 {getIcon()}
             </div>
 
             {/* 2. Content Column */}
-            <div className="min-w-0 overflow-hidden">
-                <h4 className={`text-[13px] font-black truncate uppercase tracking-tight ${highlighted ? 'text-white' : 'text-[var(--on-surface)]'}`}>
+            <div className="min-w-0 flex-1">
+                <h4 className={`text-[11px] md:text-[13px] font-black truncate uppercase tracking-tight leading-tight ${highlighted ? 'text-white' : 'text-[var(--on-surface)]'}`}>
                     {partyName || 'CASH TRANSACTION'}
                 </h4>
-                <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5">
-                    <span className={`text-[9px] font-black uppercase tracking-[1px] ${highlighted ? 'text-white/80' : 'text-[var(--primary)] opacity-80'}`}>
+                <div className="flex items-center flex-wrap gap-x-1.5 md:gap-x-2 mt-0.5">
+                    <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.5px] md:tracking-[1px] ${highlighted ? 'text-white/80' : 'text-[var(--primary)] opacity-80'}`}>
                         {type}
                     </span>
-                    <span className="w-1 h-1 rounded-full bg-[var(--border)] opacity-30" />
-                    <span className={`text-[9px] font-bold ${highlighted ? 'text-white/60' : 'text-[var(--text-muted)]'}`}>
+                    <span className="w-0.5 h-0.5 rounded-full bg-[var(--border)] opacity-30" />
+                    <span className={`text-[8px] md:text-[9px] font-bold ${highlighted ? 'text-white/60' : 'text-[var(--text-muted)]'}`}>
                         {format(new Date(date), 'dd MMM yy')}
                     </span>
+                    {voucherNumber && !highlighted && (
+                        <>
+                            <span className="w-0.5 h-0.5 rounded-full bg-[var(--border)] opacity-30 hidden md:block" />
+                            <span className="text-[8px] md:text-[9px] font-bold text-[var(--text-muted)] hidden md:block">
+                                #{voucherNumber}
+                            </span>
+                        </>
+                    )}
                 </div>
             </div>
 
             {/* 3. Amount Column */}
-            <div className="text-right flex flex-col items-end min-w-[80px]">
-                <p className={`text-[13px] font-black tracking-tighter leading-tight ${highlighted ? 'text-white' : getAmountColor()}`}>
+            <div className="text-right flex flex-col items-end min-w-[70px] md:min-w-[80px]">
+                <p className={`text-[11px] md:text-[13px] font-black tracking-tighter leading-tight ${highlighted ? 'text-white' : getAmountColor()}`}>
                     {(isSales || isReceipt) ? '+' : '-'} {formatCurrency(amount)}
                 </p>
-                <div className="mt-1">
+                <div className="mt-0.5 md:mt-1">
                     <Badge
                         variant={status?.toLowerCase() === 'synced' ? 'success' : (status?.toLowerCase() === 'failed' ? 'error' : (status?.toLowerCase() === 'pending' ? 'warning' : 'default'))}
-                        className={`text-[8px] font-black px-1.5 py-0 h-4 ${status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' : ''
+                        className={`text-[7px] md:text-[8px] font-black px-1 md:px-1.5 py-0 h-3 md:h-4 ${status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' : ''
                             }`}
                     >
                         {(status || 'SYNCED').toUpperCase()}

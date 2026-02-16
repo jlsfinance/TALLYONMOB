@@ -424,43 +424,62 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </button>
 
                     <div className="flex-1 min-w-0" onClick={() => setShowMobileMenu(true)}>
-                        <p className="text-[10px] font-semibold text-[var(--primary)] uppercase tracking-wider leading-none mb-0.5">
-                            {getGreeting()}
-                        </p>
-                        <h2 className="text-sm font-bold text-[var(--on-surface)] truncate leading-tight">
-                            {selectedCompany?.name || 'Select Company'}
-                        </h2>
+                        <div id="header-title-mobile" className="flex items-center" />
+                        <div className="default-header-content contents">
+                            <p className="text-[10px] font-semibold text-[var(--primary)] uppercase tracking-wider leading-none mb-0.5">
+                                {getGreeting()}
+                            </p>
+                            <h2 className="text-sm font-bold text-[var(--on-surface)] truncate leading-tight">
+                                {selectedCompany?.name || 'Select Company'}
+                            </h2>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                        <Link to="/create-invoice" className="p-2 rounded-[var(--radius-sm)] bg-[var(--primary)] text-white shadow-[var(--shadow-sm)]">
-                            <Plus size={16} />
-                        </Link>
-                        <button
-                            onClick={handleGlobalRefresh}
-                            className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
-                        >
-                            <RefreshCw size={16} />
-                        </button>
+                    <div className="flex items-center gap-2 ml-auto">
+                        <div id="header-search-mobile" className="flex items-center" />
+                        <div id="header-filters-mobile" className="flex items-center" />
+                        <div id="header-actions-mobile" className="flex items-center gap-1.5" />
+                        <div className="default-header-actions flex items-center gap-1.5">
+                            <Link to="/create-invoice" className="p-2 rounded-[var(--radius-sm)] bg-[var(--primary)] text-white shadow-[var(--shadow-sm)]">
+                                <Plus size={16} />
+                            </Link>
+                            <button
+                                onClick={handleGlobalRefresh}
+                                className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
+                            >
+                                <RefreshCw size={16} />
+                            </button>
+                        </div>
                     </div>
                 </header>
 
                 {/* Desktop Header */}
                 <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-[var(--surface)]/80 backdrop-blur-lg border-b border-[var(--border)]">
-                    <div />
+                    <div className="flex items-center gap-4 flex-1">
+                        <div id="header-title" className="flex items-center" />
+                        <div id="header-search" className="flex-1 max-w-sm" />
+                    </div>
+
                     <div className="flex items-center gap-3">
-                        <LanguageSelector />
-                        <div className="h-6 w-px bg-[var(--border)]" />
-                        <button
-                            onClick={toggleTheme}
-                            className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
-                        >
-                            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-                        </button>
-                        <button className="relative p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
-                            <Bell size={16} />
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--error)] rounded-full" />
-                        </button>
+                        <div id="header-filters" className="flex items-center gap-2" />
+                        <div id="header-actions" className="flex items-center gap-2" />
+
+                        {location.pathname === '/' && (
+                            <>
+                                <LanguageSelector />
+                                <div className="h-6 w-px bg-[var(--border)]" />
+                                <button
+                                    onClick={toggleTheme}
+                                    className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
+                                >
+                                    {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                                </button>
+                                <button className="relative p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
+                                    <Bell size={16} />
+                                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--error)] rounded-full" />
+                                </button>
+                            </>
+                        )}
                     </div>
                 </header>
 

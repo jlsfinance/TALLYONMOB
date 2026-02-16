@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { TrendingUp, FileText, DollarSign, BarChart3, Users, Package, ChevronDown, Calendar } from 'lucide-react';
 import { GlassCard, MetricCard, Spinner } from '@/components/ui/GlassUI';
-import { motion } from 'framer-motion';
-import { FinancialYearFilter } from '@/components/shared/FinancialYearFilter';
+import { CompactYearFilter } from '../components/shared/CompactYearFilter';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 export default function SalesDashboardPage() {
     const navigate = useNavigate();
@@ -98,26 +98,29 @@ export default function SalesDashboardPage() {
 
     return (
         <div className="space-y-4 pb-24">
-            <header className="flex flex-col gap-1">
-                <h1 className="text-2xl font-black text-[var(--on-surface)] uppercase tracking-tighter">Sales Alpha</h1>
-                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{selectedCompany.name}</p>
-            </header>
+            <HeaderPortal type="title">
+                <div>
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Sales Alpha</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany?.name}</p>
+                </div>
+            </HeaderPortal>
 
-            {/* Global FY Slider Integration */}
-            <FinancialYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
-
-            {/* Period Switcher */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1">
-                {periods.map((p) => (
-                    <button
-                        key={p.key}
-                        onClick={() => setPeriod(p.key)}
-                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${period === p.key ? 'bg-[var(--primary)] text-white shadow-lg' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] border border-[var(--border)]'}`}
-                    >
-                        {p.label}
-                    </button>
-                ))}
-            </div>
+            <HeaderPortal type="filters">
+                <div className="flex items-center gap-1.5">
+                    <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+                    <div className="flex bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] scale-90 md:scale-100 origin-right">
+                        {periods.map((p) => (
+                            <button
+                                key={p.key}
+                                onClick={() => setPeriod(p.key)}
+                                className={`px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap ${period === p.key ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </HeaderPortal>
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-24">

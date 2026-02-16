@@ -5,11 +5,12 @@ import { GlassCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
 import {
     Calendar, TrendingUp, TrendingDown, Users, Filter,
     Download, ChevronRight, AlertTriangle, Clock, CheckCircle,
-    Phone, MessageCircle
+    Phone, MessageCircle, ArrowUpRight, ArrowDownLeft
 } from 'lucide-react';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 const formatCurrency = (amount: number) => {
     return '₹' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.abs(amount || 0));
@@ -210,59 +211,63 @@ export default function AgeingReportPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[var(--background)] p-4 md:p-6 max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-2xl font-black text-[var(--on-surface)]">Ageing Report</h1>
-                    <p className="text-sm text-[var(--text-muted)]">
-                        {selectedCompany?.name} - (from {format(new Date(selectedCompany?.fy_start || new Date()), 'd-MMM-yy')})
-                    </p>
+        <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 pb-24">
+            <HeaderPortal type="title">
+                <div className="flex flex-col">
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Aging Report</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{selectedCompany?.name}</p>
                 </div>
+            </HeaderPortal>
 
-                <div className="flex items-center gap-3 flex-wrap">
+            <HeaderPortal type="filters">
+                <div className="flex items-center gap-2">
                     {/* Report Type Toggle */}
-                    <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-                        <button
-                            onClick={() => setReportType('receivable')}
-                            className={`px-4 py-2 text-sm font-bold transition-all ${reportType === 'receivable'
-                                    ? 'bg-emerald-500 text-white'
-                                    : 'bg-[var(--surface)] text-[var(--text-muted)]'
-                                }`}
-                        >
-                            Receivable
-                        </button>
-                        <button
-                            onClick={() => setReportType('payable')}
-                            className={`px-4 py-2 text-sm font-bold transition-all ${reportType === 'payable'
-                                    ? 'bg-rose-500 text-white'
-                                    : 'bg-[var(--surface)] text-[var(--text-muted)]'
-                                }`}
-                        >
-                            Payable
-                        </button>
+                    <div className="flex bg-[var(--surface-container)] rounded-xl p-0.5 border border-[var(--border)] scale-90 md:scale-100 origin-right">
+                        {[
+                            { id: 'receivable', label: 'Receivable', icon: <ArrowUpRight size={14} /> },
+                            { id: 'payable', label: 'Payable', icon: <ArrowDownLeft size={14} /> }
+                        ].map((type) => {
+                            const isActive = reportType === type.id;
+                            return (
+                                <button
+                                    key={type.id}
+                                    onClick={() => setReportType(type.id as any)}
+                                    className={`
+                                        flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] md:text-xs font-black uppercase transition-all whitespace-nowrap
+                                        ${isActive 
+                                            ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-md' 
+                                            : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
+                                        }
+                                    `}
+                                >
+                                    {type.icon}
+                                    <span className={isActive ? 'block' : 'hidden md:block'}>{type.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
 
                     {/* Date Picker */}
-                    <div className="flex items-center gap-2 bg-[var(--surface)] rounded-xl border border-[var(--border)] px-3 py-2">
-                        <Calendar size={16} className="text-[var(--text-muted)]" />
+                    <div className="flex items-center gap-2 bg-[var(--surface-variant)] rounded-xl border border-[var(--border)] px-2 py-1.5 md:px-3 md:py-2">
+                        <Calendar size={14} className="text-[var(--primary)]" />
                         <input
                             type="date"
                             value={asOnDate}
                             onChange={(e) => setAsOnDate(e.target.value)}
-                            className="bg-transparent text-sm text-[var(--on-surface)] outline-none"
+                            className="bg-transparent text-[10px] md:text-sm font-black text-[var(--on-surface)] outline-none"
                         />
                     </div>
-
-                    {/* Export */}
-                    <button
-                        onClick={exportToCSV}
-                        className="p-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--surface-variant)]"
-                    >
-                        <Download size={18} />
-                    </button>
                 </div>
-            </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <button
+                    onClick={exportToCSV}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
+                >
+                    <Download size={16} />
+                </button>
+            </HeaderPortal>
 
             {/* Age Bucket Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
@@ -397,6 +402,6 @@ export default function AgeingReportPage() {
                     </div>
                 )}
             </GlassCard>
-        </div>
+        </div >
     );
 }

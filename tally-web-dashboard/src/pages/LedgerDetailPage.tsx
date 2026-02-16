@@ -12,6 +12,7 @@ import { GlassCard, Badge, Button, Spinner } from '@/components/ui/GlassUI';
 import { format, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 const formatCurrency = (amount: number) => {
     const val = Math.abs(amount || 0);
@@ -335,30 +336,33 @@ export default function LedgerDetailPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)] pb-24 max-w-2xl mx-auto">
-            {/* Header */}
-            <div className="sticky top-0 z-40 bg-[var(--surface)] border-b border-[var(--border)]">
-                {/* Top Row */}
-                <div className="flex items-center justify-between px-4 py-3">
-                    <div className="flex items-center gap-3">
-                        <button onClick={() => navigate('/ledgers')} className="p-2 -ml-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]">
-                            <ArrowLeft size={20} />
-                        </button>
-                        <div>
-                            <h1 className="text-base font-black text-[var(--on-surface)] line-clamp-1">{ledger.name}</h1>
-                            <p className="text-[10px] font-bold text-[var(--text-muted)]">
-                                Closing Balance: <span className={closingBalance >= 0 ? 'text-emerald-500' : 'text-rose-500'}>{formatShortCurrency(closingBalance)}</span>
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button className="p-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]">
-                            <Printer size={18} />
-                        </button>
-                        <button onClick={handleCall} className="p-2 rounded-xl bg-emerald-500 text-white">
-                            <Phone size={18} />
-                        </button>
+            <HeaderPortal type="title">
+                <div className="flex items-center gap-3">
+                    <button onClick={() => navigate('/ledgers')} className="p-1.5 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:text-[var(--primary)] transition-colors">
+                        <ArrowLeft size={16} />
+                    </button>
+                    <div>
+                        <h1 className="text-sm md:text-base font-black text-[var(--on-surface)] line-clamp-1 leading-none">{ledger.name}</h1>
+                        <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-tight mt-0.5">
+                            Balance: <span className={closingBalance >= 0 ? 'text-emerald-500' : 'text-rose-500'}>{formatShortCurrency(closingBalance)}</span>
+                        </p>
                     </div>
                 </div>
+            </HeaderPortal>
+
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-1.5">
+                    <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors">
+                        <Printer size={14} />
+                    </button>
+                    <button onClick={handleCall} className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
+                        <Phone size={14} />
+                    </button>
+                </div>
+            </HeaderPortal>
+
+            {/* Header */}
+            <div className="sticky top-0 z-40 bg-[var(--surface)] border-b border-[var(--border)]">
 
                 {/* Action Buttons Row */}
                 <div className="flex items-center justify-around px-2 py-2 border-t border-[var(--border)]/50">

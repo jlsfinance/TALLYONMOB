@@ -4,6 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
+import {
+    ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
+} from 'lucide-react';
 import '../styles/Material3.css';
 
 export default function InvoicePDFPage() {
@@ -18,6 +22,27 @@ export default function InvoicePDFPage() {
     const [loading, setLoading] = useState(true);
     const [template, setTemplate] = useState('professional');
     const [upiId, setUpiId] = useState('');
+    const [scale, setScale] = useState(1);
+    const [containerHeight, setContainerHeight] = useState('auto');
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (typeof window !== 'undefined') {
+                const sidebarWidth = window.innerWidth >= 768 ? 240 : 0;
+                const availableWidth = window.innerWidth - sidebarWidth - 32; // -32 for padding
+                const s = availableWidth < 794 ? availableWidth / 794 : 1;
+                setScale(s);
+                if (availableWidth < 794) {
+                    setContainerHeight(`${297 * s + 40}mm`); // A4 Height * scale + padding
+                } else {
+                    setContainerHeight('auto');
+                }
+            }
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         if (id && selectedCompany?.id) {
@@ -25,7 +50,7 @@ export default function InvoicePDFPage() {
             const savedUpi = localStorage.getItem(`upi_${selectedCompany.id}`);
             if (savedUpi) setUpiId(savedUpi);
         }
-    }, [id, selectedCompany]);
+    }, [id, selectedCompany?.id]);
 
     const loadInvoice = async () => {
         setLoading(true);
@@ -54,7 +79,6 @@ export default function InvoicePDFPage() {
                     .single();
 
                 if (companyData) {
-                    console.log('DEBUG: Fetched Company Data:', companyData);
                     // Critical Fix: Remove null values so they don't overwrite valid context data
                     const cleanCompanyData = Object.fromEntries(
                         Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
@@ -87,26 +111,35 @@ export default function InvoicePDFPage() {
                 }
 
                 // Fallback for Company GSTIN: Check if a ledger exists with Company Name
-                // Fix: Check against companyData/selectedCompany variables (fresh) not state (stale/async)
                 const currentGstin = companyData?.gstin || selectedCompany?.gstin;
-                if (!currentGstin || currentGstin === 'N/A') {
+                const currentAddress = companyData?.address || selectedCompany?.address;
+
+                if (!currentGstin || currentGstin === 'N/A' || !currentAddress) {
                     const { data: cLedger } = await supabase
                         .from('ledgers')
                         .select('gstin, address, email, phone')
                         .eq('company_id', voucherData.company_id)
-                        .ilike('name', companyData?.name || selectedCompany?.name)
+                        .ilike('name', companyData?.name || selectedCompany?.name || '')
                         .maybeSingle();
 
-                    if (cLedger && cLedger.gstin) {
-                        setCompanyInfo(prev => ({ ...prev, ...cLedger }));
+                    if (cLedger) {
+                        setCompanyInfo(prev => ({
+                            ...prev,
+                            gstin: prev?.gstin || cLedger.gstin,
+                            address: prev?.address || cLedger.address,
+                            email: prev?.email || cLedger.email,
+                            phone: prev?.phone || cLedger.phone
+                        }));
                     }
+                }
 
-                    // Bank Details Fallback: Search for any ledger in 'Bank Accounts' group
+                // Bank Details Fallback: Search for any ledger in 'Bank Accounts' group
+                if (!companyData?.bank_name && !selectedCompany?.bank_name) {
                     const { data: bLedger } = await supabase
                         .from('ledgers')
                         .select('name, address')
                         .eq('company_id', voucherData.company_id)
-                        .eq('parent', 'Bank Accounts')
+                        .or('parent.eq.Bank Accounts,parent_group.eq.Bank Accounts')
                         .limit(1)
                         .maybeSingle();
 
@@ -114,7 +147,7 @@ export default function InvoicePDFPage() {
                         setCompanyInfo(prev => ({
                             ...prev,
                             bank_name: prev?.bank_name || bLedger.name,
-                            bank_account: prev?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '') // Try to extract account number from address if possible
+                            bank_account: prev?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '')
                         }));
                     }
                 }
@@ -434,10 +467,17 @@ export default function InvoicePDFPage() {
             doc.text(`Contact: ${companyInfo.phone}`, leftX, leftY);
             leftY += 4;
         }
+        if (companyInfo?.gstin) {
+            doc.text(`GSTIN/UIN: ${companyInfo.gstin}`, leftX, leftY);
+            leftY += 4;
+        }
+        if (companyInfo?.state) {
+            doc.text(`State: ${companyInfo.state}`, leftX, leftY);
+            leftY += 4;
+        }
         if (companyInfo?.address) {
             const addrLines = doc.splitTextToSize(companyInfo.address, maxLeftW);
             doc.text(addrLines, leftX, leftY);
-            // leftY += (addrLines.length * 4); // Not strictly needed as nothing follows currently
         }
 
         // RIGHT: Invoice Title & Details
@@ -868,451 +908,385 @@ export default function InvoicePDFPage() {
     const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
 
     return (
-        <div className="bg-gray-100 min-h-screen pb-10 font-sans">
-            {/* Sticky Header with Actions */}
-            <div className="sticky top-0 z-20 bg-white shadow-md border-b border-gray-200 px-6 py-3 mb-6 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 flex items-center gap-1 font-medium">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        Back
-                    </button>
-                    <h1 className="text-lg font-bold text-gray-800 hidden md:block">Invoice #{invoice.invoice_number}</h1>
-                </div>
-
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => navigate(`/edit-invoice/${id}`)}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow transition-colors font-medium text-sm"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        Edit
-                    </button>
+        <div className="bg-[#f8f9fa] min-h-screen pb-10 font-sans">
+            {/* Header Actions Portal */}
+            <HeaderPortal type="actions">
+                <div className="flex items-center gap-1 md:gap-2">
                     <button
                         onClick={handleWhatsAppShare}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                        className="p-2 md:px-4 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/10 flex items-center gap-2 transition-all active:scale-95"
+                        title="WhatsApp Share"
                     >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
-                        WhatsApp
+                        <MessageCircle size={18} />
+                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">WhatsApp</span>
                     </button>
                     <button
                         onClick={() => generatePDF('share')}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                        className="p-2 md:px-4 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-2 transition-all active:scale-95"
+                        title="Share PDF"
                     >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                        Share PDF
+                        <Share size={18} />
+                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Share</span>
                     </button>
                     <button
-                        onClick={() => generatePDF('download')}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-colors font-medium text-sm"
+                        onClick={() => navigate(`/edit-invoice/${id}`)}
+                        className="p-2 md:px-4 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-all active:scale-95"
+                        title="Edit Invoice"
                     >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        Download PDF
+                        <Edit size={18} />
+                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Edit</span>
                     </button>
                 </div>
+            </HeaderPortal>
+
+            {/* Sticky Local Header */}
+            <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-3 mb-6 flex items-center justify-between">
+                <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+                    <ArrowLeft size={20} className="text-gray-600" />
+                </button>
+                <div className="flex-1 px-4">
+                    <h1 className="text-sm font-black text-gray-800 uppercase tracking-widest">Invoice #{invoice.invoice_number}</h1>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{invoice.voucher_type} • {formatDate(invoice.invoice_date)}</p>
+                </div>
+                <button
+                    onClick={() => generatePDF('download')}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors text-blue-500"
+                    title="Download"
+                >
+                    <Download size={20} />
+                </button>
             </div>
 
-            {/* Mobile View (Responsive Layout) */}
-            <div className="md:hidden px-4 space-y-4 pb-20">
-                {/* Invoice Summary Card */}
-                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-                    <div className="flex justify-between items-start mb-2">
-                        <div>
-                            <p className="text-xs text-gray-500 uppercase">Invoice No</p>
-                            <p className="font-bold text-lg">{invoice.invoice_number}</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-500 uppercase">Date</p>
-                            <p className="font-medium">{formatDate(invoice.invoice_date)}</p>
-                        </div>
-                    </div>
-                    <div className="pt-2 border-t border-gray-100 flex justify-between">
-                        <div className="text-xs text-gray-500">{invoice.voucher_type}</div>
-                        <div className="font-bold text-green-600">₹ {formatNumber(invoice.net_amount)}</div>
-                    </div>
-                </div>
+            {/* Universal Document Preview (Scales for Mobile) */}
+            <div className="w-full flex justify-center items-start p-0 md:p-8 overflow-hidden" style={{ minHeight: containerHeight }}>
+                <div
+                    className="relative"
+                    style={{
+                        width: `${210 * scale}mm`,
+                        height: containerHeight === 'auto' ? 'auto' : containerHeight,
+                    }}
+                >
+                    <div
+                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content"
+                        style={{
+                            width: '210mm',
+                            minHeight: '297mm',
+                            transform: `scale(${scale})`,
+                            transformOrigin: 'top left',
+                            transition: 'transform 0.2s ease-out'
+                        }}
+                    >
+                        <div className="p-8 h-full flex flex-col relative">
+                            {/* Tally Style Border Container */}
+                            <div className="border-2 border-black h-full flex flex-col">
 
-                {/* Parties Card */}
-                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-                    <div className="mb-4">
-                        <p className="text-xs text-gray-500 uppercase mb-1">Billed To</p>
-                        <p className="font-bold">{invoice.party_ledger_name}</p>
-                        {invoice.party_gstin && <p className="text-xs text-gray-600">GSTIN: {invoice.party_gstin}</p>}
-                        <p className="text-xs text-gray-600 mt-1">{invoice.party_address}</p>
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-500 uppercase mb-1">From</p>
-                        <p className="font-medium text-sm">{companyInfo?.name}</p>
-                    </div>
-                </div>
+                                {/* Header Section — Tally Style: Only show fields that have data */}
+                                <div className="grid grid-cols-2 border-b-2 border-black">
+                                    {/* Company Info - Left */}
+                                    <div className="p-4 border-r-2 border-black flex flex-col justify-center">
+                                        <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
 
-                {/* Items List */}
-                <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                        <h3 className="text-sm font-bold text-gray-700">Items ({totalQty})</h3>
-                    </div>
-                    <div className="divide-y divide-gray-100">
-                        {items.map((item, idx) => (
-                            <div key={idx} className="p-3">
-                                <div className="flex justify-between mb-1">
-                                    <span className="font-medium text-sm">{item.stock_item_name}</span>
-                                    <span className="font-bold text-sm">₹ {formatNumber(item.amount)}</span>
-                                </div>
-                                <div className="flex justify-between text-xs text-gray-500">
-                                    <span>{item.quantity} {item.unit} x ₹ {formatNumber(item.rate)}</span>
-                                    <span>HSN: {item.hsn_code || '-'}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                                        {(companyInfo?.address) && (
+                                            <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
+                                                {companyInfo?.address}
+                                            </p>
+                                        )}
 
-                {/* Bill Details */}
-                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-                    <h3 className="text-sm font-bold text-gray-700 mb-3">Bill Details</h3>
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-600">Taxable Amount</span>
-                            <span>{formatNumber(invoice.taxable_amount)}</span>
-                        </div>
-                        {invoice.cgst_amount > 0 && (
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">CGST</span>
-                                <span>{formatNumber(invoice.cgst_amount)}</span>
-                            </div>
-                        )}
-                        {invoice.sgst_amount > 0 && (
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">SGST</span>
-                                <span>{formatNumber(invoice.sgst_amount)}</span>
-                            </div>
-                        )}
-                        {invoice.igst_amount > 0 && (
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">IGST</span>
-                                <span>{formatNumber(invoice.igst_amount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between pt-2 border-t border-gray-100 font-bold text-base">
-                            <span>Grand Total</span>
-                            <span>₹ {formatNumber(invoice.net_amount)}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 italic text-right mt-1">
-                            {numberToWords(invoice.net_amount)}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* A4 Paper Preview (Hidden on Mobile) */}
-            <div className="hidden md:block max-w-[210mm] mx-auto bg-white shadow-2xl printable-content text-sm text-gray-900" style={{ minHeight: '297mm' }}>
-                <div className="p-8 h-full flex flex-col relative border border-gray-300">
-
-                    {/* Tally Style Border Container */}
-                    <div className="border-2 border-black h-full flex flex-col">
-
-                        {/* Header Section — Tally Style: Only show fields that have data */}
-                        <div className="grid grid-cols-2 border-b-2 border-black">
-                            {/* Company Info - Left */}
-                            <div className="p-4 border-r-2 border-black flex flex-col justify-center">
-                                <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
-
-                                {(companyInfo?.address) && (
-                                    <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
-                                        {companyInfo?.address}
-                                    </p>
-                                )}
-
-                                <div className="text-xs space-y-0.5">
-                                    {(companyInfo?.gstin) && (
-                                        <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
-                                    )}
-                                    {(companyInfo?.state) && (
-                                        <p><span className="font-semibold">State Name:</span> {companyInfo.state}</p>
-                                    )}
-                                    {(companyInfo?.email) && (
-                                        <p><span className="font-semibold">E-Mail:</span> {companyInfo.email}</p>
-                                    )}
-                                    {(companyInfo?.phone) && (
-                                        <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Invoice Info - Right (Tally: only show filled fields) */}
-                            <div className="flex flex-col">
-                                <div className="p-2 border-b-2 border-black text-center bg-gray-50">
-                                    <h2 className="text-base font-bold uppercase tracking-wider">
-                                        {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
-                                    </h2>
-                                </div>
-                                <div className="flex-grow text-xs">
-                                    {/* Invoice No & Date — always shown */}
-                                    <div className="grid grid-cols-2">
-                                        <div className="p-2 border-r border-black border-b border-black">
-                                            <p className="font-semibold">Invoice No.</p>
-                                            <p className="font-bold text-sm">{invoice.invoice_number}</p>
-                                        </div>
-                                        <div className="p-2 border-b border-black">
-                                            <p className="font-semibold">Dated</p>
-                                            <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
+                                        <div className="text-xs space-y-0.5">
+                                            {(companyInfo?.gstin) && (
+                                                <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
+                                            )}
+                                            {(companyInfo?.state) && (
+                                                <p><span className="font-semibold">State Name:</span> {companyInfo.state}</p>
+                                            )}
+                                            {(companyInfo?.email) && (
+                                                <p><span className="font-semibold">E-Mail:</span> {companyInfo.email}</p>
+                                            )}
+                                            {(companyInfo?.phone) && (
+                                                <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
+                                            )}
                                         </div>
                                     </div>
-                                    {/* Only show Delivery Note / Mode of Payment if data exists */}
-                                    {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
-                                        <div className="grid grid-cols-2">
-                                            {invoice.delivery_note ? (
+
+                                    {/* Invoice Info - Right (Tally: only show filled fields) */}
+                                    <div className="flex flex-col">
+                                        <div className="p-2 border-b-2 border-black text-center bg-gray-50">
+                                            <h2 className="text-base font-bold uppercase tracking-wider">
+                                                {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
+                                            </h2>
+                                        </div>
+                                        <div className="flex-grow text-xs">
+                                            {/* Invoice No & Date — always shown */}
+                                            <div className="grid grid-cols-2">
                                                 <div className="p-2 border-r border-black border-b border-black">
-                                                    <p className="font-semibold">Delivery Note</p>
-                                                    <p>{invoice.delivery_note}</p>
+                                                    <p className="font-semibold">Invoice No.</p>
+                                                    <p className="font-bold text-sm">{invoice.invoice_number}</p>
                                                 </div>
-                                            ) : (
-                                                <div className="p-2 border-r border-black border-b border-black"></div>
-                                            )}
-                                            <div className="p-2 border-b border-black">
-                                                <p className="font-semibold">Mode/Terms</p>
-                                                <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                <div className="p-2 border-b border-black">
+                                                    <p className="font-semibold">Dated</p>
+                                                    <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                    {/* Buyer's Order — only if exists */}
-                                    {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
-                                        <div className="grid grid-cols-2">
-                                            <div className="p-2 border-r border-black">
-                                                {invoice.buyers_order_number && (
-                                                    <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
-                                                )}
-                                                {invoice.dispatch_through && (
-                                                    <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
-                                                )}
-                                            </div>
-                                            <div className="p-2">
-                                                {invoice.destination && (
-                                                    <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Buyer Info */}
-                        <div className="border-b-2 border-black p-0">
-                            <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
-                            <div className="p-3 text-xs">
-                                <p className="font-bold text-sm uppercase">{invoice.party_ledger_name}</p>
-                                <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
-                                <div className="flex gap-4 mt-2">
-                                    <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin || 'N/A'}</p>
-                                    <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Items Table — Tally Style: only show columns that have data */}
-                        <div className="flex-grow flex flex-col border-b-2 border-black relative">
-                            {/* Table Header */}
-                            <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
-                                <div className="w-10 p-2 border-r border-black">SI No.</div>
-                                <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
-                                {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
-                                {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
-                                {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black">Quantity</div>}
-                                {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black">Rate</div>}
-                                {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black">Per</div>}
-                                {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
-                                <div className="w-24 p-2 text-right">Amount</div>
-                            </div>
-
-                            {/* Table Body - Rows */}
-                            <div className="flex-grow text-xs relative">
-                                {items.map((item, idx) => {
-                                    const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
-                                    const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
-
-                                    return (
-                                        <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
-                                            <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
-                                            <div className="flex-1 p-2 border-r border-black font-semibold text-left">{item.stock_item_name}</div>
-                                            {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
-                                            {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
-                                            {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
-                                            {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>}
-                                            {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>}
-                                            {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
-                                                {(Number(item.discount) > 0 || Number(item.discount_percent) > 0) ? (item.discount || item.discount_percent) + '%' : ''}
-                                            </div>}
-                                            <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Totals Row */}
-                            <div className="flex border-t-2 border-black font-bold text-xs bg-gray-50">
-                                <div className="w-10 p-2 border-r border-black text-center"></div>
-                                <div className="flex-1 p-2 border-r border-black text-right font-bold">Total</div>
-                                {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
-                                {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
-                                {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{totalQty}</div>}
-                                {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black"></div>}
-                                {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black"></div>}
-                                {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
-                                <div className="w-24 p-2 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
-                            </div>
-                        </div>
-
-                        {/* Bottom Section: Words & Tax Breakdown */}
-                        <div className="grid grid-cols-2 border-b-2 border-black text-xs">
-                            {/* Left: Amount in Words */}
-                            <div className="p-2 border-r-2 border-black">
-                                <p className="text-[10px] text-gray-500 mb-1">Amount Chargeable (in words)</p>
-                                <p className="font-bold italic text-sm">{numberToWords(invoice.net_amount)}</p>
-                            </div>
-
-                            {/* Right: Tax Amounts */}
-                            <div className="text-right">
-                                {invoice.cgst_amount > 0 && (
-                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                        <span className="italic px-2">CGST Amount</span>
-                                        <span className="font-semibold px-2">{formatNumber(invoice.cgst_amount)}</span>
-                                    </div>
-                                )}
-                                {invoice.sgst_amount > 0 && (
-                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                        <span className="italic px-2">SGST Amount</span>
-                                        <span className="font-semibold px-2">{formatNumber(invoice.sgst_amount)}</span>
-                                    </div>
-                                )}
-                                {invoice.igst_amount > 0 && (
-                                    <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                        <span className="italic px-2">IGST Amount</span>
-                                        <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
-                                    <span>Total (INR)</span>
-                                    <span>₹ {formatNumber(invoice.net_amount)}</span>
-                                </div>
-                            </div>
-                        </div>
-                        {/* HSN/SAC Summary (If GST) */}
-                        {columnVisibility.hasGST && (
-                            <div className="border-b-2 border-black p-2">
-                                <p className="text-[10px] font-bold underline mb-1">Tax Analysis:</p>
-                                <table className="w-full text-[10px] border border-black text-center">
-                                    <thead>
-                                        <tr className="bg-gray-100 border-b border-black">
-                                            <th className="border-r border-black">HSN/SAC</th>
-                                            <th className="border-r border-black">Taxable Value</th>
-                                            {columnVisibility.isIGST ? (
-                                                <>
-                                                    <th className="border-r border-black" colSpan="2">Integrated Tax</th>
-                                                    <th>Total Tax</th>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <th className="border-r border-black" colSpan="2">Central Tax</th>
-                                                    <th className="border-r border-black" colSpan="2">State Tax</th>
-                                                    <th>Total Tax</th>
-                                                </>
+                                            {/* Only show Delivery Note / Mode of Payment if data exists */}
+                                            {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
+                                                <div className="grid grid-cols-2">
+                                                    {invoice.delivery_note ? (
+                                                        <div className="p-2 border-r border-black border-b border-black">
+                                                            <p className="font-semibold">Delivery Note</p>
+                                                            <p>{invoice.delivery_note}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 border-r border-black border-b border-black"></div>
+                                                    )}
+                                                    <div className="p-2 border-b border-black">
+                                                        <p className="font-semibold">Mode/Terms</p>
+                                                        <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                    </div>
+                                                </div>
                                             )}
-                                        </tr>
-                                        <tr className="bg-gray-50 border-b border-black">
-                                            <th className="border-r border-black"></th>
-                                            <th className="border-r border-black"></th>
-                                            {columnVisibility.isIGST ? (
-                                                <>
-                                                    <th className="border-r border-black">Rate</th>
-                                                    <th className="border-r border-black">Amount</th>
-                                                    <th>Amount</th>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <th className="border-r border-black">Rate</th>
-                                                    <th className="border-r border-black">Amount</th>
-                                                    <th className="border-r border-black">Rate</th>
-                                                    <th className="border-r border-black">Amount</th>
-                                                    <th>Amount</th>
-                                                </>
+                                            {/* Buyer's Order — only if exists */}
+                                            {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
+                                                <div className="grid grid-cols-2">
+                                                    <div className="p-2 border-r border-black">
+                                                        {invoice.buyers_order_number && (
+                                                            <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
+                                                        )}
+                                                        {invoice.dispatch_through && (
+                                                            <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
+                                                        )}
+                                                    </div>
+                                                    <div className="p-2">
+                                                        {invoice.destination && (
+                                                            <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             )}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {hsnSummary.map((row, i) => (
-                                            <tr key={i} className="border-b border-gray-300 last:border-0">
-                                                <td className="border-r border-black p-1">{row.hsn}</td>
-                                                <td className="border-r border-black p-1 text-right">{formatNumber(row.taxable)}</td>
-                                                {columnVisibility.isIGST ? (
-                                                    <>
-                                                        <td className="border-r border-black p-1">{row.gst_rate}%</td>
-                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.igst)}</td>
-                                                        <td className="p-1 text-right">{formatNumber(row.total)}</td>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
-                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.cgst)}</td>
-                                                        <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
-                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.sgst)}</td>
-                                                        <td className="p-1 text-right">{formatNumber(row.total)}</td>
-                                                    </>
-                                                )}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-
-                        {/* Footer Section — Tally: only show bank if filled */}
-                        <div className="grid grid-cols-5 flex-grow h-32">
-                            {/* Bank & Terms (40%) */}
-                            <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
-                                {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
-                                    <div>
-                                        <p className="font-bold underline mb-1">Company's Bank Details:</p>
-                                        {companyInfo?.bank_name && <p>Bank Name: <span className="font-semibold">{companyInfo.bank_name}</span></p>}
-                                        {companyInfo?.bank_account && <p>A/C No.: <span className="font-semibold">{companyInfo.bank_account}</span></p>}
-                                        {companyInfo?.bank_ifsc && <p>Branch & IFS Code: <span className="font-semibold">{companyInfo.bank_ifsc}</span></p>}
-                                    </div>
-                                ) : <div />}
-                                <div className="mt-2 text-[10px]">
-                                    <p className="underline mb-0.5">Declaration:</p>
-                                    <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
-                                </div>
-                            </div>
-
-                            {/* QR Code (20%) */}
-                            <div className="col-span-1 border-r-2 border-black flex flex-col items-center justify-center p-2">
-                                {upiId && (
-                                    <>
-                                        <div className="bg-white p-1">
-                                            <img
-                                                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
-                                                alt="UPI QR"
-                                                className="w-20 h-20 mix-blend-multiply"
-                                                crossOrigin="anonymous"
-                                            />
                                         </div>
-                                        <p className="text-[9px] font-bold mt-1 text-center uppercase tracking-tight">Scan to Pay</p>
-                                    </>
+                                    </div>
+                                </div>
+
+                                {/* Buyer Info */}
+                                <div className="border-b-2 border-black p-0">
+                                    <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
+                                    <div className="p-3 text-xs">
+                                        <p className="font-bold text-sm uppercase">{invoice.party_ledger_name}</p>
+                                        <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
+                                        <div className="flex gap-4 mt-2">
+                                            {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
+                                            {(invoice.party_state || invoice.place_of_supply) && (
+                                                <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Items Table — Tally Style: only show columns that have data */}
+                                <div className="flex-grow flex flex-col border-b-2 border-black relative">
+                                    {/* Table Header */}
+                                    <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
+                                        <div className="w-10 p-2 border-r border-black">SI No.</div>
+                                        <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
+                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
+                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
+                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black">Quantity</div>}
+                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black">Rate</div>}
+                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black">Per</div>}
+                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
+                                        <div className="w-24 p-2 text-right">Amount</div>
+                                    </div>
+
+                                    {/* Table Body - Rows */}
+                                    <div className="flex-grow text-xs relative">
+                                        {items.map((item, idx) => {
+                                            const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
+                                            const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
+
+                                            return (
+                                                <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
+                                                    <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
+                                                    <div className="flex-1 p-2 border-r border-black font-semibold text-left">{item.stock_item_name}</div>
+                                                    {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
+                                                    {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
+                                                    {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
+                                                    {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>}
+                                                    {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>}
+                                                    {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
+                                                        {(Number(item.discount) > 0 || Number(item.discount_percent) > 0) ? (item.discount || item.discount_percent) + '%' : ''}
+                                                    </div>}
+                                                    <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Totals Row */}
+                                    <div className="flex border-t-2 border-black font-bold text-xs bg-gray-50">
+                                        <div className="w-10 p-2 border-r border-black text-center"></div>
+                                        <div className="flex-1 p-2 border-r border-black text-right font-bold">Total</div>
+                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
+                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
+                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{totalQty}</div>}
+                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black"></div>}
+                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black"></div>}
+                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
+                                        <div className="w-24 p-2 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
+                                    </div>
+                                </div>
+
+                                {/* Bottom Section: Words & Tax Breakdown */}
+                                <div className="grid grid-cols-2 border-b-2 border-black text-xs">
+                                    {/* Left: Amount in Words */}
+                                    <div className="p-2 border-r-2 border-black">
+                                        <p className="text-[10px] text-gray-500 mb-1">Amount Chargeable (in words)</p>
+                                        <p className="font-bold italic text-sm">{numberToWords(invoice.net_amount)}</p>
+                                    </div>
+
+                                    {/* Right: Tax Amounts */}
+                                    <div className="text-right">
+                                        {invoice.cgst_amount > 0 && (
+                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-2">CGST Amount</span>
+                                                <span className="font-semibold px-2">{formatNumber(invoice.cgst_amount)}</span>
+                                            </div>
+                                        )}
+                                        {invoice.sgst_amount > 0 && (
+                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-2">SGST Amount</span>
+                                                <span className="font-semibold px-2">{formatNumber(invoice.sgst_amount)}</span>
+                                            </div>
+                                        )}
+                                        {invoice.igst_amount > 0 && (
+                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-2">IGST Amount</span>
+                                                <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
+                                            <span>Total (INR)</span>
+                                            <span>₹ {formatNumber(invoice.net_amount)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* HSN/SAC Summary (If GST) */}
+                                {columnVisibility.hasGST && (
+                                    <div className="border-b-2 border-black p-2">
+                                        <p className="text-[10px] font-bold underline mb-1">Tax Analysis:</p>
+                                        <table className="w-full text-[10px] border border-black text-center">
+                                            <thead>
+                                                <tr className="bg-gray-100 border-b border-black">
+                                                    <th className="border-r border-black">HSN/SAC</th>
+                                                    <th className="border-r border-black">Taxable Value</th>
+                                                    {columnVisibility.isIGST ? (
+                                                        <>
+                                                            <th className="border-r border-black" colSpan="2">Integrated Tax</th>
+                                                            <th>Total Tax</th>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <th className="border-r border-black" colSpan="2">Central Tax</th>
+                                                            <th className="border-r border-black" colSpan="2">State Tax</th>
+                                                            <th>Total Tax</th>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                                <tr className="bg-gray-50 border-b border-black">
+                                                    <th className="border-r border-black"></th>
+                                                    <th className="border-r border-black"></th>
+                                                    {columnVisibility.isIGST ? (
+                                                        <>
+                                                            <th className="border-r border-black">Rate</th>
+                                                            <th className="border-r border-black">Amount</th>
+                                                            <th>Amount</th>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <th className="border-r border-black">Rate</th>
+                                                            <th className="border-r border-black">Amount</th>
+                                                            <th className="border-r border-black">Rate</th>
+                                                            <th className="border-r border-black">Amount</th>
+                                                            <th>Amount</th>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {hsnSummary.map((row, i) => (
+                                                    <tr key={i} className="border-b border-gray-300 last:border-0">
+                                                        <td className="border-r border-black p-1">{row.hsn}</td>
+                                                        <td className="border-r border-black p-1 text-right">{formatNumber(row.taxable)}</td>
+                                                        {columnVisibility.isIGST ? (
+                                                            <>
+                                                                <td className="border-r border-black p-1">{row.gst_rate}%</td>
+                                                                <td className="border-r border-black p-1 text-right">{formatNumber(row.igst)}</td>
+                                                                <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
+                                                                <td className="border-r border-black p-1 text-right">{formatNumber(row.cgst)}</td>
+                                                                <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
+                                                                <td className="border-r border-black p-1 text-right">{formatNumber(row.sgst)}</td>
+                                                                <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                            </>
+                                                        )}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 )}
+
+                                {/* Footer Section — Tally: only show bank if filled */}
+                                <div className="grid grid-cols-5 flex-grow h-32">
+                                    {/* Bank & Terms (40%) */}
+                                    <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
+                                        {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
+                                            <div>
+                                                <p className="font-bold underline mb-1">Company's Bank Details:</p>
+                                                {companyInfo?.bank_name && <p>Bank Name: <span className="font-semibold">{companyInfo.bank_name}</span></p>}
+                                                {companyInfo?.bank_account && <p>A/C No.: <span className="font-semibold">{companyInfo.bank_account}</span></p>}
+                                                {companyInfo?.bank_ifsc && <p>Branch & IFS Code: <span className="font-semibold">{companyInfo.bank_ifsc}</span></p>}
+                                            </div>
+                                        ) : <div />}
+                                        <div className="mt-2 text-[10px]">
+                                            <p className="underline mb-0.5">Declaration:</p>
+                                            <p>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
+                                        </div>
+                                    </div>
+
+                                    {/* QR Code (20%) */}
+                                    <div className="col-span-1 border-r-2 border-black flex flex-col items-center justify-center p-2">
+                                        {upiId && (
+                                            <>
+                                                <div className="bg-white p-1">
+                                                    <img
+                                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
+                                                        alt="UPI QR"
+                                                        className="w-20 h-20 mix-blend-multiply"
+                                                        crossOrigin="anonymous"
+                                                    />
+                                                </div>
+                                                <p className="text-[9px] font-bold mt-1 text-center uppercase tracking-tight">Scan to Pay</p>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {/* Signatory (40%) */}
+                                    <div className="col-span-2 p-2 flex flex-col justify-between h-full text-center">
+                                        <p className="text-right text-xs font-bold">for {companyInfo?.name}</p>
+                                        <div className="h-16"></div>
+                                        <div className="text-right">
+                                            <p className="border-t border-black inline-block px-8 pt-1 text-xs font-bold">Authorized Signatory</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Signatory (40%) */}
-                            <div className="col-span-2 p-2 flex flex-col justify-between h-full text-center">
-                                <p className="text-right text-xs font-bold">for {companyInfo?.name}</p>
-                                <div className="h-16"></div>
-                                <div className="text-right">
-                                    <p className="border-t border-black inline-block px-8 pt-1 text-xs font-bold">Authorized Signatory</p>
-                                </div>
+                            <div className="text-center text-[10px] text-gray-400 mt-2">
+                                SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
                             </div>
                         </div>
-                    </div>
-
-                    <div className="text-center text-[10px] text-gray-400 mt-2">
-                        SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
                     </div>
                 </div>
             </div>
