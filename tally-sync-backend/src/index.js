@@ -28,6 +28,9 @@ const telegramService = require('./services/telegramService');
 const recurringRoutes = require('./routes/recurring');
 const portalRoutes = require('./routes/portal');
 const reportRoutes = require('./routes/reports');
+const appwriteMockRoute = require('./routes/appwriteMockRoute');
+const adminRoutes = require('./routes/adminRoutes');
+const invoiceExtractRoutes = require('./routes/invoiceExtract');
 
 // Use Routes
 app.use('/api/v1/sync', syncRoutes);
@@ -43,6 +46,9 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/recurring', recurringRoutes);
 app.use('/api/v1/portal', portalRoutes);
 app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/invoice', invoiceExtractRoutes);
+app.use('/api/mock/supa', appwriteMockRoute);
 
 // Health Check
 app.get('/', (req, res) => {
@@ -56,6 +62,20 @@ app.listen(PORT, () => {
     console.log(`- POST /api/v1/sync (Sync Tally Data)`);
     console.log(`- GET  /api/v1/data (Web Dashboard)`);
 
-    // Start Telegram Polling for local dev (MIGRATED TO SUPABASE EDGE FUNCTIONS)
-    // telegramService.startPolling();
+    // Telegram bot runner
+    // - Enable polling with TELEGRAM_POLLING_ENABLED=true (default: true when token exists)
+    // - Disable in environments where webhook handles updates
+    const hasTelegramToken = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+    const pollingEnabled = (process.env.TELEGRAM_POLLING_ENABLED || 'true').toLowerCase() === 'true';
+
+    if (hasTelegramToken && pollingEnabled) {
+        telegramService.startPolling();
+        console.log('Telegram polling enabled');
+    } else if (hasTelegramToken && !pollingEnabled) {
+        console.log('Telegram polling disabled (expecting webhook mode)');
+    } else {
+        console.log('Telegram bot token not configured; bot is inactive');
+    }
 });
+
+

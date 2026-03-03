@@ -112,9 +112,9 @@ GET /api/v1/reports/sync-status/:companyId     # Sync health
 ## 🔧 Environment Variables
 
 ```env
-SUPABASE_URL=https://xxx.supabase.co
+APPWRITE_ENDPOINT=https://nyc.cloud.appwrite.io/v1
 SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+APPWRITE_API_KEY=your_appwrite_api_key
 PORT=5000
 NODE_ENV=development
 SYNC_API_KEY=your_secret_sync_key_here

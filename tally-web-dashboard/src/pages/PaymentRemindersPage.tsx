@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     Bell, Send, Mail, MessageCircle, Phone, Filter, Search,
     CheckCircle, Clock, AlertTriangle, ChevronDown, ChevronRight,
@@ -525,3 +525,4 @@ export default function PaymentRemindersPage() {
         </div>
     );
 }
+

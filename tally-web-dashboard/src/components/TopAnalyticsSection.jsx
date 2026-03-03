@@ -11,7 +11,7 @@ import {
     BarChart3,
     IndianRupee
 } from 'lucide-react';
-import supabase from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { useAuth } from '../contexts/AuthContext';
 
 const TopAnalyticsSection = () => {
@@ -448,3 +448,4 @@ const TopAnalyticsSection = () => {
 };
 
 export default TopAnalyticsSection;
+

@@ -1,0 +1,56 @@
+TALLYLINK - END USER LICENSE AGREEMENT (EULA)
+===============================================
+
+Last Updated: February 2026
+
+IMPORTANT: READ THIS AGREEMENT CAREFULLY BEFORE INSTALLING OR USING TALLYLINK.
+
+By installing, copying, or otherwise using TallyLink, you agree to be bound 
+by the terms of this agreement.
+
+1. LICENSE GRANT
+   TallyLink grants you a non-exclusive, non-transferable license to use 
+   TallyLink software for syncing your Tally ERP data to the cloud for 
+   mobile/web access.
+
+2. DATA SECURITY & PRIVACY
+   - All data processing is done ON YOUR LOCAL MACHINE.
+   - Your Tally data is synced ONLY to YOUR personal cloud account (Supabase).
+   - We DO NOT collect, store, or share your business data with any third party.
+   - Your login credentials are encrypted and stored locally.
+   - We DO NOT have access to your Tally ERP data.
+
+3. TALLY ERP COMPATIBILITY
+   - TallyLink communicates with Tally ERP via its official XML API.
+   - TallyLink uses safe, read-only batch operations to prevent Tally crashes.
+   - TallyLink does NOT modify your Tally data unless you explicitly create 
+     vouchers from the web/mobile interface.
+   - TallyLink is NOT affiliated with or endorsed by Tally Solutions Pvt. Ltd.
+
+4. RESTRICTIONS
+   You may NOT:
+   - Reverse engineer, decompile, or disassemble the software.
+   - Redistribute, sell, or sublicense the software.
+   - Use the software for any illegal purpose.
+   - Use the software to extract data for unauthorized third parties.
+
+5. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS 
+   OR IMPLIED.
+
+6. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DAMAGES ARISING FROM 
+   THE USE OF THIS SOFTWARE.
+
+7. TERMINATION
+   This license is effective until terminated. Your rights under this 
+   license will terminate automatically if you fail to comply with any 
+   of its terms.
+
+8. CONTACT
+   For support, contact us through the TallyLink web dashboard.
+
+By clicking "I Accept" during installation, you acknowledge that you have 
+read, understood, and agree to be bound by these terms.
+
+Copyright (c) 2026 TallyLink. All rights reserved.

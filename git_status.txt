@@ -1,0 +1,258 @@
+﻿ M tally-mobile-app/lib/services/pdf_service.dart
+ M tally-sync-backend/README.md
+ M tally-sync-backend/package-lock.json
+ M tally-sync-backend/package.json
+ M tally-sync-backend/src/config/supabase.js
+ M tally-sync-backend/src/index.js
+ M tally-sync-backend/src/routes/portal.js
+ M tally-sync-backend/src/routes/recurring.js
+ M tally-sync-backend/src/routes/reports.js
+ M tally-sync-backend/src/services/telegramService.js
+ M tally-sync-backend/supabase/functions/tallylink-bot/index.ts
+ M tally-sync-backend/supabase/functions/telegram-bot/index.ts
+ M tally-web-dashboard/.env.example
+ M tally-web-dashboard/android/app/build.gradle
+ M tally-web-dashboard/android/app/src/main/res/xml/network_security_config.xml
+ M tally-web-dashboard/index.html
+ M tally-web-dashboard/src/App.tsx
+ M tally-web-dashboard/src/api.js
+ M tally-web-dashboard/src/components/AIChatOverlay.tsx
+ M tally-web-dashboard/src/components/CashFlowPrediction.tsx
+ M tally-web-dashboard/src/components/ReorderAlerts.tsx
+ M tally-web-dashboard/src/components/SmartInsights.tsx
+ M tally-web-dashboard/src/components/TopAnalyticsSection.jsx
+ M tally-web-dashboard/src/components/layout/AppLayout.tsx
+ M tally-web-dashboard/src/components/shared/CompactDateFilter.tsx
+ M tally-web-dashboard/src/contexts/AuthContext.jsx
+ M tally-web-dashboard/src/contexts/types.ts
+ M tally-web-dashboard/src/data/legalContent.tsx
+ M tally-web-dashboard/src/lib/GeminiService.ts
+ M tally-web-dashboard/src/lib/supabase.js
+ M tally-web-dashboard/src/lib/whatsapp.ts
+ M tally-web-dashboard/src/main.tsx
+ M tally-web-dashboard/src/pages/AIAssistantPage.tsx
+ M tally-web-dashboard/src/pages/AIEntryPage.tsx
+ M tally-web-dashboard/src/pages/AdminDashboardPage.jsx
+ M tally-web-dashboard/src/pages/AuthCallback.tsx
+ M tally-web-dashboard/src/pages/BackupRestorePage.tsx
+ M tally-web-dashboard/src/pages/BalanceSheetPage.tsx
+ M tally-web-dashboard/src/pages/BankReconciliationPage.tsx
+ M tally-web-dashboard/src/pages/BillingDashboard.tsx
+ M tally-web-dashboard/src/pages/CreateInvoicePage.tsx
+ M tally-web-dashboard/src/pages/CreateVoucherPage.tsx
+ M tally-web-dashboard/src/pages/CustomerPortalPage.tsx
+ M tally-web-dashboard/src/pages/Dashboard3DPage.jsx
+ M tally-web-dashboard/src/pages/DashboardPage.tsx
+ M tally-web-dashboard/src/pages/EWayBillPage.tsx
+ M tally-web-dashboard/src/pages/EditVoucherPage.tsx
+ M tally-web-dashboard/src/pages/GSTReportsPage.tsx
+ M tally-web-dashboard/src/pages/InactiveCustomersPage.tsx
+ M tally-web-dashboard/src/pages/InvoiceDetailPage.tsx
+ M tally-web-dashboard/src/pages/InvoicePDFPage.jsx
+ M tally-web-dashboard/src/pages/InvoiceScannerPage.tsx
+ M tally-web-dashboard/src/pages/InvoiceViewPage.tsx
+ M tally-web-dashboard/src/pages/LandingPage3D.tsx
+ M tally-web-dashboard/src/pages/LedgerDetailPage.tsx
+ M tally-web-dashboard/src/pages/LedgerStatementPage.tsx
+ M tally-web-dashboard/src/pages/LedgersPage.tsx
+ M tally-web-dashboard/src/pages/LegalTemplatePage.tsx
+ M tally-web-dashboard/src/pages/LoginPage.tsx
+ M tally-web-dashboard/src/pages/OnboardingPage.jsx
+ M tally-web-dashboard/src/pages/PaymentLinksPage.tsx
+ M tally-web-dashboard/src/pages/PaymentRemindersPage.tsx
+ M tally-web-dashboard/src/pages/PortalLinksPage.tsx
+ M tally-web-dashboard/src/pages/ProfitLossPage.tsx
+ M tally-web-dashboard/src/pages/PurchaseDetailPage.tsx
+ M tally-web-dashboard/src/pages/PurchasesPage.tsx
+ M tally-web-dashboard/src/pages/RecurringInvoicesPage.tsx
+ M tally-web-dashboard/src/pages/ReportBuilderPage.tsx
+ M tally-web-dashboard/src/pages/SalesAnalyticsPage.tsx
+ M tally-web-dashboard/src/pages/SalesTeamPage.tsx
+ M tally-web-dashboard/src/pages/SettingsPage.tsx
+ M tally-web-dashboard/src/pages/StockItemDetailPage.tsx
+ M tally-web-dashboard/src/pages/StockPage.tsx
+ M tally-web-dashboard/src/pages/SyncHistoryPage.tsx
+ M tally-web-dashboard/src/pages/TeamManagementPage.tsx
+ M tally-web-dashboard/src/pages/VoucherDetailPage.tsx
+ M tally-web-dashboard/src/pages/VouchersPage.tsx
+ M tally-web-dashboard/vercel.json
+ M tally-windows-sync/App.xaml
+ M tally-windows-sync/App.xaml.cs
+ M tally-windows-sync/LoginWindow.xaml
+ M tally-windows-sync/LoginWindow.xaml.cs
+ M tally-windows-sync/MainWindow.xaml
+ M tally-windows-sync/Models/TallyModels.cs
+ M tally-windows-sync/Services/ApiClient.cs
+ M tally-windows-sync/Services/AuthService.cs
+ M tally-windows-sync/Services/SyncLogger.cs
+ M tally-windows-sync/Services/SyncManager.cs
+ M tally-windows-sync/Services/TallyConnector.cs
+ M tally-windows-sync/Services/TallyVoucherPusher.cs
+ M tally-windows-sync/TallySyncApp.csproj
+ M tally-windows-sync/TallySyncApp.sln
+ D tally-windows-sync/TallySyncApp/App.xaml
+ D tally-windows-sync/TallySyncApp/App.xaml.cs
+ D tally-windows-sync/TallySyncApp/Dashboard/.gitignore
+ D tally-windows-sync/TallySyncApp/Dashboard/README.md
+ D tally-windows-sync/TallySyncApp/Dashboard/eslint.config.js
+ D tally-windows-sync/TallySyncApp/Dashboard/index.html
+ D tally-windows-sync/TallySyncApp/Dashboard/package.json
+ D tally-windows-sync/TallySyncApp/Dashboard/public/vite.svg
+ D tally-windows-sync/TallySyncApp/Dashboard/src/App.css
+ D tally-windows-sync/TallySyncApp/Dashboard/src/App.tsx
+ D tally-windows-sync/TallySyncApp/Dashboard/src/assets/react.svg
+ D tally-windows-sync/TallySyncApp/Dashboard/src/index.css
+ D tally-windows-sync/TallySyncApp/Dashboard/src/main.tsx
+ D tally-windows-sync/TallySyncApp/Dashboard/tsconfig.app.json
+ D tally-windows-sync/TallySyncApp/Dashboard/tsconfig.json
+ D tally-windows-sync/TallySyncApp/Dashboard/tsconfig.node.json
+ D tally-windows-sync/TallySyncApp/Dashboard/vite.config.ts
+ D tally-windows-sync/TallySyncApp/Data/SyncQueue.cs
+ D tally-windows-sync/TallySyncApp/LoginWindow.xaml
+ D tally-windows-sync/TallySyncApp/LoginWindow.xaml.cs
+ D tally-windows-sync/TallySyncApp/TallySyncApp.csproj
+ D tally-windows-sync/TallySyncApp/Views/MainWindow.xaml
+ D tally-windows-sync/TallySyncApp/Views/MainWindow.xaml.cs
+ D tally-windows-sync/TallySyncApp/appsettings.example.json
+ D tally-windows-sync/TallySyncApp/build_err.txt
+ D tally-windows-sync/TallySyncApp/build_error.txt
+ D tally-windows-sync/TallySyncApp/build_log.txt
+ D tally-windows-sync/TallySyncApp/tally_response.xml
+ D tally-windows-sync/TallySyncApp/tallylink_logo.png
+ M tally-windows-sync/ViewModels/MainViewModel.cs
+ M tally-windows-sync/build_err.txt
+ M tally-windows-sync/build_log.txt
+ M tally-windows-sync/build_output.txt
+ D tallysyncapp/LICENSE.txt
+ D tallysyncapp/LiveKeepingSync.deps.json
+ D tallysyncapp/LiveKeepingSync.runtimeconfig.json
+ D tallysyncapp/TallyLink.deps.json
+ D tallysyncapp/TallyLink.runtimeconfig.json
+ D tallysyncapp/app_icon.ico
+ D tallysyncapp/appsettings.example.json
+ D tallysyncapp/installer.iss
+ D tallysyncapp/tally_response.xml
+ M telegram-mcp/README.md
+ M telegram-mcp/main.py
+ M telegram-mcp/pyproject.toml
+?? .tmp_insforge_mcp/
+?? AGENTS.md
+?? FIX_RLS_COMPLETE.sql
+?? build_output.txt
+?? git_status.txt
+?? insforge-mcp-1.2.6.tgz
+?? publish_log.txt
+?? schema.json
+?? tally-sync-backend/.gitignore
+?? tally-sync-backend/check-cols.js
+?? tally-sync-backend/check-entries.js
+?? tally-sync-backend/check-links-json.js
+?? tally-sync-backend/check-links.js
+?? tally-sync-backend/check-specific-voucher.js
+?? tally-sync-backend/check-stock-json.js
+?? tally-sync-backend/check-stock.js
+?? tally-sync-backend/check_db.js
+?? tally-sync-backend/cleanup-mock-data.js
+?? tally-sync-backend/entries-debug.json
+?? tally-sync-backend/fetch-rest.js
+?? tally-sync-backend/fix-permissions.js
+?? tally-sync-backend/fix-stock-entries.js
+?? tally-sync-backend/init-all-collections.js
+?? tally-sync-backend/init-appwrite.js
+?? tally-sync-backend/init-indexes.js
+?? tally-sync-backend/links-debug.json
+?? tally-sync-backend/list-counts.js
+?? tally-sync-backend/list-exact.js
+?? tally-sync-backend/mcp-server.js
+?? tally-sync-backend/migrate-rest.js
+?? tally-sync-backend/migrate-to-appwrite.js
+?? tally-sync-backend/out.txt
+?? tally-sync-backend/out_counts.txt
+?? tally-sync-backend/out_utf8.txt
+?? tally-sync-backend/read-logs.js
+?? tally-sync-backend/rest-docs.json
+?? tally-sync-backend/seed-mock-data.js
+?? tally-sync-backend/src/routes/adminRoutes.js
+?? tally-sync-backend/src/routes/appwriteMockRoute.js
+?? tally-sync-backend/src/routes/invoiceExtract.js
+?? tally-sync-backend/start-backend-local.ps1
+?? tally-sync-backend/stock-debug.json
+?? tally-sync-backend/stock-output.txt
+?? tally-sync-backend/test.txt
+?? tally-sync-backend/verify-tally-sync.js
+?? tally-sync-backend/voucher-122-debug.json
+?? tally-sync-backend/voucher-debug.json
+?? tally-web-dashboard/.firebaserc
+?? tally-web-dashboard/api/_lib/
+?? tally-web-dashboard/api/ai/
+?? tally-web-dashboard/api/generate-gst-json.js
+?? tally-web-dashboard/api/generate-xml.js
+?? tally-web-dashboard/api/invoice/
+?? tally-web-dashboard/api/invoices/
+?? tally-web-dashboard/api/ledger-mappings/
+?? tally-web-dashboard/build_err.txt
+?? tally-web-dashboard/build_err_utf8.txt
+?? tally-web-dashboard/build_err_utf8_head.txt
+?? tally-web-dashboard/build_output.txt
+?? tally-web-dashboard/check-collections.mjs
+?? tally-web-dashboard/dev_err.txt
+?? tally-web-dashboard/dev_err2.txt
+?? tally-web-dashboard/dev_err2_utf8.txt
+?? tally-web-dashboard/dev_err_utf8.txt
+?? tally-web-dashboard/docs/
+?? tally-web-dashboard/firebase.json
+?? tally-web-dashboard/firestore.indexes.json
+?? tally-web-dashboard/firestore.rules
+?? tally-web-dashboard/fix-supabase-schema.sql
+?? tally-web-dashboard/fix-voucher-date.sql
+?? tally-web-dashboard/out.txt
+?? tally-web-dashboard/setup-collections.mjs
+?? tally-web-dashboard/setup-minimal.mjs
+?? tally-web-dashboard/src/components/automation/
+?? tally-web-dashboard/src/features/
+?? tally-web-dashboard/src/lib/appwriteAdapter.js
+?? tally-web-dashboard/src/lib/firebase.js
+?? tally-web-dashboard/src/lib/insforge.js
+?? tally-web-dashboard/src/lib/userAiTraining.ts
+?? tally-web-dashboard/src/lib/userGeminiKey.ts
+?? tally-web-dashboard/src/pages/AdminPanel.tsx
+?? tally-web-dashboard/src/pages/BankAutomationPage.tsx
+?? tally-web-dashboard/src/pages/GstAutomationPage.tsx
+?? tally-web-dashboard/src/pages/InvoiceImportPage.tsx
+?? tally-web-dashboard/supabase-schema.sql
+?? tally-web-dashboard/temp.json
+?? tally-web-dashboard/test.cjs
+?? tally-web-dashboard/types.txt
+?? tally-windows-sync/.gitignore
+?? tally-windows-sync/INSFORGE_COMPANIES_RLS_FIX.sql
+?? tally-windows-sync/INSFORGE_DRILLDOWN_RPC_ADDITIVE.sql
+?? tally-windows-sync/INSFORGE_SYNC_STABILIZATION_ADDITIVE.sql
+?? tally-windows-sync/INSFORGE_SYNC_STABILIZATION_NO_DOLLAR.sql
+?? tally-windows-sync/LICENSING_ARCHITECTURE.md
+?? tally-windows-sync/PublishOutput-InsForge/
+?? tally-windows-sync/PublishOutput/
+?? tally-windows-sync/SAFETY_RULES.md
+?? tally-windows-sync/Services/LicenseService.cs
+?? tally-windows-sync/Services/TextSanitizer.cs
+?? tally-windows-sync/TallyTest.cs
+?? tally-windows-sync/build_error.txt
+?? tally-windows-sync/build_result.txt
+?? tally-windows-sync/installer/
+?? tally-windows-sync/publish_err.txt
+?? tally-windows-sync/publish_err3.txt
+?? tally-windows-sync/publish_err4.txt
+?? tally-windows-sync/publish_error.txt
+?? tally-windows-sync/publish_error_log.txt
+?? tally-windows-sync/publish_full_log.txt
+?? tally-windows-sync/tally-windows-sync/
+?? telegram-mcp/__pycache__/
+?? telegram-mcp/uv.lock
+?? temp_insforge_search.json
+?? test_project/
+?? test_project2/
+?? test_project3/
+?? test_project4/
+?? test_project5/
+?? test_project6/
+?? test_project7/
+?? test_project8/

@@ -22,7 +22,7 @@ import {
     BookOpen,
     X
 } from 'lucide-react';
-import supabase from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import toast from 'react-hot-toast';
 
 const ADMIN_EMAILS = [
@@ -1216,3 +1216,4 @@ const AdminDashboardPage = () => {
 };
 
 export default AdminDashboardPage;
+

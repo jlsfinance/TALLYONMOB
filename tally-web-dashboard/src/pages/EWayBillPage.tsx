@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     Truck, FileText, Search, Filter, QrCode, Download,
     CheckCircle, AlertTriangle, Clock, ChevronRight, Loader2,
@@ -65,7 +65,7 @@ export default function EWayBillPage() {
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .in('voucher_type', ['Sales', 'Purchase'])
-                .eq('is_deleted', false)
+                .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
                 .limit(200);
 
@@ -346,3 +346,4 @@ export default function EWayBillPage() {
         </div>
     );
 }
+

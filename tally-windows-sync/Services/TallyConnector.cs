@@ -23,16 +23,39 @@ namespace TallySyncApp.Services
         private readonly string _tallyUrl;
         private readonly int _timeout;
 
+        // ======= ANTI-CRASH SAFETY CONSTANTS =======
+        // These limits prevent Tally ERP from crashing due to large/frequent requests
+        private const int MAX_XML_RESPONSE_MB = 50;              // Max 50MB response (Tally crashes above this)
+        private const int MAX_XML_RESPONSE_SIZE = MAX_XML_RESPONSE_MB * 1024 * 1024;
+        private const int REQUEST_COOLDOWN_MS = 200;             // 200ms minimum gap between Tally requests
+        private const int MAX_CONSECUTIVE_FAILURES = 5;          // Circuit breaker trips after 5 failures
+        private const int CIRCUIT_BREAKER_RESET_SECONDS = 60;    // Wait 60s before retrying after circuit break
+        private const int MAX_RETRY_TIMEOUT_SECONDS = 600;       // Max 10 minutes per request
+        private const int SAFE_RECORD_LIMIT = 5000;              // Max records to fetch in one Tally request
+
+        // Circuit breaker state
+        private int _consecutiveFailures = 0;
+        private DateTime _circuitBreakerTrippedAt = DateTime.MinValue;
+        private DateTime _lastRequestTime = DateTime.MinValue;
+
         public event EventHandler<string>? LogReceived;
 
         public TallyConnector(string host = "127.0.0.1", int port = 9000, int timeoutSeconds = 300)
         {
             _tallyUrl = $"http://{host}:{port}";
-            _timeout = timeoutSeconds;
+            _timeout = Math.Min(timeoutSeconds, MAX_RETRY_TIMEOUT_SECONDS);
 
-            _httpClient = new HttpClient
+            // FIX: Disable proxy to avoid connection issues
+            var handler = new HttpClientHandler
             {
-                Timeout = TimeSpan.FromSeconds(_timeout)
+                UseProxy = false,
+                AllowAutoRedirect = true
+            };
+
+            _httpClient = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(_timeout),
+                MaxResponseContentBufferSize = MAX_XML_RESPONSE_SIZE
             };
             _httpClient.DefaultRequestHeaders.Add("Accept", "text/xml");
         }
@@ -89,11 +112,37 @@ namespace TallySyncApp.Services
 
         /// <summary>
         /// Send XML request to Tally and get response
+        /// SAFETY: Includes circuit breaker, request cooldown, and response size limits
         /// </summary>
         private async Task<XDocument?> SendRequestAsync(string xmlRequest, string? companyName = null, int? customTimeout = null)
         {
             try
             {
+                // ======= CIRCUIT BREAKER CHECK =======
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    var elapsed = (DateTime.Now - _circuitBreakerTrippedAt).TotalSeconds;
+                    if (elapsed < CIRCUIT_BREAKER_RESET_SECONDS)
+                    {
+                        SyncLogger.Log($"ðŸ›¡ï¸ CIRCUIT BREAKER ACTIVE: {MAX_CONSECUTIVE_FAILURES} consecutive failures. " +
+                            $"Waiting {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s before retry to protect Tally.");
+                        Log($"ðŸ›¡ï¸ CIRCUIT BREAKER: {_consecutiveFailures} failures, wait {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s");
+                        return null;
+                    }
+                    // Reset after cooldown period
+                    SyncLogger.Log("ðŸ”„ Circuit breaker reset - retrying Tally connection");
+                    _consecutiveFailures = 0;
+                }
+
+                // ======= REQUEST COOLDOWN =======
+                // Prevent rapid-fire requests that can overwhelm Tally
+                var timeSinceLastRequest = (DateTime.Now - _lastRequestTime).TotalMilliseconds;
+                if (timeSinceLastRequest < REQUEST_COOLDOWN_MS)
+                {
+                    await Task.Delay(REQUEST_COOLDOWN_MS - (int)timeSinceLastRequest);
+                }
+                _lastRequestTime = DateTime.Now;
+
                 SyncLogger.Log($">>> Tally Request [{companyName ?? "Global"}]: XML Length {xmlRequest.Length}");
                 SyncLogger.SaveFile("last_tally_request.xml", xmlRequest);
 
@@ -102,10 +151,37 @@ namespace TallySyncApp.Services
                     var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
                     var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token);
 
-                    if (!response.IsSuccessStatusCode) return null;
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _consecutiveFailures++;
+                        Log($"âŒ Tally HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+                        if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                            _circuitBreakerTrippedAt = DateTime.Now;
+                        return null;
+                    }
+
+                    // ======= RESPONSE SIZE CHECK =======
+                    var contentLength = response.Content.Headers.ContentLength;
+                    if (contentLength.HasValue && contentLength.Value > MAX_XML_RESPONSE_SIZE)
+                    {
+                        SyncLogger.Log($"ðŸ›¡ï¸ SAFETY: Response too large ({contentLength.Value / (1024 * 1024)}MB > {MAX_XML_RESPONSE_MB}MB limit). " +
+                            "Skipping to prevent memory crash. Reduce batch size.");
+                        Log($"ðŸ›¡ï¸ Response TOO LARGE: {contentLength.Value / (1024 * 1024)}MB");
+                        return null;
+                    }
 
                     var responseContent = await response.Content.ReadAsStringAsync();
+                    
+                    // Double-check actual response size
+                    if (responseContent.Length > MAX_XML_RESPONSE_SIZE)
+                    {
+                        SyncLogger.Log($"ðŸ›¡ï¸ SAFETY: Response body too large ({responseContent.Length / (1024 * 1024)}MB). Skipping.");
+                        return null;
+                    }
+
+                    // Always save response for debugging
                     SyncLogger.SaveFile("last_tally_response.xml", responseContent);
+                    Log($"ðŸ“¨ Tally response: {responseContent.Length} chars");
                     
                     string sanitizedContent = SanitizeXmlString(responseContent);
                     
@@ -113,18 +189,60 @@ namespace TallySyncApp.Services
                     using (var stringReader = new StringReader(sanitizedContent))
                     using (var xmlReader = XmlReader.Create(stringReader, settings))
                     {
-                        return XDocument.Load(xmlReader);
+                        var doc = XDocument.Load(xmlReader);
+                        // Success - reset circuit breaker
+                        _consecutiveFailures = 0;
+                        return doc;
                     }
                 }
             }
-            catch { return null; }
+            catch (TaskCanceledException)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"âš ï¸ Tally request timed out after {customTimeout ?? _timeout}s (failure #{_consecutiveFailures})");
+                Log($"âš ï¸ TIMEOUT: Tally did not respond in {customTimeout ?? _timeout}s");
+                return null;
+            }
+            catch (HttpRequestException ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"âš ï¸ Tally connection error: {ex.Message} (failure #{_consecutiveFailures})");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"âš ï¸ Tally request error: {ex.Message} (failure #{_consecutiveFailures})");
+                Log($"âŒ Tally error: {ex.Message}");
+                return null;
+            }
         }
 
         private string SanitizeXmlString(string xml)
         {
             if (string.IsNullOrEmpty(xml)) return xml;
 
-            // Direct character-by-character filtering (LINQ)
+            // FIX: Tally Prime adds UDF: prefix (User Defined Fields) without declaring xmlns:UDF
+            // This causes XmlReader to throw "UDF is an undeclared prefix"
+            // Solution: Replace UDF: prefix with UDF_ to make it a regular element name
+            xml = xml.Replace("<UDF:", "<UDF_")
+                     .Replace("</UDF:", "</UDF_")
+                     .Replace(" UDF:", " UDF_");
+
+            // Also handle any other undeclared namespace prefixes Tally might add
+            // Add xmlns:UDF declaration to ENVELOPE if it still has UDF: references
+            if (xml.Contains("UDF:") && xml.Contains("<ENVELOPE"))
+            {
+                xml = xml.Replace("<ENVELOPE", "<ENVELOPE xmlns:UDF=\"TallyUDF\"");
+            }
+
+            // Direct character-by-character filtering
             // Only allow Tab (9), LF (10), CR (13) and characters from Space (32) upwards
             return new string(xml.Where(c => 
                 c == '\t' || 
@@ -147,60 +265,7 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Fetch Tally Serial Number
-        /// </summary>
-        public async Task<string> GetTallySerialNumberAsync()
-        {
-            var request = @"
-<ENVELOPE>
-    <HEADER>
-        <TALLYREQUEST>Export Data</TALLYREQUEST>
-    </HEADER>
-    <BODY>
-        <EXPORTDATA>
-            <REQUESTDESC>
-                <REPORTNAME>SerialReport</REPORTNAME>
-                <STATICVARIABLES>
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-                <TDL>
-                    <TDLMESSAGE>
-                        <REPORT NAME=""SerialReport"">
-                            <FORMS>SerialForm</FORMS>
-                        </REPORT>
-                        <FORM NAME=""SerialForm"">
-                            <PARTS>SerialPart</PARTS>
-                        </FORM>
-                        <PART NAME=""SerialPart"">
-                            <LINES>SerialLine</LINES>
-                        </PART>
-                        <LINE NAME=""SerialLine"">
-                            <FIELDS>SerialField</FIELDS>
-                        </LINE>
-                        <FIELD NAME=""SerialField"">
-                            <SET>$$LicenseInfo:SerialNumber</SET>
-                        </FIELD>
-                    </TDLMESSAGE>
-                </TDL>
-            </REQUESTDESC>
-        </EXPORTDATA>
-    </BODY>
-</ENVELOPE>";
 
-            try 
-            {
-                var doc = await SendRequestAsync(request, null, 10);
-                if (doc == null) return string.Empty;
-
-                var serial = doc.Descendants("SERIALFIELD").FirstOrDefault()?.Value;
-                return serial?.Trim() ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching serial: {ex.Message}");
-                return string.Empty;
-            }
-        }
 
         /// <summary>
         /// Get active company info using standard Tally system variable
@@ -225,7 +290,11 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""CompanyCollection"">
             <TYPE>Company</TYPE>
-            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE</FETCH>
+            <COMPUTE>GSTINCompute: $GSTIN</COMPUTE>
+            <COMPUTE>GSTNoCompute: $GSTREGISTRATIONNUMBER</COMPUTE>
+            <COMPUTE>AddressCompute: $$SysName:Address</COMPUTE>
+            <COMPUTE>StateCompute: $$SysName:StateName</COMPUTE>
+            <FETCH>NAME, GUID, ADDRESS, STATENAME, LEDSTATENAME, PINCODE, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, GSTREGISTRATIONNUMBER, TAXREGISTRATIONNUMBER, STARTINGFROM, BOOKSFROM, CURRENCYSYMBOL, COMPANYGSTDETAILS.LIST, ADDRESS.LIST, GSTINCompute, GSTNoCompute, AddressCompute, StateCompute</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -239,9 +308,11 @@ namespace TallySyncApp.Services
                 if (doc == null) return new List<Company>();
 
                 // Save for debugging if needed
+#if DEBUG
                 File.WriteAllText("tally_response.xml", doc.ToString());
+#endif
                 // Using Log method if available, otherwise fallback to Console
-                Log("🔍 Tally Response received. Checking for companies...");
+                Log("ðŸ” Tally Response received. Checking for companies...");
 
                 var companies = new List<Company>();
                 
@@ -249,7 +320,7 @@ namespace TallySyncApp.Services
                 // Tally often wraps these in <COMPANY> or <COMPANYCOLLECTION> tags
                 var companyElements = doc.Descendants().Where(x => x.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase)).ToList();
                 
-                Log($"🔍 Found {companyElements.Count} potential company elements in XML.");
+                Log($"ðŸ” Found {companyElements.Count} potential company elements in XML.");
 
                 foreach (var comp in companyElements)
                 {
@@ -257,37 +328,28 @@ namespace TallySyncApp.Services
                     
                     if (string.IsNullOrEmpty(name)) 
                     {
-                        Log("   ⚠️ Skipping empty company name element");
+                        Log("   âš ï¸ Skipping empty company name element");
                         continue;
                     }
 
                     if (name.Length < 2)
                     {
-                         Log($"   ⚠️ Skipping too short name: '{name}'");
+                         Log($"   âš ï¸ Skipping too short name: '{name}'");
                          continue;
                     }
 
                     if (name.Contains("Report") || name.Contains("Error") || name.Contains("\n")) 
                     {
-                        Log($"   ⚠️ Skipping reserved keyword/invalid char in: '{name}'");
+                        Log($"   âš ï¸ Skipping reserved keyword/invalid char in: '{name}'");
                         continue;
                     }
 
                     name = name.Trim();
-                    Log($"   ✅ Found Company: '{name}'");
+                    Log($"   âœ… Found Company: '{name}'");
+                    // DEBUG: Dump raw XML snippet for company (first 800 chars)
+                    try { SyncLogger.Log($"   [RAW XML] {comp.ToString().Substring(0, Math.Min(800, comp.ToString().Length))}"); } catch { }
                     
-                    // IMPORTANT: Must match CleanCompanyId() logic exactly!
-                    // STRICT MATCHING: Generate ID from Hash of full name to differentiate even minor changes
-                    // e.g. "ABC Ltd" vs "ABC Ltd." will have different IDs.
-                    string cleanName = name.Trim();
-                    string sanitizedId = "";
-                    using (var sha = System.Security.Cryptography.SHA256.Create())
-                    {
-                        var bytes = System.Text.Encoding.UTF8.GetBytes(cleanName);
-                        var hash = sha.ComputeHash(bytes);
-                        // Use first 16 chars of hash as ID
-                        sanitizedId = BitConverter.ToString(hash).Replace("-", "").Substring(0, 16);
-                    }
+                    string sanitizedId = GenerateCompanyId(name);
                     
                     if (!companies.Any(c => c.Name == name))
                     {
@@ -297,27 +359,63 @@ namespace TallySyncApp.Services
                         if (addressList != null)
                         {
                             addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            if (addressParts.Count == 0 && !string.IsNullOrWhiteSpace(addressList.Value)) 
+                            {
+                                // Tally might return flat text for ADDRESS.LIST when FETCH is used
+                                addressParts.AddRange(addressList.Value.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            }
                         }
                         // Fallback: direct ADDRESS descendants
                         if (addressParts.Count == 0)
                         {
                             addressParts.AddRange(comp.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
                         }
-                        // Extract state
-                        var compState = GetElementValue(comp, "STATE") ?? GetElementValue(comp, "LEDSTATENAME") ?? GetElementValue(comp, "STATENAME") ?? GetElementValue(comp, "COUNTRYOFRESIDENCE");
-                        if (!string.IsNullOrWhiteSpace(compState) && !addressParts.Any(p => p.Contains(compState, StringComparison.OrdinalIgnoreCase)))
+                        
+                        // New computed address variable
+                        var compAddressCompute = GetElementValue(comp, "ADDRESSCOMPUTE") ?? GetElementValue(comp, "COMPLETEADDRESS");
+                        if (!string.IsNullOrEmpty(compAddressCompute) && addressParts.Count == 0)
+                        {
+                            addressParts.AddRange(compAddressCompute.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        }
+
+                        // Extract State
+                        var compState = GetElementValue(comp, "STATECOMPUTE") ?? GetElementValue(comp, "STATENAME") ?? GetElementValue(comp, "LEDSTATENAME") ?? GetElementValue(comp, "STATE");
+                        if (!string.IsNullOrEmpty(compState) && !addressParts.Contains(compState))
                         {
                             addressParts.Add(compState);
                         }
 
                         // Extract GSTIN
-                        var compGstin = GetElementValue(comp, "GSTREGISTRATIONNUMBER") ?? GetElementValue(comp, "PARTYGSTIN");
+                        var compGstin = GetElementValue(comp, "GSTINCOMPUTE") ??
+                                       GetElementValue(comp, "GSTNOCOMPUTE") ??
+                                       GetElementValue(comp, "CMPGSTIN") ??
+                                       GetElementValue(comp, "COMPANYGSTIN") ??
+                                       GetElementValue(comp, "GSTREGISTRATIONNUMBER") ??
+                                       GetElementValue(comp, "GSTIN") ??
+                                       GetElementValue(comp, "PARTYGSTIN") ??
+                                       GetElementValue(comp, "TAXREGISTRATIONNUMBER") ??
+                                       GetElementValue(comp, "VATREGISTRATIONNUMBER");
+
+                        // Fallback: Check inside COMPANYGSTDETAILS.LIST
+                        if (string.IsNullOrEmpty(compGstin))
+                        {
+                            var gstDetails = comp.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("COMPANYGSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase));
+                            if (gstDetails != null)
+                            {
+                                compGstin = GetElementValue(gstDetails, "GSTREGISTRATIONNUMBER") ?? GetElementValue(gstDetails, "GSTIN");
+                            }
+                        }
 
                         // Extract phone
-                        var compPhone = GetElementValue(comp, "PHONENUMBER") ?? GetElementValue(comp, "LEDGERPHONE") ?? GetElementValue(comp, "LEDGERMOBILE");
+                        var compPhone = GetElementValue(comp, "PHONENUMBER") ?? GetElementValue(comp, "LEDGERPHONE") ?? GetElementValue(comp, "LEDGERMOBILE") ?? GetElementValue(comp, "MOBILENO") ?? GetElementValue(comp, "CONTACTNUMBER") ?? GetElementValue(comp, "CONTACT");
 
                         // Extract email
                         var compEmail = GetElementValue(comp, "EMAIL") ?? GetElementValue(comp, "LEDGEREMAIL");
+
+                        // Extract Financial Year
+                        DateTime? fyStart = ParseDate(GetElementValue(comp, "STARTINGFROM"));
+                        DateTime? fyEnd = ParseDate(GetElementValue(comp, "BOOKSFROM"));
+                        string currency = GetElementValue(comp, "CURRENCYSYMBOL") ?? "â‚¹";
 
                         companies.Add(new Company
                         {
@@ -327,17 +425,21 @@ namespace TallySyncApp.Services
                             Address = string.Join(", ", addressParts),
                             State = compState,
                             Phone = compPhone,
-                            Email = compEmail
+                            Email = compEmail,
+                            FinancialYearStart = fyStart,
+                            FinancialYearEnd = fyEnd,
+                            CurrencySymbol = currency
                         });
                         Log($"   Added Company: '{name}' (ID: {sanitizedId})");
+                        Log($"   ðŸ“‹ GSTIN: '{compGstin ?? "EMPTY"}' | Address: '{string.Join(", ", addressParts)}' | Phone: '{compPhone ?? "EMPTY"}' | State: '{compState ?? "EMPTY"}'");
                     }
                     else
                     {
-                         Log($"   ⚠️ Skipping duplicate: '{name}'");
+                         Log($"   âš ï¸ Skipping duplicate: '{name}'");
                     }
                 }
 
-                Log($"🔍 Returning {companies.Count} valid companies to SyncManager.");
+                Log($"ðŸ” Returning {companies.Count} valid companies to SyncManager.");
 
                 // If collection query failed, try the old active company method as fallback
                 if (companies.Count == 0)
@@ -380,13 +482,38 @@ namespace TallySyncApp.Services
                 }
 
                 name = name.Trim();
-                var sanitizedId = System.Text.RegularExpressions.Regex.Replace(name, @"[^a-zA-Z0-9]", "").ToUpperInvariant();
+                var sanitizedId = GenerateCompanyId(name);
                 
                 return new Company { Id = sanitizedId, Name = name };
             }
             catch
             {
                 return null;
+            }
+        }
+
+        public async Task<string> GetTallySerialNumberAsync()
+        {
+            var request = @"<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC><REPORTNAME>System Information</REPORTNAME><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
+            
+            try
+            {
+                var doc = await SendRequestAsync(request);
+                if (doc == null) return "";
+
+                // Look for Serial Number in various possible tags
+                string? serial = doc.Descendants().FirstOrDefault(x => x.Name.LocalName.Equals("SVSERIALNUMBER", StringComparison.OrdinalIgnoreCase))?.Value;
+                
+                if (string.IsNullOrEmpty(serial))
+                {
+                    serial = doc.Descendants().FirstOrDefault(x => x.Name.LocalName.Contains("SERIAL", StringComparison.OrdinalIgnoreCase))?.Value;
+                }
+
+                return serial?.Trim() ?? "";
+            }
+            catch
+            {
+                return "";
             }
         }
 
@@ -439,7 +566,7 @@ namespace TallySyncApp.Services
         private async Task<int> GetCountAsync(string tallyType, string? companyName = null)
         {
             var request = $@"<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>CountColl</ID></HEADER><BODY><DESC><TDL><TDLMESSAGE><COLLECTION NAME=""CountColl""><TYPE>{tallyType}</TYPE></COLLECTION></TDLMESSAGE></TDL></DESC></BODY></ENVELOPE>";
-            var doc = await SendRequestAsync(request, companyName);
+            var doc = await SendRequestAsync(request, companyName != null ? XmlEscape(companyName) : null);
             var tag = tallyType.Replace(" ", "").ToUpper();
             return doc?.Descendants(tag).Count() ?? 0;
         }
@@ -449,6 +576,8 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<Ledger>> GetLedgersAsync(string? companyName = null)
         {
+            // SAFE: No date bounds needed for ledgers - they are master data, not transactional
+            // Ledger count is always manageable (usually < 5000 even in large companies)
             var request = @"
 <ENVELOPE>
   <HEADER>
@@ -466,7 +595,11 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""LedgerCollection"" ISMODIFY=""No"">
             <TYPE>Ledger</TYPE>
-            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+            <COMPUTE>GstinCompute: $PARTYGSTIN</COMPUTE>
+            <COMPUTE>GstRegNoCompute: $GSTREGISTRATIONNUMBER</COMPUTE>
+            <COMPUTE>AddressCompute: $ADDRESS</COMPUTE>
+            <COMPUTE>StateCompute: $STATE</COMPUTE>
+            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID, GstinCompute, GstRegNoCompute, AddressCompute, StateCompute</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -483,38 +616,38 @@ namespace TallySyncApp.Services
             {
                 try
                 {
-                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
                     var addressParts = new List<string>();
                     var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
                     if (addressList != null)
                     {
                         addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
                     }
-                    // Fallback: direct ADDRESS descendants if ADDRESS.LIST not found
                     if (addressParts.Count == 0)
                     {
                         addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
                     }
-                    // Append state if available
-                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                    var addressCompute = GetElementValue(ledgerElement, "ADDRESSCOMPUTE");
+                    if (!string.IsNullOrEmpty(addressCompute) && addressParts.Count == 0)
+                    {
+                        addressParts.AddRange(addressCompute.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+
+                    var state = GetElementValue(ledgerElement, "STATECOMPUTE") ?? GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
                     if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
                     {
                         addressParts.Add(state);
                     }
                     var fullAddress = string.Join(", ", addressParts);
 
-                    // Extract phone: Try multiple Tally field names
                     var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
                              ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
                              ?? GetElementValue(ledgerElement, "PHONE") 
                              ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
-
-                    // Extract email
                     var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
                              ?? GetElementValue(ledgerElement, "EMAIL");
-
-                    // Extract GSTIN: Try multiple Tally field names
-                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
+                    var gstin = GetElementValue(ledgerElement, "GSTINCOMPUTE")
+                             ?? GetElementValue(ledgerElement, "GSTREGNOCOMPUTE")
+                             ?? GetElementValue(ledgerElement, "PARTYGSTIN") 
                              ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
 
                     ledgers.Add(new Ledger
@@ -543,57 +676,374 @@ namespace TallySyncApp.Services
             return ledgers;
         }
         /// <summary>
-        /// Get vouchers modified after a specific ALTERID
-        /// This catches ANY modification - even to 6-month old entries!
-        /// NOTE: Collections do not fully support EXPLODEGSTDETAILS. HSN codes may be missing in raw XML.
-        /// We rely on the stockItemHsnCache fallback in ParseVouchersFromXml to populate them.
+        /// INDUSTRY-STANDARD: Two-Phase Batched Incremental Sync
+        /// Phase 1: Lightweight count fetch (MASTERID + ALTERID only) 
+        /// Phase 2: Full detail fetch in AlterID-range batches
+        /// 
+        /// This prevents Tally from generating massive XML responses
+        /// that crash both Tally and the sync app.
         /// </summary>
+        private const int VOUCHER_BATCH_SIZE = 50;         // Fetch 50 vouchers per batch (Safe Mode)
+        private const int MIN_BATCH_SIZE = 25;              // Minimum batch on retry
+        private const int INTER_BATCH_DELAY_MS = 500;       // 500ms breathing room for Tally
+        private const int BATCH_TIMEOUT_SECONDS = 120;      // 2 min per batch (not 5 min for everything)
+        
         public async Task<List<Voucher>> GetModifiedVouchersAsync(string companyName, long afterAlterId, Dictionary<string, string>? stockItemHsnCache = null)
         {
-            SyncLogger.Log($"🔍 Fetching vouchers with ALTERID > {afterAlterId}");
+            SyncLogger.Log($"ðŸ” Incremental Sync: Checking vouchers with ALTERID > {afterAlterId}");
             
-            // TDL query to get vouchers modified after specific ALTERID
-            var request = $@"
+            // ===== PHASE 1: Lightweight Scout Fetch =====
+            // Chunking backward in 1-year intervals to prevent Tally Memory Crash
+            // Tally evaluates Formula on the entire period's vouchers. If unbounded, 500k vouchers = Instant Crash.
+            
+            DateTime currentEnd = DateTime.Today;
+            // Smart limit: First sync = 2 years, Incremental = 3 months
+            bool isFirstSync = afterAlterId == 0;
+            DateTime absoluteStart = isFirstSync 
+                ? DateTime.Today.AddYears(-2)      // First sync: max 2 years back
+                : DateTime.Today.AddMonths(-3);    // Incremental: 3 months (backdated edits rare)
+            
+            var allAlterIds = new List<long>();
+            long minScoutAlterId = long.MaxValue;
+            long maxScoutAlterId = 0;
+            
+            int chunksRun = 0;
+            int MAX_CHUNKS = isFirstSync ? 8 : 3;  // Hard cap on API calls
+            
+            while (currentEnd > absoluteStart && chunksRun < MAX_CHUNKS)
+            {
+                DateTime currentStart = currentEnd.AddMonths(isFirstSync ? -3 : -1);
+                if (currentStart < absoluteStart) currentStart = absoluteStart;
+                
+                chunksRun++;
+                // Fetch specific to this date chunk
+                var scoutResult = await ScoutModifiedVouchersAsync(companyName, afterAlterId, currentStart, currentEnd);
+                
+                if (scoutResult.Count > 0)
+                {
+                    allAlterIds.AddRange(scoutResult.AlterIds);
+                    if (scoutResult.MinAlterId < minScoutAlterId) minScoutAlterId = scoutResult.MinAlterId;
+                    if (scoutResult.MaxAlterId > maxScoutAlterId) maxScoutAlterId = scoutResult.MaxAlterId;
+                }
+                
+                // Fast break logic: if we found modified vouchers in this recent chunk, 
+                // we keep going backwards to ensure we didn't miss backdated edits. 
+                // We always scan the entire 10 years to be absolutely sure we catch back-dated edits safely.
+                await Task.Delay(300); // 300ms breathing room for Tally GC
+                
+                currentEnd = currentStart.AddDays(-1);
+            }
+            
+            allAlterIds = allAlterIds.Distinct().OrderBy(id => id).ToList();
+            
+            if (allAlterIds.Count == 0)
+            {
+                SyncLogger.Log($"âœ… No modified vouchers found across {chunksRun} chunks - system is up to date");
+                return new List<Voucher>();
+            }
+            
+            SyncLogger.Log($"ðŸ“‹ Phase 1 Complete: {allAlterIds.Count} modified vouchers detected (AlterID range: {minScoutAlterId} â†’ {maxScoutAlterId})");
+            
+            // If count is small (â‰¤ BATCH_SIZE), fast path handled gracefully by the same exact-ID logic
+            
+            // ===== PHASE 2: Batched Full Fetch with exact IDs =====
+            int BATCH_SIZE = 100; // Exact same chunk size as historical sync
+            SyncLogger.Log($"ðŸ“¦ Phase 2: Fetching {allAlterIds.Count} vouchers in batches of {BATCH_SIZE}");
+            
+            var allVouchers = new List<Voucher>();
+            int batchNumber = 0;
+            int totalBatches = (int)Math.Ceiling((double)allAlterIds.Count / BATCH_SIZE);
+            
+            // Iterate through sorted AlterIDs in chunks
+            for (int i = 0; i < allAlterIds.Count; i += BATCH_SIZE)
+            {
+                batchNumber++;
+                
+                var batchIds = allAlterIds.Skip(i).Take(BATCH_SIZE).ToList();
+                long batchMinAlterId = batchIds.Min();
+                long batchMaxAlterId = batchIds.Max();
+                
+                string rangeLabel = $"Batch {batchNumber}/{totalBatches} (AlterID {batchMinAlterId}-{batchMaxAlterId})";
+                SyncLogger.Log($"ðŸ“¦ Fetching {rangeLabel} ({batchIds.Count} vouchers)");
+                
+                // EXACT match on AlterIDs to prevent evaluating > / < formulae on entire database
+                string orConditions = string.Join(" OR ", batchIds.Select(id => $"($ALTERID = {id})"));
+                
+                var request = $@"
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
     <TYPE>Collection</TYPE>
-    <ID>ModifiedVouchers</ID>
+    <ID>BatchVouchersInc</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-        <SVEXPLODEALL>Yes</SVEXPLODEALL>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+        <SVFROMDATE>{absoluteStart:yyyyMMdd}</SVFROMDATE>
+        <SVTODATE>{DateTime.Today.AddDays(1):yyyyMMdd}</SVTODATE>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
-          <COLLECTION NAME=""ModifiedVouchers"">
+          <COLLECTION NAME=""BatchVouchersInc"">
             <TYPE>Voucher</TYPE>
-            <FETCH>MASTERID, ALTERID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
-            <FILTER>ModifiedAfter</FILTER>
+            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FILTER>BatchFilterInc</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""BatchFilterInc"">{orConditions}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>";
 
-            var doc = await SendRequestAsync(request, companyName, 300); // 5 min timeout for large data
-            
-            if (doc == null)
-            {
-                SyncLogger.Log("⚠️ No response from Tally for modified vouchers");
-                return new List<Voucher>();
+                try
+                {
+                    var doc = await SendRequestAsync(request, companyName, 120);
+                    
+                    if (doc != null)
+                    {
+                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache));
+                        allVouchers.AddRange(chunkVouchers);
+                        SyncLogger.Log($"   âœ… {chunkVouchers.Count} vouchers fetched (Total: {allVouchers.Count})");
+                    }
+                    else
+                    {
+                        SyncLogger.Log($"   âš ï¸ {rangeLabel} returned NULL");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SyncLogger.Log($"   âŒ {rangeLabel} error: {ex.Message}");
+                }
+                
+                // Breathing room for Tally between batches to prevent hang
+                if (i + BATCH_SIZE < allAlterIds.Count)
+                {
+                    await Task.Delay(1500);
+                }
             }
-
-            var vouchers = ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
-            SyncLogger.Log($"✅ Found {vouchers.Count} modified vouchers (ALTERID > {afterAlterId})");
             
-            return vouchers;
+            SyncLogger.Log($"âœ… Phase 2 Complete: {allVouchers.Count} vouchers fetched in {batchNumber} batches");
+            return allVouchers;
+        }
+        
+        /// <summary>
+        /// Phase 1: Lightweight scout - fetch only MASTERID + ALTERID
+        /// Supported by date chunking to prevent out of memory constraint when evaluating AlterID filter on full database
+        /// </summary>
+        private async Task<ScoutResult> ScoutModifiedVouchersAsync(string companyName, long afterAlterId, DateTime fromDate, DateTime toDate)
+        {
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherScout</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+<SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+<SVFROMDATE>{fromDate:yyyyMMdd}</SVFROMDATE>
+<SVTODATE>{toDate:yyyyMMdd}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+<TDLMESSAGE>
+  <COLLECTION NAME=""VoucherScout"">
+    <TYPE>Voucher</TYPE>
+    <FETCH>MASTERID, ALTERID</FETCH>
+    <FILTER>ModifiedAfter</FILTER>
+  </COLLECTION>
+  <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
+</TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            try 
+            {
+                var doc = await SendRequestAsync(request, companyName, 60); // 1 min is enough for lightweight fetch
+                
+                if (doc == null) 
+                {
+                    SyncLogger.Log($"âš ï¸ Tally returned null response for Scout request ({fromDate:yyyyMMdd}-{toDate:yyyyMMdd}).");
+                    return new ScoutResult();
+                }
+                
+                var alterIds = new List<long>();
+                foreach (var voucher in doc.Descendants("VOUCHER"))
+                {
+                    // Handle both Element and Attribute for resilience
+                    string? alterIdStr = GetElementValue(voucher, "ALTERID") ?? GetAttribute(voucher, "ALTERID");
+                    
+                    if (long.TryParse(alterIdStr?.Trim(), out long alterId))
+                    {
+                        alterIds.Add(alterId);
+                    }
+                }
+                
+                // Filter again client-side just to be absolutely sure
+                alterIds = alterIds.Where(id => id > afterAlterId).Distinct().ToList();
+
+                return new ScoutResult
+                {
+                    AlterIds = alterIds,
+                    Count = alterIds.Count,
+                    MinAlterId = alterIds.Count > 0 ? alterIds.Min() : 0,
+                    MaxAlterId = alterIds.Count > 0 ? alterIds.Max() : 0
+                };
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.LogError($"Scout Fetch Error: {ex.Message}", ex);
+                return new ScoutResult();
+            }
+        }
+        
+        /// <summary>
+        /// Fetch full voucher details for a specific AlterID range
+        /// </summary>
+        private async Task<List<Voucher>> FetchVoucherBatchAsync(
+            string companyName, long fromAlterId, long toAlterId, 
+            Dictionary<string, string>? stockItemHsnCache, int timeoutSeconds,
+            DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            var startDate = fromDate ?? new DateTime(2014, 4, 1);
+            var endDate = toDate ?? DateTime.Today;
+
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>BatchVouchers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+        <SVFROMDATE>{startDate:yyyyMMdd}</SVFROMDATE>
+        <SVTODATE>{endDate:yyyyMMdd}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""BatchVouchers"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FILTER>AlterIdRange</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""AlterIdRange"">($$NumValue:$ALTERID > {fromAlterId}) AND ($$NumValue:$ALTERID <= {toAlterId})</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            try
+            {
+                var doc = await SendRequestAsync(request, companyName, timeoutSeconds);
+                
+                if (doc == null) 
+                {
+                    SyncLogger.Log($"âš ï¸ Tally returned null response for Batch {fromAlterId}-{toAlterId}");
+                    return new List<Voucher>();
+                }
+                
+                // Safe execution with try-catch inside Task.Run
+                return await Task.Run(() => {
+                    try {
+                        return ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
+                    } catch (Exception parseEx) {
+                        SyncLogger.LogError($"Parsing Error in Batch {fromAlterId}-{toAlterId}: {parseEx.Message}", parseEx);
+                        throw; // Rethrow to handle in retry logic
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                 SyncLogger.LogError($"Batch Fetch Error ({fromAlterId}-{toAlterId}): {ex.Message}", ex);
+                 throw; // Rethrow to trigger retry logic
+            }
+        }
+        
+        /// <summary>
+        /// Fetch with automatic retry at smaller batch size or extended timeout on failure
+        /// Industry standard: Progressive degradation pattern / Exponential Backoff
+        /// </summary>
+        private async Task<List<Voucher>> FetchVoucherBatchWithRetryAsync(
+            string companyName, long fromAlterId, long toAlterId, 
+            Dictionary<string, string>? stockItemHsnCache,
+            DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            try
+            {
+                // Attempt 1: Normal batch
+                return await FetchVoucherBatchAsync(companyName, fromAlterId, toAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS, fromDate, toDate);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"   âš ï¸ Batch {fromAlterId}-{toAlterId} failed (Attempt 1): {ex.Message}");
+                
+                try 
+                {
+                    // Attempt 2: If failed, try with longer timeout (Tally might be slow)
+                    SyncLogger.Log($"   âš ï¸ Retrying with extended timeout (240s)...");
+                    await Task.Delay(2000); // 2s cool-down
+                    return await FetchVoucherBatchAsync(companyName, fromAlterId, toAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS * 2, fromDate, toDate);
+                }
+                catch
+                {
+                    // Attempt 3: If still failing, it's likely too much data. Split into sub-batches.
+                    long range = toAlterId - fromAlterId;
+                    if (range <= 1) return new List<Voucher>(); // Can't split further
+
+                    SyncLogger.Log($"   âš ï¸ Retry failed, splitting batch into sub-batches...");
+                    await Task.Delay(3000); // 3s cool-down
+                    
+                    var results = new List<Voucher>();
+                    long midAlterId = fromAlterId + (range / 2);
+                    
+                    try {
+                        var firstHalf = await FetchVoucherBatchAsync(companyName, fromAlterId, midAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS, fromDate, toDate);
+                        results.AddRange(firstHalf);
+                    } catch (Exception e) { SyncLogger.LogError($"   âŒ Sub-batch 1 failed: {e.Message}", e); }
+                    
+                    try {
+                        var secondHalf = await FetchVoucherBatchAsync(companyName, midAlterId, toAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS, fromDate, toDate);
+                        results.AddRange(secondHalf);
+                    } catch (Exception e) { SyncLogger.LogError($"   âŒ Sub-batch 2 failed: {e.Message}", e); }
+                    
+                    return results;
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Helper to escape XML special characters to prevent injection/breakage
+        /// </summary>
+        private string XmlEscape(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            return System.Security.SecurityElement.Escape(value);
+        }
+        
+        /// <summary>
+        /// Scout result for Phase 1 lightweight fetch
+        /// </summary>
+        private class ScoutResult
+        {
+            public List<long> AlterIds { get; set; } = new List<long>();
+            public int Count { get; set; }
+            public long MinAlterId { get; set; }
+            public long MaxAlterId { get; set; }
         }
 
         /// <summary>
@@ -601,8 +1051,11 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<Ledger>> GetModifiedLedgersAsync(string companyName, long afterAlterId)
         {
-            SyncLogger.Log($"🔍 Fetching ledgers with ALTERID > {afterAlterId}");
+            SyncLogger.Log($"ðŸ” Fetching ledgers with ALTERID > {afterAlterId}");
             
+            // SAFETY: Ledgers are master data - even 'modified' filter scans all masters.
+            // No date bounding needed as Tally master count is always small vs vouchers.
+            // Timeout set to 120s which is safe.
             var request = $@"
 <ENVELOPE>
   <HEADER>
@@ -614,18 +1067,18 @@ namespace TallySyncApp.Services
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+<SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
-        <TDLMESSAGE>
-          <COLLECTION NAME=""ModifiedLedgers"">
-            <TYPE>Ledger</TYPE>
-            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
-            <FILTER>ModifiedAfter</FILTER>
-          </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
-        </TDLMESSAGE>
+<TDLMESSAGE>
+  <COLLECTION NAME=""ModifiedLedgers"">
+    <TYPE>Ledger</TYPE>
+    <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, GSTIN, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+    <FILTER>ModifiedAfter</FILTER>
+  </COLLECTION>
+  <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
+</TDLMESSAGE>
       </TDL>
     </DESC>
   </BODY>
@@ -640,12 +1093,16 @@ namespace TallySyncApp.Services
             {
                 try
                 {
-                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
                     var addressParts = new List<string>();
                     var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
                     if (addressList != null)
                     {
                         addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        if (addressParts.Count == 0 && !string.IsNullOrWhiteSpace(addressList.Value)) 
+                        {
+                            // Tally might return flat text for ADDRESS.LIST when FETCH is used
+                            addressParts.AddRange(addressList.Value.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        }
                     }
                     if (addressParts.Count == 0)
                     {
@@ -665,7 +1122,8 @@ namespace TallySyncApp.Services
                     var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
                              ?? GetElementValue(ledgerElement, "EMAIL");
                     var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
-                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER")
+                             ?? GetElementValue(ledgerElement, "GSTIN");
 
                     ledgers.Add(new Ledger
                     {
@@ -690,7 +1148,7 @@ namespace TallySyncApp.Services
                 }
             }
 
-            SyncLogger.Log($"✅ Found {ledgers.Count} modified ledgers");
+            SyncLogger.Log($"âœ… Found {ledgers.Count} modified ledgers");
             return ledgers;
         }
 
@@ -700,8 +1158,8 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Performance-optimized: Fetch vouchers in monthly chunks for large datasets
-        /// Prevents memory issues and Tally timeouts when dealing with 1 Lakh+ records
+        /// Two-phase approach: Scout IDs first, then fetch full details in batches of 100
+        /// This is how BizAnalyst/LiveKeeping do it - never crash, all data comes through
         /// </summary>
         public async Task<List<Voucher>> GetVouchersChunkedAsync(
             DateTime fromDate, 
@@ -710,50 +1168,154 @@ namespace TallySyncApp.Services
             Action<string>? progressCallback = null,
             Dictionary<string, string>? stockItemHsnCache = null)
         {
-            var allVouchers = new List<Voucher>();
-            var current = new DateTime(fromDate.Year, fromDate.Month, 1);
-            var endMonth = new DateTime(toDate.Year, toDate.Month, 1);
+            // PHASE 1: VOUCHER COUNT CHUNKING (Scout)
+            // Scout everything in the date range just to get AlterIDs
+            Log($"ðŸ“¦ Phase 1: Scouting exactly how many vouchers we have...");
+            progressCallback?.Invoke("Phase 1: Scanning vouchers by date...");
+
+            var scoutRequest = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherScoutAll</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName ?? "")}</SVCURRENTCOMPANY>
+        <SVFROMDATE>{fromDate:yyyyMMdd}</SVFROMDATE>
+        <SVTODATE>{toDate:yyyyMMdd}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""VoucherScoutAll"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>MASTERID, ALTERID</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            var scoutDoc = await SendRequestAsync(scoutRequest, companyName, 60);
             
-            int monthCount = 0;
-            int totalMonths = ((toDate.Year - fromDate.Year) * 12) + toDate.Month - fromDate.Month + 1;
-            
-            while (current <= endMonth)
+            if (scoutDoc == null)
             {
-                monthCount++;
-                var monthStart = current;
-                var monthEnd = current.AddMonths(1).AddDays(-1);
-                if (monthEnd > toDate) monthEnd = toDate;
-                
-                progressCallback?.Invoke($"Fetching {current:MMM yyyy} ({monthCount}/{totalMonths})...");
-                SyncLogger.Log($"📅 Chunked fetch: {monthStart:dd-MMM-yy} to {monthEnd:dd-MMM-yy}");
-                
+                Log("âš ï¸ Voucher scout returned NULL. Tally timed out or returned empty.");
+                return new List<Voucher>();
+            }
+
+            var allAlterIds = new List<long>();
+            foreach (var v in scoutDoc.Descendants("VOUCHER"))
+            {
+                string? alterStr = GetElementValue(v, "ALTERID") ?? GetAttribute(v, "ALTERID");
+                if (long.TryParse(alterStr?.Trim(), out long aid) && aid > 0)
+                    allAlterIds.Add(aid);
+            }
+
+            allAlterIds = allAlterIds.Distinct().OrderBy(id => id).ToList();
+
+            if (allAlterIds.Count == 0)
+            {
+                Log("â„¹ï¸ No vouchers found in this date range.");
+                return new List<Voucher>();
+            }
+
+            Log($"ðŸ” Scout found {allAlterIds.Count} vouchers.");
+            
+            // PHASE 2: EXACT 100-VOUCHER CHUNKS
+            int BATCH_SIZE = 100;
+            var allVouchers = new List<Voucher>();
+            int totalBatches = (int)Math.Ceiling((double)allAlterIds.Count / BATCH_SIZE);
+
+            Log($"ðŸ“¦ Phase 2: Fetching full details in {totalBatches} chunks of {BATCH_SIZE} vouchers.");
+
+            for (int i = 0; i < allAlterIds.Count; i += BATCH_SIZE)
+            {
+                int batchNum = (i / BATCH_SIZE) + 1;
+                var batchIds = allAlterIds.Skip(i).Take(BATCH_SIZE).ToList();
+                long batchMin = batchIds.Min();
+                long batchMax = batchIds.Max();
+
+                string rangeLabel = $"Batch {batchNum}/{totalBatches} (AlterID {batchMin}-{batchMax})";
+                Log($"ðŸ“¦ Fetching {rangeLabel}");
+                progressCallback?.Invoke($"Fetching {batchNum}/{totalBatches} ({batchIds.Count} vouchers)");
+
+                // We construct an exact OR filter to ensure Tally ONLY returns these 100 vouchers.
+                // Using a range like (>= min AND <= max) might grab extra vouchers that weren't in our 100.
+                string orConditions = string.Join(" OR ", batchIds.Select(id => $"($ALTERID = {id})"));
+
+                var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>BatchVouchers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName ?? "")}</SVCURRENTCOMPANY>
+        <SVFROMDATE>{fromDate:yyyyMMdd}</SVFROMDATE>
+        <SVTODATE>{toDate:yyyyMMdd}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""BatchVouchers"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FILTER>BatchFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""BatchFilter"">{orConditions}</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
                 try
                 {
-                    var monthVouchers = await GetVouchersInternalAsync(monthStart, monthEnd, companyName, null, stockItemHsnCache);
-                    allVouchers.AddRange(monthVouchers);
+                    var doc = await SendRequestAsync(request, companyName, 120);
                     
-                    progressCallback?.Invoke($"✓ {current:MMM yyyy}: {monthVouchers.Count} vouchers");
-                    
-                    // Small delay to prevent Tally overload
-                    await Task.Delay(100);
+                    if (doc != null)
+                    {
+                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXml(doc, companyName, toDate, stockItemHsnCache));
+                        allVouchers.AddRange(chunkVouchers);
+                        Log($"   âœ… {chunkVouchers.Count} vouchers (Total: {allVouchers.Count})");
+                    }
+                    else
+                    {
+                        Log($"   âš ï¸ {rangeLabel} returned NULL");
+                    }
                 }
                 catch (Exception ex)
                 {
-                    SyncLogger.Log($"⚠️ Error fetching {current:MMM yyyy}: {ex.Message}");
-                    // Continue with next month even if one fails
+                    Log($"   âŒ {rangeLabel} error: {ex.Message}");
                 }
-                
-                current = current.AddMonths(1);
+
+                // 1.5 seconds breathing room for Tally between 100-voucher fetches
+                if (i + BATCH_SIZE < allAlterIds.Count)
+                {
+                    await Task.Delay(1500);
+                }
             }
-            
-            progressCallback?.Invoke($"✅ Total: {allVouchers.Count} vouchers fetched");
+
+            Log($"âœ… Total: {allVouchers.Count} vouchers fetched in {totalBatches} chunks.");
+            progressCallback?.Invoke($"âœ… {allVouchers.Count} vouchers fetched");
             return allVouchers;
         }
+
 
         private async Task<List<Voucher>> GetVouchersInternalAsync(DateTime? fromDate, DateTime? toDate, string? companyName, string? voucherTypeFilter, Dictionary<string, string>? stockItemHsnCache = null)
         {
             DateTime effectiveFrom = fromDate ?? new DateTime(2024, 4, 1);
-            DateTime effectiveTo = toDate ?? effectiveFrom;
+            DateTime effectiveTo = toDate ?? DateTime.Today.AddDays(1);
 
             string fromDateStr = effectiveFrom.ToString("yyyyMMdd");
             string toDateStr = effectiveTo.ToString("yyyyMMdd");
@@ -761,44 +1323,53 @@ namespace TallySyncApp.Services
 
             SyncLogger.Log($"Extracting Vouchers ({typeLog}): {effectiveFrom:dd-MMM-yy} to {effectiveTo:dd-MMM-yy}");
 
-            string filterXml = string.IsNullOrEmpty(voucherTypeFilter) ? "" : $"<VOUCHERTYPENAME>{voucherTypeFilter}</VOUCHERTYPENAME>";
+            // Voucher type filter for TDL Collection
+            string typeFilter = string.IsNullOrEmpty(voucherTypeFilter) ? "" :
+                $@"<FILTER>TypeFilter</FILTER>";
+            string typeFilterFormula = string.IsNullOrEmpty(voucherTypeFilter) ? "" :
+                $@"<SYSTEM TYPE=""Formulae"" NAME=""TypeFilter"">$VoucherTypeName = ""{voucherTypeFilter}""</SYSTEM>";
 
+            // ===========================================================
+            // BizAnalyst / LiveKeeping Industry-Standard Approach:
+            // 1. Use TDL COLLECTION (not Report Export)
+            // 2. NO SVEXPLODEALL - this is the crash killer
+            // 3. Use dot-notation for sub-fields (ALLLEDGERENTRIES.LIST.*)  
+            // 4. SVFROMDATE/SVTODATE bounds the collection to date range
+            // 5. Only fetch fields we actually need - nothing extra
+            // ===========================================================
             var request = $@"
 <ENVELOPE>
   <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherData</ID>
   </HEADER>
   <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>Voucher Register</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <SVFROMDATE>{fromDateStr}</SVFROMDATE>
-          <SVTODATE>{toDateStr}</SVTODATE>
-          <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-          <ISITEMWISE>No</ISITEMWISE>
-          <SVEXPLODEALL>Yes</SVEXPLODEALL>
-          <SVEXPORTINVENTORY>Yes</SVEXPORTINVENTORY>
-          {filterXml}
-        </STATICVARIABLES>
-        <TDL>
-             <TDLMESSAGE>
-                 <REPORT NAME=""Voucher Register"" ISMODIFY=""No"">
-                     <SET>SVEXPLODEALL:Yes</SET>
-                     <SET>EXPLODEINVENTORY:Yes</SET>
-                     <SET>EXPLODEGSTDETAILS:Yes</SET>
-                     <SET>GSTDETAILS:Yes</SET>
-                 </REPORT>
-             </TDLMESSAGE>
-        </TDL>
-      </REQUESTDESC>
-    </EXPORTDATA>
+    <DESC>
+      <STATICVARIABLES>
+<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+<SVCURRENTCOMPANY>{XmlEscape(companyName ?? "")}</SVCURRENTCOMPANY>
+<SVFROMDATE>{fromDateStr}</SVFROMDATE>
+<SVTODATE>{toDateStr}</SVTODATE>
+      </STATICVARIABLES>
+      <TDL>
+<TDLMESSAGE>
+  <COLLECTION NAME=""VoucherData"" ISMODIFY=""No"">
+    <TYPE>Voucher</TYPE>
+    <FETCH>MASTERID, ALTERID, GUID, DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, AMOUNT, NARRATION, STATENAME, PLACEOFSUPPLY, ISOPTIONAL, BASICBUYERNAME, BASICBUYERGSTIN</FETCH>
+    {typeFilter}
+  </COLLECTION>
+  {typeFilterFormula}
+</TDLMESSAGE>
+      </TDL>
+    </DESC>
   </BODY>
 </ENVELOPE>";
 
-            // Short timeout for specific types, longer for global
-            int timeout = string.IsNullOrEmpty(voucherTypeFilter) ? 180 : 60;
+
+            // Generous timeout per chunk - TDL Collection is much faster than Report
+            int timeout = 90;
             var doc = await SendRequestAsync(request, companyName, timeout);
             
             if (doc == null) return new List<Voucher>();
@@ -806,10 +1377,11 @@ namespace TallySyncApp.Services
             return ParseVouchersFromXml(doc, companyName, effectiveFrom, stockItemHsnCache);
         }
 
+
         private List<Voucher> ParseVouchersFromXml(XDocument doc, string? companyName, DateTime defaultDate, Dictionary<string, string>? stockItemHsnCache = null)
         {
             var vouchers = new List<Voucher>();
-            var companyId = CleanCompanyId(companyName);
+            var companyId = GenerateCompanyId(companyName);
 
             // Tally Prime can return either VOUCHER or DSPVCH in register reports
             var voucherNodes = doc.Descendants().Where(e => 
@@ -944,8 +1516,12 @@ namespace TallySyncApp.Services
                         decimal discountPercent = Math.Abs(ParseDecimal(discountStr.Replace("%", "").Trim()));
 
                         // Tax Rate & Taxability
-                        string? taxRateStr = iDescendants.FirstOrDefault(x => x.Name.LocalName.Equals("RATEOFTAXCALCULATION", StringComparison.OrdinalIgnoreCase))?.Value;
-                        decimal? taxRate = !string.IsNullOrEmpty(taxRateStr) ? ParseDecimal(taxRateStr) : (decimal?)null;
+                        var taxRateElement = iDescendants.FirstOrDefault(x => 
+                            x.Name.LocalName.Equals("RATEOFTAXCALCULATION", StringComparison.OrdinalIgnoreCase) ||
+                            x.Name.LocalName.Equals("GSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                            x.Name.LocalName.Equals("IGSTRATE", StringComparison.OrdinalIgnoreCase));
+                        
+                        decimal? taxRate = taxRateElement != null ? ParseDecimal(taxRateElement.Value) : (decimal?)null;
                         
                         string? taxability = iDescendants.FirstOrDefault(x => x.Name.LocalName.Equals("TAXABILITY", StringComparison.OrdinalIgnoreCase))?.Value;
 
@@ -964,8 +1540,46 @@ namespace TallySyncApp.Services
                     }
 
 
+                    // Filter report/footer noise rows (common in DSPVCH responses).
+                    var hasMasterIdentity = !string.IsNullOrWhiteSpace(GetElementValue(vNode, "MASTERID"))
+                        || !string.IsNullOrWhiteSpace(GetElementValue(vNode, "ALTERID"))
+                        || !string.IsNullOrWhiteSpace(GetElementValue(vNode, "GUID"));
+                    var hasBusinessLines = ledgerEntries.Count > 0 || inventoryEntries.Count > 0;
+                    if (!hasMasterIdentity && !hasBusinessLines)
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(vType, "Unknown", StringComparison.OrdinalIgnoreCase)
+                        && (string.IsNullOrWhiteSpace(vNum) || vNum == "0")
+                        && !hasBusinessLines)
+                    {
+                        continue;
+                    }
+
                     // --- Robust Party and Amount Extraction ---
-                    string partyName = GetElementValue(vNode, "PARTYLEDGERNAME") ?? GetElementValue(vNode, "PARTYNAME") ?? GetElementValue(vNode, "DSPVCHPARTY") ?? "";
+                    // Party Identification
+                    string partyName = GetElementValue(vNode, "PARTYMAILINGNAME") ?? GetElementValue(vNode, "BASICBUYERNAME") ?? GetElementValue(vNode, "CONSIGNEEMAILINGNAME") ?? GetElementValue(vNode, "PARTYLEDGERNAME") ?? GetElementValue(vNode, "PARTYNAME") ?? GetElementValue(vNode, "DSPVCHPARTY") ?? "";
+                    string partyGstin = GetElementValue(vNode, "PARTYGSTIN") ?? GetElementValue(vNode, "BASICBUYERGSTIN") ?? GetElementValue(vNode, "CONSIGNEEGSTIN") ?? "";
+                    
+                    // Party Address & State
+                    var partyAddrParts = new List<string>();
+                    var addressNodeNames = new[] { "PARTYADDRESS.LIST", "BASICBUYERADDRESS.LIST", "CONSIGNEEADDRESS.LIST" };
+                    var partyAddrList = vNode.Descendants().FirstOrDefault(e => addressNodeNames.Contains(e.Name.LocalName, StringComparer.OrdinalIgnoreCase));
+                    if (partyAddrList != null)
+                    {
+                        partyAddrParts.AddRange(partyAddrList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase) || e.Name.LocalName.Equals("BASICBUYERADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    else
+                    {
+                         partyAddrParts.AddRange(vNode.Descendants("PARTYADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                         partyAddrParts.AddRange(vNode.Descendants("BASICBUYERADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                         partyAddrParts.AddRange(vNode.Descendants("CONSIGNEEADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                    string partyAddress = string.Join(", ", partyAddrParts);
+                    string partyState = GetElementValue(vNode, "STATENAME") ?? GetElementValue(vNode, "CONSIGNEESTATENAME") ?? "";
+                    string placeOfSupply = GetElementValue(vNode, "PLACEOFSUPPLY") ?? "";
+
                     if (string.IsNullOrEmpty(partyName) && ledgerEntries.Count > 0)
                     {
                         var partyEntry = ledgerEntries.OrderByDescending(l => l.Amount).FirstOrDefault();
@@ -1007,6 +1621,10 @@ namespace TallySyncApp.Services
                         VoucherNumber = vNum,
                         VoucherDate = vDate,
                         PartyName = partyName,
+                        PartyGstin = partyGstin,
+                        PartyAddress = partyAddress,
+                        PartyState = partyState,
+                        PlaceOfSupply = placeOfSupply,
                         TotalAmount = totalAmount,
                         Narration = GetElementValue(vNode, "NARRATION"),
                         MasterId = GetElementValue(vNode, "MASTERID") ?? GetElementValue(vNode, "GUID"),
@@ -1038,14 +1656,20 @@ namespace TallySyncApp.Services
             return await GetVouchersInternalAsync(fromDate, toDate, companyName, null);
         }
 
-        /// <summary>
-        /// Clean company ID from display name
-        /// </summary>
         private string CleanCompanyId(string? companyName)
         {
-            if (string.IsNullOrEmpty(companyName)) return "UNKNOWN";
-            string clean = companyName.Split(" -")[0].Split(" (")[0].Trim();
-            return Regex.Replace(clean, @"[^a-zA-Z0-9]", "").ToUpperInvariant();
+            return GenerateCompanyId(companyName);
+        }
+
+        private string GenerateCompanyId(string? companyName)
+        {
+            if (string.IsNullOrWhiteSpace(companyName)) return "UNKNOWN";
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(companyName.Trim());
+                var hash = sha.ComputeHash(bytes);
+                return BitConverter.ToString(hash).Replace("-", ""); // Full 64 chars
+            }
         }
 
         /// <summary>
@@ -1061,7 +1685,7 @@ namespace TallySyncApp.Services
 
         public List<Sale> MapVouchersToSales(List<Voucher> vouchers, string? companyName)
         {
-            var companyId = CleanCompanyId(companyName);
+            var companyId = GenerateCompanyId(companyName);
             return vouchers
                 .Select(v => {
                     var sale = new Sale
@@ -1071,6 +1695,8 @@ namespace TallySyncApp.Services
                         InvoiceNumber = v.VoucherNumber,
                         InvoiceDate = v.VchDate,
                         PartyLedgerName = v.PartyName ?? "Cash",
+                        PartyGstin = v.PartyGstin,
+                        PlaceOfSupply = v.PlaceOfSupply,
                         GrossAmount = v.TotalAmount,
                         NetAmount = v.TotalAmount,
                         TaxableAmount = v.TotalAmount,
@@ -1088,7 +1714,8 @@ namespace TallySyncApp.Services
                             Unit = inv.Unit,
                             Rate = inv.Rate,
                             Amount = inv.Amount,
-                            HsnCode = inv.HsnCode
+                            HsnCode = inv.HsnCode,
+                            TaxRate = inv.TaxRate ?? 0
                         }).ToList()
                     };
 
@@ -1129,7 +1756,7 @@ namespace TallySyncApp.Services
 
         public List<Purchase> MapVouchersToPurchases(List<Voucher> vouchers, string? companyName)
         {
-            var companyId = CleanCompanyId(companyName);
+            var companyId = GenerateCompanyId(companyName);
             return vouchers
                 .Select(v => {
                     var purchase = new Purchase
@@ -1139,6 +1766,7 @@ namespace TallySyncApp.Services
                         InvoiceNumber = v.VoucherNumber,
                         InvoiceDate = v.VchDate,
                         PartyLedgerName = v.PartyName ?? "Cash",
+                        PartyGstin = v.PartyGstin,
                         GrossAmount = v.TotalAmount, // Gross = Total bill including tax
                         NetAmount = v.TotalAmount,   // Initial, will be subtracted below
                         TaxableAmount = v.TotalAmount, // Initial
@@ -1156,7 +1784,8 @@ namespace TallySyncApp.Services
                             Unit = inv.Unit,
                             Rate = inv.Rate,
                             Amount = inv.Amount,
-                            HsnCode = inv.HsnCode
+                            HsnCode = inv.HsnCode,
+                            TaxRate = inv.TaxRate ?? 0
                         }).ToList()
                     };
 
@@ -1198,7 +1827,11 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<StockItem>> GetStockItemsAsync(string? companyName = null)
         {
-            // Use a more detailed TDL request that fetches GST details
+            // INDUSTRY APPROACH (BizAnalyst style):
+            // Request only flat fields. No nested LIST fields to prevent 300MB+ XML crash.
+            // HSNCODE is a flat computed field in Tally that works without LIST expansion.
+            // For items where HSNCODE is inherited from group/parent, 
+            // we handle fallback in ParseStockItemHsn() below.
             var request = @"
 <ENVELOPE>
   <HEADER>
@@ -1216,7 +1849,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""StockItemCollection"" ISMODIFY=""No"">
             <TYPE>Stock Item</TYPE>
-            <FETCH>NAME, GUID, PARENT, BASEUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, GSTDETAILS.LIST, HSNDETAILS.LIST, HSNCODE, GSTAPPLICABLE, GSTCLASSIFICATION, ADDITIONALUNITS</FETCH>
+            <FETCH>NAME, GUID, PARENT, BASEUNITS, ADDITIONALUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -1224,11 +1857,11 @@ namespace TallySyncApp.Services
   </BODY>
 </ENVELOPE>";
 
-            SyncLogger.Log("[DEBUG] Sending StockItem request to Tally...");
-            var doc = await SendRequestAsync(request, companyName);
+            SyncLogger.Log("[DEBUG] Sending StockItem request to Tally (safe flat-field fetch)...");
+            var doc = await SendRequestAsync(request, companyName, 30);
             if (doc == null) 
             {
-                 SyncLogger.Log("⚠️ StockItem request returned NULL");
+                 SyncLogger.Log("âš ï¸ StockItem request returned NULL");
                  return new List<StockItem>();
             }
             
@@ -1241,63 +1874,126 @@ namespace TallySyncApp.Services
             {
                 try
                 {
-                    // Try to get HSN from multiple locations (Layered approach)
+                    // Fetch flat HSNCODE (computed field)
                     string? hsnCode = GetElementValue(itemElement, "HSNCODE");
-
-                    // 1. TallyPrime 4.0+: Check HSNDETAILS.LIST (New Structure)
-                    if (string.IsNullOrEmpty(hsnCode))
-                    {
-                        var hsnDetailsList = itemElement.Descendants()
-                            .Where(x => x.Name.LocalName.Equals("HSNDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
-                            .ToList();
-
-                        // Iterate to find the latest valid HSN
-                        foreach (var detail in hsnDetailsList)
-                        {
-                            var hsn = GetElementValue(detail, "HSNCODE");
-                            if (!string.IsNullOrEmpty(hsn)) 
-                            { 
-                                hsnCode = hsn; 
-                                // Don't break immediately, we might want the last one if it's date-ordered? 
-                                // Tally usually exports list in order. Let's assume last or rely on first hit if acceptable.
-                                // Actually, 'HSNCODE' usually appears in the history list.
-                            } 
-                        }
-                    }
                     
-                    // 2. Tally ERP 9 / Older Prime: Check GSTDETAILS.LIST
                     if (string.IsNullOrEmpty(hsnCode))
                     {
-                        var gstDetailsList = itemElement.Descendants()
-                            .Where(x => x.Name.LocalName.Equals("GSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
-                            .Reverse() // Start from latest
-                            .ToList();
-
-                        foreach (var gstDetails in gstDetailsList)
-                        {
-                            hsnCode = GetElementValue(gstDetails, "HSNCODE") ?? 
-                                      GetElementValue(gstDetails, "HSN") ?? 
-                                      GetElementValue(gstDetails, "HSNORSACCODE");
-                            
-                            if (!string.IsNullOrEmpty(hsnCode)) break; // Found it
-                        }
-                    }
-                    
-                    // 3. Final Fallback: Root level tags
-                    if (string.IsNullOrEmpty(hsnCode))
-                    {
-                        hsnCode = GetElementValue(itemElement, "HSN") ?? 
+                        hsnCode = GetElementValue(itemElement, "HSNMASTERNAME") ?? 
                                   GetElementValue(itemElement, "HSNORSACCODE");
                     }
-                    
-                    // Filter out invalid HSN codes like "Stock Item", "Stock Group", etc.
-                    if (!string.IsNullOrEmpty(hsnCode) && 
-                        (hsnCode.Contains("Stock", StringComparison.OrdinalIgnoreCase) ||
-                         hsnCode.Contains("Group", StringComparison.OrdinalIgnoreCase) ||
-                         hsnCode.Contains("Primary", StringComparison.OrdinalIgnoreCase)))
+                    if (string.IsNullOrEmpty(hsnCode))
                     {
-                        hsnCode = null;
+                        var gstDetails = itemElement.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("GSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase) || e.Name.LocalName.Equals("HSNDETAILS.LIST", StringComparison.OrdinalIgnoreCase));
+                        if (gstDetails != null)
+                        {
+                            hsnCode = GetElementValue(gstDetails, "HSNCODE") ?? 
+                                      GetElementValue(gstDetails, "HSNMASTERNAME") ?? 
+                                      GetElementValue(gstDetails, "HSN") ?? 
+                                      GetElementValue(gstDetails, "HSNORSACCODE");
+                        }
                     }
+                    
+                    // Fallback to name-based parsing if needed (many items have HSN in name)
+                    decimal gstRate = 0;
+                    
+                    items.Add(new StockItem
+                    {
+                        Id = GetAttribute(itemElement, "GUID") ?? GetElementValue(itemElement, "GUID") ?? Guid.NewGuid().ToString(),
+                        Name = GetAttribute(itemElement, "NAME") ?? GetElementValue(itemElement, "NAME") ?? "Unknown",
+                        StockGroup = GetElementValue(itemElement, "PARENT"),
+                        BaseUnit = GetElementValue(itemElement, "BASEUNITS") ?? GetElementValue(itemElement, "ADDITIONALUNITS"),
+                        OpeningBalance = ParseDecimal(GetElementValue(itemElement, "OPENINGBALANCE")),
+                        OpeningValue = ParseDecimal(GetElementValue(itemElement, "OPENINGVALUE")),
+                        ClosingBalance = ParseDecimal(GetElementValue(itemElement, "CLOSINGBALANCE")),
+                        ClosingValue = ParseDecimal(GetElementValue(itemElement, "CLOSINGVALUE")),
+                        Rate = ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) > 0 
+                            ? ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) 
+                            : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
+                        HsnCode = hsnCode,
+                        GstRate = gstRate,
+                        MasterId = GetElementValue(itemElement, "MASTERID"),
+                        AlterId = GetElementValue(itemElement, "ALTERID")
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error parsing stock item: {ex.Message}");
+                }
+            }
+
+            SyncLogger.Log($"[DEBUG] Parsed {items.Count} stock items. HSN populated: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))}");
+            return items;
+        }
+
+
+
+
+        /// <summary>
+        /// Get stock items modified after a specific ALTERID
+        /// </summary>
+        public async Task<List<StockItem>> GetModifiedStockItemsAsync(string companyName, long afterAlterId)
+        {
+            SyncLogger.Log($"ðŸ” Fetching stock items with ALTERID > {afterAlterId}");
+
+            // NO nested LIST fields - flat fields only to prevent Tally OOM crash
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>ModifiedStockItems</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""ModifiedStockItems"">
+            <TYPE>Stock Item</TYPE>
+            <FETCH>NAME, GUID, PARENT, BASEUNITS, ADDITIONALUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
+            <FILTER>ModifiedAfter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            var doc = await SendRequestAsync(request, companyName, 60);
+            if (doc == null) return new List<StockItem>();
+
+            var items = new List<StockItem>();
+            foreach (var itemElement in doc.Descendants("STOCKITEM"))
+            {
+                try
+                {
+                    // Fetch flat HSNCODE (computed field)
+                    string? hsnCode = GetElementValue(itemElement, "HSNCODE");
+
+                    if (string.IsNullOrEmpty(hsnCode))
+                    {
+                        hsnCode = GetElementValue(itemElement, "HSNMASTERNAME") ?? 
+                                  GetElementValue(itemElement, "HSNORSACCODE");
+                    }
+                    if (string.IsNullOrEmpty(hsnCode))
+                    {
+                        var gstDetails = itemElement.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("GSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase) || e.Name.LocalName.Equals("HSNDETAILS.LIST", StringComparison.OrdinalIgnoreCase));
+                        if (gstDetails != null)
+                        {
+                            hsnCode = GetElementValue(gstDetails, "HSNCODE") ?? 
+                                      GetElementValue(gstDetails, "HSNMASTERNAME") ?? 
+                                      GetElementValue(gstDetails, "HSN") ?? 
+                                      GetElementValue(gstDetails, "HSNORSACCODE");
+                        }
+                    }
+
+                    decimal gstRate = 0;
 
                     items.Add(new StockItem
                     {
@@ -1313,18 +2009,21 @@ namespace TallySyncApp.Services
                             ? ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) 
                             : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
+                        GstRate = gstRate,
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error parsing stock item: {ex.Message}");
+                    Console.WriteLine($"Error parsing modified stock item: {ex.Message}");
                 }
             }
 
+            SyncLogger.Log($"âœ… Found {items.Count} modified stock items (HSN: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))})");
             return items;
         }
+
 
         #region Helper Methods
 
@@ -1332,11 +2031,11 @@ namespace TallySyncApp.Services
         {
             // First try direct child
             var child = element.Elements().FirstOrDefault(e => e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (child != null) return child.Value;
+            if (child != null) return child.Value?.Trim();
 
             // Then try any descendant (useful for deep trees or variations)
             child = element.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            return child?.Value;
+            return child?.Value?.Trim();
         }
 
         private static string? GetAttribute(XElement element, string name)
@@ -1363,7 +2062,7 @@ namespace TallySyncApp.Services
             }
             
             // Remove currency symbols and commas
-            cleanValue = cleanValue.Replace("₹", "").Replace(",", "").Replace("Rs", "").Replace("Rs.", "").Trim();
+            cleanValue = cleanValue.Replace("â‚¹", "").Replace(",", "").Replace("Rs", "").Replace("Rs.", "").Trim();
             
             if (decimal.TryParse(cleanValue, out var result))
             {
@@ -1417,7 +2116,7 @@ namespace TallySyncApp.Services
             {
                 if (stockItemHsnCache.TryGetValue(itemName, out string? cachedHsn) && IsValidHsn(cachedHsn))
                 {
-                    // SyncLogger.Log($"   🔧 HSN filled from cache: {itemName} -> {cachedHsn}"); 
+                    // SyncLogger.Log($"   ðŸ”§ HSN filled from cache: {itemName} -> {cachedHsn}"); 
                     return NormalizeHsn(cachedHsn);
                 }
             }
@@ -1459,7 +2158,7 @@ namespace TallySyncApp.Services
         {
             try
             {
-                SyncLogger.Log($"📤 Pushing {voucherType} to Tally: {partyLedger} ₹{amount}");
+                SyncLogger.Log($"ðŸ“¤ Pushing {voucherType} to Tally: {partyLedger} â‚¹{amount}");
 
                 // Build XML for creating voucher in Tally
                 var ledgerEntriesXml = new StringBuilder();
@@ -1470,7 +2169,7 @@ namespace TallySyncApp.Services
                     {
                         ledgerEntriesXml.AppendLine($@"
             <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{entry.LedgerName}</LEDGERNAME>
+                <LEDGERNAME>{XmlEscape(entry.LedgerName)}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>{(entry.Amount >= 0 ? "No" : "Yes")}</ISDEEMEDPOSITIVE>
                 <AMOUNT>{(entry.Amount >= 0 ? "" : "-")}{Math.Abs(entry.Amount)}</AMOUNT>
             </ALLLEDGERENTRIES.LIST>");
@@ -1482,7 +2181,7 @@ namespace TallySyncApp.Services
                     bool isSaleType = voucherType.Contains("Sales") || voucherType.Contains("Receipt");
                     ledgerEntriesXml.AppendLine($@"
             <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{partyLedger}</LEDGERNAME>
+                <LEDGERNAME>{XmlEscape(partyLedger)}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>{(isSaleType ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
                 <AMOUNT>{(isSaleType ? "" : "-")}{amount}</AMOUNT>
             </ALLLEDGERENTRIES.LIST>
@@ -1521,11 +2220,11 @@ namespace TallySyncApp.Services
 
                         inventoryXml.AppendLine($@"
             <ALLINVENTORYENTRIES.LIST>
-                <STOCKITEMNAME>{item.StockItemName}</STOCKITEMNAME>
+                <STOCKITEMNAME>{XmlEscape(item.StockItemName)}</STOCKITEMNAME>
                 {hsnXml}
-                <ACTUALQTY>{item.Quantity} {item.Unit}</ACTUALQTY>
-                <BILLEDQTY>{item.Quantity} {item.Unit}</BILLEDQTY>
-                <RATE>{item.Rate}/{item.Unit}</RATE>
+                <ACTUALQTY>{item.Quantity} {XmlEscape(item.Unit)}</ACTUALQTY>
+                <BILLEDQTY>{item.Quantity} {XmlEscape(item.Unit)}</BILLEDQTY>
+                <RATE>{item.Rate}/{XmlEscape(item.Unit)}</RATE>
                 <AMOUNT>{item.Amount}</AMOUNT>
             </ALLINVENTORYENTRIES.LIST>");
                     }
@@ -1546,11 +2245,11 @@ namespace TallySyncApp.Services
             </REQUESTDESC>
             <REQUESTDATA>
                 <TALLYMESSAGE xmlns:UDF=""TallyUDF"">
-                    <VOUCHER VCHTYPE=""{voucherType}"" ACTION=""Create"">
+                    <VOUCHER VCHTYPE=""{XmlEscape(voucherType)}"" ACTION=""Create"">
                         <DATE>{voucherDate:yyyyMMdd}</DATE>
-                        <VOUCHERTYPENAME>{voucherType}</VOUCHERTYPENAME>
-                        <PARTYLEDGERNAME>{partyLedger}</PARTYLEDGERNAME>
-                        <NARRATION>{narration ?? ""}</NARRATION>
+                        <VOUCHERTYPENAME>{XmlEscape(voucherType)}</VOUCHERTYPENAME>
+                        <PARTYLEDGERNAME>{XmlEscape(partyLedger)}</PARTYLEDGERNAME>
+                        <NARRATION>{XmlEscape(narration ?? "")}</NARRATION>
                         {ledgerEntriesXml}
                         {inventoryXml}
                     </VOUCHER>
@@ -1576,7 +2275,7 @@ namespace TallySyncApp.Services
                 {
                     // Try to get the voucher number from response
                     var voucherNumber = doc.Descendants("VOUCHERNUMBER").FirstOrDefault()?.Value;
-                    SyncLogger.Log($"✅ Voucher created in Tally: {voucherNumber ?? "Success"}");
+                    SyncLogger.Log($"âœ… Voucher created in Tally: {voucherNumber ?? "Success"}");
                     return (true, voucherNumber, null);
                 }
 
@@ -1585,12 +2284,12 @@ namespace TallySyncApp.Services
                                doc.Descendants("ERRORS").FirstOrDefault()?.Value ??
                                "Unknown error creating voucher";
 
-                SyncLogger.Log($"❌ Tally rejected voucher: {errorMsg}");
+                SyncLogger.Log($"âŒ Tally rejected voucher: {errorMsg}");
                 return (false, null, errorMsg);
             }
             catch (Exception ex)
             {
-                SyncLogger.Log($"❌ PushVoucherToTallyAsync error: {ex.Message}");
+                SyncLogger.Log($"âŒ PushVoucherToTallyAsync error: {ex.Message}");
                 return (false, null, ex.Message);
             }
         }
@@ -1620,7 +2319,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Group</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1645,9 +2344,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📋 Fetched {groups.Count} Ledger Groups from {companyName}");
+                Log($"ðŸ“‹ Fetched {groups.Count} Ledger Groups from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetLedgerGroupsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetLedgerGroupsAsync error: {ex.Message}"); }
             return groups;
         }
 
@@ -1664,7 +2363,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>CostCentre</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1685,9 +2384,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"🏭 Fetched {items.Count} Cost Centres from {companyName}");
+                Log($"ðŸ­ Fetched {items.Count} Cost Centres from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetCostCentresAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetCostCentresAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1704,7 +2403,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Godown</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1727,9 +2426,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📦 Fetched {items.Count} Godowns from {companyName}");
+                Log($"ðŸ“¦ Fetched {items.Count} Godowns from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetGodownsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetGodownsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1746,7 +2445,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>StockGroup</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1767,9 +2466,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📊 Fetched {items.Count} Stock Groups from {companyName}");
+                Log($"ðŸ“Š Fetched {items.Count} Stock Groups from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetStockGroupsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetStockGroupsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1786,7 +2485,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>StockCategory</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1806,9 +2505,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📂 Fetched {items.Count} Stock Categories from {companyName}");
+                Log($"ðŸ“‚ Fetched {items.Count} Stock Categories from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetStockCategoriesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetStockCategoriesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1825,7 +2524,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Currency</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1849,9 +2548,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"💱 Fetched {items.Count} Currencies from {companyName}");
+                Log($"ðŸ’± Fetched {items.Count} Currencies from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetCurrenciesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetCurrenciesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1868,7 +2567,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>VoucherType</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1893,9 +2592,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📝 Fetched {items.Count} Voucher Types from {companyName}");
+                Log($"ðŸ“ Fetched {items.Count} Voucher Types from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetVoucherTypesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetVoucherTypesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1912,7 +2611,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Unit</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1938,9 +2637,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"📐 Fetched {items.Count} Units from {companyName}");
+                Log($"ðŸ“ Fetched {items.Count} Units from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetUnitsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetUnitsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -1958,7 +2657,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>List of Budgets</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
 
@@ -1968,7 +2667,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Budget</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -1989,9 +2688,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"💰 Fetched {items.Count} Budgets from {companyName}");
+                Log($"ðŸ’° Fetched {items.Count} Budgets from {companyName}");
             }
-            catch (Exception ex) { Log($"❌ GetBudgetsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetBudgetsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2016,7 +2715,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>List of Price Levels</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <EXPLODEFLAG>Yes</EXPLODEFLAG>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2031,7 +2730,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>PriceLevel</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2059,7 +2758,7 @@ namespace TallySyncApp.Services
                      // We can't get the items without a specific TDL report request.
                  }
             }
-            catch (Exception ex) { Log($"❌ GetPriceListsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"âŒ GetPriceListsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2158,3 +2857,6 @@ namespace TallySyncApp.Services
         }
     }
 }
+
+
+

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
@@ -152,51 +152,275 @@ export default function InvoicePDFPage() {
                     }
                 }
 
-                // Fetch stock entries first to calculate GST from items
-                const { data: stockEntries } = await supabase
-                    .from('voucher_stock_entries')
-                    .select('*')
-                    .eq('voucher_id', voucherData.id);
+                // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
+                const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, id].filter(Boolean)));
 
-                const { data: stockItems } = await supabase
-                    .from('stock_items')
-                    .select('id, name, hsn_code, unit, gst_rate')
-                    .eq('company_id', voucherData.company_id);
+                // Fetch stock entries, ledger entries, and stock items in PARALLEL
+                const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
+                    supabase.from('voucher_stock_entries').select('*').in('voucher_id', voucherLookupIds),
+                    supabase.from('voucher_ledger_entries').select('*').in('voucher_id', voucherLookupIds),
+                    supabase.from('stock_items').select('id, name, hsn_code, unit, gst_rate').eq('company_id', voucherData.company_id)
+                ]);
+
+                const stockEntries = stockResult.data;
+                const ledgerEntries = ledgerResult.data;
+                const stockItems = stockItemsResult.data;
 
                 const stockLookup = {};
                 stockItems?.forEach(item => {
                     stockLookup[item.name] = item;
+                    stockLookup[String(item.name || '').toLowerCase()] = item;
                 });
 
-                // Enrich items with GST info
-                const enrichedItems = (stockEntries || []).map(item => {
-                    const master = stockLookup[item.item_name || item.stock_item_name] || {};
-                    const gstRate = Number(item.gst_rate) || Number(master.gst_rate) || 0;
-                    const amount = Number(item.amount) || 0;
+                // Robust item detection: voucher_stock_entries -> raw_data -> inventory_entries
+                let inventoryItems = stockEntries || [];
+
+                if (inventoryItems.length === 0) {
+                    const parsedRawData = (() => {
+                        if (!voucherData.raw_data) return {};
+                        if (typeof voucherData.raw_data === 'object') return voucherData.raw_data;
+                        if (typeof voucherData.raw_data === 'string') {
+                            try { return JSON.parse(voucherData.raw_data); } catch (_) { return {}; }
+                        }
+                        return {};
+                    })();
+
+                    inventoryItems =
+                        parsedRawData.inventory_entries ||
+                        parsedRawData.inventoryEntries ||
+                        parsedRawData.items ||
+                        parsedRawData.stock_entries ||
+                        voucherData.inventory_entries ||
+                        voucherData.items ||
+                        [];
+                }
+
+                // Final Fallback: Check related Sales/Purchase tables for items
+                if (inventoryItems.length === 0) {
+                    const isSales = voucherData.voucher_type === 'Sales' || (!voucherData.voucher_type && voucherData.grand_total > 0);
+                    const isPurchase = voucherData.voucher_type === 'Purchase' || voucherData.voucher_type === 'Purchase Voucher';
+
+                    if (isSales || isPurchase) {
+                        try {
+                            const parentTable = isSales ? 'sales' : 'purchases';
+                            const childTable = isSales ? 'sales_items' : 'purchase_items';
+                            const childFK = isSales ? 'sale_id' : 'purchase_id';
+
+                            // Try lookup by voucher lookup IDs in parent table first
+                            const { data: parents } = await supabase
+                                .from(parentTable)
+                                .select('id')
+                                .in('voucher_id', voucherLookupIds);
+
+                            const parentIdList = (parents || []).map(p => p.id);
+                            if (parentIdList.length > 0) {
+                                const { data: relatedItems } = await supabase
+                                    .from(childTable)
+                                    .select('*')
+                                    .in(childFK, parentIdList);
+                                if (relatedItems?.length > 0) inventoryItems = relatedItems;
+                            }
+                        } catch (e) {
+                            console.error('Error fetching related items:', e);
+                        }
+                    }
+                }
+
+                // Detect if this voucher has CGST/SGST (intra-state) or IGST (inter-state)
+                // This is critical: Tally's RATEOFTAXCALCULATION stores the per-component rate
+                // (e.g., 2.5% for CGST when total GST is 5%). We need to double it for intra-state.
+                let hasIntraStateLedgers = false;  // CGST+SGST = intra-state
+                let hasInterStateLedgers = false;  // IGST = inter-state
+                let invoiceDiscountFromLedger = 0;
+                if (ledgerEntries && ledgerEntries.length > 0) {
+                    ledgerEntries.forEach(entry => {
+                        const name = (entry.ledger_name || '').toUpperCase();
+                        if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                            hasIntraStateLedgers = true;
+                        }
+                        if (name.includes('IGST')) {
+                            hasInterStateLedgers = true;
+                        }
+                        // Also detect discount ledger entries
+                        if (name.includes('DISCOUNT') || name.includes('DISC')) {
+                            invoiceDiscountFromLedger += Math.abs(Number(entry.amount) || 0);
+                        }
+                    });
+                }
+
+                console.log('DEBUG: === INVOICE DATA DUMP ===');
+                console.log('DEBUG: Ledger entries:', ledgerEntries?.map(e => ({
+                    name: e.ledger_name || e.name, amount: e.amount, is_debit: e.is_debit
+                })));
+                console.log('DEBUG: Stock entries RAW:', inventoryItems?.map(e => ({
+                    item: e.stock_item_name || e.item_name || e.name,
+                    tax_rate: e.tax_rate, discount_percent: e.discount_percent,
+                    discount: e.discount, amount: e.amount, rate: e.rate, qty: e.quantity,
+                    ALL_KEYS: Object.keys(e).join(', ')
+                })));
+                console.log('DEBUG: Analysis:', {
+                    hasIntraStateLedgers, hasInterStateLedgers,
+                    invoiceDiscountFromLedger,
+                    ledgerCount: ledgerEntries?.length,
+                    stockEntryCount: inventoryItems.length,
+                });
+
+                // Enrich items with GST info and handle various field name conventions
+                const enrichedItems = inventoryItems.map((item, itemIdx) => {
+                    const itemName = item.item_name || item.stock_item_name || item.item_label || item.StockItemName || 'Item';
+                    const master = stockLookup[itemName] || stockLookup[String(itemName).toLowerCase()] || {};
+
+                    // --- GST RATE DETECTION ---
+                    // tax_rate from voucher_stock_entries = Tally's RATEOFTAXCALCULATION
+                    // CRITICAL: This is the PER-COMPONENT rate (e.g., 2.5% CGST, not 5% total)
+                    // For intra-state (CGST+SGST): multiply by 2 to get total GST rate
+                    // For inter-state (IGST): use as-is (it's already the total rate)
+                    let rawTaxRate = Number(item.tax_rate || 0);
+                    let gstRate = 0;
+
+                    if (rawTaxRate > 0) {
+                        if (hasIntraStateLedgers && !hasInterStateLedgers) {
+                            // Intra-state: tax_rate is CGST component rate, double it for total
+                            gstRate = rawTaxRate * 2;
+                        } else if (hasInterStateLedgers && !hasIntraStateLedgers) {
+                            // Inter-state: tax_rate is IGST rate (already total)
+                            gstRate = rawTaxRate;
+                        } else {
+                            // Ambiguous: check if doubling gives a standard rate
+                            const doubled = rawTaxRate * 2;
+                            const stdRates = [5, 12, 18, 28];
+                            if (stdRates.includes(doubled)) {
+                                gstRate = doubled;  // Likely component rate
+                            } else if (stdRates.includes(rawTaxRate)) {
+                                gstRate = rawTaxRate;  // Already total rate
+                            } else {
+                                gstRate = doubled;  // Default to doubling (most common case)
+                            }
+                        }
+                    }
+
+                    // Fallback: check other direct field names
+                    if (gstRate === 0) {
+                        const directGst = Number(item.gst_rate || item.GSTRate || item.tax_percent || 0);
+                        if (directGst > 0) gstRate = directGst;
+                    }
+                    // Fallback: master stock item gst_rate
+                    if (gstRate === 0) gstRate = Number(master.gst_rate || 0);
+
+                    // Fallback: Scan nested tax_entries for rates (Common in Tally JSON/raw_data)
+                    if (gstRate === 0 && item.tax_entries) {
+                        const taxEntries = Array.isArray(item.tax_entries) ? item.tax_entries : [item.tax_entries];
+                        taxEntries.forEach(te => {
+                            const rate = Number(te.rate ?? te.Rate ?? te.rate_percent ?? te.RatePercent ?? 0);
+                            if (rate > 0) {
+                                const name = (te.ledger_name || te.LedgerName || '').toUpperCase();
+                                if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                                    gstRate = Math.max(gstRate, rate * 2);
+                                } else {
+                                    gstRate = Math.max(gstRate, rate);
+                                }
+                            }
+                        });
+                    }
+
+                    // Last resort: Derive GST rate from voucher_ledger_entries by parsing % from name
+                    if (gstRate === 0 && ledgerEntries && ledgerEntries.length > 0) {
+                        let totalGstFromLedgers = 0;
+                        ledgerEntries.forEach(entry => {
+                            const name = (entry.ledger_name || '').toUpperCase();
+                            const amt = Math.abs(Number(entry.amount) || 0);
+                            const rateMatch = name.match(/(\d+\.?\d*)\s*%/);
+                            if (rateMatch) {
+                                const parsedRate = Number(rateMatch[1]);
+                                if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                                    gstRate = Math.max(gstRate, parsedRate * 2);
+                                } else if (name.includes('IGST')) {
+                                    gstRate = Math.max(gstRate, parsedRate);
+                                }
+                            }
+                            if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST') || name.includes('IGST')) {
+                                totalGstFromLedgers += amt;
+                            }
+                        });
+                        // Ratio fallback: if still 0 and single item
+                        if (gstRate === 0 && totalGstFromLedgers > 0 && inventoryItems.length === 1) {
+                            const itemAmt = Math.abs(Number(item.amount || 0));
+                            if (itemAmt > 0) {
+                                const derivedRate = (totalGstFromLedgers / itemAmt) * 100;
+                                const stdRates = [5, 12, 18, 28];
+                                const nearest = stdRates.reduce((a, b) => Math.abs(b - derivedRate) < Math.abs(a - derivedRate) ? b : a);
+                                if (Math.abs(nearest - derivedRate) < 2) gstRate = nearest;
+                            }
+                        }
+                    }
+
+                    // --- QUANTITY, RATE, AMOUNT ---
+                    const quantity = Number(item.quantity ?? item.billed_qty ?? item.Quantity ?? 0);
+                    const rate = Number(item.rate ?? item.unit_price ?? item.Rate ?? 0);
+                    const amount = Number(item.amount ?? item.Amount ?? (quantity * rate));
+
+                    // --- DISCOUNT DETECTION ---
+                    // discount_percent comes from voucher_stock_entries (synced from Tally's DISCOUNT field)
+                    let discountVal = 0;
+                    const rawDiscount = item.discount_percent ?? item.discount ?? item.Discount ?? item.DiscountPercent ?? item.discount_amount;
+                    if (rawDiscount !== undefined && rawDiscount !== null) {
+                        discountVal = Math.abs(Number(String(rawDiscount).replace(/[^0-9.-]/g, '')) || 0);
+                    }
+
+                    // DERIVED DISCOUNT: If discount_percent is 0 in DB but amount < rate * quantity,
+                    // Tally applied discount implicitly. Calculate from the difference.
+                    if (discountVal === 0 && quantity > 0 && rate > 0) {
+                        const grossAmount = Math.abs(quantity * rate);
+                        const netAmount = Math.abs(amount);
+                        if (grossAmount > netAmount && (grossAmount - netAmount) > 0.5) {
+                            // There's an implicit discount
+                            discountVal = Math.round(((grossAmount - netAmount) / grossAmount) * 100 * 100) / 100;
+                        }
+                    }
+
+                    // Fallback: If still no per-item discount but invoice has a discount ledger, distribute proportionally
+                    if (discountVal === 0 && invoiceDiscountFromLedger > 0 && inventoryItems.length > 0) {
+                        const totalItemsAmount = inventoryItems.reduce((s, i) => s + Math.abs(Number(i.amount || 0)), 0);
+                        if (totalItemsAmount > 0) {
+                            const itemProportion = Math.abs(amount) / totalItemsAmount;
+                            const itemDiscountAmt = invoiceDiscountFromLedger * itemProportion;
+                            const preDiscountAmt = Math.abs(amount) + itemDiscountAmt;
+                            if (preDiscountAmt > 0) {
+                                discountVal = Math.round((itemDiscountAmt / preDiscountAmt) * 100 * 100) / 100;
+                            }
+                        }
+                    }
+
+                    if (itemIdx === 0) {
+                        console.log('DEBUG: First item enrichment:', {
+                            itemName, rawTaxRate, gstRate,
+                            'raw discount_percent': item.discount_percent,
+                            'raw discount': item.discount,
+                            discountVal,
+                            quantity, rate, amount
+                        });
+                    }
+
+                    // Tally's amount is already post-discount, so taxable = amount
                     const taxable = amount;
 
                     return {
                         ...item,
                         stock_item_id: master.id,
-                        stock_item_name: item.item_name || item.stock_item_name || 'Item',
-                        hsn_code: item.hsn_code || master.hsn_code || '',
-                        unit: item.unit || master.unit || '',
+                        stock_item_name: itemName,
+                        hsn_code: item.hsn_code || item.hsn || item.HsnCode || master.hsn_code || '',
+                        unit: item.unit || item.Unit || master.unit || 'pcs',
                         gst_rate: gstRate,
-                        quantity: Number(item.quantity) || Number(item.billed_qty) || 0,
-                        rate: Number(item.rate) || Number(item.unit_price) || 0,
+                        quantity: quantity,
+                        rate: rate,
                         amount: amount,
-                        discount: Number(item.discount) || Number(item.discount_percent) || 0,
+                        discount: discountVal,
+                        discount_percent: discountVal, // keep both names for columnVisibility check
                         taxable_value: taxable
                     };
                 });
 
                 setItems(enrichedItems);
-
-                // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
-                const { data: ledgerEntries } = await supabase
-                    .from('voucher_ledger_entries')
-                    .select('ledger_name, amount')
-                    .eq('voucher_id', voucherData.id);
 
 
 
@@ -205,8 +429,10 @@ export default function InvoicePDFPage() {
                 let sgstAmount = Number(voucherData.sgst_amount) || 0;
                 let igstAmount = Number(voucherData.igst_amount) || 0;
 
-                // Extract GST from ledger entries (Tally posts GST to separate ledgers)
-                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0 && ledgerEntries) {
+                let discountLedgerAmount = 0;
+
+                // Extract GST and Discount from ledger entries
+                if (ledgerEntries) {
                     ledgerEntries.forEach(entry => {
                         const ledgerName = (entry.ledger_name || '').toUpperCase();
                         const amount = Math.abs(Number(entry.amount) || 0);
@@ -217,10 +443,10 @@ export default function InvoicePDFPage() {
                             sgstAmount += amount;
                         } else if (ledgerName.includes('IGST') || ledgerName.includes('INTEGRATED GST')) {
                             igstAmount += amount;
+                        } else if (ledgerName.includes('DISCOUNT')) {
+                            discountLedgerAmount += amount;
                         }
                     });
-
-
                 }
 
                 // If still no GST from ledgers, try calculating from items
@@ -292,6 +518,7 @@ export default function InvoicePDFPage() {
                     cgst_amount: cgstAmount,
                     sgst_amount: sgstAmount,
                     igst_amount: igstAmount,
+                    discount_amount: discountLedgerAmount,
                     round_off: Number(voucherData.round_off) || 0,
                     voucher_type: voucherData.voucher_type || 'Sales'
                 };
@@ -305,7 +532,7 @@ export default function InvoicePDFPage() {
         setLoading(false);
     };
 
-    // Smart column detection — Tally-style: hide every column with no data
+    // Smart column detection - Tally-style: hide every column with no data
     const columnVisibility = useMemo(() => {
         if (!items || !invoice) return {};
 
@@ -567,7 +794,7 @@ export default function InvoicePDFPage() {
         const hasItems = items.length > 0;
         const _hasHSN = hasItems && items.some(i => i.hsn_code);
         const _hasGST = hasItems;
-        const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+        const _hasDisc = columnVisibility.hasDiscount;
 
         const tableColumns = [
             { header: 'SI No.', dataKey: 'sno' },
@@ -678,7 +905,7 @@ export default function InvoicePDFPage() {
         doc.line(rightXStart, y, rightXStart, y + 40);
 
         const drawTaxRow = (label, amount) => {
-            if (amount > 0) {
+            if (amount !== 0) {
                 doc.setFont('helvetica', 'normal');
                 doc.text(label, rightXStart + 2, taxY + 3);
                 doc.setFont('helvetica', 'bold');
@@ -690,6 +917,7 @@ export default function InvoicePDFPage() {
         if (invoice?.cgst_amount) drawTaxRow('CGST Amount', invoice.cgst_amount);
         if (invoice?.sgst_amount) drawTaxRow('SGST Amount', invoice.sgst_amount);
         if (invoice?.igst_amount) drawTaxRow('IGST Amount', invoice.igst_amount);
+        if (invoice?.discount_amount) drawTaxRow('Discount', -Math.abs(invoice.discount_amount)); // Show as negative
         if (invoice?.round_off) drawTaxRow('Round Off', invoice.round_off);
 
         // Grand Total Line
@@ -859,30 +1087,30 @@ export default function InvoicePDFPage() {
 
     const handleWhatsAppShare = () => {
         const message = `*TAX INVOICE*
-    ━━━━━━━━━━━━━━━━━━━
-    📋 *Invoice #${invoice?.invoice_number}*
-    📅 Date: ${formatDate(invoice?.invoice_date)}
+    -------------------
+    *Invoice #${invoice?.invoice_number}*
+    Date: ${formatDate(invoice?.invoice_date)}
 
-    🏢 *From:*
+    *From:*
     ${companyInfo?.name}
     GSTIN: ${companyInfo?.gstin || 'N/A'}
 
-    👤 *To:*
+    *To:*
     ${invoice?.party_ledger_name}
     GSTIN: ${invoice?.party_gstin || 'N/A'}
 
-    ━━━━━━━━━━━━━━━━━━━
-    💰 *Amount Details:*
+    -------------------
+    *Amount Details:*
 
     Taxable: ${formatCurrency(invoice?.taxable_amount)}
     ${invoice?.cgst_amount > 0 ? `CGST: ${formatCurrency(invoice?.cgst_amount)}` : ''}
     ${invoice?.sgst_amount > 0 ? `SGST: ${formatCurrency(invoice?.sgst_amount)}` : ''}
     ${invoice?.igst_amount > 0 ? `IGST: ${formatCurrency(invoice?.igst_amount)}` : ''}
-    ━━━━━━━━━━━━━━━━━━━
+    -------------------
     *TOTAL: ${formatCurrency(invoice?.net_amount)}*
-    ━━━━━━━━━━━━━━━━━━━
+    -------------------
 
-    Thank you for your business! 🙏
+    Thank you for your business!
     Generated via JLS BillBook`;
 
         window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
@@ -948,7 +1176,7 @@ export default function InvoicePDFPage() {
                 </button>
                 <div className="flex-1 px-4">
                     <h1 className="text-sm font-black text-gray-800 uppercase tracking-widest">Invoice #{invoice.invoice_number}</h1>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{invoice.voucher_type} • {formatDate(invoice.invoice_date)}</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{invoice.voucher_type} - {formatDate(invoice.invoice_date)}</p>
                 </div>
                 <button
                     onClick={() => generatePDF('download')}
@@ -969,20 +1197,22 @@ export default function InvoicePDFPage() {
                     }}
                 >
                     <div
-                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content"
+                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900"
                         style={{
                             width: '210mm',
                             minHeight: '297mm',
                             transform: `scale(${scale})`,
                             transformOrigin: 'top left',
-                            transition: 'transform 0.2s ease-out'
+                            transition: 'transform 0.2s ease-out',
+                            color: '#0f172a',
+                            WebkitTextFillColor: '#0f172a'
                         }}
                     >
                         <div className="p-8 h-full flex flex-col relative">
                             {/* Tally Style Border Container */}
                             <div className="border-2 border-black h-full flex flex-col">
 
-                                {/* Header Section — Tally Style: Only show fields that have data */}
+                                {/* Header Section - Tally Style: Only show fields that have data */}
                                 <div className="grid grid-cols-2 border-b-2 border-black">
                                     {/* Company Info - Left */}
                                     <div className="p-4 border-r-2 border-black flex flex-col justify-center">
@@ -1018,7 +1248,7 @@ export default function InvoicePDFPage() {
                                             </h2>
                                         </div>
                                         <div className="flex-grow text-xs">
-                                            {/* Invoice No & Date — always shown */}
+                                            {/* Invoice No & Date - always shown */}
                                             <div className="grid grid-cols-2">
                                                 <div className="p-2 border-r border-black border-b border-black">
                                                     <p className="font-semibold">Invoice No.</p>
@@ -1046,7 +1276,7 @@ export default function InvoicePDFPage() {
                                                     </div>
                                                 </div>
                                             )}
-                                            {/* Buyer's Order — only if exists */}
+                                            {/* Buyer's Order - only if exists */}
                                             {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
                                                 <div className="grid grid-cols-2">
                                                     <div className="p-2 border-r border-black">
@@ -1088,7 +1318,7 @@ export default function InvoicePDFPage() {
                                     </div>
                                 </div>
 
-                                {/* Items Table — Tally Style: only show columns that have data */}
+                                {/* Items Table - Tally Style: only show columns that have data */}
                                 <div className="flex-grow flex flex-col border-b-2 border-black relative">
                                     {/* Table Header */}
                                     <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
@@ -1178,7 +1408,7 @@ export default function InvoicePDFPage() {
                                         )}
                                         <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
                                             <span>Total (INR)</span>
-                                            <span>₹ {formatNumber(invoice.net_amount)}</span>
+                                            <span>INR {formatNumber(invoice.net_amount)}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1251,7 +1481,7 @@ export default function InvoicePDFPage() {
                                     </div>
                                 )}
 
-                                {/* Footer Section — Tally: only show bank if filled */}
+                                {/* Footer Section - Tally: only show bank if filled */}
                                 <div className="grid grid-cols-5 flex-grow h-32">
                                     {/* Bank & Terms (40%) */}
                                     <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
@@ -1307,4 +1537,3 @@ export default function InvoicePDFPage() {
         </div>
     );
 }
-

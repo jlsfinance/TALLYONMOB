@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     MapPin, Clock, CheckCircle, Users, Loader2, Calendar,
     Navigation, ArrowRight, Phone, User, Target, BarChart3,
@@ -312,3 +312,4 @@ export default function SalesTeamPage() {
         </div>
     );
 }
+

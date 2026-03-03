@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase as insforgeClient, voucherApi } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
     ArrowLeft, MessageCircle, Share2, Download,
@@ -22,10 +22,14 @@ const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 0
 }).format(Math.abs(Number(amount)) || 0);
 
+const DR_TYPES = new Set(['Sales', 'Sales Invoice', 'Payment', 'Debit Note']);
+const CR_TYPES = new Set(['Purchase', 'Purchase Invoice', 'Receipt', 'Credit Note']);
+
 export default function VoucherDetailPage() {
     const { voucherId } = useParams();
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
+    const supabase: any = insforgeClient;
     const [voucher, setVoucher] = useState<any>(null);
     const [saleData, setSaleData] = useState<any>(null);
     const [purchaseData, setPurchaseData] = useState<any>(null);
@@ -89,73 +93,140 @@ export default function VoucherDetailPage() {
                 throw new Error('Voucher not found');
             }
 
-            setVoucher(vData);
+            let mainVoucher = vData;
 
-            // Fetch related entries from voucher_stock_entries
-            const { data: stockEntries, error: stockError } = await supabase
-                .from('voucher_stock_entries')
-                .select('*')
-                .eq('voucher_id', vData.id);
+            // Fallback: If party_ledger_id is missing but party_name exists, try to find it
+            if (!mainVoucher.party_ledger_id && mainVoucher.party_name) {
+                const { data: pData } = await supabase
+                    .from('ledgers')
+                    .select('id')
+                    .eq('company_id', selectedCompany.id)
+                    .ilike('name', mainVoucher.party_name.trim())
+                    .maybeSingle();
 
-            if (stockError) {
-                // Stock entries table may not exist for all setups
+                if (pData) {
+                    mainVoucher = { ...mainVoucher, party_ledger_id: pData.id };
+                }
             }
 
-            // Fetch related ledger entries
-            const { data: ledgerEntries, error: ledgerError } = await supabase
-                .from('voucher_ledger_entries')
-                .select('*')
-                .eq('voucher_id', vData.id);
+            const ctxRes = await voucherApi.getWithContext(vData.id, {
+                companyId: selectedCompany.id,
+                ledgerName: mainVoucher.party_name
+            } as any);
 
-            if (ledgerError) {
-                // Ledger entries may not be available
-            }
+            setVoucher({
+                ...mainVoucher,
+                context: ctxRes.data?.context || null
+            });
 
-            // Fetch stock items for metadata lookup
-            const { data: stockItems } = await supabase
-                .from('stock_items')
-                .select('name, hsn_code, unit')
-                .eq('company_id', selectedCompany.id);
+            // Fetch stock entries, ledger entries, and stock items in PARALLEL
+            const voucherLookupIds = Array.from(new Set([vData.id, vData.voucher_id, decodedId].filter(Boolean)));
+            const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
+                supabase.from('voucher_stock_entries').select('*').in('voucher_id', voucherLookupIds),
+                supabase.from('voucher_ledger_entries').select('*').in('voucher_id', voucherLookupIds),
+                supabase.from('stock_items').select('id, name, hsn_code, unit, gst_rate').eq('company_id', selectedCompany.id)
+            ]);
+            const stockEntries = stockResult.data;
+            const stockError = stockResult.error;
+            const ledgerEntries = ledgerResult.data;
+            const stockItems = stockItemsResult.data;
+            console.log('[VoucherDetail] voucher_id=' + vData.id + ' stockEntries=' + (stockEntries?.length ?? 'null') + ' ledgerEntries=' + (ledgerEntries?.length ?? 'null'));
 
             const stockLookup: Record<string, any> = {};
             if (stockItems) {
                 stockItems.forEach((item: any) => {
                     stockLookup[item.name] = item;
+                    stockLookup[String(item.name || '').toLowerCase()] = item;
                 });
             }
 
-            // Use voucher_stock_entries if available, otherwise try raw_data.inventory_entries
+                        // Use voucher_stock_entries if available, otherwise fall back to raw payload.
             let inventoryItems = stockEntries || [];
 
-            // Fallback: Check raw_data for inventory entries (when voucher_stock_entries is empty)
-            if (inventoryItems.length === 0 && vData.raw_data?.inventory_entries) {
+            const parsedRawData = (() => {
+                if (!vData?.raw_data) return {};
+                if (typeof vData.raw_data === 'object') return vData.raw_data;
+                if (typeof vData.raw_data === 'string') {
+                    try {
+                        return JSON.parse(vData.raw_data);
+                    } catch (_) {
+                        return {};
+                    }
+                }
+                return {};
+            })();
 
-                inventoryItems = vData.raw_data.inventory_entries;
+            if (inventoryItems.length === 0) {
+                inventoryItems =
+                    parsedRawData.inventory_entries
+                    || parsedRawData.inventoryEntries
+                    || parsedRawData.items
+                    || parsedRawData.stock_entries
+                    || vData.inventory_entries
+                    || vData.items
+                    || [];
+            }
+            // Fallback to sales_items / purchase_items for older sync datasets.
+            const loadItemsFromRelatedTable = async (parentTable: string, childTable: string, childForeignKey: string) => {
+                const parentIds = new Set<string>();
+
+                const { data: byVoucherId } = await supabase
+                    .from(parentTable)
+                    .select('id')
+                    .eq('company_id', selectedCompany.id)
+                    .in('voucher_id', voucherLookupIds);
+                (byVoucherId || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+
+                const { data: byParentId } = await supabase
+                    .from(parentTable)
+                    .select('id')
+                    .eq('company_id', selectedCompany.id)
+                    .in('id', voucherLookupIds);
+                (byParentId || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+
+                if (vData.voucher_number) {
+                    const { data: byInvoiceNumber } = await supabase
+                        .from(parentTable)
+                        .select('id')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('invoice_number', vData.voucher_number);
+                    (byInvoiceNumber || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+                }
+
+                const parentIdList = Array.from(parentIds);
+                if (parentIdList.length === 0) return [];
+
+                const { data: childRows } = await supabase
+                    .from(childTable)
+                    .select('*')
+                    .in(childForeignKey, parentIdList);
+
+                return childRows || [];
+            };
+
+            if (inventoryItems.length === 0 && vData.voucher_type === 'Sales') {
+                inventoryItems = await loadItemsFromRelatedTable('sales', 'sales_items', 'sale_id');
             }
 
-            // Fallback: Check direct inventory_entries on voucher
-            if (inventoryItems.length === 0 && vData.inventory_entries) {
-
-                inventoryItems = vData.inventory_entries;
+            if (inventoryItems.length === 0 && vData.voucher_type === 'Purchase') {
+                inventoryItems = await loadItemsFromRelatedTable('purchases', 'purchase_items', 'purchase_id');
             }
-
-
-
             // Enrich items with HSN and unit
             const enrichedItems = (inventoryItems).map((item: any) => {
                 const itemName = item.item_name || item.stock_item_name || item.StockItemName || 'Unknown';
-                const stockData = stockLookup[itemName] || {};
+                const stockData = stockLookup[itemName] || stockLookup[String(itemName).toLowerCase()] || {};
 
                 return {
                     ...item,
+                    stock_item_id: stockData.id,
                     stock_item_name: itemName,
-                    hsn_code: item.hsn_code || item.HsnCode || stockData.hsn_code || '-',
+                    hsn_code: item.hsn_code || item.hsn || item.HsnCode || stockData.hsn_code || '-',
                     unit: item.unit || item.Unit || stockData.unit || 'pcs',
-                    quantity: item.quantity || item.Quantity || 0,
-                    rate: item.rate || item.Rate || 0,
-                    gst_rate: item.gst_rate || item.GSTRate || stockData.gst_rate || 0,
-                    discount: item.discount_percent || item.DiscountPercent || item.discount_amount || 0,
-                    amount: item.amount || item.Amount || ((item.quantity || item.Quantity || 0) * (item.rate || item.Rate || 0)) || 0
+                    quantity: Number(item.quantity ?? item.Quantity ?? 0),
+                    rate: Number(item.rate ?? item.Rate ?? 0),
+                    gst_rate: Number(item.gst_rate ?? item.tax_rate ?? item.GSTRate ?? stockData.gst_rate ?? 0),
+                    discount: Number(item.discount_percent ?? item.DiscountPercent ?? item.discount_amount ?? 0),
+                    amount: Number(item.amount ?? item.Amount ?? (Number(item.quantity ?? item.Quantity ?? 0) * Number(item.rate ?? item.Rate ?? 0)))
                 };
             });
 
@@ -227,6 +298,15 @@ export default function VoucherDetailPage() {
 
     const items = saleData?.sales_items || purchaseData?.purchase_items || voucher.inventory_entries || [];
     const status = (voucher.sync_status || 'Synced') === 'Synced' ? 'SYNCED' : 'PENDING';
+    const voucherAmount = Math.abs(Number(voucher.total_amount || voucher.grand_total || 0));
+    const fallbackIsDebit = DR_TYPES.has(voucher.voucher_type);
+    const fallbackIsCredit = CR_TYPES.has(voucher.voucher_type);
+    const voucherEffect = voucher.context?.voucher_effect || {
+        debit: fallbackIsDebit ? voucherAmount : 0,
+        credit: fallbackIsCredit ? voucherAmount : 0,
+        net: (fallbackIsDebit ? voucherAmount : 0) - (fallbackIsCredit ? voucherAmount : 0)
+    };
+
 
     return (
         <div className="min-h-screen bg-[var(--background)] pb-32 font-['Inter',sans-serif]">
@@ -279,7 +359,7 @@ export default function VoucherDetailPage() {
                 <div className="text-center space-y-2 py-4">
                     <p className="text-[10px] font-extrabold uppercase tracking-[3px] text-[var(--text-muted)] opacity-60">Total Payable</p>
                     <h1 className="text-5xl md:text-6xl font-black text-[var(--on-surface)] tracking-tighter tabular-nums leading-none">
-                        {formatCurrency(voucher.total_amount).replace('.00', '')}
+                        {formatCurrency(voucher.total_amount || voucher.grand_total || 0).replace('.00', '')}
                     </h1>
                     <div className="flex justify-center pt-2">
                         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${status === 'SYNCED' ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-amber-500/30 text-amber-500 bg-amber-500/5'}`}>
@@ -288,6 +368,32 @@ export default function VoucherDetailPage() {
                         </div>
                     </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Voucher Effect</p>
+                        <p className={"text-sm font-black " + ((voucherEffect.net || 0) >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                            {(voucherEffect.net || 0) >= 0 ? 'Dr +' : 'Cr -'} {formatCurrency(voucherEffect.net || 0)}
+                        </p>
+                    </div>
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Debit</p>
+                        <p className="text-sm font-black text-emerald-500">{formatCurrency(voucherEffect.debit || 0)}</p>
+                    </div>
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Credit</p>
+                        <p className="text-sm font-black text-rose-500">{formatCurrency(voucherEffect.credit || 0)}</p>
+                    </div>
+                </div>
+
+                {voucher.context?.running_balance_after !== null && voucher.context?.running_balance_after !== undefined && (
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Running Balance After This Voucher</p>
+                        <p className={"text-lg font-black " + (Number(voucher.context.running_balance_after) >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                            {formatCurrency(voucher.context.running_balance_after)} {Number(voucher.context.running_balance_after) >= 0 ? 'Dr' : 'Cr'}
+                        </p>
+                    </div>
+                )}
 
                 {/* 2. Bill Context Card */}
                 <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[32px] p-6 shadow-sm relative overflow-hidden group">
@@ -298,9 +404,14 @@ export default function VoucherDetailPage() {
                     <div className="relative z-10 space-y-6">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Bill To</p>
-                            <h3 className="text-2xl font-black text-[var(--on-surface)] leading-tight">{voucher.party_name}</h3>
-                            {voucher.party_gst_number && (
-                                <p className="text-[10px] font-bold text-[var(--text-muted)] mt-1 uppercase tracking-wide">GSTIN: {voucher.party_gst_number}</p>
+                            <h3
+                                className="text-2xl font-black text-[var(--on-surface)] leading-tight cursor-pointer hover:text-[var(--primary)] transition-colors"
+                                onClick={() => voucher.party_ledger_id && navigate(`/ledgers/${voucher.party_ledger_id}`)}
+                            >
+                                {voucher.party_name}
+                            </h3>
+                            {(voucher.party_gstin || voucher.party_gst_number) && (
+                                <p className="text-[10px] font-bold text-[var(--text-muted)] mt-1 uppercase tracking-wide">GSTIN: {voucher.party_gstin || voucher.party_gst_number}</p>
                             )}
                         </div>
 
@@ -345,13 +456,19 @@ export default function VoucherDetailPage() {
                                     className="bg-[var(--surface)] border border-[var(--border)] rounded-[24px] p-5 active:scale-[0.98] transition-transform flex justify-between items-start gap-4"
                                 >
                                     <div className="space-y-1.5 flex-1">
-                                        <p className="text-sm font-bold text-[var(--on-surface)] leading-snug">{item.stock_item_name || item.name}</p>
+                                        <p
+                                            className="text-sm font-bold text-[var(--on-surface)] leading-snug cursor-pointer hover:text-[var(--primary)] transition-colors"
+                                            onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
+                                        >
+                                            {item.stock_item_name || item.name}
+                                        </p>
                                         <div className="flex flex-wrap items-center gap-2">
                                             <div className="bg-[var(--surface-variant)] px-2.5 py-1 rounded-lg text-[10px] font-bold text-[var(--on-surface)]">
                                                 {item.quantity} {item.unit}
                                             </div>
                                             <span className="text-[10px] text-[var(--text-muted)] font-medium">@ {formatCurrency(item.rate)}</span>
                                             {item.gst_rate > 0 && <span className="text-[9px] font-black text-amber-500 uppercase">GST {item.gst_rate}%</span>}
+                                            <span className="text-[9px] font-black text-[var(--text-muted)] uppercase">HSN {item.hsn_code || '-'}</span>
                                         </div>
                                     </div>
                                     <div className="text-right">
@@ -397,3 +514,6 @@ export default function VoucherDetailPage() {
         </div>
     );
 }
+
+
+

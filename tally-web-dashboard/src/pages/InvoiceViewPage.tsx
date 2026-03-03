@@ -3,8 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Share2, Download, Printer, Phone, Mail, MapPin, Building2, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import html2pdf from 'html2pdf.js';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+import { portalApi } from '../lib/insforge';
 
 interface InvoiceItem {
     id: string;
@@ -55,12 +54,11 @@ export default function InvoiceViewPage() {
         const fetchInvoice = async () => {
             if (!id) return;
             try {
-                const res = await fetch(`${API_URL}/portal/invoice/${id}`);
-                const json = await res.json();
-                if (json.success) {
-                    setInvoice(json.data);
+                const { data, error } = await portalApi.getInvoiceDetails(id);
+                if (data) {
+                    setInvoice(data as any);
                 } else {
-                    setError(json.error || 'Failed to load invoice');
+                    setError(error || 'Failed to load invoice');
                 }
             } catch (err) {
                 console.error(err);
@@ -71,7 +69,6 @@ export default function InvoiceViewPage() {
         };
         fetchInvoice();
     }, [id]);
-
     const formatCurrency = (amount: number) =>
         new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
 
@@ -242,3 +239,4 @@ export default function InvoiceViewPage() {
         </div>
     );
 }
+

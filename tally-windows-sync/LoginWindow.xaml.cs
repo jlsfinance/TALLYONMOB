@@ -17,8 +17,12 @@ namespace TallySyncApp
             InitializeComponent();
             _authService = authService;
 
-            // Focus on email box
-            Loaded += (s, e) => EmailBox.Focus();
+            // Focus on email box safely using dispatcher
+            Loaded += (s, e) => {
+                Dispatcher.BeginInvoke(new Action(() => {
+                    if (EmailBox != null) EmailBox.Focus();
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            };
 
             // Allow Enter key to submit
             KeyDown += (s, e) =>
@@ -67,7 +71,6 @@ namespace TallySyncApp
                     if (success)
                     {
                         LoginSuccessful = true;
-                        DialogResult = true;
                         Close();
                     }
                     else

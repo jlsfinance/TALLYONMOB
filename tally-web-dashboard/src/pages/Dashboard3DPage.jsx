@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { GlassCard, KPICard, ProgressRing, BarChart3D } from '../components/3d';
 import TopAnalyticsSection from '../components/TopAnalyticsSection';
@@ -31,35 +31,88 @@ export default function Dashboard3DPage() {
             const today = new Date();
             const monthStart = format(startOfMonth(today), 'yyyy-MM-dd');
             const monthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
+            const todayStr = format(today, 'yyyy-MM-dd');
 
-            // Get current financial year
             const fyStart = today.getMonth() >= 3
                 ? new Date(today.getFullYear(), 3, 1)
                 : new Date(today.getFullYear() - 1, 3, 1);
+            const fyStartStr = format(fyStart, 'yyyy-MM-dd');
 
-            // Fetch sales data from vouchers
-            const { data: sales } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
-                .eq('is_deleted', false);
+            // ── ALL queries in parallel ──────────────────────────
+            const [
+                salesRes,
+                purchasesRes,
+                ledgersRes,
+                vouchersRes,
+                pendingRes,
+                todaySalesRes,
+                receiptsRes
+            ] = await Promise.all([
+                // 1. FY Sales
+                supabase.from('vouchers')
+                    .select('total_amount, grand_total, voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .gte('vch_date', fyStartStr)
+                    .eq('is_deleted', false),
+                // 2. FY Purchases
+                supabase.from('vouchers')
+                    .select('total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Purchase')
+                    .gte('vch_date', fyStartStr)
+                    .eq('is_deleted', false),
+                // 3. Outstanding receivables
+                supabase.from('ledgers')
+                    .select('current_balance, parent')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('parent', 'Sundry Debtors'),
+                // 4. Recent vouchers
+                supabase.from('vouchers')
+                    .select('id, voucher_number, party_name, voucher_type, total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .order('vch_date', { ascending: false })
+                    .limit(5),
+                // 5. Pending count
+                supabase.from('pending_transactions')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('company_id', selectedCompany.id)
+                    .eq('status', 'pending'),
+                // 6. Today's sales
+                supabase.from('vouchers')
+                    .select('total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .eq('vch_date', todayStr)
+                    .eq('is_deleted', false),
+                // 7. Receipts for collection %
+                supabase.from('vouchers')
+                    .select('total_amount')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Receipt')
+                    .gte('vch_date', fyStartStr)
+                    .lte('vch_date', todayStr)
+            ]);
 
-            const totalSales = (sales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
+            const sales = salesRes.data || [];
+            const purchases = purchasesRes.data || [];
+            const ledgers = ledgersRes.data || [];
+            const vouchers = vouchersRes.data || [];
+            const tSales = todaySalesRes.data || [];
+            const receipts = receiptsRes.data || [];
 
-            // This month sales
-            const thisMonthSales = (sales || [])
-                .filter(s => s.voucher_date >= monthStart && s.voucher_date <= monthEnd)
+            // ── Process sales ────────────────────────────────────
+            const totalSales = sales.reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
+
+            const thisMonthSales = sales
+                .filter(s => (s.voucher_date || s.vch_date) >= monthStart && (s.voucher_date || s.vch_date) <= monthEnd)
                 .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
-            // Previous month sales for comparison
             const lastMonth = subMonths(today, 1);
             const lastMonthStart = format(startOfMonth(lastMonth), 'yyyy-MM-dd');
             const lastMonthEnd = format(endOfMonth(lastMonth), 'yyyy-MM-dd');
-
-            const lastMonthSales = (sales || [])
-                .filter(s => s.voucher_date >= lastMonthStart && s.voucher_date <= lastMonthEnd)
+            const lastMonthSales = sales
+                .filter(s => (s.voucher_date || s.vch_date) >= lastMonthStart && (s.voucher_date || s.vch_date) <= lastMonthEnd)
                 .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
 
             const salesTrend = lastMonthSales > 0
@@ -69,95 +122,36 @@ export default function Dashboard3DPage() {
             setSalesData({
                 total: totalSales,
                 thisMonth: thisMonthSales,
-                trend: {
-                    value: Math.abs(salesTrend),
-                    direction: salesTrend >= 0 ? 'up' : 'down'
-                }
+                trend: { value: Math.abs(salesTrend), direction: salesTrend >= 0 ? 'up' : 'down' }
             });
 
-            // Fetch purchases data from vouchers
-            const { data: purchases } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Purchase')
-                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
-                .eq('is_deleted', false);
-
-            const totalPurchases = (purchases || []).reduce((sum, p) => sum + Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0), 0);
+            // ── Process purchases ────────────────────────────────
+            const totalPurchases = purchases.reduce((sum, p) => sum + Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0), 0);
             setPurchaseData({ total: totalPurchases });
 
-            // Fetch outstanding receivables from ledgers
-            const { data: ledgers } = await supabase
-                .from('ledgers')
-                .select('current_balance, parent')
-                .eq('company_id', selectedCompany.id)
-                .eq('parent', 'Sundry Debtors');
-
-            const totalReceivables = (ledgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
+            // ── Process outstanding ──────────────────────────────
+            const totalReceivables = ledgers.reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
             setOutstandingData({ receivables: totalReceivables });
 
-            // Monthly sales for chart (last 6 months)
+            // ── Monthly chart ────────────────────────────────────
             const monthlyData = [];
             for (let i = 5; i >= 0; i--) {
                 const month = subMonths(today, i);
                 const mStart = format(startOfMonth(month), 'yyyy-MM-dd');
                 const mEnd = format(endOfMonth(month), 'yyyy-MM-dd');
-
-                const monthSales = (sales || [])
-                    .filter(s => s.voucher_date >= mStart && s.voucher_date <= mEnd)
+                const monthSalesTotal = sales
+                    .filter(s => (s.voucher_date || s.vch_date) >= mStart && (s.voucher_date || s.vch_date) <= mEnd)
                     .reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
-
-                monthlyData.push({
-                    label: format(month, 'MMM'),
-                    value: monthSales
-                });
+                monthlyData.push({ label: format(month, 'MMM'), value: monthSalesTotal });
             }
             setMonthlySales(monthlyData);
 
-            // Fetch recent vouchers
-            const { data: vouchers } = await supabase
-                .from('vouchers')
-                .select('id, voucher_number, party_name, voucher_type, total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .order('voucher_date', { ascending: false })
-                .limit(5);
+            setRecentVouchers(vouchers);
+            setPendingCount(pendingRes.count || 0);
+            setTodaySales(tSales.reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
 
-            setRecentVouchers(vouchers || []);
-
-            // Fetch pending transactions count
-            const { count: pending } = await supabase
-                .from('pending_transactions')
-                .select('*', { count: 'exact', head: true })
-                .eq('company_id', selectedCompany.id)
-                .eq('status', 'pending');
-
-            setPendingCount(pending || 0);
-
-            // Fetch today's actual sales from vouchers
-            const todayStr = format(new Date(), 'yyyy-MM-dd');
-            const { data: tSales } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .eq('voucher_date', todayStr)
-                .eq('is_deleted', false);
-
-            setTodaySales((tSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
-
-            // Fetch Receipts for Collection %
-            const { data: receipts } = await supabase
-                .from('vouchers')
-                .select('total_amount')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Receipt')
-                .gte('voucher_date', format(fyStart, 'yyyy-MM-dd'))
-                .lte('voucher_date', format(today, 'yyyy-MM-dd'));
-
-            const totalReceipts = (receipts || []).reduce((sum, r) => sum + (Math.abs(Number(r.total_amount)) || 0), 0);
-
-            // Calculate Ratios
+            // ── KPI Ratios ───────────────────────────────────────
+            const totalReceipts = receipts.reduce((sum, r) => sum + (Math.abs(Number(r.total_amount)) || 0), 0);
             const netProfitCalc = totalSales - totalPurchases;
             const collectionRate = totalSales > 0 ? (totalReceipts / totalSales) * 100 : 0;
             const expenseRate = totalSales > 0 ? (totalPurchases / totalSales) * 100 : 0;
@@ -365,3 +359,4 @@ export default function Dashboard3DPage() {
         </div>
     );
 }
+

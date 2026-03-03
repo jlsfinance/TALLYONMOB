@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { portalApi } from '../lib/insforge';
 import {
     Download, Calendar, Filter, ArrowUpRight, ArrowDownLeft,
     Wallet, Building2, Phone, Mail, MapPin, IndianRupee,
@@ -9,8 +10,6 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 interface Transaction {
     id: string;
@@ -79,15 +78,13 @@ export default function CustomerPortalPage() {
 
         try {
             // 1. Fetch Company Info
-            const resCompany = await fetch(`${API_URL}/portal/company?company_id=${companyId}`);
-            const jsonCompany = await resCompany.json();
-            if (jsonCompany.success) setCompany(jsonCompany.data);
-            else toast.error(jsonCompany.message || 'Failed to load company info');
+            const { data: companyData, error: companyError } = await portalApi.getCompanyInfo(companyId);
+            if (companyData) setCompany(companyData);
+            else toast.error('Failed to load company info');
 
             // 2. Fetch Party Info
-            const resParty = await fetch(`${API_URL}/portal/party?company_id=${companyId}&party_name=${encodeURIComponent(partyName)}`);
-            const jsonParty = await resParty.json();
-            if (jsonParty.success) setParty(jsonParty.data);
+            const { data: partyData, error: partyError } = await portalApi.getPartyInfo(companyId, partyName);
+            if (partyData) setParty(partyData);
             else {
                 setError('Party not found. Please contact the business.');
                 setLoading(false);
@@ -95,17 +92,11 @@ export default function CustomerPortalPage() {
             }
 
             // 3. Fetch Statement (Transactions)
-            let url = `${API_URL}/portal/statement?company_id=${companyId}&party_name=${encodeURIComponent(partyName)}`;
-            if (dateRange.from) url += `&from_date=${dateRange.from}`;
-            if (dateRange.to) url += `&to_date=${dateRange.to}`;
-
-            const resStatement = await fetch(url);
-            const jsonStatement = await resStatement.json();
-
-            if (jsonStatement.success) {
-                setTransactions(jsonStatement.data);
+            const { data: stmtData, error: stmtError } = await portalApi.getStatement(companyId, partyName, dateRange.from, dateRange.to);
+            if (stmtData) {
+                setTransactions(stmtData);
             } else {
-                toast.error(jsonStatement.message || 'Failed to load transactions');
+                toast.error('Failed to load transactions');
             }
         } catch (err) {
             console.error('Portal load error:', err);
@@ -115,7 +106,6 @@ export default function CustomerPortalPage() {
             setLoading(false);
         }
     }, [companyId, partyName, dateRange]);
-
     useEffect(() => {
         loadData();
     }, [loadData]);
@@ -271,7 +261,7 @@ export default function CustomerPortalPage() {
                     </div>
                     <p style={{ margin: 0, fontSize: '13px', opacity: 0.7 }}>
                         {company?.address && <span>{company.address}</span>}
-                        {company?.phone && <span> • {company.phone}</span>}
+                        {company?.phone && <span> ? {company.phone}</span>}
                     </p>
                 </div>
             </div>
@@ -511,7 +501,7 @@ export default function CustomerPortalPage() {
 
                 {/* Footer */}
                 <div style={{ textAlign: 'center', padding: '24px', fontSize: '12px', color: '#999' }}>
-                    Powered by <strong>TallyLink</strong> • This is a computer-generated statement
+                    Powered by <strong>TallyLink</strong> ? This is a computer-generated statement
                 </div>
             </div>
 
@@ -519,3 +509,4 @@ export default function CustomerPortalPage() {
         </div>
     );
 }
+

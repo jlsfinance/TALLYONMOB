@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import toast from 'react-hot-toast';
 import {
     ExternalLink, Copy, Send, Search, Link2, QrCode, Globe, Users
@@ -53,7 +53,7 @@ export default function PortalLinksPage() {
     const shareViaWhatsApp = (party: Party) => {
         const link = generatePortalLink(party.name);
         const message = encodeURIComponent(
-            `🔗 View your account statement and make payments online:\n\n${link}\n\n— Sent via TallyLink`
+            `🔗 View your account statement and make payments online:\n\n${link}\n\n? Sent via TallyLink`
         );
         const phone = party.phone?.replace(/[^0-9]/g, '') || '';
         const waUrl = phone
@@ -185,3 +185,4 @@ export default function PortalLinksPage() {
         </div>
     );
 }
+

@@ -1,0 +1,48 @@
+﻿
+> tally-web-dashboard@2.2.0 dev
+> vite --host
+
+Port 3000 is in use, trying another one...
+
+  [32m[1mVITE[22m v4.5.14[39m  [2mready in [0m[1m813[22m[2m[0m ms[22m
+
+  [32mΓ₧£[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3001[22m/[39m
+  [32mΓ₧£[39m  [1mNetwork[22m: [36mhttp://192.168.29.79:[1m3001[22m/[39m
+[2m[32m  Γ₧£[39m[22m[2m  press [22m[1mh[22m[2m to show help[22m
+npm : Error: The following 
+dependencies are imported 
+but could not be resolved:
+At line:1 char:1
++ npm run dev -- --host > 
+dev_err.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (Error:   
+  The foll...ot be resolve   
+ d::String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+
+  [36m@emotion/is-prop-valid
+[39m [37m[2m(imported by 
+D:/New folder (2)/tally-web-d
+ashboard/android/app/src/main
+/assets/public/assets/index-9
+ec53a40.js)[22m[39m
+
+Are they installed?
+    at file:///D:/New%20folde
+r%20(2)/tally-web-dashboard/n
+ode_modules/vite/dist/node/ch
+unks/dep-827b23df.js:45783:23
+    at process.processTicksAn
+dRejections (node:internal/pr
+ocess/task_queues:95:5)
+    at async file:///D:/New%2
+0folder%20(2)/tally-web-dashb
+oard/node_modules/vite/dist/n
+ode/chunks/dep-827b23df.js:45
+191:38

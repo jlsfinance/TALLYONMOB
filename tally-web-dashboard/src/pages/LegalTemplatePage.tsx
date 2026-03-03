@@ -250,7 +250,7 @@ export default function LegalTemplatePage() {
                                 <button className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600 hover:text-white transition-colors">Infrastructure status</button>
                                 <button className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600 hover:text-white transition-colors">Bug Bounty</button>
                             </div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-700">© 2026 TallySync Technologies Inc.</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-700">? 2026 TallySync Technologies Inc.</p>
                         </footer>
                     </motion.div>
                 </main>

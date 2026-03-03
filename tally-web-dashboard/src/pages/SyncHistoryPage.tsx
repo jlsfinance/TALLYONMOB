@@ -276,7 +276,7 @@ export default function SyncHistoryPage() {
                                                 <div className="text-sm text-gray-300">
                                                     <p className="font-bold text-white">{txn.voucher_data?.party_name || 'Unknown Party'}</p>
                                                     <p className="text-xs">
-                                                        {txn.voucher_data?.voucher_type_name} • ₹{txn.voucher_data?.grand_total?.toLocaleString('en-IN')}
+                                                        {txn.voucher_data?.voucher_type_name} ? ₹{txn.voucher_data?.grand_total?.toLocaleString('en-IN')}
                                                     </p>
                                                     {txn.voucher_data?.original_voucher_number && (
                                                         <p className="text-[10px] text-gray-500">Ref: #{txn.voucher_data.original_voucher_number}</p>
@@ -348,11 +348,11 @@ export default function SyncHistoryPage() {
                             This will permanently delete <strong className="text-white">ALL</strong> data for <strong className="text-white">{selectedCompany.name}</strong>:
                         </p>
                         <ul className="text-sm text-gray-400 mb-4 space-y-1">
-                            <li>• All vouchers</li>
-                            <li>• All sales & purchases</li>
-                            <li>• All ledgers</li>
-                            <li>• All stock items</li>
-                            <li>• All sync history</li>
+                            <li>? All vouchers</li>
+                            <li>? All sales & purchases</li>
+                            <li>? All ledgers</li>
+                            <li>? All stock items</li>
+                            <li>? All sync history</li>
                         </ul>
                         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4">
                             <p className="text-sm text-red-400">Run "Sync Now" in Windows App to re-sync everything after deleting.</p>

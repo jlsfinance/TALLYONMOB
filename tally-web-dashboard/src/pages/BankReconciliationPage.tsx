@@ -154,7 +154,7 @@ export default function BankReconciliationPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-[var(--on-surface)] tracking-tighter">Bank Reconciliation</h1>
-                    <p className="text-xs text-[var(--text-muted)] mt-1">{selectedCompany.name} • Bank-wise transaction analysis</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">{selectedCompany.name} ? Bank-wise transaction analysis</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-2 bg-[var(--surface-variant)] rounded-xl border border-[var(--border)] px-3 py-2">

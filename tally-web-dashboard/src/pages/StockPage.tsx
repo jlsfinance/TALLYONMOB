@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { stockApi, supabase } from '../lib/supabase';
-import { Package, Search, AlertTriangle, Grid, List, TrendingUp, Filter, Activity } from 'lucide-react';
+import { stockApi, supabase } from '../lib/insforge';
+import { Package, Search, AlertTriangle, Grid, List, TrendingUp, Filter, Activity, Share2, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Card, Badge, Spinner, EmptyState, MetricCard, ListItem } from '../components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subDays, format } from 'date-fns';
@@ -9,6 +12,7 @@ import { HeaderPortal } from '../components/layout/HeaderPortal';
 
 export default function StockPage() {
     const { selectedCompany } = useAuth() as any;
+    const navigate = useNavigate();
     const [stockItems, setStockItems] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -62,18 +66,41 @@ export default function StockPage() {
     const loadAnalysis = async () => {
         setAnalysisLoading(true);
         try {
-            const { data: entries } = await supabase
+            const { data: rawEntries, error: entriesError } = await (supabase
                 .from('voucher_stock_entries')
-                .select(`
-                    stock_item_name,
-                    voucher_id,
-                    amount,
-                    quantity,
-                    vouchers!inner(voucher_type, voucher_date)
-                `)
+                .select('stock_item_name, voucher_id, amount, quantity')
                 .eq('company_id', selectedCompany.id)
-                .limit(50000);
+                .limit(50000) as any);
 
+            if (entriesError) throw entriesError;
+
+            const voucherIds = Array.from(new Set((rawEntries || []).map((e: any) => e.voucher_id).filter(Boolean)));
+            let voucherMap: Record<string, any> = {};
+            if (voucherIds.length > 0) {
+                const chunkSize = 40;
+                const vouchers: any[] = [];
+
+                for (let i = 0; i < voucherIds.length; i += chunkSize) {
+                    const chunk = voucherIds.slice(i, i + chunkSize);
+                    const { data: batch, error: voucherError } = await (supabase
+                        .from('vouchers')
+                        .select('id, voucher_type, voucher_date')
+                        .eq('company_id', selectedCompany.id)
+                        .in('id', chunk) as any);
+
+                    if (voucherError) throw voucherError;
+                    vouchers.push(...(batch || []));
+                }
+
+                (vouchers || []).forEach((v: any) => {
+                    voucherMap[v.id] = v;
+                });
+            }
+
+            const entries = (rawEntries || []).map((entry: any) => ({
+                ...entry,
+                voucher: voucherMap[entry.voucher_id] || null
+            }));
             if (entries) {
                 const itemStats: Record<string, any> = {};
                 const now = new Date();
@@ -81,8 +108,9 @@ export default function StockPage() {
 
                 entries.forEach((entry: any) => {
                     const name = entry.stock_item_name;
-                    const type = entry.vouchers.voucher_type;
-                    const date = new Date(entry.vouchers.voucher_date);
+                    if (!entry.voucher) return; // safeguard against orphaned entries
+                    const type = entry.voucher.voucher_type;
+                    const date = new Date(entry.voucher.voucher_date);
                     const amt = Math.abs(Number(entry.amount) || 0);
 
                     if (!itemStats[name]) {
@@ -133,6 +161,17 @@ export default function StockPage() {
         setAnalysisLoading(false);
     };
 
+    const openStockItem = (item: any) => {
+        const directId = item?.id || item?.stock_item_id || null;
+        if (directId) {
+            navigate('/stock/' + directId);
+            return;
+        }
+
+        const byName = stockItems.find((s: any) => String(s?.name || '').toLowerCase() === String(item?.name || '').toLowerCase());
+        if (byName?.id) navigate('/stock/' + byName.id);
+    };
+
     const formatCurrency = (amount: number) => {
         const absAmount = Math.abs(amount || 0);
         if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)}Cr`;
@@ -150,12 +189,65 @@ export default function StockPage() {
         item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const generatePDF = () => {
+        const doc = new jsPDF();
+        const companyName = selectedCompany?.name || 'Company';
+        const date = format(new Date(), 'dd MMM yyyy');
+
+        doc.setFontSize(18);
+        doc.text(`Live Stock Availability - ${companyName}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Generated on: ${date}`, 14, 28);
+
+        let availableStock = filteredStock.filter((s: any) => s.current_stock > 0);
+
+        autoTable(doc, {
+            startY: 35,
+            head: [['Item Name', 'Group', 'Available Qty', 'Valuation (Rs)']],
+            body: availableStock.map((s: any) => [
+                s.name,
+                s.stock_group || 'General',
+                formatQuantity(s.current_stock, s.unit),
+                formatCurrency(s.closing_value).replace('₹', '')
+            ]),
+            theme: 'striped',
+            headStyles: { fillColor: [41, 128, 185] }
+        });
+
+        return doc;
+    };
+
+    const handleDownloadPDF = () => {
+        const doc = generatePDF();
+        doc.save(`Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+    };
+
+    const handleSharePDF = async () => {
+        try {
+            const doc = generatePDF();
+            const pdfBlob = doc.output('blob');
+            const file = new File([pdfBlob], `Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`, { type: 'application/pdf' });
+
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'Live Stock List',
+                    text: `Available stock for ${selectedCompany?.name}`,
+                    files: [file]
+                });
+            } else {
+                alert('Sharing is not supported on this browser. Try downloading instead.');
+            }
+        } catch (error) {
+            console.error('Error sharing PDF:', error);
+        }
+    };
+
     const [showSearch, setShowSearch] = useState(false);
 
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-8 max-w-7xl mx-auto">
+        <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
             <HeaderPortal type="title">
                 <div>
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Warehouse Node</h1>
@@ -203,11 +295,30 @@ export default function StockPage() {
                             <select
                                 value={selectedGroup}
                                 onChange={(e) => setSelectedGroup(e.target.value)}
-                                className="bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-8 pr-6 text-[10px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer min-w-[120px]"
+                                className="bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-8 pr-6 text-[10px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer min-w-[100px] md:min-w-[120px]"
                             >
                                 <option value="all">Groups</option>
                                 {groups.map(g => <option key={g} value={g}>{g}</option>)}
                             </select>
+                        </div>
+                    )}
+                    {activeTab === 'inventory' && (
+                        <div className="flex gap-2 mr-2">
+                            <button
+                                onClick={handleDownloadPDF}
+                                className="p-1.5 rounded-xl bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-500/10 transition-all border border-[var(--border)]"
+                                title="Download PDF"
+                            >
+                                <Download size={14} />
+                            </button>
+                            <button
+                                onClick={handleSharePDF}
+                                className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-xl bg-[var(--primary)] text-white font-bold text-[10px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
+                            >
+                                <Share2 size={12} />
+                                <span className="hidden sm:inline">Share Stock</span>
+                                <span className="sm:hidden">Share</span>
+                            </button>
                         </div>
                     )}
                     <div className="flex items-center gap-1 bg-[var(--surface-variant)] p-1 rounded-xl border border-[var(--border)]">
@@ -228,7 +339,7 @@ export default function StockPage() {
             </HeaderPortal>
 
             {/* Performance Indicators */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
                 <MetricCard
                     title="Net SKU Count"
                     value={stats.totalItems.toString()}
@@ -250,16 +361,16 @@ export default function StockPage() {
             </div>
 
             {/* View Tabs */}
-            <div className="flex items-center gap-1 p-1 bg-[var(--surface-container)] rounded-xl w-fit border border-[var(--border)]">
+            <div className="flex items-center gap-1 p-1 bg-[var(--surface-container)] rounded-xl w-full sm:w-fit border border-[var(--border)]">
                 <button
                     onClick={() => setActiveTab('inventory')}
-                    className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'inventory' ? 'bg-[var(--surface)] text-[var(--primary)] shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
+                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase transition-all ${activeTab === 'inventory' ? 'bg-[var(--surface)] text-[var(--primary)] shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
                 >
                     Live Inventory
                 </button>
                 <button
                     onClick={() => setActiveTab('analysis')}
-                    className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'analysis' ? 'bg-[var(--surface)] text-[var(--primary)] shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
+                    className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase transition-all ${activeTab === 'analysis' ? 'bg-[var(--surface)] text-[var(--primary)] shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
                 >
                     Stock Analysis
                 </button>
@@ -296,12 +407,12 @@ export default function StockPage() {
                                 key="grid"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="grid grid-cols-2 lg:grid-cols-4 gap-5"
+                                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5"
                             >
                                 {filteredStock.map((item: any, idx) => {
                                     const isLowStock = (item.current_stock || 0) < 10;
                                     return (
-                                        <Card key={item.id} hover className="h-full flex flex-col p-5 border-[var(--border)] group animate-fadeIn shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                                        <Card key={item.id} hover onClick={() => openStockItem(item)} className="h-full flex flex-col p-5 border-[var(--border)] group animate-fadeIn shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
                                             <div className="flex justify-between items-start mb-6">
                                                 <div className={`p-4 rounded-2xl bg-gradient-to-br ${isLowStock ? 'from-red-500 to-amber-500' : 'from-blue-500 to-indigo-600'} text-white shadow-lg`}>
                                                     <Package size={20} />
@@ -342,7 +453,7 @@ export default function StockPage() {
                                         return (
                                             <ListItem
                                                 key={item.id}
-                                                className="px-6 py-4 hover:bg-[var(--surface-variant)] transition-all cursor-default"
+                                                onClick={() => openStockItem(item)} className="px-4 md:px-6 py-4 hover:bg-[var(--surface-variant)] transition-all"
                                                 title={<span className="font-black text-sm uppercase tracking-tight text-[var(--on-surface)]">{item.name}</span>}
                                                 subtitle={<span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[2px]">{item.stock_group || 'General'}</span>}
                                                 leading={
@@ -351,7 +462,7 @@ export default function StockPage() {
                                                     </div>
                                                 }
                                                 trailing={
-                                                    <div className="flex items-center gap-12 text-right">
+                                                    <div className="flex items-center gap-4 md:gap-12 text-right">
                                                         <div>
                                                             <p className={`text-sm font-black ${isLowStock ? 'text-red-500' : 'text-[var(--on-surface)]'}`}>
                                                                 {formatQuantity(item.current_stock, item.unit)}
@@ -398,7 +509,7 @@ export default function StockPage() {
                             ) : deadStock.length === 0 ? (
                                 <div className="p-12 text-center text-xs text-[var(--text-muted)]">No dead stock found. Great job!</div>
                             ) : deadStock.map((item) => (
-                                <div key={item.id} className="p-4 flex items-center justify-between hover:bg-[var(--surface-active)] transition-colors">
+                                <div key={item.id} onClick={() => openStockItem(item)} className="p-4 flex items-center justify-between hover:bg-[var(--surface-active)] transition-colors cursor-pointer">
                                     <div className="flex flex-col">
                                         <span className="text-sm font-black text-[var(--on-surface)]">{item.name}</span>
                                         <span className="text-[10px] text-[var(--text-muted)] uppercase">
@@ -431,7 +542,7 @@ export default function StockPage() {
                             ) : profitability.length === 0 ? (
                                 <div className="p-12 text-center text-xs text-[var(--text-muted)] font-bold">No sales data available for analysis.</div>
                             ) : profitability.map((item) => (
-                                <div key={item.name} className="p-4 flex items-center justify-between hover:bg-[var(--surface-active)] transition-colors">
+                                <div key={item.name} onClick={() => openStockItem(item)} className="p-4 flex items-center justify-between hover:bg-[var(--surface-active)] transition-colors cursor-pointer">
                                     <div className="flex flex-col">
                                         <span className="text-sm font-black text-[var(--on-surface)]">{item.name}</span>
                                         <div className="flex items-center gap-2 mt-0.5">
@@ -455,3 +566,5 @@ export default function StockPage() {
         </div>
     );
 }
+
+

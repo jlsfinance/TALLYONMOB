@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { AuthContextType } from '../contexts/types';
+import { supabase } from '../lib/insforge';
 import {
     Bot, Send, Mic, MicOff, Loader2, Sparkles, BarChart3,
     TrendingUp, Users, IndianRupee, Package, FileText,
@@ -8,6 +9,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
+import { getUserGeminiApiKey } from '@/lib/userGeminiKey';
 
 interface Message {
     id: string;
@@ -17,19 +19,27 @@ interface Message {
     data?: any;
 }
 
+interface CompanyData {
+    sales: any[];
+    purchases: any[];
+    ledgers: any[];
+    stock: any[];
+    companyName: string;
+}
+
 const QUICK_PROMPTS = [
-    { icon: '📊', text: 'Aaj ki sale kitni hui?', label: 'Today Sales' },
-    { icon: '💰', text: 'Sabse zyada outstanding kiska hai?', label: 'Top Outstanding' },
-    { icon: '📦', text: 'Low stock items batao', label: 'Low Stock' },
-    { icon: '📈', text: 'Last 7 days ka sales trend', label: 'Sales Trend' },
-    { icon: '🏆', text: 'Top 5 customers by revenue', label: 'Top Customers' },
-    { icon: '⚠️', text: 'Cash flow prediction next 30 days', label: 'Cash Flow' },
-    { icon: '📋', text: 'Is month ki P&L summary bata', label: 'P&L Summary' },
-    { icon: '🔍', text: 'Unusual transactions check kar', label: 'Anomaly Check' }
+    { icon: 'ðŸ“Š', text: 'Aaj ki sale kitni hui?', label: 'Today Sales' },
+    { icon: 'ðŸ’°', text: 'Sabse zyada outstanding kiska hai?', label: 'Top Outstanding' },
+    { icon: 'ðŸ“¦', text: 'Low stock items batao', label: 'Low Stock' },
+    { icon: 'ðŸ“ˆ', text: 'Last 7 days ka sales trend', label: 'Sales Trend' },
+    { icon: 'ðŸ†', text: 'Top 5 customers by revenue', label: 'Top Customers' },
+    { icon: 'âš ï¸', text: 'Cash flow prediction next 30 days', label: 'Cash Flow' },
+    { icon: 'ðŸ“‹', text: 'Is month ki P&L summary bata', label: 'P&L Summary' },
+    { icon: 'ðŸ”', text: 'Unusual transactions check kar', label: 'Anomaly Check' }
 ];
 
 export default function AIAssistantPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, user } = useAuth() as AuthContextType;
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -43,7 +53,7 @@ export default function AIAssistantPage() {
         setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: `Namaste! 🙏 Main aapka AI Business Assistant hoon.\n\nMain aapki ${selectedCompany?.name || 'company'} ke data se answers de sakta hoon. Hindi ya English mein pucho!\n\n**Kuch try karein:**\n- "Aaj kitni sale hui?"\n- "Sabse zyada outstanding kiska hai?"\n- "Top 5 items by sale"\n- "Cash flow predict karo"`,
+            content: `Namaste! ðŸ™ Main aapka AI Business Assistant hoon.\n\nMain aapki ${selectedCompany?.name || 'company'} ke data se answers de sakta hoon. Hindi ya English mein pucho!\n\n**Kuch try karein:**\n- "Aaj kitni sale hui?"\n- "Sabse zyada outstanding kiska hai?"\n- "Top 5 items by sale"\n- "Cash flow predict karo"`,
             timestamp: new Date()
         }]);
     }, [selectedCompany]);
@@ -60,14 +70,14 @@ export default function AIAssistantPage() {
                 .select('voucher_date, total_amount, grand_total, party_name, voucher_number')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
-                .eq('is_deleted', false)
+                .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
                 .limit(500),
             supabase.from('vouchers')
                 .select('voucher_date, total_amount, grand_total, party_name')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
-                .eq('is_deleted', false)
+                .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
                 .limit(500),
             supabase.from('ledgers')
@@ -81,55 +91,49 @@ export default function AIAssistantPage() {
         ]);
 
         return {
-            sales: salesRes.data || [],
-            purchases: purchaseRes.data || [],
-            ledgers: ledgersRes.data || [],
-            stock: stockRes.data || [],
+            sales: (salesRes as any)?.data || [],
+            purchases: (purchaseRes as any)?.data || [],
+            ledgers: (ledgersRes as any)?.data || [],
+            stock: (stockRes as any)?.data || [],
             companyName: selectedCompany.name
         };
     };
 
-    const processWithAI = async (query: string, data: any): Promise<string> => {
+    const processWithAI = async (query: string, data: CompanyData): Promise<string> => {
         // First try to answer locally using data analysis
         const localAnswer = analyzeLocally(query, data);
         if (localAnswer) return localAnswer;
 
-        // If local analysis couldn't answer, try Gemini API via backend
+        // Fallback to Gemini AI with company data context
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL || '';
-            const session = await supabase.auth.getSession();
-            const token = session.data.session?.access_token;
+            const { analyzeData } = await import('@/lib/GeminiService');
+            const dataContext = {
+                companyName: data.companyName,
+                salesCount: data.sales.length,
+                topSales: data.sales.slice(0, 30),
+                purchasesCount: data.purchases.length,
+                topPurchases: data.purchases.slice(0, 20),
+                ledgersWithBalance: data.ledgers.filter((l: any) => Math.abs(l.current_balance) > 0).slice(0, 60),
+                lowStock: data.stock.filter((s: any) => (s.current_stock || 0) < 10).slice(0, 20),
+                totalLedgers: data.ledgers.length,
+                totalStock: data.stock.length
+            };
 
-            const response = await fetch(`${backendUrl}/api/ai/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    query,
-                    companyData: {
-                        salesCount: data.sales.length,
-                        topSales: data.sales.slice(0, 20),
-                        topLedgers: data.ledgers.filter((l: any) => Math.abs(l.current_balance) > 0).slice(0, 50),
-                        lowStock: data.stock.filter((s: any) => (s.current_stock || 0) < 10).slice(0, 20),
-                        companyName: data.companyName
-                    }
-                })
+            const answer = await analyzeData(query, dataContext, {
+                apiKey: getUserGeminiApiKey(user?.id),
+                userId: user?.id
             });
-
-            if (response.ok) {
-                const result = await response.json();
-                return result.answer || result.response || 'Sorry, could not process your query.';
+            return answer || "Main is query ka answer abhi de nahi pa raha. Please apna query rephrase karein. ðŸ¤”";
+        } catch (err: any) {
+            console.error('Gemini AI call failed:', err);
+            if (err?.message?.includes('API key')) {
+                return "âš ï¸ **Gemini API Key set nahi hai!**\n\nSettings me jaake Google AI Studio ki API key add karo, phir AI smart jawab dega.\n\nðŸ‘‰ Sidebar > Settings > Gemini API Key";
             }
-        } catch {
-            // Backend not available - fall back to local
+            return "âŒ AI request fail ho gaya. Please retry karein ya Settings me API key check karein.";
         }
-
-        return analyzeLocally(query, data) || "Main is query ka answer abhi de nahi pa raha. Please apna query rephrase karein ya specific metrics ke baare mein puchein. 🤔";
     };
 
-    const analyzeLocally = (query: string, data: any): string | null => {
+    const analyzeLocally = (query: string, data: CompanyData): string | null => {
         const q = query.toLowerCase();
         const today = new Date().toISOString().split('T')[0];
         const todayDate = new Date();
@@ -144,9 +148,9 @@ export default function AIAssistantPage() {
             if (ledgerMatch && (q.includes('ledger') || q.includes('khata') || q.includes('party') || q.includes('balance'))) {
                 const bal = ledgerMatch.current_balance;
                 const type = bal >= 0 ? 'Debit (Receivable)' : 'Credit (Payable)';
-                return `📖 **Ledger Details: ${ledgerMatch.name}**\n\n` +
-                    `💰 Balance: **₹${Math.abs(bal).toLocaleString('en-IN')}** (${type})\n` +
-                    `📁 Group: **${ledgerMatch.parent}**\n\n` +
+                return `ðŸ“– **Ledger Details: ${ledgerMatch.name}**\n\n` +
+                    `ðŸ’° Balance: **â‚¹${Math.abs(bal).toLocaleString('en-IN')}** (${type})\n` +
+                    `ðŸ“ Group: **${ledgerMatch.parent}**\n\n` +
                     `Aap is party ki transactions dekhne ke liye "Transactions of ${ledgerMatch.name}" puch sakte hain.`;
             }
         }
@@ -155,12 +159,12 @@ export default function AIAssistantPage() {
         if (q.includes('aaj') && (q.includes('sale') || q.includes('sell') || q.includes('bik'))) {
             const todaySales = data.sales.filter((s: any) => s.voucher_date === today);
             const total = todaySales.reduce((sum: number, s: any) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
-            return `📊 **Aaj Ki Sales (${todayDate.toLocaleDateString('en-IN')})**\n\n` +
-                `💰 Total Sales: **₹${total.toLocaleString('en-IN')}**\n` +
-                `📋 Number of Invoices: **${todaySales.length}**\n\n` +
+            return `ðŸ“Š **Aaj Ki Sales (${todayDate.toLocaleDateString('en-IN')})**\n\n` +
+                `ðŸ’° Total Sales: **â‚¹${total.toLocaleString('en-IN')}**\n` +
+                `ðŸ“‹ Number of Invoices: **${todaySales.length}**\n\n` +
                 (todaySales.length > 0
                     ? `Top Sales:\n${todaySales.slice(0, 5).map((s: any, i: number) =>
-                        `${i + 1}. ${s.party_name} — ₹${Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0).toLocaleString('en-IN')}`
+                        `${i + 1}. ${s.party_name} â€” â‚¹${Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0).toLocaleString('en-IN')}`
                     ).join('\n')}`
                     : 'Aaj abhi tak koi sale nahi hui hai.');
         }
@@ -173,11 +177,11 @@ export default function AIAssistantPage() {
 
             const total = debtors.reduce((sum: number, d: any) => sum + d.current_balance, 0);
 
-            return `💰 **Outstanding Report**\n\n` +
-                `Total Outstanding: **₹${total.toLocaleString('en-IN')}**\n` +
+            return `ðŸ’° **Outstanding Report**\n\n` +
+                `Total Outstanding: **â‚¹${total.toLocaleString('en-IN')}**\n` +
                 `Parties with dues: **${debtors.length}**\n\n` +
                 `**Top 10 Outstanding:**\n${debtors.slice(0, 10).map((d: any, i: number) =>
-                    `${i + 1}. ${d.name} — ₹${d.current_balance.toLocaleString('en-IN')}`
+                    `${i + 1}. ${d.name} â€” â‚¹${d.current_balance.toLocaleString('en-IN')}`
                 ).join('\n')}`;
         }
 
@@ -193,8 +197,8 @@ export default function AIAssistantPage() {
                 .sort(([, a], [, b]) => b - a)
                 .slice(0, 10);
 
-            return `🏆 **Top Customers by Revenue**\n\n${sorted.map(([name, amount], i) =>
-                `${i + 1}. **${name}** — ₹${amount.toLocaleString('en-IN')}`
+            return `ðŸ† **Top Customers by Revenue**\n\n${sorted.map(([name, amount], i) =>
+                `${i + 1}. **${name}** â€” â‚¹${amount.toLocaleString('en-IN')}`
             ).join('\n')}`;
         }
 
@@ -204,11 +208,11 @@ export default function AIAssistantPage() {
                 .filter((s: any) => (s.current_stock || 0) >= 0 && (s.current_stock || 0) < 10)
                 .sort((a: any, b: any) => (a.current_stock || 0) - (b.current_stock || 0));
 
-            if (lowStock.length === 0) return '✅ Sab items ka stock theek hai! Koi item low stock mein nahi hai.';
+            if (lowStock.length === 0) return 'âœ… Sab items ka stock theek hai! Koi item low stock mein nahi hai.';
 
-            return `⚠️ **Low Stock Alert** (${lowStock.length} items)\n\n${lowStock.slice(0, 15).map((s: any, i: number) =>
-                `${i + 1}. **${s.name}** — ${s.current_stock || 0} ${s.unit || 'units'} remaining`
-            ).join('\n')}\n\n💡 Consider placing reorders for these items.`;
+            return `âš ï¸ **Low Stock Alert** (${lowStock.length} items)\n\n${lowStock.slice(0, 15).map((s: any, i: number) =>
+                `${i + 1}. **${s.name}** â€” ${s.current_stock || 0} ${s.unit || 'units'} remaining`
+            ).join('\n')}\n\nðŸ’¡ Consider placing reorders for these items.`;
         }
 
         // Sales trend
@@ -231,15 +235,15 @@ export default function AIAssistantPage() {
             const total = Object.values(dailySales).reduce((a, b) => a + b, 0);
             const avg = total / days;
 
-            return `📈 **Last 7 Days Sales Trend**\n\n` +
+            return `ðŸ“ˆ **Last 7 Days Sales Trend**\n\n` +
                 Object.entries(dailySales)
                     .sort(([a], [b]) => a.localeCompare(b))
                     .map(([date, amount]) => {
-                        const bar = '█'.repeat(Math.max(1, Math.round((amount / (Math.max(...Object.values(dailySales)) || 1)) * 15)));
-                        return `${new Date(date).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit' })} | ${bar} ₹${amount.toLocaleString('en-IN')}`;
+                        const bar = 'â–ˆ'.repeat(Math.max(1, Math.round((amount / (Math.max(...Object.values(dailySales)) || 1)) * 15)));
+                        return `${new Date(date).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit' })} | ${bar} â‚¹${amount.toLocaleString('en-IN')}`;
                     })
                     .join('\n') +
-                `\n\n📊 Total: **₹${total.toLocaleString('en-IN')}** | Avg: **₹${Math.round(avg).toLocaleString('en-IN')}/day**`;
+                `\n\nðŸ“Š Total: **â‚¹${total.toLocaleString('en-IN')}** | Avg: **â‚¹${Math.round(avg).toLocaleString('en-IN')}/day**`;
         }
 
         // P&L
@@ -249,11 +253,11 @@ export default function AIAssistantPage() {
             const grossProfit = totalSales - totalPurchases;
             const margin = totalSales > 0 ? ((grossProfit / totalSales) * 100).toFixed(1) : '0';
 
-            return `📋 **Profit & Loss Summary**\n\n` +
-                `💚 Total Sales: **₹${totalSales.toLocaleString('en-IN')}**\n` +
-                `🔴 Total Purchases: **₹${totalPurchases.toLocaleString('en-IN')}**\n` +
-                `${grossProfit >= 0 ? '✅' : '❌'} Gross Profit: **₹${grossProfit.toLocaleString('en-IN')}**\n` +
-                `📊 Margin: **${margin}%**\n\n` +
+            return `ðŸ“‹ **Profit & Loss Summary**\n\n` +
+                `ðŸ’š Total Sales: **â‚¹${totalSales.toLocaleString('en-IN')}**\n` +
+                `ðŸ”´ Total Purchases: **â‚¹${totalPurchases.toLocaleString('en-IN')}**\n` +
+                `${grossProfit >= 0 ? 'âœ…' : 'âŒ'} Gross Profit: **â‚¹${grossProfit.toLocaleString('en-IN')}**\n` +
+                `ðŸ“Š Margin: **${margin}%**\n\n` +
                 `_Note: This is based on synced voucher data._`;
         }
 
@@ -275,16 +279,16 @@ export default function AIAssistantPage() {
             const projectedOutflow = payables * 0.8;
             const netPosition = projectedInflow - projectedOutflow;
 
-            return `🔮 **30-Day Cash Flow Prediction**\n\n` +
-                `📥 Projected Inflows:\n` +
-                `   Expected Collections (60%): ₹${Math.round(receivables * 0.6).toLocaleString('en-IN')}\n` +
-                `   Projected Sales (30 days): ₹${Math.round(avgDailySales * 30).toLocaleString('en-IN')}\n` +
-                `   **Total Inflow: ₹${Math.round(projectedInflow).toLocaleString('en-IN')}**\n\n` +
-                `📤 Projected Outflows:\n` +
-                `   Payables Due (80%): ₹${Math.round(payables * 0.8).toLocaleString('en-IN')}\n` +
-                `   **Total Outflow: ₹${Math.round(projectedOutflow).toLocaleString('en-IN')}**\n\n` +
-                `${netPosition >= 0 ? '✅' : '⚠️'} **Net Position: ₹${Math.round(netPosition).toLocaleString('en-IN')}**\n\n` +
-                `${netPosition < 0 ? '⚠️ Alert: Aapko short fall ho sakta hai! Collections speed up karein.' : '✅ Cash position healthy lag raha hai!'}`;
+            return `ðŸ”® **30-Day Cash Flow Prediction**\n\n` +
+                `ðŸ“¥ Projected Inflows:\n` +
+                `   Expected Collections (60%): â‚¹${Math.round(receivables * 0.6).toLocaleString('en-IN')}\n` +
+                `   Projected Sales (30 days): â‚¹${Math.round(avgDailySales * 30).toLocaleString('en-IN')}\n` +
+                `   **Total Inflow: â‚¹${Math.round(projectedInflow).toLocaleString('en-IN')}**\n\n` +
+                `ðŸ“¤ Projected Outflows:\n` +
+                `   Payables Due (80%): â‚¹${Math.round(payables * 0.8).toLocaleString('en-IN')}\n` +
+                `   **Total Outflow: â‚¹${Math.round(projectedOutflow).toLocaleString('en-IN')}**\n\n` +
+                `${netPosition >= 0 ? 'âœ…' : 'âš ï¸'} **Net Position: â‚¹${Math.round(netPosition).toLocaleString('en-IN')}**\n\n` +
+                `${netPosition < 0 ? 'âš ï¸ Alert: Aapko short fall ho sakta hai! Collections speed up karein.' : 'âœ… Cash position healthy lag raha hai!'}`;
         }
 
         // Anomaly check
@@ -302,14 +306,14 @@ export default function AIAssistantPage() {
                     const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
                     const latestAmount = amounts[0];
                     if (latestAmount > avg * 3) {
-                        anomalies.push(`**${party}**: Latest ₹${latestAmount.toLocaleString('en-IN')} vs Avg ₹${Math.round(avg).toLocaleString('en-IN')} (${Math.round(latestAmount / avg)}x higher)`);
+                        anomalies.push(`**${party}**: Latest â‚¹${latestAmount.toLocaleString('en-IN')} vs Avg â‚¹${Math.round(avg).toLocaleString('en-IN')} (${Math.round(latestAmount / avg)}x higher)`);
                     }
                 }
             });
 
             return anomalies.length > 0
-                ? `🔍 **Anomaly Detection Report**\n\n${anomalies.length} unusual transactions found:\n\n${anomalies.slice(0, 10).join('\n')}\n\n💡 Review these transactions for potential errors or fraud.`
-                : '✅ **No anomalies detected!** All recent transactions appear within normal patterns.';
+                ? `ðŸ” **Anomaly Detection Report**\n\n${anomalies.length} unusual transactions found:\n\n${anomalies.slice(0, 10).join('\n')}\n\nðŸ’¡ Review these transactions for potential errors or fraud.`
+                : 'âœ… **No anomalies detected!** All recent transactions appear within normal patterns.';
         }
 
         return null;
@@ -347,7 +351,7 @@ export default function AIAssistantPage() {
             setMessages(prev => [...prev, {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: '❌ Sorry, kuch gadbad ho gayi. Please phir se try karein.',
+                content: 'âŒ Sorry, kuch gadbad ho gayi. Please phir se try karein.',
                 timestamp: new Date()
             }]);
         } finally {
@@ -398,7 +402,7 @@ export default function AIAssistantPage() {
         setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: `Chat cleared! Pucho jo puchna hai... 🤖`,
+            content: `Chat cleared! Pucho jo puchna hai... ðŸ¤–`,
             timestamp: new Date()
         }]);
     };
@@ -529,3 +533,5 @@ export default function AIAssistantPage() {
         </div>
     );
 }
+
+

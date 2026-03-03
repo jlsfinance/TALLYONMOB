@@ -1,0 +1,16 @@
+signIn: async signInWithPassword(request) {
+    try {
+      const response = await this.http.post(
+        "
+signUp: async signUp(request) {
+    try {
+      const response = await this.http.post(
+        "/api/auth/us
+verifyEmail: async verifyEmail(request) {
+    try {
+      const response = await this.http.post(
+        "/api/au
+getCurrentSession: async getCurrentSession() {
+    await this.authCallbackHandled;
+    try {
+      const session = this

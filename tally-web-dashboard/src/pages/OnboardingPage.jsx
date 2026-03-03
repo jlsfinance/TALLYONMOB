@@ -19,7 +19,7 @@ import {
     ChevronRight,
     Play
 } from 'lucide-react';
-import { companyApi } from '../lib/supabase';
+import { companyApi } from '../lib/insforge';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const OnboardingPage = () => {
@@ -509,3 +509,4 @@ const OnboardingPage = () => {
 };
 
 export default OnboardingPage;
+

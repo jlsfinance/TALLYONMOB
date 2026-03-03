@@ -1,4 +1,4 @@
-import { useState, useEffect, memo, useMemo } from 'react';
+﻿import { useState, useEffect, memo, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -65,6 +65,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const isAdmin = user?.email === 'lovneetrathi@gmail.com';
 
     const { t } = useLanguage();
+    const automationBasePath = selectedCompany?.id ? `/clients/${selectedCompany.id}` : '/select-company';
     // ... (rest of code)
 
     const tallyNavGroups = useMemo(() => {
@@ -95,12 +96,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
                 ]
             },
-            {
+                        {
                 label: t('ai.title'), // Intelligence
                 items: [
                     { to: '/ai-assistant', icon: <Bot size={18} />, label: t('nav.ai_assistant') },
-                    { to: '/ai-entry', icon: <Sparkles size={18} />, label: t('dashboard.recent_vouchers') }, // Using appropriate label or add new
+                    { to: '/ai-entry', icon: <Sparkles size={18} />, label: t('dashboard.recent_vouchers') },
                     { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
+                    { to: `${automationBasePath}/bank-automation`, icon: <FileSpreadsheet size={18} />, label: 'Bank Automation' },
+                    { to: `${automationBasePath}/invoice-import`, icon: <ClipboardList size={18} />, label: 'Invoice Import' },
+                    { to: `${automationBasePath}/gst`, icon: <ShieldCheck size={18} />, label: 'GST Automation' },
                 ]
             },
             {
@@ -118,7 +122,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             });
         }
         return groups;
-    }, [isAdmin, t]);
+    }, [isAdmin, t, selectedCompany?.id]);
 
     const billingNavGroups = useMemo(() => {
         const groups = [
@@ -152,7 +156,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             });
         }
         return groups;
-    }, [isAdmin, t]);
+    }, [isAdmin, t, selectedCompany?.id]);
 
     const navGroups = appMode === 'tally' ? tallyNavGroups : billingNavGroups;
 
@@ -396,7 +400,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                         >
                                             Sign Out
                                         </button>
-                                        <span className="text-[var(--border)]">•</span>
+                                        <span className="text-[var(--border)]">?</span>
                                         <button
                                             onClick={() => navigate('/select-mode')}
                                             className="text-[10px] font-medium text-[var(--primary)] hover:underline"
@@ -525,3 +529,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
     );
 }
+
+
+
+
+

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase, pendingTransactionApi } from '../lib/supabase';
+import { supabase, pendingTransactionApi } from '../lib/insforge';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,6 +24,7 @@ export default function VouchersPage() {
     const [searchTerm, setSearchTerm] = useState(searchParams.get('party') || '');
     const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
     const [syncStatusFilter, setSyncStatusFilter] = useState<string | null>(null);
+    const activeRequestRef = useRef(0);
 
     // Calculate current FY dynamically (FY starts in April)
     const getCurrentFy = () => {
@@ -34,7 +35,7 @@ export default function VouchersPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
+    const [selectedMonth, setSelectedMonth] = useState<string | null>(() => format(new Date(), 'yyyy-MM'));
 
     const voucherTypes = [
         { key: 'all', label: 'All', icon: <Activity size={12} /> },
@@ -82,16 +83,20 @@ export default function VouchersPage() {
     }, [searchTerm]);
 
     useEffect(() => {
-        if (selectedMonth && selectedCompany) loadVouchers();
-    }, [selectedMonth, selectedType, selectedCompany]);
+        if (selectedMonth && selectedCompany?.id) loadVouchers();
+    }, [selectedMonth, selectedType, selectedFy, selectedCompany?.id]);
 
     const loadVouchers = async () => {
+        const companyId = selectedCompany?.id;
+        if (!companyId || !selectedMonth) return;
+
+        const requestId = ++activeRequestRef.current;
         setLoading(true);
 
         // Handle Pending Transactions explicitly
         if (selectedType === 'Pending') {
             try {
-                const { data, error } = await pendingTransactionApi.list(selectedCompany.id, 'pending');
+                const { data, error } = await pendingTransactionApi.list(companyId, 'pending');
                 if (error) throw error;
 
                 const mapped = (data || []).map((current: any) => ({
@@ -104,30 +109,40 @@ export default function VouchersPage() {
                     sync_status: 'Pending'
                 }));
 
-                setVouchers(mapped);
+                if (requestId === activeRequestRef.current) {
+                    setVouchers(mapped);
+                }
             } catch (err) {
                 console.error('Failed to load pending vouchers:', err);
-                setVouchers([]);
+                if (requestId === activeRequestRef.current) {
+                    setVouchers([]);
+                }
             } finally {
-                setLoading(false);
+                if (requestId === activeRequestRef.current) {
+                    setLoading(false);
+                }
             }
             return;
         }
 
         const monthObj = monthsInFy.find((m: any) => m.key === selectedMonth);
         if (!monthObj) {
-            setLoading(false);
+            if (requestId === activeRequestRef.current) {
+                setLoading(false);
+            }
             return;
         }
 
         try {
+            const limit = selectedMonth === 'all' ? 2000 : 1000;
             let query = supabase.from('vouchers')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
+                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
+                .eq('company_id', companyId)
+                .or('is_deleted.is.null,is_deleted.eq.false')
                 .gte('voucher_date', monthObj.start)
                 .lte('voucher_date', monthObj.end)
                 .order('voucher_date', { ascending: false })
-                .limit(50000); // Increased limit for full year views
+                .limit(limit);
 
             if (selectedType !== 'all') {
                 query = query.eq('voucher_type', selectedType);
@@ -136,12 +151,21 @@ export default function VouchersPage() {
             const { data, error } = await query;
             if (error) throw error;
 
-            setVouchers(data || []);
+            if (requestId === activeRequestRef.current) {
+                setVouchers((data || []).map((v: any) => ({
+                    ...v,
+                    total_amount: Number(v.total_amount ?? v.grand_total ?? 0)
+                })));
+            }
         } catch (err) {
             console.error('Failed to load vouchers:', err);
-            setVouchers([]);
+            if (requestId === activeRequestRef.current) {
+                setVouchers([]);
+            }
         } finally {
-            setLoading(false);
+            if (requestId === activeRequestRef.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -263,3 +287,7 @@ export default function VouchersPage() {
         </div>
     );
 }
+
+
+
+

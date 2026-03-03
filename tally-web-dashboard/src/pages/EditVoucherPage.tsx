@@ -535,7 +535,7 @@ export default function EditVoucherPage() {
                                                             >
                                                                 <span className="text-xs font-bold text-[var(--on-surface)] block">{stock.name}</span>
                                                                 <span className="text-[10px] text-[var(--text-muted)]">
-                                                                    {stock.hsn_code ? `HSN: ${stock.hsn_code}` : ''} {stock.unit ? `• ${stock.unit}` : ''} {stock.rate ? `• ₹${Number(stock.rate).toLocaleString('en-IN')}` : ''}
+                                                                    {stock.hsn_code ? `HSN: ${stock.hsn_code}` : ''} {stock.unit ? `? ${stock.unit}` : ''} {stock.rate ? `? ₹${Number(stock.rate).toLocaleString('en-IN')}` : ''}
                                                                 </span>
                                                             </button>
                                                         ))}

@@ -98,12 +98,12 @@ export default function BalanceSheetPage() {
             const categorizeLedgers = (patterns: string[]): LedgerItem[] => {
                 return (ledgers || [])
                     .filter((l: any) => patterns.some(p =>
-                        (l.parent || '').toLowerCase().includes(p.toLowerCase()) ||
-                        (l.ledger_type || '').toLowerCase().includes(p.toLowerCase())
+                        ((l.parent || l.parent_group || '')).toLowerCase().includes(p.toLowerCase()) ||
+                        ((l.ledger_type || l.ledger_group || '')).toLowerCase().includes(p.toLowerCase())
                     ))
                     .map((l: any) => ({
                         name: l.name,
-                        balance: Math.abs(Number(l.current_balance) || 0)
+                        balance: Math.abs(Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0)
                     }));
             };
 
@@ -266,7 +266,7 @@ export default function BalanceSheetPage() {
                 <div>
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] uppercase tracking-tighter leading-none">Balance Sheet</h1>
                     <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
-                        {selectedCompany.name} • As on {fyDateRange.end}
+                        {selectedCompany.name} ? As on {fyDateRange.end}
                     </p>
                 </div>
             </HeaderPortal>

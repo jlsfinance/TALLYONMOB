@@ -1,0 +1,16 @@
+{
+  "vouchersTotal": 100,
+  "stockEntriesTotal": 28,
+  "matched": 14,
+  "missing": 14,
+  "sampleMissing": [
+    "eb9b0be6-0b46-ec67-b7ac-917012a10e41",
+    "7ac4cc70-b106-1685-7101-db9c5c604887",
+    "68c3a46c-2de8-f89f-4935-3767906adec8"
+  ],
+  "sampleValid": [
+    "ede2d775-f43f-024f-e45b-f4c5f4ad458b",
+    "3a60db30-af5c-a45c-c96f-54c39324dce3",
+    "3d030faa-8d5e-7a19-83a7-745223c68ed5"
+  ]
+}

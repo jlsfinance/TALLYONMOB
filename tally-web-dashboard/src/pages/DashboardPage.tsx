@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { Link, useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns';
 import {
@@ -84,56 +84,119 @@ export default function DashboardPage() {
 
         try {
             let sales = 0, purchases = 0, salesCount = 0, purchaseCount = 0, receivables = 0, payables = 0;
+            const sixMonthsAgo = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            const last30DaysFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+            const lastMonth = subMonths(new Date(), 1);
+            const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
+            const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
 
-            const { data: vSales, count: sCount } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false)
-                .limit(50000);
-
-            const { data: vPurchases, count: pCount } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Purchase')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false)
-                .limit(50000);
+            const [
+                { data: vSales },
+                { data: vPurchases },
+                { data: debtorLedgers },
+                { data: creditorLedgers },
+                { data: vReceipts },
+                { data: trendData },
+                { data: expenseEntries },
+                { data: cfData },
+                { data: tSales },
+                { data: lmSales },
+                { data: recent }
+            ] = await Promise.all([
+                supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total, voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .gte('voucher_date', from)
+                    .lte('voucher_date', to)
+                    .eq('is_deleted', false)
+                    .limit(20000),
+                supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total, voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Purchase')
+                    .gte('voucher_date', from)
+                    .lte('voucher_date', to)
+                    .eq('is_deleted', false)
+                    .limit(20000),
+                supabase
+                    .from('ledgers')
+                    .select('current_balance')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('parent', 'Sundry Debtors'),
+                supabase
+                    .from('ledgers')
+                    .select('current_balance')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('parent', 'Sundry Creditors'),
+                supabase
+                    .from('vouchers')
+                    .select('total_amount')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Receipt')
+                    .gte('voucher_date', from)
+                    .lte('voucher_date', to)
+                    .eq('is_deleted', false)
+                    .limit(10000),
+                supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total, voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .gte('voucher_date', sixMonthsAgo)
+                    .eq('is_deleted', false)
+                    .limit(20000),
+                supabase
+                    .from('voucher_ledger_entries')
+                    .select('ledger_name, amount, voucher_id')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('is_debit', true)
+                    .limit(5000),
+                supabase
+                    .from('vouchers')
+                    .select('voucher_date, voucher_type, total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .in('voucher_type', ['Receipt', 'Payment'])
+                    .gte('voucher_date', last30DaysFrom)
+                    .eq('is_deleted', false)
+                    .order('voucher_date', { ascending: true })
+                    .limit(5000),
+                supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .eq('voucher_date', todayStr)
+                    .eq('is_deleted', false),
+                supabase
+                    .from('vouchers')
+                    .select('total_amount, grand_total')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .gte('voucher_date', lmStart)
+                    .lte('voucher_date', lmEnd)
+                    .eq('is_deleted', false)
+                    .limit(5000),
+                supabase
+                    .from('vouchers')
+                    .select('*')
+                    .eq('company_id', selectedCompany.id)
+                    .order('voucher_date', { ascending: false })
+                    .limit(6)
+            ]);
 
             const sData = vSales || [];
             const pData = vPurchases || [];
             sales = sData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             purchases = pData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            salesCount = sCount || 0;
-            purchaseCount = pCount || 0;
+            salesCount = sData.length;
+            purchaseCount = pData.length;
 
-            const { data: debtorLedgers } = await supabase
-                .from('ledgers')
-                .select('current_balance')
-                .eq('company_id', selectedCompany.id)
-                .eq('parent', 'Sundry Debtors');
             receivables = (debtorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
-
-            const { data: creditorLedgers } = await supabase
-                .from('ledgers')
-                .select('current_balance')
-                .eq('company_id', selectedCompany.id)
-                .eq('parent', 'Sundry Creditors');
             payables = (creditorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
-
-            const { data: vReceipts } = await supabase
-                .from('vouchers')
-                .select('total_amount')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Receipt')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false);
 
             const receipts = (vReceipts || []).reduce((sum, v) => sum + Math.abs(Number(v.total_amount) || 0), 0);
             const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
@@ -145,16 +208,6 @@ export default function DashboardPage() {
                 expense: Math.min(expenseRate, 100),
                 profit: profitMargin
             });
-
-            const sixMonthsAgo = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
-            const { data: trendData } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', sixMonthsAgo)
-                .eq('is_deleted', false)
-                .limit(50000);
 
             const monthlyData: any[] = [];
             for (let i = 5; i >= 0; i--) {
@@ -168,20 +221,23 @@ export default function DashboardPage() {
             }
             setMonthlySales(monthlyData);
 
-            // Fetch Expense Groups for Pie Chart
-            const { data: expenseEntries } = await supabase
-                .from('voucher_ledger_entries')
-                .select('ledger_name, amount, vouchers!inner(voucher_type, voucher_date)')
+            const { data: expenseVoucherRows } = await supabase
+                .from('vouchers')
+                .select('id')
                 .eq('company_id', selectedCompany.id)
-                .in('vouchers.voucher_type', ['Payment', 'Purchase'])
-                .gte('vouchers.voucher_date', from)
-                .lte('vouchers.voucher_date', to)
-                .eq('is_debit', true)
-                .limit(1000);
+                .in('voucher_type', ['Payment', 'Purchase'])
+                .gte('voucher_date', from)
+                .lte('voucher_date', to)
+                .eq('is_deleted', false)
+                .limit(20000);
 
-            const groupedExpenses = (expenseEntries || []).reduce((acc: any, entry: any) => {
+            const allowedExpenseVoucherIds = new Set((expenseVoucherRows || []).map((row: any) => row.id));
+            const filteredExpenseEntries = (expenseEntries || []).filter((entry: any) => (
+                allowedExpenseVoucherIds.size === 0 || allowedExpenseVoucherIds.has(entry.voucher_id)
+            ));
+
+            const groupedExpenses = filteredExpenseEntries.reduce((acc: any, entry: any) => {
                 let name = entry.ledger_name;
-                // Basic characterization
                 if (name.toLowerCase().includes('salary')) name = 'Salaries';
                 else if (name.toLowerCase().includes('rent')) name = 'Rent';
                 else if (name.toLowerCase().includes('electricity') || name.toLowerCase().includes('power')) name = 'Utilities';
@@ -197,21 +253,9 @@ export default function DashboardPage() {
                 .map(([name, value]) => ({ name, value }))
                 .sort((a: any, b: any) => (b.value as number) - (a.value as number))
                 .slice(0, 6);
-
             setExpenseGroups(pieData);
 
-            // Fetch Cash Flow Trend (Last 30 days)
-            const { data: cfData } = await supabase
-                .from('vouchers')
-                .select('voucher_date, voucher_type, total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .in('voucher_type', ['Receipt', 'Payment'])
-                .gte('voucher_date', subDays(new Date(), 30).toISOString())
-                .eq('is_deleted', false)
-                .order('voucher_date', { ascending: true });
-
             const dailyFlow: any = {};
-            // Initialize last 30 days
             for (let i = 29; i >= 0; i--) {
                 const date = format(subDays(new Date(), i), 'MMM dd');
                 dailyFlow[date] = { date, income: 0, expense: 0 };
@@ -225,45 +269,19 @@ export default function DashboardPage() {
                     else dailyFlow[dateKey].expense += amt;
                 }
             });
-
             setCashFlowTrend(Object.values(dailyFlow));
 
-            const todayStr = format(new Date(), 'yyyy-MM-dd');
-            const { data: tSales } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .eq('voucher_date', todayStr)
-                .eq('is_deleted', false);
             setTodaySales((tSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
 
             try {
-                const today = new Date();
-                const lastMonth = subMonths(today, 1);
-                const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
-                const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
-                const { data: lmSales } = await supabase
-                    .from('vouchers')
-                    .select('total_amount, grand_total')
-                    .eq('company_id', selectedCompany.id)
-                    .eq('voucher_type', 'Sales')
-                    .gte('voucher_date', lmStart)
-                    .lte('voucher_date', lmEnd)
-                    .eq('is_deleted', false);
                 const pastSales = (lmSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
                 if (pastSales > 0) {
                     const diff = ((sales - pastSales) / pastSales) * 100;
                     setSalesTrend({ value: Math.abs(Math.round(diff * 10) / 10), direction: diff >= 0 ? 'up' : 'down' });
                 }
-            } catch (e) { console.error("Trend calculation failed", e); }
-
-            const { data: recent } = await supabase
-                .from('vouchers')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
-                .order('voucher_date', { ascending: false })
-                .limit(6);
+            } catch (e) {
+                console.error('Trend calculation failed', e);
+            }
 
             setStats({ sales, purchases, receivables, payables, salesCount, purchaseCount });
             setRecentVouchers(recent || []);
@@ -287,38 +305,43 @@ export default function DashboardPage() {
 
     if (!selectedCompany) return null;
 
-    // Stat Card Component
+    // Stat Card Component (Native App styled)
     const MetricCard = ({ title, value, icon, subtitle, trend, onClick, color = 'blue' }: any) => {
         const colorMap: any = {
-            blue: { bg: 'bg-blue-50 dark:bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'hover:border-blue-200 dark:hover:border-blue-800' },
-            teal: { bg: 'bg-teal-50 dark:bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'hover:border-teal-200 dark:hover:border-teal-800' },
-            amber: { bg: 'bg-amber-50 dark:bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'hover:border-amber-200 dark:hover:border-amber-800' },
-            red: { bg: 'bg-red-50 dark:bg-red-500/10', text: 'text-red-600 dark:text-red-400', border: 'hover:border-red-200 dark:hover:border-red-800' },
+            blue: { bg: 'bg-blue-50 dark:bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'hover:border-blue-200 dark:hover:border-blue-800', accent: 'bg-blue-500' },
+            teal: { bg: 'bg-teal-50 dark:bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'hover:border-teal-200 dark:hover:border-teal-800', accent: 'bg-teal-500' },
+            amber: { bg: 'bg-amber-50 dark:bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'hover:border-amber-200 dark:hover:border-amber-800', accent: 'bg-amber-500' },
+            red: { bg: 'bg-red-50 dark:bg-red-500/10', text: 'text-red-600 dark:text-red-400', border: 'hover:border-red-200 dark:hover:border-red-800', accent: 'bg-red-500' },
         };
         const c = colorMap[color] || colorMap.blue;
 
         return (
             <div
                 onClick={onClick}
-                className={`bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 cursor-pointer ${c.border} hover:shadow-[var(--shadow-md)] transition-all duration-200 group`}
+                className={`bg-[var(--surface)] border border-[var(--border)] rounded-2xl md:rounded-[var(--radius-lg)] p-4 md:p-5 flex flex-col justify-between cursor-pointer ${c.border} shadow-sm hover:shadow-[var(--shadow-md)] transition-all duration-200 group relative overflow-hidden w-[150px] md:w-auto h-[120px] md:h-auto flex-shrink-0 snap-center md:snap-none`}
             >
-                <div className="flex items-start justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-[var(--radius-md)] ${c.bg} ${c.text} flex items-center justify-center`}>
+                {/* Accent line for iOS widget feel on mobile */}
+                <div className={`absolute top-0 left-0 w-full h-1 opacity-60 ${c.accent} md:hidden`}></div>
+
+                <div className="flex items-start justify-between mb-1 md:mb-3">
+                    <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full md:rounded-[var(--radius-md)] ${c.bg} ${c.text} flex items-center justify-center`}>
                         {icon}
                     </div>
                     {trend && trend.value !== 0 && (
-                        <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${trend.direction === 'up'
+                        <span className={`inline-flex items-center gap-0.5 text-[9px] md:text-[11px] font-semibold px-2 py-0.5 rounded-full ${trend.direction === 'up'
                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
                             : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400'
                             }`}>
-                            {trend.direction === 'up' ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                            {trend.direction === 'up' ? <ArrowUpRight size={10} className="md:w-3 md:h-3" /> : <ArrowDownRight size={10} className="md:w-3 md:h-3" />}
                             {trend.value}%
                         </span>
                     )}
                 </div>
-                <p className="text-xs font-medium text-[var(--text-muted)] mb-1">{title}</p>
-                <p className="text-xl font-bold text-[var(--on-surface)] tracking-tight">{formatCurrency(value)}</p>
-                <p className="text-[11px] text-[var(--text-muted)] mt-1.5">{subtitle}</p>
+                <div>
+                    <p className="text-[10px] md:text-xs font-semibold text-[var(--text-muted)] mb-0.5 md:mb-1 truncate">{title}</p>
+                    <p className="text-lg md:text-xl font-black text-[var(--on-surface)] tracking-tight truncate">{formatCurrency(value)}</p>
+                    <p className="text-[9px] md:text-[11px] text-[var(--text-muted)] mt-1 truncate">{subtitle}</p>
+                </div>
             </div>
         );
     };
@@ -334,7 +357,7 @@ export default function DashboardPage() {
     );
 
     return (
-        <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
             <HeaderPortal type="title">
                 <div>
                     <h1 className="text-sm md:text-xl font-bold text-[var(--on-surface)] tracking-tight">
@@ -347,7 +370,7 @@ export default function DashboardPage() {
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <div className="flex bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-90 md:scale-100 origin-right">
+                <div className="flex max-w-full overflow-x-auto bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-95 md:scale-100 origin-right [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {periodFilters.map((filter) => (
                         <button
                             key={filter.key}
@@ -401,7 +424,7 @@ export default function DashboardPage() {
 
                     {/* COMPANY INFO BANNER */}
                     {(selectedCompany.gstin || selectedCompany.address || selectedCompany.phone || selectedCompany.email) && (
-                        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4">
+                        <div className="hidden md:block bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4">
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 {selectedCompany.gstin && (
                                     <div className="flex items-center gap-2">
@@ -431,8 +454,36 @@ export default function DashboardPage() {
                         </div>
                     )}
 
+                    {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}
+                    <div className="md:hidden flex justify-between items-center gap-2 px-1 mb-2 mt-2">
+                        <Link to="/create-invoice" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-100 dark:border-blue-900/50">
+                                <FileText size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">{t('sales.invoice')}</span>
+                        </Link>
+                        <Link to="/vouchers" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-100 dark:border-indigo-900/50">
+                                <CreditCard size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">{t('nav.vouchers')}</span>
+                        </Link>
+                        <Link to="/sync-history" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-center shadow-sm border border-slate-200 dark:border-slate-700">
+                                <RefreshCw size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">Sync</span>
+                        </Link>
+                        <button onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)} className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/30">
+                                <MessageCircle size={22} strokeWidth={2.5} fill="currentColor" className="text-white" />
+                            </div>
+                            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-500">Report</span>
+                        </button>
+                    </div>
+
                     {/* KEY METRICS */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 stagger-children">
+                    <div className="flex overflow-x-auto snap-x snap-mandatory md:grid md:grid-cols-4 gap-3 md:gap-4 pb-4 md:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 md:mx-0 md:px-0 after:content-[''] after:w-4 after:flex-shrink-0 md:after:hidden">
                         <MetricCard
                             title={t('dashboard.total_sales')}
                             value={stats.sales}
@@ -473,15 +524,15 @@ export default function DashboardPage() {
 
                         {/* Chart */}
                         <div className="lg:col-span-2">
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5">
                                 <div className="flex items-center justify-between mb-5">
                                     <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.revenue_trend')}</h3>
                                     <span className="text-xs text-[var(--text-muted)]">{t('dashboard.last_6_months')}</span>
                                 </div>
-                                <div className="h-[280px] w-full rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)] p-3">
+                                <div className="h-[220px] md:h-[280px] w-full rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)] p-2.5 md:p-3">
                                     <BarChart3D
                                         data={monthlySales}
-                                        height={260}
+                                        height={220}
                                         barColor={isDark ? '#60A5FA' : '#1A56DB'}
                                         animated
                                     />
@@ -489,14 +540,14 @@ export default function DashboardPage() {
                             </div>
 
                             {/* New Row: Cash Flow & Expenses */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 mt-4 md:mt-5">
                                 {/* Cash Flow Trend */}
-                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5">
                                     <div className="flex items-center justify-between mb-5">
                                         <h3 className="text-sm font-semibold text-[var(--on-surface)]">Cash Flow (Last 30 Days)</h3>
                                         <Activity size={16} className="text-blue-500" />
                                     </div>
-                                    <div className="h-[250px] w-full">
+                                    <div className="h-[220px] md:h-[250px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={cashFlowTrend}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#E2E8F0'} />
@@ -530,13 +581,13 @@ export default function DashboardPage() {
                                 </div>
 
                                 {/* Expense Breakdown */}
-                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5">
                                     <div className="flex items-center justify-between mb-5">
                                         <h3 className="text-sm font-semibold text-[var(--on-surface)]">Expense Distribution</h3>
                                         <BarChart3 size={16} className="text-amber-500" />
                                     </div>
-                                    <div className="h-[250px] w-full flex items-center">
-                                        <div className="w-1/2 h-full">
+                                    <div className="h-[220px] md:h-[250px] w-full flex flex-col sm:flex-row items-center">
+                                        <div className="w-full sm:w-1/2 h-[120px] sm:h-full">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <PieChart>
                                                     <Pie
@@ -556,12 +607,12 @@ export default function DashboardPage() {
                                                 </PieChart>
                                             </ResponsiveContainer>
                                         </div>
-                                        <div className="w-1/2 flex flex-col gap-2 pl-4">
+                                        <div className="w-full sm:w-1/2 grid grid-cols-2 sm:grid-cols-1 gap-2 pt-2 sm:pt-0 sm:pl-4">
                                             {expenseGroups.map((group, idx) => (
                                                 <div key={group.name} className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></div>
-                                                        <span className="text-[10px] font-bold text-[var(--on-surface-variant)] truncate max-w-[80px] text-left">{group.name}</span>
+                                                        <span className="text-[10px] font-bold text-[var(--on-surface-variant)] truncate max-w-[120px] text-left">{group.name}</span>
                                                     </div>
                                                     <span className="text-[10px] font-black text-[var(--on-surface)]">
                                                         {(group.value / (expenseGroups.reduce((s, g) => s + g.value, 0) || 1) * 100).toFixed(1)}%
@@ -577,8 +628,8 @@ export default function DashboardPage() {
                         {/* Right Column */}
                         <div className="space-y-5">
 
-                            {/* Quick Actions */}
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                            {/* Quick Actions (Desktop only since mobile has it at top) */}
+                            <div className="hidden md:block bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
                                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">{t('dashboard.quick_actions')}</h3>
                                 <div className="grid grid-cols-2 gap-2.5">
                                     <QuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
@@ -597,9 +648,12 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Recent Activity */}
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden">
-                                <div className="px-5 py-3.5 border-b border-[var(--border)]">
+                            <div className="bg-[var(--surface)] border-t border-b md:border border-[var(--border)] md:rounded-[var(--radius-lg)] overflow-hidden -mx-4 md:mx-0 mt-2 md:mt-0">
+                                <div className="px-4 md:px-5 py-3.5 border-b border-[var(--border)] flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/10 md:bg-transparent">
                                     <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.recent_vouchers')}</h3>
+                                    <button onClick={() => navigate('/vouchers')} className="md:hidden text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
+                                        View All
+                                    </button>
                                 </div>
                                 <div className="divide-y divide-[var(--border)]">
                                     {recentVouchers.length === 0 ? (
@@ -609,37 +663,40 @@ export default function DashboardPage() {
                                             <div
                                                 key={v.id || idx}
                                                 onClick={() => navigate(`/vouchers/${v.id}`)}
-                                                className="px-5 py-3 hover:bg-[var(--surface-hover)] transition-colors cursor-pointer flex items-center justify-between group"
+                                                className="px-4 md:px-5 py-3 hover:bg-[var(--surface-hover)] transition-colors cursor-pointer flex items-center justify-between group active:bg-[var(--surface-active)]"
                                             >
                                                 <div className="flex items-center gap-3 min-w-0">
-                                                    <div className={`w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-xs font-bold flex-shrink-0 ${v.voucher_type === 'Sales'
+                                                    <div className={`w-10 h-10 md:w-8 md:h-8 rounded-full md:rounded-[var(--radius-sm)] flex items-center justify-center text-xs font-bold flex-shrink-0 ${v.voucher_type === 'Sales'
                                                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
                                                         : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)]'
                                                         }`}>
                                                         {v.party_name?.[0] || '?'}
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-medium text-[var(--on-surface)] truncate group-hover:text-[var(--primary)] transition-colors">
+                                                        <p className="text-sm font-semibold md:font-medium text-[var(--on-surface)] truncate group-hover:text-[var(--primary)] transition-colors">
                                                             {v.party_name || 'Unknown'}
                                                         </p>
-                                                        <p className="text-[11px] text-[var(--text-muted)]">
-                                                            {v.voucher_type} • {format(new Date(v.voucher_date), 'MMM d')}
+                                                        <p className="text-[11px] text-[var(--text-muted)] font-medium md:font-normal mt-0.5">
+                                                            {v.voucher_type} • {format(new Date(v.voucher_date), 'MMM d, yyyy')}
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <p className="text-sm font-semibold text-[var(--on-surface)] flex-shrink-0 ml-3">
-                                                    {formatCurrency(v.total_amount)}
-                                                </p>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-bold md:font-semibold text-[var(--on-surface)] flex-shrink-0 ml-3 tracking-tight">
+                                                        {formatCurrency(v.total_amount)}
+                                                    </p>
+                                                    <ArrowRight size={14} className="inline-block md:hidden text-gray-300 dark:text-gray-600 mt-1" />
+                                                </div>
                                             </div>
                                         ))
                                     )}
                                 </div>
-                                <div className="px-5 py-3 border-t border-[var(--border)] text-center">
+                                <div className="hidden md:block px-5 py-3 border-t border-[var(--border)] text-center">
                                     <button
                                         onClick={() => navigate('/vouchers')}
-                                        className="text-xs font-medium text-[var(--primary)] hover:underline"
+                                        className="text-xs font-medium text-[var(--primary)] hover:underline flex items-center justify-center gap-1 mx-auto"
                                     >
-                                        {t('dashboard.view_all_transactions')} →
+                                        {t('dashboard.view_all_transactions')} <ArrowRight size={14} />
                                     </button>
                                 </div>
                             </div>
@@ -650,3 +707,6 @@ export default function DashboardPage() {
         </div>
     );
 };
+
+
+

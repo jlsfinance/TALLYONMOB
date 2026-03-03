@@ -185,7 +185,7 @@ export default function BillingDashboard() {
                                                 <div>
                                                     <p className="text-sm font-black text-[var(--on-surface)] tracking-tight group-hover:text-[var(--primary)] transition-colors">{inv.party_name || inv.customerName || 'Unknown Party'}</p>
                                                     <p className="text-[10px] text-[var(--text-muted)] uppercase font-black tracking-widest leading-none mt-1.5 opacity-80">
-                                                        #{inv.voucher_number || inv.invoiceNumber || 'NEW'} • {format(new Date(inv.voucher_date || inv.date || inv.created_at), 'd MMM, yyyy')}
+                                                        #{inv.voucher_number || inv.invoiceNumber || 'NEW'} ? {format(new Date(inv.voucher_date || inv.date || inv.created_at), 'd MMM, yyyy')}
                                                     </p>
                                                 </div>
                                             </div>

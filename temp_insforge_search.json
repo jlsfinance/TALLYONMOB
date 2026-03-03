@@ -1,0 +1,53 @@
+﻿[
+
+{"name":"insforge","keywords":["backend-as-a-service","baas","postgresql","mcp","monorepo"],"version":"1.4.8","description":"InsForge - Open source backend-as-a-service with PostgreSQL and MCP integration","sanitized_name":"insforge","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"Apache-2.0","date":"2026-01-20T02:14:24.046Z","links":{"homepage":"https://github.com/InsForge/InsForge#readme","repository":"git+https://github.com/InsForge/InsForge.git","bugs":"https://github.com/InsForge/InsForge/issues","npm":"https://www.npmjs.com/package/insforge"}}
+
+,
+
+{"name":"@insforge/sdk","keywords":["insforge","baas","backend","sdk","typescript","javascript","client"],"version":"1.1.6-dev.0","description":"Official JavaScript/TypeScript client for InsForge Backend-as-a-Service platform","sanitized_name":"@insforge/sdk","publisher":{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"Apache-2.0","date":"2026-02-27T18:24:01.611Z","links":{"homepage":"https://github.com/InsForge/insforge-sdk-js#readme","repository":"git+https://github.com/InsForge/insforge-sdk-js.git","bugs":"https://github.com/InsForge/insforge-sdk-js/issues","npm":"https://www.npmjs.com/package/@insforge/sdk"}}
+
+,
+
+{"name":"@insforge/shared","keywords":["insforge","shared","react","context"],"version":"1.1.5","description":"Shared utilities and React contexts for Insforge packages","sanitized_name":"@insforge/shared","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-23T08:26:01.395Z","links":{"npm":"https://www.npmjs.com/package/@insforge/shared"}}
+
+,
+
+{"name":"@insforge/mcp","keywords":["mcp","model-context-protocol","insforge","backend-as-a-service"],"version":"1.2.6","description":"MCP (Model Context Protocol) server for Insforge backend-as-a-service","sanitized_name":"@insforge/mcp","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"Apache-2.0","date":"2026-01-29T20:12:39.242Z","links":{"homepage":"https://github.com/InsForge/insforge-mcp#readme","repository":"git+https://github.com/InsForge/insforge-mcp.git","bugs":"https://github.com/InsForge/insforge-mcp/issues","npm":"https://www.npmjs.com/package/@insforge/mcp"}}
+
+,
+
+{"name":"@insforge/cli","keywords":["insforge","cli","backend","database","storage","functions"],"version":"0.1.8","description":"InsForge CLI - Command line tool for InsForge platform","sanitized_name":"@insforge/cli","publisher":{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"Apache-2.0","date":"2026-02-26T19:24:50.786Z","links":{"npm":"https://www.npmjs.com/package/@insforge/cli"}}
+
+,
+
+{"name":"@insforge/react","keywords":["insforge","react","authentication","auth","ui","components","headless","framework-agnostic"],"version":"1.1.8","description":"Framework-agnostic React authentication UI components for Insforge - reusable across all frameworks","sanitized_name":"@insforge/react","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-24T05:07:43.007Z","links":{"npm":"https://www.npmjs.com/package/@insforge/react"}}
+
+,
+
+{"name":"@insforge/install","keywords":["insforge","mcp","model-context-protocol"],"version":"0.0.53","description":"CLI tool for installing Insforge MCP servers across different AI clients","sanitized_name":"@insforge/install","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-28T19:18:20.646Z","links":{"npm":"https://www.npmjs.com/package/@insforge/install"}}
+
+,
+
+{"name":"@insforge/shared-schemas","keywords":[],"version":"1.1.44-dev","description":"Shared TypeScript schemas for InsForge frontend and backend","sanitized_name":"@insforge/shared-schemas","publisher":{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"Apache-2.0","date":"2026-02-27T18:20:32.450Z","links":{"npm":"https://www.npmjs.com/package/@insforge/shared-schemas"}}
+
+,
+
+{"name":"@insforge/nextjs","keywords":["insforge","nextjs","authentication","auth","ui","components","react"],"version":"1.1.7","description":"Pre-built authentication UI components for Next.js with Insforge backend - zero configuration required","sanitized_name":"@insforge/nextjs","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-24T05:09:47.615Z","links":{"npm":"https://www.npmjs.com/package/@insforge/nextjs"}}
+
+,
+
+{"name":"@insforge/react-router","keywords":["insforge","react","react-router","authentication","auth","ui","components","adapter"],"version":"1.1.7","description":"React Router adapter for Insforge authentication - extends @insforge/react with React Router navigation","sanitized_name":"@insforge/react-router","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-24T05:09:04.208Z","links":{"npm":"https://www.npmjs.com/package/@insforge/react-router"}}
+
+,
+
+{"name":"create-insforge-app","keywords":["insforge","create-app","cli","react","nextjs","vite","scaffold"],"version":"1.0.4","description":"Create a new Insforge app with pre-configured templates","sanitized_name":"create-insforge-app","publisher":{"email":"admin@insforge.dev","username":"insforge-npm"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-02-26T14:49:55.610Z","links":{"npm":"https://www.npmjs.com/package/create-insforge-app"}}
+
+,
+
+{"name":"n8n-nodes-insforge","keywords":["n8n-community-node-package","insforge","database","baas"],"version":"0.1.0","description":"n8n community node for InsForge database operations","sanitized_name":"n8n-nodes-insforge","publisher":{"email":"admin@insforge.dev","username":"insforge"},"maintainers":[{"email":"junwen.feng@insforge.dev","username":"junwenfeng"},{"email":"admin@insforge.dev","username":"insforge-npm"},{"email":"carmen.dou@insforge.dev","username":"carmendou"}],"license":"MIT","date":"2026-01-08T20:09:50.629Z","links":{"homepage":"https://docs.insforge.dev/introduction","repository":"git+https://github.com/InsForge/n8n-nodes-insforge.git","bugs":"https://github.com/InsForge/n8n-nodes-insforge/issues","npm":"https://www.npmjs.com/package/n8n-nodes-insforge"}}
+
+,
+
+{"name":"@iflow-mcp/insforge","keywords":["backend-as-a-service","baas","postgresql","mcp","monorepo"],"version":"1.2.6","description":"InsForge - Open source backend-as-a-service with PostgreSQL and MCP integration","sanitized_name":"@iflow-mcp/insforge","publisher":{"email":"chatflowdev@gmail.com","username":"chatflowdev"},"maintainers":[{"email":"chatflowdev@gmail.com","username":"chatflowdev"},{"email":"987472953@qq.com","username":"qystart"}],"license":"Apache-2.0","date":"2025-11-28T03:37:17.817Z","links":{"homepage":"https://github.com/InsForge/InsForge#readme","repository":"git+https://github.com/InsForge/InsForge.git","bugs":"https://github.com/InsForge/InsForge/issues","npm":"https://www.npmjs.com/package/@iflow-mcp/insforge"}}
+]
+

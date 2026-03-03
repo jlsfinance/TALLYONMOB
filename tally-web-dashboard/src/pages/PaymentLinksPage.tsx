@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     CreditCard, Link2, Copy, Check, Send, Search, ExternalLink,
     IndianRupee, MessageCircle, Mail, Loader2, QrCode, Clock,
@@ -212,7 +212,7 @@ export default function PaymentLinksPage() {
                         </div>
                     </div>
 
-                    <div className="text-center text-xs text-[var(--text-muted)] my-2">— or enter custom —</div>
+                    <div className="text-center text-xs text-[var(--text-muted)] my-2">? or enter custom ?</div>
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
@@ -309,3 +309,4 @@ export default function PaymentLinksPage() {
         </div>
     );
 }
+

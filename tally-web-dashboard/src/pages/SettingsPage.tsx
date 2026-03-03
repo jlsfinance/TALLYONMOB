@@ -2,16 +2,20 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
-    CreditCard, Users, Database, Save
+    CreditCard, Users, Database, Save, KeyRound, Trash2, BrainCircuit
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { getUserGeminiApiKey, maskGeminiApiKey, saveUserGeminiApiKey } from '@/lib/userGeminiKey';
+import { clearUserAiTraining, getUserAiTraining, saveUserAiTraining } from '@/lib/userAiTraining';
 
 export default function SettingsPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, user } = useAuth() as any;
     const { t } = useLanguage();
     const navigate = useNavigate();
     const [upiId, setUpiId] = useState('');
+    const [geminiApiKey, setGeminiApiKey] = useState('');
+    const [aiTraining, setAiTraining] = useState('');
 
     useEffect(() => {
         if (selectedCompany?.id) {
@@ -20,11 +24,64 @@ export default function SettingsPage() {
         }
     }, [selectedCompany]);
 
+    useEffect(() => {
+        if (!user?.id) {
+            setGeminiApiKey('');
+            setAiTraining('');
+            return;
+        }
+
+        setGeminiApiKey(getUserGeminiApiKey(user.id));
+        setAiTraining(getUserAiTraining(user.id));
+    }, [user?.id]);
+
     const saveUpiId = () => {
         if (selectedCompany?.id) {
             localStorage.setItem(`upi_${selectedCompany.id}`, upiId);
             toast.success(t('settings.upi_saved'));
         }
+    };
+
+    const saveGeminiKey = () => {
+        if (!user?.id) {
+            toast.error('Login required to save Gemini API key');
+            return;
+        }
+
+        saveUserGeminiApiKey(user.id, geminiApiKey);
+        toast.success(geminiApiKey ? 'Gemini API key saved for this user' : 'Gemini API key removed');
+    };
+
+    const clearGeminiKey = () => {
+        if (!user?.id) {
+            toast.error('Login required');
+            return;
+        }
+
+        saveUserGeminiApiKey(user.id, '');
+        setGeminiApiKey('');
+        toast.success('Gemini API key removed');
+    };
+
+    const savePersonalTraining = () => {
+        if (!user?.id) {
+            toast.error('Login required to save AI training');
+            return;
+        }
+
+        saveUserAiTraining(user.id, aiTraining);
+        toast.success(aiTraining.trim() ? 'Personal AI training saved' : 'Personal AI training removed');
+    };
+
+    const clearPersonalTraining = () => {
+        if (!user?.id) {
+            toast.error('Login required');
+            return;
+        }
+
+        clearUserAiTraining(user.id);
+        setAiTraining('');
+        toast.success('Personal AI training cleared');
     };
 
     const sections = [
@@ -45,6 +102,104 @@ export default function SettingsPage() {
     return (
         <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
             <h1 className="text-2xl font-bold text-[var(--on-surface)] mb-6">{t('nav.settings')}</h1>
+
+            {/* AI Configuration */}
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 shadow-sm space-y-6">
+                <div>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                            <KeyRound size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-[var(--on-surface)]">Gemini API Key</h2>
+                            <p className="text-sm text-[var(--text-muted)]">Har user apni key yahan save kar sakta hai. Cloud extraction isi key se chalega.</p>
+                        </div>
+                    </div>
+
+                    <div className="max-w-2xl">
+                        <label className="block text-sm font-medium text-[var(--text-muted)] mb-1">
+                            API Key
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                            <input
+                                type="password"
+                                value={geminiApiKey}
+                                onChange={(e) => setGeminiApiKey(e.target.value)}
+                                placeholder="AIza..."
+                                className="flex-1 min-w-[260px] p-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--on-surface)] text-sm focus:ring-2 focus:ring-[var(--primary)] outline-none"
+                                autoComplete="off"
+                            />
+                            <button
+                                onClick={saveGeminiKey}
+                                className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+                            >
+                                <Save size={16} />
+                                {t('action.save')}
+                            </button>
+                            <button
+                                onClick={clearGeminiKey}
+                                className="px-4 py-2 border border-[var(--border)] text-[var(--on-surface)] rounded-lg font-medium hover:bg-[var(--surface-hover)] transition-colors flex items-center gap-2"
+                            >
+                                <Trash2 size={16} />
+                                Clear
+                            </button>
+                        </div>
+                        <p className="mt-2 text-xs text-[var(--text-muted)]">
+                            Saved key: {maskGeminiApiKey(getUserGeminiApiKey(user?.id)) || 'Not set'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="border-t border-[var(--border)] pt-5">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                            <BrainCircuit size={22} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-[var(--on-surface)]">Personal AI Training</h3>
+                            <p className="text-sm text-[var(--text-muted)]">Assistant ko apne business ke hisaab se train karo. Ye rules har response me use honge.</p>
+                        </div>
+                    </div>
+
+                    <div className="max-w-2xl">
+                        <label className="block text-sm font-medium text-[var(--text-muted)] mb-1">
+                            Training Instructions
+                        </label>
+                        <textarea
+                            value={aiTraining}
+                            onChange={(e) => setAiTraining(e.target.value)}
+                            rows={6}
+                            placeholder={[
+                                'Example:',
+                                '- Hamesha Hindi me jawab do.',
+                                '- Amount ko short table format me dikhao.',
+                                '- Agar exact data na ho to clear bolo "data available nahi hai".',
+                                '- Meri company me COD sales ko alag mention karo.'
+                            ].join('\n')}
+                            className="w-full p-3 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--on-surface)] text-sm focus:ring-2 focus:ring-[var(--primary)] outline-none"
+                        />
+                        <p className="mt-2 text-xs text-[var(--text-muted)]">
+                            Tip: jitne clear rules doge (language, format, priority metrics), utna consistent answer milega.
+                        </p>
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                            <button
+                                onClick={savePersonalTraining}
+                                className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+                            >
+                                <Save size={16} />
+                                Save Training
+                            </button>
+                            <button
+                                onClick={clearPersonalTraining}
+                                className="px-4 py-2 border border-[var(--border)] text-[var(--on-surface)] rounded-lg font-medium hover:bg-[var(--surface-hover)] transition-colors flex items-center gap-2"
+                            >
+                                <Trash2 size={16} />
+                                Clear Training
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* Payment Configuration */}
             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 shadow-sm">

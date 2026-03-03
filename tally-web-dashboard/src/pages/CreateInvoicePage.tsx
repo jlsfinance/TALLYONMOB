@@ -697,7 +697,7 @@ export default function CreateInvoicePage() {
                                             </button>
                                         ))}
                                         <button onClick={() => handleSmartCalcInput('*')} className="h-20 rounded-2xl bg-indigo-500/10 text-indigo-500 flex flex-col items-center justify-center font-black">
-                                            <span className="text-2xl">×</span>
+                                            <span className="text-2xl">?</span>
                                             <span className="text-[8px] uppercase tracking-widest">QTY</span>
                                         </button>
 

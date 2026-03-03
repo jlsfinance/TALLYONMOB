@@ -26,7 +26,7 @@ export default function PurchasesPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
+    const [selectedMonth, setSelectedMonth] = useState<string | null>(() => format(new Date(), 'yyyy-MM'));
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -83,13 +83,13 @@ export default function PurchasesPage() {
         try {
 
             const { data, error } = await supabase.from('vouchers')
-                .select('*')
+                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .limit(50000);
+                .limit(selectedMonth === 'all' ? 2000 : 1000);
 
             if (error) throw error;
 
@@ -215,7 +215,7 @@ export default function PurchasesPage() {
                     <div className="space-y-1.5">
                         {filteredPurchases.map((purchase, idx) => (
                             <TransactionCard
-                                key={purchase.voucher_id}
+                                key={purchase.id || purchase.voucher_id || [purchase.voucher_number, purchase.voucher_date, idx].filter(Boolean).join('-')}
                                 type={purchase.voucher_type}
                                 partyName={purchase.party_name}
                                 voucherNumber={purchase.voucher_number}
@@ -231,3 +231,4 @@ export default function PurchasesPage() {
         </div>
     );
 }
+

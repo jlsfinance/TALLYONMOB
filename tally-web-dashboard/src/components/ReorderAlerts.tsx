@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/insforge';
 import { Package, AlertTriangle, Clock, Loader2, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -108,8 +108,8 @@ export default function ReorderAlerts() {
                     {alerts.slice(0, 5).map(item => (
                         <div key={item.id}
                             className={`flex items-center gap-3 p-3 rounded-xl border transition-all hover:scale-[1.01] cursor-pointer ${item.urgency === 'critical'
-                                    ? 'border-red-500/30 bg-red-500/5'
-                                    : 'border-amber-500/30 bg-amber-500/5'
+                                ? 'border-red-500/30 bg-red-500/5'
+                                : 'border-amber-500/30 bg-amber-500/5'
                                 }`}
                             onClick={() => navigate('/stock')}>
                             <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${item.urgency === 'critical' ? 'bg-red-500/20' : 'bg-amber-500/20'
@@ -121,7 +121,7 @@ export default function ReorderAlerts() {
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-[var(--on-surface)] truncate">{item.name}</p>
                                 <p className="text-xs text-[var(--text-muted)]">
-                                    {item.currentStock} {item.unit} left • ~{item.dailyConsumption}/{item.unit} per day
+                                    {item.currentStock} {item.unit} left ? ~{item.dailyConsumption}/{item.unit} per day
                                 </p>
                             </div>
                             <div className={`text-right flex-shrink-0 ${item.urgency === 'critical' ? 'text-red-500' : 'text-amber-500'
@@ -136,3 +136,4 @@ export default function ReorderAlerts() {
         </div>
     );
 }
+

@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using System.IO;
-using System.Text.Json;
 using System.Text;
+using System.Text.Json;
 
 namespace TallySyncApp.Services
 {
@@ -18,21 +18,31 @@ namespace TallySyncApp.Services
             try
             {
                 if (!Directory.Exists(LogDir))
+                {
                     Directory.CreateDirectory(LogDir);
+                }
             }
-            catch { /* Ignore logging directory creation errors */ }
+            catch
+            {
+                // Ignore logging directory creation errors.
+            }
         }
 
         public static void Log(string message)
         {
             try
             {
+                var cleanMessage = TextSanitizer.Normalize(message);
                 File.AppendAllText(
                     Path.Combine(LogDir, "sync.log"),
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}\n"
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {cleanMessage}{Environment.NewLine}",
+                    Encoding.UTF8
                 );
             }
-            catch { }
+            catch
+            {
+                // Logging should never crash the app.
+            }
         }
 
         public static void SaveFile(string fileName, string content)
@@ -41,7 +51,10 @@ namespace TallySyncApp.Services
             {
                 File.WriteAllText(Path.Combine(LogDir, fileName), content);
             }
-            catch { }
+            catch
+            {
+                // Ignore file write failures in logger.
+            }
         }
 
         public static void SaveJson(string fileName, object data)
@@ -51,7 +64,15 @@ namespace TallySyncApp.Services
                 var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
                 SaveFile(fileName, json);
             }
-            catch { }
+            catch
+            {
+                // Ignore serialization failures in logger.
+            }
+        }
+
+        public static void LogError(string message, Exception ex)
+        {
+            Log($"❌ ERROR: {message}{Environment.NewLine}Details: {ex}");
         }
     }
 }

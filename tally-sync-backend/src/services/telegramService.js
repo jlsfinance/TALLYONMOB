@@ -922,6 +922,18 @@ class TelegramService {
         console.log('🤖 Telegram Bot Polling started...');
         let offset = 0;
 
+        // If webhook is set, Telegram blocks getUpdates (409). Remove webhook for polling mode.
+        try {
+            const webhookInfo = await axios.get(`${this.apiUrl}/getWebhookInfo`);
+            const existingWebhookUrl = webhookInfo?.data?.result?.url;
+            if (existingWebhookUrl) {
+                await axios.post(`${this.apiUrl}/deleteWebhook`, { drop_pending_updates: false });
+                console.log(`Telegram webhook cleared for polling mode: ${existingWebhookUrl}`);
+            }
+        } catch (webhookError) {
+            console.warn('Unable to clear Telegram webhook before polling:', webhookError.message);
+        }
+
         while (true) {
             try {
                 const response = await axios.get(`${this.apiUrl}/getUpdates`, {
@@ -951,3 +963,4 @@ class TelegramService {
 }
 
 module.exports = new TelegramService();
+

@@ -1,0 +1,6 @@
+{
+  "stock_entries_count": 28,
+  "ledger_entries_count": 46,
+  "first_stock_entry": "{\"id\":\"0231f397-7184-bcb3-5ced-a39b8e861bd3\",\"company_id\":\"9285e272-5e4f-afbc-14ce-0e77f4fbb00d\",\"voucher_id\":\"eb9b0be6-0b46-ec67-b7ac-917012a10e41\",\"stock_item_name\":\"Dcscsc\",\"quantity\":0,\"rate\":0,\"amount\":1000,\"unit\":\"\",\"hsn_code\":\"\",\"is_inward\":false,\"discount_percent\":0,\"tax_rate\":0,\"owner_id\":\"69a07723002c53e46b72\"}",
+  "first_ledger_entry": "{\"id\":\"85d7de70-d000-41f9-ed7f-d74079e7fccf\",\"company_id\":\"9285e272-5e4f-afbc-14ce-0e77f4fbb00d\",\"voucher_id\":\"e4ddb3e0-0d41-70ba-9bf7-e893d57268f0\",\"ledger_name\":\"Dggsgd\",\"amount\":10000,\"is_debit\":true,\"owner_id\":\"69a07723002c53e46b72\"}"
+}

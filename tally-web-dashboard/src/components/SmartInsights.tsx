@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/insforge';
 import {
     Sparkles, TrendingUp, AlertTriangle, IndianRupee, Users,
     ArrowRight, Loader2, BarChart3, ShieldAlert, Activity
@@ -184,3 +184,4 @@ export default function SmartInsights() {
         </div>
     );
 }
+

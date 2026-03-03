@@ -99,7 +99,7 @@ export default function ProfitLossPage() {
             // Fetch all ledgers with their groups
             const { data: ledgers, error: ledgersError } = await supabase
                 .from('ledgers')
-                .select('id, name, parent, opening_balance, current_balance')
+                .select('*')
                 .eq('company_id', selectedCompany.id);
 
             if (ledgersError) throw ledgersError;
@@ -125,7 +125,7 @@ export default function ProfitLossPage() {
 
             // Process Ledgers
             ledgers?.forEach(l => {
-                const balance = Number(l.current_balance) || 0;
+                const balance = Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0;
                 // In Tally: 
                 // Expenses/Assets are typically Positive (Debit)
                 // Incomes/Liabilities are typically Negative (Credit) in some syncs.
@@ -133,7 +133,7 @@ export default function ProfitLossPage() {
                 const absBalance = Math.abs(balance);
                 if (absBalance === 0) return;
 
-                const group = l.parent || '';
+                const group = l.parent || l.parent_group || l.ledger_type || l.ledger_group || '';
 
                 if (group.includes('Sales Accounts')) {
                     plData.salesAccounts.total += absBalance;

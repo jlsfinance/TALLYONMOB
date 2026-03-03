@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase as insforgeClient, ledgerApi } from '@/lib/supabase';
 import {
     ArrowLeft, Phone, Plus, Share2, Bell, FileText, Receipt,
     MessageCircle, Calendar, Printer, TrendingUp, TrendingDown,
@@ -91,6 +91,7 @@ export default function LedgerDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
+    const supabase: any = insforgeClient;
     const [ledger, setLedger] = useState<any>(null);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -109,6 +110,7 @@ export default function LedgerDetailPage() {
 
     // Item History View State
     const [selectedItemName, setSelectedItemName] = useState<string | null>(null);
+    const [selectedItemStockId, setSelectedItemStockId] = useState<string | null>(null);
     const [itemHistory, setItemHistory] = useState<any[]>([]);
     const [itemHistoryLoading, setItemHistoryLoading] = useState(false);
 
@@ -122,6 +124,176 @@ export default function LedgerDetailPage() {
     useEffect(() => {
         if (id && selectedCompany) loadLedgerDetails();
     }, [id, selectedCompany, fromDate, toDate]);
+
+    const loadItemsSummary = async (voucherRows: any[]) => {
+        if (!selectedCompany || !Array.isArray(voucherRows) || voucherRows.length === 0) {
+            setItemsSold([]);
+            setItemsPurchased([]);
+            return;
+        }
+
+        const voucherIds = voucherRows.map((v: any) => v?.id).filter(Boolean);
+        if (voucherIds.length === 0) {
+            setItemsSold([]);
+            setItemsPurchased([]);
+            return;
+        }
+
+        try {
+            const { data: stockItems, error: stockItemsError } = await supabase
+                .from('stock_items')
+                .select('id, name')
+                .eq('company_id', selectedCompany.id);
+
+            if (stockItemsError) throw stockItemsError;
+
+            const chunkSize = 40;
+            const chunkArray = <T,>(arr: T[], size: number) => {
+                const chunks: T[][] = [];
+                for (let i = 0; i < arr.length; i += size) {
+                    chunks.push(arr.slice(i, i + size));
+                }
+                return chunks;
+            };
+
+            const stockEntries: any[] = [];
+            for (const voucherIdChunk of chunkArray(voucherIds, chunkSize)) {
+                const { data: entryBatch, error: entryBatchError } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*')
+                    .eq('company_id', selectedCompany.id)
+                    .in('voucher_id', voucherIdChunk);
+
+                if (entryBatchError) throw entryBatchError;
+                stockEntries.push(...(entryBatch || []));
+            }
+            const vouchers = voucherRows || [];
+            const voucherMap: Record<string, any> = {};
+            vouchers.forEach((v: any) => {
+                if (v?.id) voucherMap[v.id] = v;
+                if (v?.voucher_id) voucherMap[v.voucher_id] = v;
+            });
+
+            const stockLookup: Record<string, string> = {};
+            stockItems.forEach((s: any) => {
+                stockLookup[String(s.name)] = s.id;
+                stockLookup[String(s.name).toLowerCase()] = s.id;
+            });
+
+            const soldItems: Record<string, any> = {};
+            const purchasedItems: Record<string, any> = {};
+            const salesTypes = new Set(['sales', 'sales invoice']);
+            const purchaseTypes = new Set(['purchase', 'purchase invoice']);
+
+            const addItem = (bucket: Record<string, any>, itemNameRaw: any, qtyRaw: any, amountRaw: any) => {
+                const itemName = String(itemNameRaw || 'Unknown Item').trim() || 'Unknown Item';
+                const lookupId = stockLookup[itemName] || stockLookup[itemName.toLowerCase()] || null;
+                if (!bucket[itemName]) bucket[itemName] = { name: itemName, quantity: 0, amount: 0, id: lookupId };
+                bucket[itemName].quantity += Math.abs(Number(qtyRaw) || 0);
+                bucket[itemName].amount += Math.abs(Number(amountRaw) || 0);
+            };
+
+            stockEntries.forEach((entry: any) => {
+                const vTypeRaw = voucherMap[entry.voucher_id]?.voucher_type || entry.vouchers?.voucher_type || '';
+                const vType = String(vTypeRaw).toLowerCase();
+                const itemName = entry.stock_item_name || entry.item_name || entry.name || 'Unknown Item';
+                const qty = entry.quantity ?? entry.qty ?? 0;
+                const amount = entry.amount ?? (Number(entry.rate || 0) * Number(entry.quantity || 0));
+
+                if (salesTypes.has(vType)) addItem(soldItems, itemName, qty, amount);
+                if (purchaseTypes.has(vType)) addItem(purchasedItems, itemName, qty, amount);
+            });
+
+            // Fallback for older datasets where items are stored in sales_items / purchase_items.
+            if (Object.keys(soldItems).length === 0 && Object.keys(purchasedItems).length === 0) {
+                const salesRows: any[] = [];
+                const purchaseRows: any[] = [];
+
+                for (const voucherIdChunk of chunkArray(voucherIds, chunkSize)) {
+                    const [salesRes, purchasesRes] = await Promise.all([
+                        supabase
+                            .from('sales')
+                            .select('id, voucher_id')
+                            .eq('company_id', selectedCompany.id)
+                            .in('voucher_id', voucherIdChunk),
+                        supabase
+                            .from('purchases')
+                            .select('id, voucher_id')
+                            .eq('company_id', selectedCompany.id)
+                            .in('voucher_id', voucherIdChunk)
+                    ]);
+
+                    if (salesRes.error) throw salesRes.error;
+                    if (purchasesRes.error) throw purchasesRes.error;
+
+                    salesRows.push(...(salesRes.data || []));
+                    purchaseRows.push(...(purchasesRes.data || []));
+                }
+                const saleMap: Record<string, string> = {};
+                const purchaseMap: Record<string, string> = {};
+
+                salesRows.forEach((row: any) => {
+                    if (row?.id && row?.voucher_id) saleMap[row.id] = row.voucher_id;
+                });
+                purchaseRows.forEach((row: any) => {
+                    if (row?.id && row?.voucher_id) purchaseMap[row.id] = row.voucher_id;
+                });
+
+                const salesItems: any[] = [];
+                const purchaseItems: any[] = [];
+
+                const saleIds = salesRows.map((s: any) => s.id).filter(Boolean);
+                const purchaseIds = purchaseRows.map((p: any) => p.id).filter(Boolean);
+
+                for (const saleIdChunk of chunkArray(saleIds, chunkSize)) {
+                    const { data: salesItemsBatch, error: salesItemsError } = await supabase
+                        .from('sales_items')
+                        .select('*')
+                        .in('sale_id', saleIdChunk);
+
+                    if (salesItemsError) throw salesItemsError;
+                    salesItems.push(...(salesItemsBatch || []));
+                }
+
+                for (const purchaseIdChunk of chunkArray(purchaseIds, chunkSize)) {
+                    const { data: purchaseItemsBatch, error: purchaseItemsError } = await supabase
+                        .from('purchase_items')
+                        .select('*')
+                        .in('purchase_id', purchaseIdChunk);
+
+                    if (purchaseItemsError) throw purchaseItemsError;
+                    purchaseItems.push(...(purchaseItemsBatch || []));
+                }
+
+                salesItems.forEach((entry: any) => {
+                    const voucherId = saleMap[entry.sale_id];
+                    const vType = String(voucherMap[voucherId]?.voucher_type || 'sales').toLowerCase();
+                    if (!salesTypes.has(vType)) return;
+                    const itemName = entry.item_name || entry.stock_item_name || entry.name || 'Unknown Item';
+                    const qty = entry.quantity ?? entry.qty ?? 0;
+                    const amount = entry.amount ?? (Number(entry.rate || 0) * Number(entry.quantity || 0));
+                    addItem(soldItems, itemName, qty, amount);
+                });
+
+                purchaseItems.forEach((entry: any) => {
+                    const voucherId = purchaseMap[entry.purchase_id];
+                    const vType = String(voucherMap[voucherId]?.voucher_type || 'purchase').toLowerCase();
+                    if (!purchaseTypes.has(vType)) return;
+                    const itemName = entry.item_name || entry.stock_item_name || entry.name || 'Unknown Item';
+                    const qty = entry.quantity ?? entry.qty ?? 0;
+                    const amount = entry.amount ?? (Number(entry.rate || 0) * Number(entry.quantity || 0));
+                    addItem(purchasedItems, itemName, qty, amount);
+                });
+            }
+
+            setItemsSold(Object.values(soldItems));
+            setItemsPurchased(Object.values(purchasedItems));
+        } catch (error) {
+            console.error('Error loading item summary:', error);
+            setItemsSold([]);
+            setItemsPurchased([]);
+        }
+    };
 
     const loadLedgerDetails = async () => {
         setLoading(true);
@@ -205,39 +377,9 @@ export default function LedgerDetailPage() {
                 netAmount: running,
                 count: processed.length
             });
+            // 5. Load items summary in background so ledger data renders immediately
+            loadItemsSummary(rangeVouchers || []);
 
-            // 5. Fetch stock entries for items summary
-            const voucherIds = (rangeVouchers || []).map(v => v.id);
-            if (voucherIds.length > 0) {
-                const { data: stockEntries } = await supabase
-                    .from('voucher_stock_entries')
-                    .select('*, vouchers!inner(voucher_type, party_name)')
-                    .in('voucher_id', voucherIds);
-
-                // Group by sold/purchased
-                const soldItems: Record<string, any> = {};
-                const purchasedItems: Record<string, any> = {};
-
-                (stockEntries || []).forEach((entry: any) => {
-                    const vType = entry.vouchers?.voucher_type;
-                    const itemName = entry.stock_item_name || 'Unknown Item';
-                    const qty = Number(entry.quantity) || 0;
-                    const amt = Math.abs(Number(entry.amount)) || 0;
-
-                    if (vType === 'Sales') {
-                        if (!soldItems[itemName]) soldItems[itemName] = { name: itemName, quantity: 0, amount: 0 };
-                        soldItems[itemName].quantity += qty;
-                        soldItems[itemName].amount += amt;
-                    } else if (vType === 'Purchase') {
-                        if (!purchasedItems[itemName]) purchasedItems[itemName] = { name: itemName, quantity: 0, amount: 0 };
-                        purchasedItems[itemName].quantity += qty;
-                        purchasedItems[itemName].amount += amt;
-                    }
-                });
-
-                setItemsSold(Object.values(soldItems));
-                setItemsPurchased(Object.values(purchasedItems));
-            }
 
         } catch (error: any) {
             console.error('Error loading ledger:', error);
@@ -247,21 +389,37 @@ export default function LedgerDetailPage() {
         }
     };
 
-    const fetchItemHistory = async (itemName: string) => {
+    const fetchItemHistory = async (itemName: string, stockItemId?: string | null) => {
         setSelectedItemName(itemName);
+        setSelectedItemStockId(stockItemId || null);
         setItemHistoryLoading(true);
         try {
-            // Join vouchers to get date and voucher number
-            const { data, error } = await supabase
-                .from('voucher_stock_entries')
-                .select('*, vouchers!inner(id, voucher_date, voucher_number, voucher_type, party_name)')
-                .eq('vouchers.company_id', selectedCompany.id)
-                .eq('vouchers.party_name', ledger.name)
-                .eq('stock_item_name', itemName)
-                .order('vouchers(voucher_date)', { ascending: false });
+            if (!selectedCompany?.id || !ledger?.name) {
+                setItemHistory([]);
+                return;
+            }
+
+            const { data, error } = await ledgerApi.getItemHistory(selectedCompany.id, ledger.name, itemName, {
+                fromDate,
+                toDate,
+                sort: 'desc',
+                limit: 2000
+            } as any);
 
             if (error) throw error;
-            setItemHistory(data || []);
+
+            const normalized = (data || []).map((entry: any) => ({
+                ...entry,
+                vouchers: entry.vouchers || entry.voucher || {
+                    id: entry.voucher_id,
+                    voucher_date: entry.voucher_date,
+                    voucher_number: entry.voucher_number,
+                    voucher_type: entry.voucher_type,
+                    party_name: entry.party_name
+                }
+            }));
+
+            setItemHistory(normalized);
         } catch (err) {
             console.error('Error fetching item history:', err);
             toast.error('Failed to load item history');
@@ -572,15 +730,23 @@ export default function LedgerDetailPage() {
                         {selectedItemName && (
                             <div className="sticky top-[118px] z-30 bg-[var(--surface)] border-b border-[var(--border)] px-4 py-3 flex items-center gap-3">
                                 <button
-                                    onClick={() => setSelectedItemName(null)}
+                                    onClick={() => { setSelectedItemName(null); setSelectedItemStockId(null); }}
                                     className="p-2 -ml-2 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]"
                                 >
                                     <ArrowLeft size={18} />
                                 </button>
-                                <div>
+                                <div className="flex-1">
                                     <h3 className="text-sm font-black text-[var(--on-surface)]">{selectedItemName}</h3>
                                     <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Transaction History</p>
                                 </div>
+                                {selectedItemStockId && (
+                                    <button
+                                        onClick={() => navigate('/stock/' + selectedItemStockId)}
+                                        className="px-3 py-1.5 rounded-lg bg-[var(--surface-variant)] border border-[var(--border)] text-[10px] font-black uppercase tracking-wider text-[var(--on-surface)] hover:text-[var(--primary)]"
+                                    >
+                                        Open Stock
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -622,6 +788,11 @@ export default function LedgerDetailPage() {
                                                     <span className="px-3 py-1.5 bg-[var(--surface-variant)] rounded-lg text-xs font-bold text-[var(--on-surface)]">
                                                         Rate: ₹{entry.rate}
                                                     </span>
+                                                    {entry.running_item_qty !== undefined && entry.running_item_qty !== null && (
+                                                        <span className="px-3 py-1.5 bg-[var(--surface-variant)] rounded-lg text-xs font-bold text-[var(--primary)]">
+                                                            Running: {Number(entry.running_item_qty).toFixed(2)}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </button>
                                         ))}
@@ -635,7 +806,7 @@ export default function LedgerDetailPage() {
                                     (itemsViewType === 'sold' ? itemsSold : itemsPurchased).map((item, idx) => (
                                         <button
                                             key={idx}
-                                            onClick={() => fetchItemHistory(item.name)}
+                                            onClick={() => fetchItemHistory(item.name, item.id || null)}
                                             className="w-full text-left flex justify-between items-center p-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-all active:scale-[0.99]"
                                         >
                                             <div>

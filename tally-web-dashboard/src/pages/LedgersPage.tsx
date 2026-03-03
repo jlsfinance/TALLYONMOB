@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { ledgerApi, supabase } from '../lib/supabase';
+import { ledgerApi, supabase } from '../lib/insforge';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -267,3 +267,4 @@ export default function LedgersPage() {
         </div >
     );
 }
+

@@ -197,7 +197,7 @@ export default function AIEntryPage() {
 
             if (form.voucherType === 'Sales' || form.voucherType === 'Purchase') {
                 voucherData.items = form.items.filter(i => i.name).map(i => ({
-                    stock_item: i.name,
+                    stock_item_name: i.name,
                     quantity: parseFloat(i.qty) || 1,
                     rate: parseFloat(i.rate) || 0,
                     amount: parseFloat(i.amount) || 0,
@@ -206,6 +206,7 @@ export default function AIEntryPage() {
 
             if (form.voucherType === 'Receipt' || form.voucherType === 'Payment') {
                 voucherData.cash_bank_ledger = 'Cash';
+                voucherData.amount = parseFloat(form.amount) || 0;
             }
 
             const { error } = await supabase
@@ -270,7 +271,7 @@ export default function AIEntryPage() {
                     </div>
                     <div>
                         <h1 className="text-3xl font-black text-[var(--on-surface)] tracking-tighter">AI Auto Entry</h1>
-                        <p className="text-xs text-[var(--text-muted)]">Type or speak naturally • Auto-creates Tally vouchers</p>
+                        <p className="text-xs text-[var(--text-muted)]">Type or speak naturally ? Auto-creates Tally vouchers</p>
                     </div>
                 </div>
             </div>
@@ -488,7 +489,7 @@ export default function AIEntryPage() {
                         <p className="text-sm text-[var(--on-surface)]">
                             <span className="font-bold text-[var(--primary)]">{form.voucherType}</span> •{' '}
                             <span className="font-semibold">{form.partyName}</span> •{' '}
-                            <span className="font-black text-emerald-500">₹{parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> •{' '}
+                            <span className="font-black text-emerald-500">₹{parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> ?{' '}
                             <span className="text-[var(--text-muted)]">{form.date}</span>
                         </p>
                     </motion.div>
@@ -529,7 +530,7 @@ export default function AIEntryPage() {
                                             }`} />
                                         <div>
                                             <p className="text-xs font-bold text-[var(--on-surface)]">
-                                                {entry.transaction_type} • {data.party_name || 'N/A'}
+                                                {entry.transaction_type} ? {data.party_name || 'N/A'}
                                             </p>
                                             <p className="text-[10px] text-[var(--text-muted)]">
                                                 {entry.created_at ? format(new Date(entry.created_at), 'dd MMM yy, hh:mm a') : ''}

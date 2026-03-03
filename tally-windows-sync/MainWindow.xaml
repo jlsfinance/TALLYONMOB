@@ -6,7 +6,7 @@
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         mc:Ignorable="d"
         Title="TallyLink - TallySync" Height="600" Width="900"
-        Icon="app_icon.ico"
+        Icon="pack://application:,,,/tallylink_logo.png"
         FontFamily="Segoe UI" Background="#F3F4F6">
 
     <Window.Resources>
@@ -36,7 +36,7 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Source="tallylink_logo.png" Width="45" Height="45" Margin="0,0,12,0"/>
+                    <Image Source="pack://application:,,,/tallylink_logo.png" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
                     <StackPanel>
                         <TextBlock Text="TallySync" FontWeight="Bold" FontSize="18"/>
                         <TextBlock Text="{Binding Status.CompanyName, StringFormat='Company: {0}'}" 
@@ -138,6 +138,7 @@
                                 <Button Command="{Binding StartSyncCommand}" Content="▶ Start Auto-Sync" Style="{StaticResource ModernButton}" Margin="0,0,0,10"/>
                                 <Button Command="{Binding StopSyncCommand}" Content="⏹ Stop Sync" Background="#EF4444" Style="{StaticResource ModernButton}" Margin="0,0,0,10"/>
                                 <Button Command="{Binding ManualSyncCommand}" Content="🔄 Sync Now" Background="#10B981" Style="{StaticResource ModernButton}"/>
+                                <Button Command="{Binding ForceResyncCommand}" Content="⚠️ Force Full Resync" Background="#F59E0B" Style="{StaticResource ModernButton}" Margin="0,10,0,0" ToolTip="Use this if sync is stuck or data is missing. It re-fetches everything."/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -145,6 +146,7 @@
                     <!-- Stats Grid -->
                     <Grid Grid.Row="1" Margin="10">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
@@ -173,13 +175,50 @@
                                 <TextBlock Text="records" Foreground="#9CA3AF" FontSize="12"/>
                             </StackPanel>
                         </Border>
+
+                        <Border Grid.Column="3" Style="{StaticResource StatusCard}">
+                            <StackPanel>
+                                <TextBlock Text="License" Foreground="#6B7280"/>
+                                <TextBlock Text="{Binding LicensePlan}" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding LicenseStatus}" Foreground="#9CA3AF" FontSize="11"/>
+                                <TextBlock Text="{Binding LicenseDaysRemaining, StringFormat='{}{0} days left'}" Foreground="#10B981" FontSize="11"/>
+                                <Button Command="{Binding ValidateLicenseCommand}" Content="🔑 Validate" 
+                                        FontSize="10" Padding="8,3" Margin="0,5,0,0"
+                                        Background="#6366F1" Foreground="White" BorderThickness="0"
+                                        Cursor="Hand"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
 
                     <!-- Live Logs -->
                     <Border Grid.Row="2" Background="#1E1E1E" CornerRadius="8" Margin="18" Padding="10">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <TextBlock Text="{Binding ConsoleOutput}" FontFamily="Consolas" Foreground="#D4D4D4" TextWrapping="Wrap"/>
-                        </ScrollViewer>
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,6">
+                                <Button Content="📋 Copy Logs" Command="{Binding CopyLogsCommand}"
+                                        Padding="12,5" Background="#0E639C" Foreground="White" 
+                                        FontSize="12" FontWeight="SemiBold" Cursor="Hand"
+                                        BorderThickness="0">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="4"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                                <Button Content="🗑️ Clear" Command="{Binding ClearLogsCommand}"
+                                        Padding="12,5" Background="#3C3C3C" Foreground="#CCC" 
+                                        FontSize="12" Cursor="Hand" Margin="6,0,0,0"
+                                        BorderThickness="0">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="4"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                            </StackPanel>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <TextBlock Text="{Binding ConsoleOutput}" FontFamily="Consolas" Foreground="#D4D4D4" TextWrapping="Wrap"/>
+                            </ScrollViewer>
+                        </DockPanel>
                     </Border>
                 </Grid>
             </TabItem>
@@ -263,6 +302,60 @@
                             </StackPanel>
                         </Border>
 
+                        <TextBlock Text="📜 License Information" FontWeight="Bold" FontSize="16" Margin="0,20,0,10"/>
+                        <Border Background="White" Padding="20" CornerRadius="8" Margin="0,0,0,20">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                        <TextBlock Text="Plan" Margin="0,0,0,5" FontSize="12" Foreground="#6B7280"/>
+                                        <TextBlock Text="{Binding LicensePlan}" FontWeight="Bold" FontSize="18" Margin="0,0,0,15"/>
+                                        
+                                        <TextBlock Text="Status" Margin="0,0,0,5" FontSize="12" Foreground="#6B7280"/>
+                                        <TextBlock Text="{Binding LicenseStatus}" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,15"/>
+                                    </StackPanel>
+                                    
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                        <TextBlock Text="Days Remaining" Margin="0,0,0,5" FontSize="12" Foreground="#6B7280"/>
+                                        <TextBlock FontWeight="Bold" FontSize="18" Margin="0,0,0,15">
+                                            <Run Text="{Binding LicenseDaysRemaining}" Foreground="#10B981"/>
+                                            <Run Text=" days" FontSize="14" Foreground="#6B7280"/>
+                                        </TextBlock>
+                                        
+                                        <TextBlock Text="Tally Serial (Bound)" Margin="0,0,0,5" FontSize="12" Foreground="#6B7280"/>
+                                        <TextBlock Text="{Binding Settings.TallySettings.SerialNumber, FallbackValue='Not bound yet'}" 
+                                                   FontFamily="Consolas" FontSize="12" Foreground="#374151" Margin="0,0,0,15"/>
+                                    </StackPanel>
+                                </Grid>
+                                
+                                <Button Command="{Binding ValidateLicenseCommand}" 
+                                        Content="🔑 Validate License" 
+                                        HorizontalAlignment="Left" 
+                                        Padding="20,10"
+                                        Background="#6366F1"
+                                        Foreground="White"
+                                        FontWeight="SemiBold"
+                                        BorderThickness="0"
+                                        Cursor="Hand">
+                                    <Button.Resources>
+                                        <Style TargetType="Border">
+                                            <Setter Property="CornerRadius" Value="6"/>
+                                        </Style>
+                                    </Button.Resources>
+                                </Button>
+                                
+                                <TextBlock Text="💡 Your license is automatically validated on login. Click above to refresh license status." 
+                                           FontSize="11" 
+                                           Foreground="#9CA3AF" 
+                                           Margin="0,10,0,0" 
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Text="Cloud Sync Configuration" FontWeight="Bold" FontSize="16" Margin="0,0,0,10"/>
                         <Border Background="White" Padding="20" CornerRadius="8">
                             <StackPanel>
@@ -305,7 +398,7 @@
                 <TextBlock Text="Ready"/>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="v2.0.1"/>
+                <TextBlock Text="v2.8.0"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>

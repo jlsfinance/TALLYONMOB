@@ -7,7 +7,6 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">supabase.co</domain>
-        <domain includeSubdomains="true">lcsehcwocqvxrrgbmhcz.supabase.co</domain>
+        <domain includeSubdomains="true">cloud.appwrite.io</domain>
     </domain-config>
 </network-security-config>

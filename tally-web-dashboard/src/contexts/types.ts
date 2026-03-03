@@ -22,6 +22,8 @@ export interface AuthContextType {
     setAppMode: (mode: 'tally' | 'billing' | null) => void;
     signIn: (email: string, password: string) => Promise<{ data: any; error: any }>;
     signUp: (email: string, password: string, fullName: string) => Promise<{ data: any; error: any }>;
+    verifyOtp: (email: string, token: string, type?: string) => Promise<{ data: any; error: any }>;
+    sendVerificationEmail: (email: string) => Promise<{ error: any }>;
     signInWithGoogle: () => Promise<{ data: any; error: any }>;
     signOut: () => Promise<void>;
     selectCompany: (company: Company) => void;

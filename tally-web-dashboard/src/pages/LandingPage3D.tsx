@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
-import { companyApi } from '@/lib/supabase';
+import { companyApi, portalApi } from '@/lib/supabase';
 import SEO from '../components/common/SEO';
 import { motion, useScroll, useTransform, useInView, Variants } from 'framer-motion';
 import {
@@ -107,9 +106,8 @@ export default function LandingPage3D() {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            // Use Backend URL from env
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
-            await axios.post(`${apiUrl}/contact`, formData);
+            const { error } = await portalApi.submitContact(formData);
+            if (error) throw error;
             toast.success('Message sent! We will get back to you soon.');
             setFormData({ name: '', email: '', subject: '', message: '' });
         } catch (error) {
@@ -1046,7 +1044,7 @@ export default function LandingPage3D() {
 
                     {/* Bottom */}
                     <div className="pt-8 border-t border-white/[0.05] flex flex-col md:flex-row justify-between items-center gap-4 text-gray-600 text-sm">
-                        <p>© 2026 TallySync. All rights reserved.</p>
+                        <p>? 2026 TallySync. All rights reserved.</p>
                         <div className="flex items-center gap-6">
                             <span>Made with ❤️ in India</span>
                             <span>v2.1.0</span>

@@ -1,0 +1,50 @@
+﻿
+> tally-web-dashboard@2.2.0 build
+> vite build
+
+[36mvite v4.5.14 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 3355 modules transformed.
+[32mΓ£ô built in 18.37s[39m
+npm : [31m"portalApi" is 
+not exported by 
+"src/lib/supabase.js", 
+imported by "src/pages/Landin
+gPage3D.tsx".[39m
+At line:1 char:1
++ npm run build > 
+build_err.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: ([31m"p  
+  ortalApi...ge3D.tsx".[3   
+ 9m:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+file: [36mD:/New folder (2)/
+tally-web-dashboard/src/pages
+/LandingPage3D.tsx:5:21[39m
+[33m3: import { useAuth } 
+from 
+'../contexts/AuthContext';
+4: import { toast } from 
+'react-hot-toast';
+5: import { companyApi, 
+portalApi } from 
+'@/lib/supabase';
+                        ^
+6: import SEO from 
+'../components/common/SEO';
+7: import { motion, 
+useScroll, useTransform, 
+useInView, Variants } from 
+'framer-motion';
+[39m
+[31merror during build:
+RollupError: "portalApi" is 
+not exported by 
+"src/lib/supabase.js", 
+imported by "src/pages/Landin

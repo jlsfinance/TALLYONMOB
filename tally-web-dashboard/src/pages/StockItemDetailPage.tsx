@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase as insforgeClient, stockApi } from '@/lib/supabase';
 import {
     ArrowLeft, Package, TrendingUp, TrendingDown, Clock,
     ShoppingCart, Users, Store, BarChart3, Receipt,
     ChevronRight, Info, AlertTriangle, Hash, Calendar
 } from 'lucide-react';
-import { Card, Badge, Spinner, MetricCard, ListItem } from '@/components/ui/GlassUI';
+import { Card, Badge, Spinner, MetricCard, ListItem, EmptyState } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, subDays } from 'date-fns';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
@@ -24,13 +24,20 @@ const formatQuantity = (qty: number, unit: string) => {
     return `${(qty || 0).toFixed(2)} ${unit || ''}`.trim();
 };
 
+const getFYStart = () => {
+    const now = new Date();
+    const year = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+    return new Date(year, 3, 1).toISOString().split('T')[0];
+};
+
 export default function StockItemDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
+    const supabase: any = insforgeClient;
     const [item, setItem] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'summary' | 'customers' | 'suppliers'>('summary');
+    const [activeTab, setActiveTab] = useState<'summary' | 'history' | 'customers' | 'suppliers'>('summary');
 
     const [stats, setStats] = useState({
         totalSalesQty: 0,
@@ -40,17 +47,118 @@ export default function StockItemDetailPage() {
         salesCount: 0,
         lastSaleDate: null,
         lastSalePrice: 0,
-        avgSalePrice: 0
+        avgSalePrice: 0,
+        maxGstRate: 0
     });
 
     const [customers, setCustomers] = useState<any[]>([]);
     const [suppliers, setSuppliers] = useState<any[]>([]);
+
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyRows, setHistoryRows] = useState<any[]>([]);
+    const [historySummary, setHistorySummary] = useState({
+        opening_qty: 0,
+        total_in_qty: 0,
+        total_out_qty: 0,
+        total_in_amount: 0,
+        total_out_amount: 0,
+        closing_qty: 0
+    });
+    const [voucherTypeOptions, setVoucherTypeOptions] = useState<string[]>(['All']);
+    const [historyFilters, setHistoryFilters] = useState({
+        fromDate: getFYStart(),
+        toDate: new Date().toISOString().split('T')[0],
+        party: '',
+        voucherType: 'All'
+    });
 
     useEffect(() => {
         if (id && selectedCompany) {
             loadItemDetails();
         }
     }, [id, selectedCompany]);
+
+    useEffect(() => {
+        if (item && selectedCompany) {
+            loadStockHistory(item);
+        }
+    }, [
+        item?.id,
+        selectedCompany?.id,
+        historyFilters.fromDate,
+        historyFilters.toDate,
+        historyFilters.party,
+        historyFilters.voucherType
+    ]);
+
+
+    const fetchVouchersByIds = async (ids: string[]) => {
+        const uniqIds = [...new Set((ids || []).filter(Boolean))];
+        if (!selectedCompany?.id || uniqIds.length === 0) {
+            return { data: [], error: null };
+        }
+
+        const rows: any[] = [];
+        const chunkSize = 40;
+
+        for (let i = 0; i < uniqIds.length; i += chunkSize) {
+            const chunk = uniqIds.slice(i, i + chunkSize);
+            const { data, error } = await supabase
+                .from('vouchers')
+                .select('id, voucher_type, voucher_date, party_name, voucher_number, party_ledger_id')
+                .eq('company_id', selectedCompany.id)
+                .in('id', chunk);
+
+            if (error) {
+                return { data: rows, error };
+            }
+            rows.push(...(data || []));
+        }
+
+        return { data: rows, error: null };
+    };
+
+    const loadStockHistory = async (sourceItem?: any) => {
+        const itemRef = sourceItem || item;
+        if (!itemRef || !selectedCompany?.id) return;
+
+        setHistoryLoading(true);
+        try {
+            const voucherTypes = historyFilters.voucherType && historyFilters.voucherType !== 'All'
+                ? [historyFilters.voucherType]
+                : undefined;
+
+            const { data, error } = await stockApi.getHistory(selectedCompany.id, itemRef.id || itemRef.name, {
+                fromDate: historyFilters.fromDate || undefined,
+                toDate: historyFilters.toDate || undefined,
+                party: historyFilters.party?.trim() || undefined,
+                voucherTypes,
+                sort: 'desc',
+                limit: 5000
+            } as any);
+
+            if (error) throw error;
+
+            const rows = data?.rows || [];
+            setHistoryRows(rows);
+            setHistorySummary(data?.summary || {
+                opening_qty: Number(itemRef.opening_stock || itemRef.opening_balance || 0),
+                total_in_qty: 0,
+                total_out_qty: 0,
+                total_in_amount: 0,
+                total_out_amount: 0,
+                closing_qty: Number(itemRef.opening_stock || itemRef.opening_balance || 0)
+            });
+
+            const typeOptions = ['All', ...Array.from(new Set(rows.map((r: any) => r.voucher_type).filter(Boolean)))] as string[];
+            setVoucherTypeOptions(typeOptions);
+        } catch (error: any) {
+            console.error('Error loading stock history:', error);
+            setHistoryRows([]);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
 
     const loadItemDetails = async () => {
         setLoading(true);
@@ -65,16 +173,26 @@ export default function StockItemDetailPage() {
             if (itemError) throw itemError;
             setItem(itemData);
 
-            // 2. Fetch All Transactions for this item
+            // 2. Fetch All Transactions for this item (without FK join dependency)
             const { data: entries, error: entriesError } = await supabase
                 .from('voucher_stock_entries')
-                .select('*, vouchers!inner(voucher_type, voucher_date, party_name, voucher_number, id, voucher_id)')
+                .select('*')
                 .eq('stock_item_name', itemData.name)
                 .eq('company_id', selectedCompany.id)
-                .order('vouchers(voucher_date)', { ascending: false });
+                .order('created_at', { ascending: false });
 
             if (entriesError) throw entriesError;
 
+            const voucherIds = Array.from(new Set((entries || []).map((e: any) => e.voucher_id).filter(Boolean)));
+            let voucherMap: Record<string, any> = {};
+            if (voucherIds.length > 0) {
+                const { data: vouchers, error: voucherError } = await fetchVouchersByIds(voucherIds);
+                if (voucherError) throw voucherError;
+
+                (vouchers || []).forEach((v: any) => {
+                    voucherMap[v.id] = v;
+                });
+            }
             // 3. Process Stats & Lists
             let sQty = 0, sVal = 0, pQty = 0, pVal = 0, sCount = 0;
             let lastSDate = null, lastSPrice = 0;
@@ -82,13 +200,21 @@ export default function StockItemDetailPage() {
             const custMap: Record<string, any> = {};
             const suppMap: Record<string, any> = {};
 
+            let maxGstRate = 0;
+
             entries?.forEach(entry => {
-                const type = entry.vouchers.voucher_type;
+                const voucher = voucherMap[entry.voucher_id];
+                if (!voucher) return;
+
+                const type = voucher.voucher_type;
                 const qty = Math.abs(Number(entry.quantity) || 0);
                 const amt = Math.abs(Number(entry.amount) || 0);
                 const rate = Math.abs(Number(entry.rate) || 0);
-                const party = entry.vouchers.party_name;
-                const date = entry.vouchers.voucher_date;
+                const gstRate = Number(entry.gst_rate) || Number(entry.tax_rate) || 0;
+                if (gstRate > maxGstRate) maxGstRate = gstRate;
+
+                const party = voucher.party_name;
+                const date = voucher.voucher_date;
 
                 if (type === 'Sales' || type === 'Sales Invoice') {
                     sQty += qty;
@@ -100,7 +226,7 @@ export default function StockItemDetailPage() {
                     }
 
                     if (!custMap[party]) {
-                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [] };
+                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: voucher.party_ledger_id };
                     }
                     custMap[party].qty += qty;
                     custMap[party].val += amt;
@@ -111,7 +237,7 @@ export default function StockItemDetailPage() {
                     pVal += amt;
 
                     if (!suppMap[party]) {
-                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [] };
+                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: voucher.party_ledger_id };
                     }
                     suppMap[party].qty += qty;
                     suppMap[party].val += amt;
@@ -128,11 +254,13 @@ export default function StockItemDetailPage() {
                 salesCount: sCount,
                 lastSaleDate: lastSDate,
                 lastSalePrice: lastSPrice,
-                avgSalePrice: sQty > 0 ? sVal / sQty : 0
+                avgSalePrice: sQty > 0 ? sVal / sQty : 0,
+                maxGstRate: maxGstRate
             });
 
             setCustomers(Object.values(custMap).sort((a, b) => b.val - a.val));
             setSuppliers(Object.values(suppMap).sort((a, b) => b.val - a.val));
+            await loadStockHistory(itemData);
 
         } catch (error: any) {
             console.error('Error loading item details:', error);
@@ -206,6 +334,7 @@ export default function StockItemDetailPage() {
             <div className="flex border-b border-[var(--border)] bg-[var(--surface)] sticky top-[72px] md:top-[88px] z-30">
                 {[
                     { id: 'summary', label: 'Summary', icon: <Info size={14} /> },
+                    { id: 'history', label: 'History', icon: <Clock size={14} /> },
                     { id: 'customers', label: 'Customers', icon: <Users size={14} /> },
                     { id: 'suppliers', label: 'Suppliers', icon: <Store size={14} /> }
                 ].map(tab => (
@@ -249,7 +378,7 @@ export default function StockItemDetailPage() {
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Tax Category</span>
-                                            <Badge variant="primary">{item.gst_rate || 0}% GST</Badge>
+                                            <Badge variant="primary">{item.gst_rate || stats.maxGstRate || 0}% GST</Badge>
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Stock Group</span>
@@ -278,7 +407,11 @@ export default function StockItemDetailPage() {
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Last Sale Date</span>
-                                            <span className="text-xs font-black text-[var(--on-surface)]">{stats.lastSaleDate ? format(new Date(stats.lastSaleDate), 'dd MMM yyyy') : '---'}</span>
+                                            <span className="text-xs font-black text-[var(--on-surface)]">
+                                                {stats.lastSaleDate && !isNaN(new Date(stats.lastSaleDate).getTime())
+                                                    ? format(new Date(stats.lastSaleDate), 'dd MMM yyyy')
+                                                    : '---'}
+                                            </span>
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Last Sale Rate</span>
@@ -309,6 +442,108 @@ export default function StockItemDetailPage() {
                             </Card>
                         </motion.div>
                     )}
+                    {activeTab === 'history' && (
+                        <motion.div
+                            key="history"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="space-y-4"
+                        >
+                            <Card className="space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                    <input
+                                        type="date"
+                                        value={historyFilters.fromDate}
+                                        onChange={(e) => setHistoryFilters(prev => ({ ...prev, fromDate: e.target.value }))}
+                                        className="px-3 py-2 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-xs font-bold text-[var(--on-surface)]"
+                                    />
+                                    <input
+                                        type="date"
+                                        value={historyFilters.toDate}
+                                        onChange={(e) => setHistoryFilters(prev => ({ ...prev, toDate: e.target.value }))}
+                                        className="px-3 py-2 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-xs font-bold text-[var(--on-surface)]"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={historyFilters.party}
+                                        onChange={(e) => setHistoryFilters(prev => ({ ...prev, party: e.target.value }))}
+                                        placeholder="Filter party"
+                                        className="px-3 py-2 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-xs font-bold text-[var(--on-surface)] placeholder:text-[var(--text-muted)]"
+                                    />
+                                    <select
+                                        value={historyFilters.voucherType}
+                                        onChange={(e) => setHistoryFilters(prev => ({ ...prev, voucherType: e.target.value }))}
+                                        className="px-3 py-2 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-xs font-bold text-[var(--on-surface)]"
+                                    >
+                                        {voucherTypeOptions.map((type) => (
+                                            <option key={type} value={type}>{type}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    <div className="p-3 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)]">
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Opening</p>
+                                        <p className="text-sm font-black text-[var(--on-surface)]">{formatQuantity(historySummary.opening_qty, item.unit)}</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)]">
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Inward</p>
+                                        <p className="text-sm font-black text-emerald-500">{formatQuantity(historySummary.total_in_qty, item.unit)}</p>
+                                    </div>
+                                    <div className="p-3 rounded-xl bg-[var(--surface-variant)] border border-[var(--border)]">
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Outward</p>
+                                        <p className="text-sm font-black text-rose-500">{formatQuantity(historySummary.total_out_qty, item.unit)}</p>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <Card padding="none" className="overflow-hidden">
+                                <div className="grid grid-cols-12 px-4 py-2 bg-[var(--surface-variant)] border-b border-[var(--border)] text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+                                    <div className="col-span-3">Date</div>
+                                    <div className="col-span-3">Party</div>
+                                    <div className="col-span-2 text-right">Qty</div>
+                                    <div className="col-span-2 text-right">Amount</div>
+                                    <div className="col-span-2 text-right">Running</div>
+                                </div>
+
+                                {historyLoading ? (
+                                    <div className="p-8 flex justify-center"><Spinner /></div>
+                                ) : historyRows.length === 0 ? (
+                                    <div className="p-8 text-center text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">No transactions found</div>
+                                ) : (
+                                    <div className="divide-y divide-[var(--border)]">
+                                        {historyRows.map((row: any) => (
+                                            <button
+                                                key={row.id}
+                                                onClick={() => navigate('/vouchers/' + encodeURIComponent(row.voucher_id))}
+                                                className="w-full grid grid-cols-12 px-4 py-3 text-left hover:bg-[var(--surface-hover)]"
+                                            >
+                                                <div className="col-span-3">
+                                                    <p className="text-xs font-black text-[var(--on-surface)]">{row.voucher_date ? format(new Date(row.voucher_date), 'dd MMM yyyy') : '---'}</p>
+                                                    <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase">{row.voucher_type || '-'}</p>
+                                                </div>
+                                                <div className="col-span-3">
+                                                    <p className="text-xs font-black text-[var(--on-surface)] line-clamp-1">{row.party_name || '-'}</p>
+                                                    <p className="text-[10px] font-bold text-[var(--text-muted)]">@ {Number(row.rate || 0).toFixed(2)}</p>
+                                                </div>
+                                                <div className="col-span-2 text-right self-center">
+                                                    <p className={"text-xs font-black " + (row.qty_delta >= 0 ? 'text-emerald-500' : 'text-rose-500')}>
+                                                        {row.qty_delta >= 0 ? '+' : ''}{Number(row.qty_delta || 0).toFixed(2)}
+                                                    </p>
+                                                </div>
+                                                <div className="col-span-2 text-right self-center">
+                                                    <p className="text-xs font-black text-[var(--on-surface)]">{formatCurrency(row.amount)}</p>
+                                                </div>
+                                                <div className="col-span-2 text-right self-center">
+                                                    <p className="text-xs font-black text-[var(--primary)]">{Number(row.running_stock || 0).toFixed(2)}</p>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </Card>
+                        </motion.div>
+                    )}
 
                     {activeTab === 'customers' && (
                         <motion.div
@@ -327,7 +562,7 @@ export default function StockItemDetailPage() {
                                         hover
                                         padding="none"
                                         className="overflow-hidden group"
-                                        onClick={() => navigate(`/ledgers`)} // Can't easily link to ledger detail without ID here, but name lookup is possible
+                                        onClick={() => c.id ? navigate(`/ledgers/${c.id}`) : navigate(`/ledgers?party=${encodeURIComponent(c.name)}`)}
                                     >
                                         <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                             <div className="flex items-center gap-4">
@@ -337,18 +572,22 @@ export default function StockItemDetailPage() {
                                                 <div>
                                                     <h4 className="text-sm font-black text-[var(--on-surface)] uppercase group-hover:text-[var(--primary)] transition-colors">{c.name}</h4>
                                                     <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase mt-0.5">
-                                                        Last Transaction: {format(new Date(c.lastDate), 'dd MMM yyyy')}
+                                                        Last Transaction: {c.lastDate && !isNaN(new Date(c.lastDate).getTime()) ? format(new Date(c.lastDate), 'dd MMM yyyy') : '---'}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-8 text-right bg-[var(--surface-variant)] md:bg-transparent p-3 md:p-0 rounded-xl">
+                                            <div className="flex items-center gap-6 text-right bg-[var(--surface-variant)] md:bg-transparent p-3 md:p-0 rounded-xl">
+                                                <div className="hidden sm:block">
+                                                    <p className="text-xs font-black text-[var(--on-surface)]">₹{(c.val / (c.qty || 1)).toFixed(2)}</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Avg Rate</p>
+                                                </div>
                                                 <div>
                                                     <p className="text-xs font-black text-[var(--on-surface)]">{c.qty} {item.unit}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase uppercase">Total Qty</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Total Qty</p>
                                                 </div>
                                                 <div>
                                                     <p className="text-xs font-black text-[var(--primary)]">{formatCurrency(c.val)}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase uppercase">Total Revenue</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Revenue</p>
                                                 </div>
                                                 <ChevronRight size={16} className="text-[var(--text-muted)] hidden md:block" />
                                             </div>
@@ -371,7 +610,13 @@ export default function StockItemDetailPage() {
                                 <EmptyState icon={<Store size={40} />} title="No Sources" description="No purchase history found for this item." />
                             ) : (
                                 suppliers.map((s, i) => (
-                                    <Card key={i} hover padding="none" className="overflow-hidden group">
+                                    <Card
+                                        key={i}
+                                        hover
+                                        padding="none"
+                                        className="overflow-hidden group"
+                                        onClick={() => s.id ? navigate(`/ledgers/${s.id}`) : navigate(`/ledgers?party=${encodeURIComponent(s.name)}`)}
+                                    >
                                         <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 font-black text-sm">
@@ -380,18 +625,22 @@ export default function StockItemDetailPage() {
                                                 <div>
                                                     <h4 className="text-sm font-black text-[var(--on-surface)] uppercase group-hover:text-amber-500 transition-colors">{s.name}</h4>
                                                     <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase mt-0.5">
-                                                        Last Inward: {format(new Date(s.lastDate), 'dd MMM yyyy')}
+                                                        Last Inward: {s.lastDate && !isNaN(new Date(s.lastDate).getTime()) ? format(new Date(s.lastDate), 'dd MMM yyyy') : '---'}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-8 text-right">
+                                            <div className="flex items-center gap-6 text-right">
+                                                <div className="hidden sm:block">
+                                                    <p className="text-xs font-black text-[var(--on-surface)]">₹{(s.val / (s.qty || 1)).toFixed(2)}</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Avg Rate</p>
+                                                </div>
                                                 <div>
                                                     <p className="text-xs font-black text-[var(--on-surface)]">{s.qty} {item.unit}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase uppercase">Stock In</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Total In</p>
                                                 </div>
                                                 <div>
                                                     <p className="text-xs font-black text-amber-500">{formatCurrency(s.val)}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase uppercase">Total Value</p>
+                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Value</p>
                                                 </div>
                                                 <ChevronRight size={16} className="text-[var(--text-muted)] hidden md:block" />
                                             </div>
@@ -406,3 +655,4 @@ export default function StockItemDetailPage() {
         </div>
     );
 }
+

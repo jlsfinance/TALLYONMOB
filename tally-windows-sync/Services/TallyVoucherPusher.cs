@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text;
+using System.Linq;
 using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -178,6 +179,8 @@ namespace TallySyncApp.Services
             {
                 var voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
                 
+                SyncLogger.Log($"[DEBUG] GenerateTallyVoucherXml: type={transaction.TransactionType}, data keys=[{string.Join(", ", ((JObject)voucherData).Properties().Select(p => p.Name))}]");
+                
                 // Normalize voucher type - database may store table names like "VOUCHERS"
                 var rawType = transaction.TransactionType?.Trim().ToUpper() ?? "";
                 
@@ -191,9 +194,34 @@ namespace TallySyncApp.Services
                     rawType = typeFromData.Trim().ToUpper();
                 }
                 
-                var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
+                // ROBUST DATE PARSING: Try multiple date fields and formats
+                DateTime voucherDate = DateTime.Now;
+                var dateStr = voucherData["voucher_date"]?.ToString() 
+                           ?? voucherData["date"]?.ToString()
+                           ?? voucherData["invoice_date"]?.ToString();
+                
+                if (!string.IsNullOrEmpty(dateStr))
+                {
+                    if (!DateTime.TryParse(dateStr, out voucherDate))
+                    {
+                        SyncLogger.Log($"⚠️ Failed to parse date: '{dateStr}', using today");
+                        voucherDate = DateTime.Now;
+                    }
+                }
+                else
+                {
+                    SyncLogger.Log($"⚠️ No date field found in voucher data, using today");
+                }
+                
+                SyncLogger.Log($"[DEBUG] Voucher: type={rawType}, date={voucherDate:yyyy-MM-dd}, dateStr='{dateStr}'");
+                
                 var partyName = voucherData["party_name"]?.ToString() ?? "";
                 var narration = voucherData["narration"]?.ToString() ?? "";
+
+                if (string.IsNullOrEmpty(partyName))
+                {
+                    SyncLogger.Log($"⚠️ Party name is empty! Voucher will likely fail in Tally.");
+                }
 
                 // Build the XML based on normalized voucher type
                 switch (rawType)
@@ -232,7 +260,7 @@ namespace TallySyncApp.Services
             }
             catch (Exception ex)
             {
-                SyncLogger.Log($"⚠️ GenerateTallyVoucherXml error: {ex.Message}");
+                SyncLogger.Log($"⚠️ GenerateTallyVoucherXml error: {ex.Message}\n{ex.StackTrace}");
                 return "";
             }
         }
@@ -269,10 +297,12 @@ namespace TallySyncApp.Services
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
             xml.AppendLine($"          <VOUCHER VCHTYPE=\"Sales\" ACTION=\"Create\">");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <EFFECTIVEDATE>{date:yyyyMMdd}</EFFECTIVEDATE>");
             xml.AppendLine("            <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>");
             xml.AppendLine($"            <PARTYLEDGERNAME>{EscapeXml(partyName)}</PARTYLEDGERNAME>");
             xml.AppendLine($"            <NARRATION>{EscapeXml(narration)}</NARRATION>");
             xml.AppendLine("            <ISINVOICE>Yes</ISINVOICE>");
+            xml.AppendLine("            <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>");
 
             // Party entry (Debit)
             xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
@@ -335,11 +365,17 @@ namespace TallySyncApp.Services
             // Inventory entries
             foreach (var item in items)
             {
-                var itemName = item["stock_item_name"]?.ToString() ?? "";
-                var qty = item["quantity"]?.Value<decimal>() ?? 0;
+                // FIX: Web sends 'stock_item' but we expect 'stock_item_name'
+                var itemName = item["stock_item_name"]?.ToString() 
+                            ?? item["stock_item"]?.ToString()
+                            ?? item["name"]?.ToString() ?? "";
+                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
                 var rate = item["rate"]?.Value<decimal>() ?? 0;
                 var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
                 var unit = item["unit"]?.ToString() ?? "Nos";
+                
+                // Skip empty items
+                if (string.IsNullOrWhiteSpace(itemName) && qty == 0) continue;
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
@@ -396,10 +432,12 @@ namespace TallySyncApp.Services
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
             xml.AppendLine($"          <VOUCHER VCHTYPE=\"Purchase\" ACTION=\"Create\">");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <EFFECTIVEDATE>{date:yyyyMMdd}</EFFECTIVEDATE>");
             xml.AppendLine("            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>");
             xml.AppendLine($"            <PARTYLEDGERNAME>{EscapeXml(partyName)}</PARTYLEDGERNAME>");
             xml.AppendLine($"            <NARRATION>{EscapeXml(narration)}</NARRATION>");
             xml.AppendLine("            <ISINVOICE>Yes</ISINVOICE>");
+            xml.AppendLine("            <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>");
 
             // Party entry (Credit)
             xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
@@ -446,11 +484,17 @@ namespace TallySyncApp.Services
             // Inventory entries
             foreach (var item in items)
             {
-                var itemName = item["stock_item_name"]?.ToString() ?? "";
-                var qty = item["quantity"]?.Value<decimal>() ?? 0;
+                // FIX: Web sends 'stock_item' but we expect 'stock_item_name'
+                var itemName = item["stock_item_name"]?.ToString() 
+                            ?? item["stock_item"]?.ToString()
+                            ?? item["name"]?.ToString() ?? "";
+                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
                 var rate = item["rate"]?.Value<decimal>() ?? 0;
                 var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
                 var unit = item["unit"]?.ToString() ?? "Nos";
+                
+                // Skip empty items
+                if (string.IsNullOrWhiteSpace(itemName) && qty == 0) continue;
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
@@ -502,6 +546,7 @@ namespace TallySyncApp.Services
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
             xml.AppendLine($"          <VOUCHER VCHTYPE=\"Receipt\" ACTION=\"Create\">");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <EFFECTIVEDATE>{date:yyyyMMdd}</EFFECTIVEDATE>");
             xml.AppendLine("            <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>");
             xml.AppendLine($"            <PARTYLEDGERNAME>{EscapeXml(partyName)}</PARTYLEDGERNAME>");
             xml.AppendLine($"            <NARRATION>{EscapeXml(narration)}</NARRATION>");
@@ -556,6 +601,7 @@ namespace TallySyncApp.Services
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
             xml.AppendLine($"          <VOUCHER VCHTYPE=\"Payment\" ACTION=\"Create\">");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <EFFECTIVEDATE>{date:yyyyMMdd}</EFFECTIVEDATE>");
             xml.AppendLine("            <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>");
             xml.AppendLine($"            <PARTYLEDGERNAME>{EscapeXml(partyName)}</PARTYLEDGERNAME>");
             xml.AppendLine($"            <NARRATION>{EscapeXml(narration)}</NARRATION>");
@@ -609,6 +655,7 @@ namespace TallySyncApp.Services
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
             xml.AppendLine($"          <VOUCHER VCHTYPE=\"Journal\" ACTION=\"Create\">");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <EFFECTIVEDATE>{date:yyyyMMdd}</EFFECTIVEDATE>");
             xml.AppendLine("            <VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>");
             xml.AppendLine($"            <NARRATION>{EscapeXml(narration)}</NARRATION>");
 

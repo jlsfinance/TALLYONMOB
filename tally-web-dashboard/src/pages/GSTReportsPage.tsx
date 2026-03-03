@@ -37,7 +37,7 @@ export default function GSTReportsPage() {
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
     const [reportData, setReportData] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<'summary' | 'b2b' | 'b2c' | 'hsn' | 'gstr3b'>('summary');
+    const [activeTab, setActiveTab] = useState<'summary' | 'b2b' | 'b2c' | 'hsn' | 'gstr3b' | 'rates' | 'pos'>('summary');
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -80,14 +80,18 @@ export default function GSTReportsPage() {
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
-                .eq('is_deleted', false);
+                .or('is_deleted.is.null,is_deleted.eq.false');
 
-            // Fetch stock entries for all vouchers
-            const voucherIds = (salesVouchers || []).map((v: any) => v.id);
-            const { data: stockEntries } = await supabase
-                .from('voucher_stock_entries')
-                .select('*')
-                .in('voucher_id', voucherIds);
+            // Fetch stock entries for all sales vouchers
+            const voucherIds = (salesVouchers || []).map((v: any) => v.id).filter(Boolean);
+            let stockEntries: any[] = [];
+            if (voucherIds.length > 0) {
+                const { data: seData } = await supabase
+                    .from('voucher_stock_entries')
+                    .select('*')
+                    .in('voucher_id', voucherIds);
+                stockEntries = seData || [];
+            }
 
             // Group stock entries by voucher_id
             const entriesByVoucher = (stockEntries || []).reduce((acc: any, entry: any) => {
@@ -96,22 +100,53 @@ export default function GSTReportsPage() {
                 return acc;
             }, {});
 
-            // Map vouchers with their stock entries
-            const sales = (salesVouchers || []).map((s: any) => ({
-                ...s,
-                invoice_number: s.voucher_number,
-                invoice_date: s.voucher_date,
-                party_ledger_name: s.party_name,
-                party_gstin: s.party_gstin || '',
-                net_amount: Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0),
-                taxable_amount: Math.abs(Number(s.taxable_value) || Number(s.total_amount) || 0),
-                cgst_amount: Number(s.cgst_amount) || 0,
-                sgst_amount: Number(s.sgst_amount) || 0,
-                igst_amount: Number(s.igst_amount) || 0,
-                cess_amount: Number(s.cess_amount) || 0,
-                place_of_supply: s.place_of_supply || '',
-                stock_entries: entriesByVoucher[s.id] || []
-            }));
+            // Map vouchers with their stock entries and derive taxes when voucher-level fields are absent.
+            const sales = (salesVouchers || []).map((s: any) => {
+                const linkedEntries = entriesByVoucher[s.id] || [];
+                const derivedTaxable = linkedEntries.reduce((sum: number, e: any) => sum + Math.abs(Number(e.amount) || 0), 0);
+                const derivedTaxTotal = linkedEntries.reduce((sum: number, e: any) => {
+                    const taxable = Math.abs(Number(e.amount) || 0);
+                    const rate = Number(e.tax_rate ?? e.gst_rate ?? 0);
+                    return sum + (taxable * rate / 100);
+                }, 0);
+
+                const voucherTaxable = Math.abs(Number(s.taxable_value) || 0);
+                const fallbackTaxable = voucherTaxable > 0 ? voucherTaxable : (derivedTaxable > 0 ? derivedTaxable : Math.abs(Number(s.total_amount) || 0));
+
+                let cgst = Number(s.cgst_amount) || 0;
+                let sgst = Number(s.sgst_amount) || 0;
+                let igst = Number(s.igst_amount) || 0;
+                const cess = Number(s.cess_amount) || 0;
+
+                if (cgst === 0 && sgst === 0 && igst === 0 && derivedTaxTotal > 0) {
+                    // If POS appears interstate, treat as IGST, otherwise split equally into CGST+SGST.
+                    const isInterState = (s.place_of_supply || '').toString().trim().length > 0
+                        && selectedCompany?.state
+                        && !String(s.place_of_supply).toLowerCase().includes(String(selectedCompany.state).toLowerCase());
+                    if (isInterState) {
+                        igst = derivedTaxTotal;
+                    } else {
+                        cgst = derivedTaxTotal / 2;
+                        sgst = derivedTaxTotal / 2;
+                    }
+                }
+
+                return {
+                    ...s,
+                    invoice_number: s.voucher_number,
+                    invoice_date: s.voucher_date,
+                    party_ledger_name: s.party_name,
+                    party_gstin: s.party_gstin || '',
+                    net_amount: Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0),
+                    taxable_amount: fallbackTaxable,
+                    cgst_amount: cgst,
+                    sgst_amount: sgst,
+                    igst_amount: igst,
+                    cess_amount: cess,
+                    place_of_supply: s.place_of_supply || '',
+                    stock_entries: linkedEntries
+                };
+            });
 
             // Fetch purchase vouchers
             const { data: purchaseVouchers } = await supabase
@@ -121,7 +156,7 @@ export default function GSTReportsPage() {
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
-                .eq('is_deleted', false);
+                .or('is_deleted.is.null,is_deleted.eq.false');
 
             const purchases = (purchaseVouchers || []).map((p: any) => ({
                 ...p,
@@ -132,7 +167,6 @@ export default function GSTReportsPage() {
                 igst_amount: Number(p.igst_amount) || 0,
                 cess_amount: Number(p.cess_amount) || 0
             }));
-
             const processed = processGSTData(sales || [], purchases || []);
             setReportData(processed);
         } catch (error) {
@@ -284,7 +318,7 @@ export default function GSTReportsPage() {
             <HeaderPortal type="title">
                 <div>
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] uppercase tracking-tighter leading-none">Compliance Hub</h1>
-                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name} • GST</p>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name} ? GST</p>
                 </div>
             </HeaderPortal>
 
@@ -602,9 +636,9 @@ export default function GSTReportsPage() {
                                                 * Net tax payable after adjustment of eligible ITC.
                                             </p>
                                         </div>
-                                        <Button className="bg-white text-slate-900 hover:bg-slate-200 border-none px-10 py-5 rounded-[20px] text-[11px] font-black uppercase tracking-widest h-auto">
+                                        <button onClick={() => exportJSON('gstr3b')} className="bg-white text-slate-900 hover:bg-slate-200 border-none px-10 py-5 rounded-[20px] text-[11px] font-black uppercase tracking-widest h-auto cursor-pointer">
                                             Download 3B Draft
-                                        </Button>
+                                        </button>
                                     </div>
                                 </div>
                             </div>

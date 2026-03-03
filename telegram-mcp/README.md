@@ -1,15 +1,33 @@
 # Telegram MCP Server
 
-This server allows AI agents to interact with Telegram.
+This MCP server lets agents send Telegram messages and run Telegram bot diagnostics.
 
-## Setup
+## What this server can do
 
-1. Get a Bot Token from [@BotFather](https://t.me/BotFather).
-2. Install `uv` if you haven't:
-   ```powershell
-   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-   ```
-3. Update your `claude_desktop_config.json`:
+- `validate_telegram_setup`: confirms token + Telegram API access (`getMe`)
+- `get_bot_details`: fetches configured bot info
+- `get_recent_updates`: helps discover chat IDs from recent bot updates
+- `send_telegram_message`: sends a message (optional `parse_mode`)
+
+## Prerequisites (Windows)
+
+1. Install `uv`:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+2. Verify install:
+
+```powershell
+uv --version
+```
+
+If `uv` is not recognized, restart terminal/IDE after install.
+
+## MCP config example
+
+Add this to your MCP client config:
 
 ```json
 {
@@ -20,14 +38,34 @@ This server allows AI agents to interact with Telegram.
         "--directory",
         "d:/New folder (2)/telegram-mcp",
         "run",
+        "--no-project",
+        "--with",
+        "mcp[cli]>=0.1.0",
+        "--with",
+        "httpx>=0.27.0",
         "main.py"
       ],
       "env": {
-        "TELEGRAM_BOT_TOKEN": "YOUR_ACTUAL_BOT_TOKEN"
+        "TELEGRAM_BOT_TOKEN": "123456789:YOUR_REAL_BOT_TOKEN"
       }
     }
   }
 }
 ```
 
-4. Restart Claude Desktop.
+Then restart your MCP client.
+
+## Quick debug flow
+
+1. Run `validate_telegram_setup`
+2. If valid, message your bot in Telegram (`/start`)
+3. Run `get_recent_updates` to get correct `chat_id`
+4. Run `send_telegram_message` with that `chat_id`
+
+## Common failures
+
+- `TELEGRAM_BOT_TOKEN` missing: token was not provided in MCP server `env`
+- `401 Unauthorized`: token is wrong/revoked (regenerate in @BotFather)
+- `400 chat not found`: wrong chat ID, or bot not added to chat/channel
+- Markdown parse errors: send without `parse_mode`, or escape Markdown characters
+

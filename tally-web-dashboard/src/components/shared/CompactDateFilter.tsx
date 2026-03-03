@@ -46,7 +46,7 @@ export const CompactDateFilter: React.FC<CompactDateFilterProps> = ({
                 </div>
                 <div className="hidden md:flex flex-col items-start leading-none">
                     <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-0.5">Period</span>
-                    <span className="text-[11px] font-black text-[var(--on-surface)] uppercase">{selectedFy} • {activeMonthLabel}</span>
+                    <span className="text-[11px] font-black text-[var(--on-surface)] uppercase">{selectedFy} ? {activeMonthLabel}</span>
                 </div>
                 <ChevronDown size={14} className={`hidden md:block text-[var(--text-muted)] transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
                 <div className="md:hidden flex items-center gap-0.5">

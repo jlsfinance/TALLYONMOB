@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     UserX, Search, Filter, Calendar, TrendingDown, AlertTriangle,
     MessageCircle, Mail, Phone, Share2, Loader2, ChevronRight,
@@ -292,3 +292,4 @@ export default function InactiveCustomersPage() {
         </div>
     );
 }
+

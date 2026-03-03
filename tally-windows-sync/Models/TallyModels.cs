@@ -68,7 +68,8 @@ namespace TallySyncApp.Models
         [JsonProperty("voucher_id")]
         public string VoucherId { get; set; } = string.Empty;
 
-        [JsonIgnore] // Prevent sending 'id' to Supabase as column doesn't exist
+        // Keep explicit id in payload for schemas where vouchers.id is NOT NULL.
+        [JsonProperty("id")]
         public string Id { get => VoucherId; set => VoucherId = value; }
 
         [JsonProperty("company_id")]
@@ -83,12 +84,24 @@ namespace TallySyncApp.Models
         [JsonProperty("voucher_date")]
         public DateTime VoucherDate { get; set; }
 
-        // Legacy compatibility
-        [JsonIgnore]
+        // Legacy compatibility (some backends still enforce NOT NULL vch_date).
+        [JsonProperty("vch_date")]
         public DateTime VchDate { get => VoucherDate; set => VoucherDate = value; }
 
         [JsonProperty("party_name")]
         public string? PartyName { get; set; }
+
+        [JsonProperty("party_gstin")]
+        public string? PartyGstin { get; set; }
+
+        [JsonProperty("party_address")]
+        public string? PartyAddress { get; set; }
+
+        [JsonProperty("place_of_supply")]
+        public string? PlaceOfSupply { get; set; }
+
+        [JsonProperty("party_state")]
+        public string? PartyState { get; set; }
 
         // Legacy compatibility
         [JsonIgnore]
@@ -1119,3 +1132,5 @@ namespace TallySyncApp.Models
         public string? AlterId { get; set; }
     }
 }
+
+

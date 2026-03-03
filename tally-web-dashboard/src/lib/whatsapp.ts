@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './insforge';
 import { format } from 'date-fns';
 
 export async function sendEodReport(companyId: string, phone: string, companyName: string) {
@@ -25,3 +25,4 @@ export async function sendEodReport(companyId: string, phone: string, companyNam
     const url = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
 }
+

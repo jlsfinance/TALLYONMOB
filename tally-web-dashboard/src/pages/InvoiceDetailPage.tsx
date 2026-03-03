@@ -42,16 +42,7 @@ export default function InvoiceDetailPage() {
                 .select('*')
                 .eq('id', id)
                 .single();
-
-            if (!voucherData && id) {
-                // Try by voucher_id field
-                const { data: fallback } = await supabase
-                    .from('vouchers')
-                    .select('*')
-                    .eq('voucher_id', id)
-                    .single();
-                voucherData = fallback;
-            }
+            // Legacy voucher_id fallback removed because current vouchers schema uses only id.
 
             if (voucherData) {
                 // Map voucher fields to invoice format
@@ -60,7 +51,8 @@ export default function InvoiceDetailPage() {
                     invoice_number: voucherData.voucher_number,
                     invoice_date: voucherData.voucher_date,
                     party_ledger_name: voucherData.party_name,
-                    party_gstin: voucherData.party_gst_number || '', // Use mapped GST
+                    party_ledger_id: voucherData.party_ledger_id,
+                    party_gstin: voucherData.party_gstin || voucherData.party_gst_number || '',
                     net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     gross_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
@@ -82,7 +74,7 @@ export default function InvoiceDetailPage() {
                 // Get stock items lookup
                 const { data: stockItems } = await supabase
                     .from('stock_items')
-                    .select('name, hsn_code, unit, gst_rate')
+                    .select('id, name, hsn_code, unit, gst_rate')
                     .eq('company_id', voucherData.company_id);
 
                 const stockLookup: any = {};
@@ -91,17 +83,30 @@ export default function InvoiceDetailPage() {
                 // Map entries to items format
                 const finalItems = (stockEntries || []).map((item: any, idx: number) => ({
                     ...item,
+                    stock_item_id: stockLookup[item.item_name || item.stock_item_name]?.id,
                     stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
-                    hsn_code: item.hsn_code || stockLookup[item.item_name]?.hsn_code || '-',
-                    unit: item.unit || stockLookup[item.item_name]?.unit || '',
+                    hsn_code: item.hsn_code || stockLookup[item.item_name || item.stock_item_name]?.hsn_code || '-',
+                    unit: item.unit || stockLookup[item.item_name || item.stock_item_name]?.unit || '',
                     quantity: item.quantity || item.billed_qty || 0,
                     rate: item.rate || item.unit_price || 0,
                     amount: item.amount || (item.quantity * item.rate) || 0,
                     discount_percent: item.discount_percent || 0,
-                    tax_rate: item.gst_rate || stockLookup[item.item_name]?.gst_rate || item.tax_rate || 0
+                    tax_rate: item.gst_rate || stockLookup[item.item_name || item.stock_item_name]?.gst_rate || item.tax_rate || 0
                 }));
 
                 salesData.sales_items = finalItems;
+
+                // Fallback for party_ledger_id
+                if (!salesData.party_ledger_id && salesData.party_ledger_name) {
+                    const { data: pData } = await supabase
+                        .from('ledgers')
+                        .select('id')
+                        .eq('company_id', voucherData.company_id)
+                        .ilike('name', salesData.party_ledger_name.trim())
+                        .maybeSingle();
+                    if (pData) salesData.party_ledger_id = pData.id;
+                }
+
                 setInvoice(salesData);
             } else {
                 setInvoice(null);
@@ -182,7 +187,7 @@ export default function InvoiceDetailPage() {
                             </div>
                             <div className="flex flex-wrap gap-4 mt-1 text-xs font-bold text-gray-600 uppercase tracking-wide">
                                 {selectedCompany?.gstin && <span>GSTIN: {selectedCompany.gstin}</span>}
-                                {selectedCompany?.phone_number && <span>Ph: {selectedCompany.phone_number}</span>}
+                                {(selectedCompany?.phone || selectedCompany?.phone_number) && <span>Ph: {selectedCompany.phone || selectedCompany.phone_number}</span>}
                             </div>
                         </div>
                     </div>
@@ -203,7 +208,12 @@ export default function InvoiceDetailPage() {
                 <div className="p-8 md:p-12 bg-gray-50 border-b border-gray-100 flex flex-col md:flex-row gap-12">
                     <div className="flex-1 space-y-3">
                         <p className="text-xs font-black text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2 mb-2">Bill To</p>
-                        <h3 className="text-xl font-black text-gray-900">{invoice.party_ledger_name}</h3>
+                        <h3
+                            className="text-xl font-black text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                            onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
+                        >
+                            {invoice.party_ledger_name}
+                        </h3>
                         <div className="text-xs font-medium text-gray-600 space-y-1">
                             {invoice.party_gstin && (
                                 <p className="font-bold flex items-center gap-2"><Hash size={12} /> GSTIN: {invoice.party_gstin}</p>
@@ -238,7 +248,12 @@ export default function InvoiceDetailPage() {
                                 <tr key={idx}>
                                     <td className="py-4 px-4 text-gray-500 font-medium">{idx + 1}</td>
                                     <td className="py-4">
-                                        <p className="font-bold text-gray-900">{item.stock_item_name}</p>
+                                        <p
+                                            className="font-bold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                                            onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
+                                        >
+                                            {item.stock_item_name}
+                                        </p>
                                         {Number(item.discount_percent) > 0 && (
                                             <p className="text-[10px] text-emerald-600 font-bold mt-1">Includes Discount: {item.discount_percent}%</p>
                                         )}
@@ -371,3 +386,4 @@ export default function InvoiceDetailPage() {
         </div>
     );
 }
+

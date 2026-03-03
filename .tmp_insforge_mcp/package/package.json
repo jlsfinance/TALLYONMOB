@@ -1,0 +1,57 @@
+{
+  "name": "@insforge/mcp",
+  "version": "1.2.6",
+  "description": "MCP (Model Context Protocol) server for Insforge backend-as-a-service",
+  "mcpName": "io.github.InsForge/insforge-mcp",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "insforge-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "dev:stdio": "tsx watch src/stdio/index.ts",
+    "dev:http": "tsx watch src/http/server.ts",
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "insforge",
+    "backend-as-a-service"
+  ],
+  "author": "Insforge",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/InsForge/insforge-mcp.git"
+  },
+  "homepage": "https://github.com/InsForge/insforge-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/InsForge/insforge-mcp/issues"
+  },
+  "files": [
+    "dist",
+    "mcp.json",
+    "server.json"
+  ],
+  "dependencies": {
+    "@insforge/shared-schemas": "1.1.42",
+    "@modelcontextprotocol/sdk": "^1.15.1",
+    "@types/express": "^5.0.3",
+    "archiver": "^7.0.1",
+    "commander": "^14.0.0",
+    "express": "^5.1.0",
+    "form-data": "^4.0.4",
+    "node-fetch": "^3.3.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/node": "^20.10.5",
+    "rimraf": "^5.0.5",
+    "tsup": "^8.5.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

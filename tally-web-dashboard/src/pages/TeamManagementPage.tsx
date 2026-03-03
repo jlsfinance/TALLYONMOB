@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     Users, Shield, Mail, UserPlus, Trash2, Crown, Eye,
     Edit, Lock, Loader2, Check, X, Copy, ChevronDown
@@ -49,7 +49,7 @@ export default function TeamManagementPage() {
 
             setMembers(data || []);
         } catch {
-            // Table may not exist — show owner as default
+            // Table may not exist ? show owner as default
             setMembers([{
                 id: '1',
                 email: user?.email || 'owner@example.com',
@@ -281,3 +281,4 @@ export default function TeamManagementPage() {
         </div>
     );
 }
+

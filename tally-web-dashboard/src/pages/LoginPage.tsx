@@ -14,8 +14,9 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [loading, setLoading] = useState(false);
-
-    const { signIn, signUp, signInWithGoogle } = useAuth() as AuthContextType;
+    const [otpSent, setOtpSent] = useState(false);
+    const [otpCode, setOtpCode] = useState('');
+    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any };
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
 
@@ -23,22 +24,43 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            if (isLogin) {
-                const { error } = await signIn(email, password);
+            if (otpSent) {
+                const { error } = await verifyOtp(email, otpCode, 'signup');
                 if (error) throw error;
+                toast.success('Account verified!');
+                navigate('/dashboard');
+            } else if (isLogin) {
+                const { error } = await signIn(email, password);
+                if (error) {
+                    if (error.message?.toLowerCase().includes('not verified') || error.message?.toLowerCase().includes('verify')) {
+                        const { error: sendError } = await sendVerificationEmail(email);
+                        if (sendError) throw sendError;
+                        setOtpSent(true);
+                        setIsLogin(false);
+                        toast.error('Email not verified. We sent a new OTP to your email.');
+                        return;
+                    }
+                    throw error;
+                }
                 toast.success('Welcome back!');
                 navigate('/dashboard');
             } else {
                 const { error } = await signUp(email, password, fullName);
-                if (error) throw error;
-                toast.success('Account created! Please check your email.');
+                if (error) {
+                    if (error.message?.toLowerCase().includes('already exists') || error.message?.toLowerCase().includes('already registered')) {
+                        toast.error('User already exists! Please sign in instead.');
+                        setIsLogin(true);
+                        return;
+                    }
+                    throw error;
+                }
+                setOtpSent(true);
+                toast.success('Account created! Please check your email for the OTP.');
             }
         } catch (error: any) {
             console.error('Login Error:', error);
             const errorMsg = error.message || 'Unknown error';
-            toast.error(`Login Failed: ${errorMsg}`);
-            // DEBUG: Show detailed error
-            alert(`Debug Error: ${JSON.stringify(error)} \nMsg: ${errorMsg}`);
+            toast.error(`Request Failed: ${errorMsg}`);
         } finally {
             setLoading(false);
         }
@@ -70,7 +92,7 @@ export default function LoginPage() {
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
-            {/* Theme Toggle — Top Right */}
+            {/* Theme Toggle ? Top Right */}
             <button
                 onClick={toggleTheme}
                 className="fixed top-5 right-5 z-50 w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] transition-all"
@@ -79,7 +101,7 @@ export default function LoginPage() {
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Left — Auth Form */}
+            {/* Left ? Auth Form */}
             <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 z-10">
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
@@ -122,7 +144,7 @@ export default function LoginPage() {
                         </motion.div>
                     </AnimatePresence>
 
-                    {/* Google Login — Show first for quick access */}
+                    {/* Google Login ? Show first for quick access */}
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
@@ -148,7 +170,7 @@ export default function LoginPage() {
                     {/* Auth Form */}
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <AnimatePresence>
-                            {!isLogin && (
+                            {!isLogin && !otpSent && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0 }}
                                     animate={{ opacity: 1, height: 'auto' }}
@@ -164,42 +186,70 @@ export default function LoginPage() {
                                             onChange={(e) => setFullName(e.target.value)}
                                             className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
                                             placeholder="Your full name"
-                                            required={!isLogin}
+                                            required={!isLogin && !otpSent}
                                         />
                                     </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
 
-                        <div>
-                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
-                            <div className="relative">
-                                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                    placeholder="you@company.com"
-                                    required
-                                />
-                            </div>
-                        </div>
+                        {!otpSent && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
+                                    <div className="relative">
+                                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            placeholder="you@company.com"
+                                            required
+                                        />
+                                    </div>
+                                </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
-                            <div className="relative">
-                                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                    placeholder="••••••••"
-                                    required
-                                />
-                            </div>
-                        </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
+                                    <div className="relative">
+                                        <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            placeholder="????????"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {otpSent && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="overflow-hidden"
+                            >
+                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Verification Code</label>
+                                <div className="text-sm text-[var(--text-muted)] mb-3">
+                                    We sent a code to <span className="font-medium text-[var(--on-surface)]">{email}</span>.
+                                </div>
+                                <div className="relative">
+                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <input
+                                        type="text"
+                                        value={otpCode}
+                                        onChange={(e) => setOtpCode(e.target.value)}
+                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                        placeholder="Enter the 6-digit OTP"
+                                        required
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
 
                         <button
                             type="submit"
@@ -210,7 +260,7 @@ export default function LoginPage() {
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    {isLogin ? 'Sign In' : 'Create Account'}
+                                    {isLogin ? 'Sign In' : (otpSent ? 'Verify Account' : 'Create Account')}
                                     <ArrowRight size={16} />
                                 </>
                             )}

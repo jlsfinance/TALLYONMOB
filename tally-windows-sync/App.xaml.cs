@@ -14,6 +14,10 @@ namespace TallySyncApp
     /// </summary>
     public partial class App : Application
     {
+        private const string LegacyLocalMockSupabaseUrl = "http://localhost:5000/api/mock/supa";
+        private const string LegacyLocalMockSupabaseKey = "mock_key";
+
+        private static ILoggerFactory? _loggerFactory;
         private static ILogger<App>? _logger;
         private static SyncManager? _syncManager;
         private static AuthService? _authService;
@@ -36,10 +40,10 @@ namespace TallySyncApp
             InitializeAuth();
 
             // Log startup
-            _logger?.LogInformation("═══════════════════════════════════════════════════════");
-            _logger?.LogInformation("  🚀 Tally Sync Application Starting");
-            _logger?.LogInformation($"  📅 {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            _logger?.LogInformation("═══════════════════════════════════════════════════════");
+            _logger?.LogInformation("==============================================");
+            _logger?.LogInformation("Tally Sync Application Starting");
+            _logger?.LogInformation($"Start Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            _logger?.LogInformation("==============================================");
 
             // Handle unhandled exceptions
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
@@ -67,6 +71,12 @@ namespace TallySyncApp
                 {
                     var json = File.ReadAllText(settingsPath);
                     _settings = JsonConvert.DeserializeObject<AppSettings>(json) ?? new AppSettings();
+
+                    var migrated = NormalizeLegacyCloudConfig(_settings);
+                    if (migrated)
+                    {
+                        SaveSettingsFile(settingsPath, _settings);
+                    }
                 }
                 else
                 {
@@ -79,16 +89,74 @@ namespace TallySyncApp
             }
         }
 
+        private static bool NormalizeLegacyCloudConfig(AppSettings settings)
+        {
+            if (settings.AuthSettings == null)
+            {
+                settings.AuthSettings = new AuthSettings();
+            }
+
+            var currentUrl = settings.AuthSettings.SupabaseUrl ?? string.Empty;
+            bool isDirectSupabase = currentUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase);
+
+            if (!isDirectSupabase)
+            {
+                return false;
+            }
+
+            settings.AuthSettings.SupabaseUrl = BuildMockSupabaseUrl(settings.SyncSettings?.ApiBaseUrl);
+            settings.AuthSettings.SupabaseAnonKey = LegacyLocalMockSupabaseKey;
+            return true;
+        }
+
+        private static string BuildMockSupabaseUrl(string? apiBaseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(apiBaseUrl))
+            {
+                return LegacyLocalMockSupabaseUrl;
+            }
+
+            var baseUrl = apiBaseUrl.TrimEnd('/');
+
+            if (baseUrl.EndsWith("/api/v1", StringComparison.OrdinalIgnoreCase))
+            {
+                return baseUrl[..^"/api/v1".Length] + "/api/mock/supa";
+            }
+
+            if (baseUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase))
+            {
+                return baseUrl + "/mock/supa";
+            }
+
+            return baseUrl + "/api/mock/supa";
+        }
+
+        private static void SaveSettingsFile(string settingsPath, AppSettings settings)
+        {
+            try
+            {
+                var updatedJson = JsonConvert.SerializeObject(settings, Formatting.Indented);
+                File.WriteAllText(settingsPath, updatedJson);
+            }
+            catch
+            {
+                // Best-effort migration write.
+            }
+        }
+
         private void InitializeAuth()
         {
             var supabaseUrl = _settings?.AuthSettings?.SupabaseUrl ?? "";
             var supabaseKey = _settings?.AuthSettings?.SupabaseAnonKey ?? "";
 
-            if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
+            if (string.IsNullOrWhiteSpace(supabaseUrl))
             {
-                // Credentials should be loaded from appsettings.json
-                supabaseUrl = "";
-                supabaseKey = "";
+                supabaseUrl = BuildMockSupabaseUrl(_settings?.SyncSettings?.ApiBaseUrl);
+            }
+
+            if (string.IsNullOrWhiteSpace(supabaseKey))
+            {
+                supabaseKey = LegacyLocalMockSupabaseKey;
             }
 
             _authService = new AuthService(supabaseUrl, supabaseKey);
@@ -121,6 +189,7 @@ namespace TallySyncApp
         {
             _logger?.LogInformation("Application shutting down...");
             _syncManager?.StopSync();
+            _loggerFactory?.Dispose();
             base.OnExit(e);
         }
 
@@ -132,14 +201,14 @@ namespace TallySyncApp
                 string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
                 Directory.CreateDirectory(logPath);
 
-                using var loggerFactory = LoggerFactory.Create(builder =>
+                _loggerFactory = LoggerFactory.Create(builder =>
                 {
                     builder
                         .SetMinimumLevel(LogLevel.Information)
                         .AddConsole();
                 });
 
-                _logger = loggerFactory.CreateLogger<App>();
+                _logger = _loggerFactory.CreateLogger<App>();
             }
             catch (Exception ex)
             {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     Database, Download, Upload, Clock, FileJson, FileSpreadsheet,
     Cloud, RefreshCcw, Loader2, CheckCircle, AlertTriangle,
@@ -243,7 +243,7 @@ export default function BackupRestorePage() {
                                             <span className="text-sm font-medium text-[var(--on-surface)]">Full Backup</span>
                                         </div>
                                         <p className="text-xs text-[var(--text-muted)] mt-1">{formatDate(backup.created_at)}</p>
-                                        <p className="text-xs text-[var(--text-muted)]">{backup.tables.length} tables • {backup.size_kb}KB</p>
+                                        <p className="text-xs text-[var(--text-muted)]">{backup.tables.length} tables ? {backup.size_kb}KB</p>
                                     </div>
                                     <span className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded-full">✅ Success</span>
                                 </div>
@@ -269,3 +269,4 @@ export default function BackupRestorePage() {
         </div>
     );
 }
+
