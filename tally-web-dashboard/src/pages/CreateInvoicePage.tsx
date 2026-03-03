@@ -214,7 +214,7 @@ export default function CreateInvoicePage() {
         setSubmitting(true);
         try {
             const customer = ledgers.find(l => l.id === selectedCustomerId);
-            const invoiceData: Invoice = {
+            const invoiceData: any = {
                 id: crypto.randomUUID(),
                 invoiceNumber,
                 customerId: selectedCustomerId,
@@ -223,7 +223,6 @@ export default function CreateInvoicePage() {
                 customerState: customer?.state,
                 date,
                 dueDate,
-                items,
                 subtotal,
                 totalCgst: cgst,
                 totalSgst: sgst,
@@ -234,7 +233,28 @@ export default function CreateInvoicePage() {
                 discountAmount: billDiscount,
                 paymentMode,
                 notes,
-                gstEnabled: (cgst + sgst + igst) > 0
+                gstEnabled: (cgst + sgst + igst) > 0,
+
+                // Canonical voucher payload expected by Windows push sync
+                voucher_type_name: 'Sales',
+                voucher_type: 'Sales',
+                party_name: customer?.name || 'Cash Customer',
+                party_ledger_name: customer?.name || 'Cash Customer',
+                voucher_date: date,
+                invoice_date: date,
+                total_amount: total,
+                grand_total: total,
+                narration: notes || `Invoice ${invoiceNumber}`,
+                items: items.map(item => ({
+                    stock_item_name: item.description,
+                    quantity: item.quantity,
+                    qty: item.quantity,
+                    rate: item.rate,
+                    amount: item.totalAmount,
+                    hsn_code: item.hsn,
+                    gst_rate: item.gstRate,
+                    unit: item.unit || 'Nos'
+                }))
             };
 
             await pendingTransactionApi.create(
@@ -822,3 +842,5 @@ export default function CreateInvoicePage() {
         </div >
     );
 }
+
+

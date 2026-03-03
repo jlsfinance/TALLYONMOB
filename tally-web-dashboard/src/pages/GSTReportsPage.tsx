@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { FileText, Download, Building2, User, Package, Receipt, Calendar, ShieldCheck, PieChart, Activity } from 'lucide-react';
 import { GlassCard, MetricCard, Badge, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +18,219 @@ const EmptyState = ({ icon, title, description }: { icon: React.ReactNode, title
     </div>
 );
 
+const SALE_VOUCHER_TYPES = ['Sales', 'Sales Invoice'];
+const PURCHASE_VOUCHER_TYPES = ['Purchase', 'Purchase Invoice'];
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i;
+const toNumber = (value: any) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+};
+const absNumber = (value: any) => Math.abs(toNumber(value));
+const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+const parseStateCodeFromGstin = (gstin: any) => {
+    const text = String(gstin || '').trim().toUpperCase();
+    const match = text.match(/^(\d{2})/);
+    return match ? match[1] : null;
+};
+const parseStateCodeFromPos = (pos: any) => {
+    const text = String(pos || '').trim().toUpperCase();
+    if (!text) return null;
+    const match = text.match(/^(\d{1,2})(?:\D|$)/);
+    if (!match) return null;
+    return match[1].padStart(2, '0');
+};
+const getLedgerTaxTotals = (ledgerRows: any[]) => {
+    let cgst = 0;
+    let sgst = 0;
+    let igst = 0;
+    let cess = 0;
+    (ledgerRows || []).forEach((entry: any) => {
+        const ledgerName = String(
+            entry.ledger_name
+            || entry.name
+            || entry.ledgerName
+            || entry.account_name
+            || ''
+        ).toLowerCase();
+        const amount = absNumber(entry.amount ?? entry.total_amount ?? entry.value);
+        if (!amount || !ledgerName) return;
+        if (ledgerName.includes('igst')) {
+            igst += amount;
+            return;
+        }
+        if (ledgerName.includes('cgst')) {
+            cgst += amount;
+            return;
+        }
+        if (ledgerName.includes('sgst') || ledgerName.includes('utgst')) {
+            sgst += amount;
+            return;
+        }
+        if (ledgerName.includes('cess')) {
+            cess += amount;
+        }
+    });
+    return { cgst: round2(cgst), sgst: round2(sgst), igst: round2(igst), cess: round2(cess) };
+};
+const inferInterState = (
+    voucher: any,
+    companyStateCode: string | null,
+    companyStateText: string
+) => {
+    const cgst = absNumber(voucher.cgst_amount ?? voucher.cgst);
+    const sgst = absNumber(voucher.sgst_amount ?? voucher.sgst);
+    const igst = absNumber(voucher.igst_amount ?? voucher.igst);
+    if (igst > 0 && (cgst + sgst) === 0) return true;
+    if ((cgst + sgst) > 0) return false;
+    const posCode = parseStateCodeFromPos(voucher.place_of_supply ?? voucher.pos ?? voucher.placeOfSupply);
+    if (posCode && companyStateCode) return posCode !== companyStateCode;
+    const posText = String(voucher.place_of_supply || voucher.pos || '').trim().toLowerCase();
+    if (posText && companyStateText) {
+        return !posText.includes(companyStateText);
+    }
+    return false;
+};
+const normalizeVoucherWithEntries = (
+    voucher: any,
+    stockRows: any[],
+    ledgerRows: any[],
+    companyStateCode: string | null,
+    companyStateText: string
+) => {
+    const normalizedLines = (stockRows || []).map((row: any) => {
+        let taxable = absNumber(row.amount ?? row.total_amount ?? row.value);
+        let quantity = absNumber(row.quantity ?? row.qty);
+        let rate = absNumber(row.rate);
+        const taxRate = absNumber(row.tax_rate ?? row.gst_rate ?? row.gstRate);
+        if (taxable <= 0 && quantity > 0 && rate > 0) {
+            taxable = quantity * rate;
+        }
+        if (rate <= 0 && quantity > 0 && taxable > 0) {
+            rate = taxable / quantity;
+        }
+        if (quantity <= 0 && rate > 0 && taxable > 0) {
+            quantity = taxable / rate;
+        }
+        if (quantity <= 0 && taxable > 0) {
+            quantity = 1;
+        }
+        return {
+            hsn_code: String(row.hsn_code || row.hsn || '').trim() || 'N/A',
+            description: String(row.stock_item_name || row.item_name || row.name || voucher.party_name || 'N/A').trim(),
+            quantity,
+            unit: String(row.unit || row.uqc || 'NOS').trim() || 'NOS',
+            taxable,
+            rate,
+            taxRate
+        };
+    }).filter((line: any) => line.taxable > 0 || line.quantity > 0);
+    const lineTaxableTotal = normalizedLines.reduce((sum: number, line: any) => sum + line.taxable, 0);
+    const voucherLedgerTax = getLedgerTaxTotals(ledgerRows || []);
+    let taxable = absNumber(voucher.taxable_value);
+    if (taxable <= 0) taxable = lineTaxableTotal;
+    if (taxable <= 0) taxable = absNumber(voucher.total_amount ?? voucher.amount ?? voucher.grand_total);
+    let cgst = absNumber(voucher.cgst_amount ?? voucher.cgst);
+    let sgst = absNumber(voucher.sgst_amount ?? voucher.sgst);
+    let igst = absNumber(voucher.igst_amount ?? voucher.igst);
+    let cess = absNumber(voucher.cess_amount ?? voucher.cess);
+    if ((cgst + sgst + igst + cess) <= 0 && (voucherLedgerTax.cgst + voucherLedgerTax.sgst + voucherLedgerTax.igst + voucherLedgerTax.cess) > 0) {
+        cgst = voucherLedgerTax.cgst;
+        sgst = voucherLedgerTax.sgst;
+        igst = voucherLedgerTax.igst;
+        cess = voucherLedgerTax.cess;
+    }
+    const isInterState = inferInterState(voucher, companyStateCode, companyStateText);
+    const voucherTaxTotal = cgst + sgst + igst + cess;
+    let lineItems = normalizedLines.map((line: any) => {
+        const ratio = lineTaxableTotal > 0 ? (line.taxable / lineTaxableTotal) : 0;
+        const allocatedCgst = voucherTaxTotal > 0 ? cgst * ratio : 0;
+        const allocatedSgst = voucherTaxTotal > 0 ? sgst * ratio : 0;
+        const allocatedIgst = voucherTaxTotal > 0 ? igst * ratio : 0;
+        const allocatedCess = voucherTaxTotal > 0 ? cess * ratio : 0;
+        const allocatedTax = allocatedCgst + allocatedSgst + allocatedIgst + allocatedCess;
+        const effectiveRate = line.taxable > 0 ? (allocatedTax / line.taxable) * 100 : 0;
+        return {
+            ...line,
+            cgst: allocatedCgst,
+            sgst: allocatedSgst,
+            igst: allocatedIgst,
+            cess: allocatedCess,
+            tax: allocatedTax,
+            effectiveRate: line.taxRate > 0 ? line.taxRate : effectiveRate
+        };
+    });
+    if (voucherTaxTotal <= 0 && lineItems.length > 0) {
+        lineItems = lineItems.map((line: any) => {
+            const lineTax = line.taxable * (line.taxRate / 100);
+            const lineCgst = !isInterState ? lineTax / 2 : 0;
+            const lineSgst = !isInterState ? lineTax / 2 : 0;
+            const lineIgst = isInterState ? lineTax : 0;
+            return {
+                ...line,
+                cgst: lineCgst,
+                sgst: lineSgst,
+                igst: lineIgst,
+                cess: 0,
+                tax: lineTax,
+                effectiveRate: line.taxRate
+            };
+        });
+        cgst = lineItems.reduce((sum: number, line: any) => sum + line.cgst, 0);
+        sgst = lineItems.reduce((sum: number, line: any) => sum + line.sgst, 0);
+        igst = lineItems.reduce((sum: number, line: any) => sum + line.igst, 0);
+        cess = lineItems.reduce((sum: number, line: any) => sum + line.cess, 0);
+    }
+    if (lineItems.length === 0 && taxable > 0) {
+        const totalTax = cgst + sgst + igst + cess;
+        lineItems = [{
+            hsn_code: 'N/A',
+            description: String(voucher.party_name || voucher.party_ledger_name || 'N/A'),
+            quantity: 1,
+            unit: 'NOS',
+            taxable,
+            rate: taxable,
+            taxRate: taxable > 0 ? (totalTax / taxable) * 100 : 0,
+            cgst,
+            sgst,
+            igst,
+            cess,
+            tax: totalTax,
+            effectiveRate: taxable > 0 ? (totalTax / taxable) * 100 : 0
+        }];
+    }
+    const lineTaxableReconciled = lineItems.reduce((sum: number, line: any) => sum + line.taxable, 0);
+    if (lineTaxableReconciled > 0) {
+        taxable = lineTaxableReconciled;
+    }
+    let netAmount = absNumber(voucher.grand_total ?? voucher.total_amount ?? voucher.amount);
+    if (netAmount <= 0) {
+        netAmount = taxable + cgst + sgst + igst + cess;
+    }
+    return {
+        ...voucher,
+        invoice_number: voucher.voucher_number || voucher.invoice_number || voucher.invoiceNumber || voucher.id,
+        invoice_date: voucher.voucher_date || voucher.invoice_date,
+        party_ledger_name: voucher.party_name || voucher.party_ledger_name || 'Unknown Party',
+        party_gstin: String(voucher.party_gstin || voucher.gstin || '').trim().toUpperCase(),
+        net_amount: round2(netAmount),
+        taxable_amount: round2(taxable),
+        cgst_amount: round2(cgst),
+        sgst_amount: round2(sgst),
+        igst_amount: round2(igst),
+        cess_amount: round2(cess),
+        place_of_supply: String(voucher.place_of_supply || voucher.pos || '').trim(),
+        line_items: lineItems.map((line: any) => ({
+            ...line,
+            taxable: round2(line.taxable),
+            cgst: round2(line.cgst),
+            sgst: round2(line.sgst),
+            igst: round2(line.igst),
+            cess: round2(line.cess),
+            tax: round2(line.tax),
+            effectiveRate: round2(line.effectiveRate)
+        }))
+    };
+};
 export default function GSTReportsPage() {
     const navigate = useNavigate();
     const { selectedCompany } = useAuth() as any;
@@ -71,103 +284,59 @@ export default function GSTReportsPage() {
         setLoading(true);
         try {
             const { start, end } = getDateRange();
-
-            // Fetch sales vouchers
-            const { data: salesVouchers } = await supabase
+            const gstVoucherTypes = [...SALE_VOUCHER_TYPES, ...PURCHASE_VOUCHER_TYPES];
+            const { data: vouchersData, error: vouchersError } = await supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
+                .in('voucher_type', gstVoucherTypes)
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
                 .or('is_deleted.is.null,is_deleted.eq.false');
-
-            // Fetch stock entries for all sales vouchers
-            const voucherIds = (salesVouchers || []).map((v: any) => v.id).filter(Boolean);
+            if (vouchersError) throw vouchersError;
+            const vouchers = vouchersData || [];
+            const voucherIds = vouchers.map((v: any) => v.id).filter(Boolean);
             let stockEntries: any[] = [];
+            let ledgerEntries: any[] = [];
             if (voucherIds.length > 0) {
-                const { data: seData } = await supabase
-                    .from('voucher_stock_entries')
-                    .select('*')
-                    .in('voucher_id', voucherIds);
+                const [{ data: seData }, { data: leData }] = await Promise.all([
+                    supabase.from('voucher_stock_entries').select('*').in('voucher_id', voucherIds),
+                    supabase.from('voucher_ledger_entries').select('*').in('voucher_id', voucherIds)
+                ]);
                 stockEntries = seData || [];
+                ledgerEntries = leData || [];
             }
-
-            // Group stock entries by voucher_id
-            const entriesByVoucher = (stockEntries || []).reduce((acc: any, entry: any) => {
+            const stockByVoucher = (stockEntries || []).reduce((acc: any, entry: any) => {
                 if (!acc[entry.voucher_id]) acc[entry.voucher_id] = [];
                 acc[entry.voucher_id].push(entry);
                 return acc;
             }, {});
-
-            // Map vouchers with their stock entries and derive taxes when voucher-level fields are absent.
-            const sales = (salesVouchers || []).map((s: any) => {
-                const linkedEntries = entriesByVoucher[s.id] || [];
-                const derivedTaxable = linkedEntries.reduce((sum: number, e: any) => sum + Math.abs(Number(e.amount) || 0), 0);
-                const derivedTaxTotal = linkedEntries.reduce((sum: number, e: any) => {
-                    const taxable = Math.abs(Number(e.amount) || 0);
-                    const rate = Number(e.tax_rate ?? e.gst_rate ?? 0);
-                    return sum + (taxable * rate / 100);
-                }, 0);
-
-                const voucherTaxable = Math.abs(Number(s.taxable_value) || 0);
-                const fallbackTaxable = voucherTaxable > 0 ? voucherTaxable : (derivedTaxable > 0 ? derivedTaxable : Math.abs(Number(s.total_amount) || 0));
-
-                let cgst = Number(s.cgst_amount) || 0;
-                let sgst = Number(s.sgst_amount) || 0;
-                let igst = Number(s.igst_amount) || 0;
-                const cess = Number(s.cess_amount) || 0;
-
-                if (cgst === 0 && sgst === 0 && igst === 0 && derivedTaxTotal > 0) {
-                    // If POS appears interstate, treat as IGST, otherwise split equally into CGST+SGST.
-                    const isInterState = (s.place_of_supply || '').toString().trim().length > 0
-                        && selectedCompany?.state
-                        && !String(s.place_of_supply).toLowerCase().includes(String(selectedCompany.state).toLowerCase());
-                    if (isInterState) {
-                        igst = derivedTaxTotal;
-                    } else {
-                        cgst = derivedTaxTotal / 2;
-                        sgst = derivedTaxTotal / 2;
-                    }
-                }
-
-                return {
-                    ...s,
-                    invoice_number: s.voucher_number,
-                    invoice_date: s.voucher_date,
-                    party_ledger_name: s.party_name,
-                    party_gstin: s.party_gstin || '',
-                    net_amount: Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0),
-                    taxable_amount: fallbackTaxable,
-                    cgst_amount: cgst,
-                    sgst_amount: sgst,
-                    igst_amount: igst,
-                    cess_amount: cess,
-                    place_of_supply: s.place_of_supply || '',
-                    stock_entries: linkedEntries
-                };
-            });
-
-            // Fetch purchase vouchers
-            const { data: purchaseVouchers } = await supabase
-                .from('vouchers')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Purchase')
-                .gte('voucher_date', start)
-                .lte('voucher_date', end)
-                .or('is_deleted.is.null,is_deleted.eq.false');
-
-            const purchases = (purchaseVouchers || []).map((p: any) => ({
-                ...p,
-                net_amount: Math.abs(Number(p.grand_total) || Number(p.total_amount) || 0),
-                taxable_amount: Math.abs(Number(p.taxable_value) || Number(p.total_amount) || 0),
-                cgst_amount: Number(p.cgst_amount) || 0,
-                sgst_amount: Number(p.sgst_amount) || 0,
-                igst_amount: Number(p.igst_amount) || 0,
-                cess_amount: Number(p.cess_amount) || 0
-            }));
-            const processed = processGSTData(sales || [], purchases || []);
+            const ledgerByVoucher = (ledgerEntries || []).reduce((acc: any, entry: any) => {
+                if (!acc[entry.voucher_id]) acc[entry.voucher_id] = [];
+                acc[entry.voucher_id].push(entry);
+                return acc;
+            }, {});
+            const companyStateCode = parseStateCodeFromGstin(selectedCompany?.gstin);
+            const companyStateText = String(selectedCompany?.state || '').trim().toLowerCase();
+            const sales = vouchers
+                .filter((v: any) => SALE_VOUCHER_TYPES.includes(v.voucher_type))
+                .map((voucher: any) => normalizeVoucherWithEntries(
+                    voucher,
+                    stockByVoucher[voucher.id] || [],
+                    ledgerByVoucher[voucher.id] || [],
+                    companyStateCode,
+                    companyStateText
+                ));
+            const purchases = vouchers
+                .filter((v: any) => PURCHASE_VOUCHER_TYPES.includes(v.voucher_type))
+                .map((voucher: any) => normalizeVoucherWithEntries(
+                    voucher,
+                    stockByVoucher[voucher.id] || [],
+                    ledgerByVoucher[voucher.id] || [],
+                    companyStateCode,
+                    companyStateText
+                ));
+            const processed = processGSTData(sales, purchases);
             setReportData(processed);
         } catch (error) {
             console.error('Error loading GST data:', error);
@@ -176,111 +345,203 @@ export default function GSTReportsPage() {
     };
 
     const processGSTData = (sales: any[], purchases: any[]) => {
-        const b2b = sales.filter((s: any) => s.party_gstin?.length === 15).map((s: any) => ({
-            gstin: s.party_gstin, partyName: s.party_ledger_name, invoiceNumber: s.invoice_number,
-            invoiceDate: s.invoice_date, invoiceValue: s.net_amount || 0, taxableValue: s.taxable_amount || 0,
-            cgst: s.cgst_amount || 0, sgst: s.sgst_amount || 0, igst: s.igst_amount || 0, cess: s.cess_amount || 0, placeOfSupply: s.place_of_supply || ''
-        }));
-
-        const b2c = sales.filter((s: any) => !s.party_gstin || s.party_gstin.length !== 15).reduce((acc: any, s: any) => {
-            acc.taxableValue += s.taxable_amount || 0; acc.cgst += s.cgst_amount || 0; acc.sgst += s.sgst_amount || 0;
-            acc.igst += s.igst_amount || 0; acc.cess += s.cess_amount || 0; acc.invoiceValue += s.net_amount || 0; acc.count += 1; return acc;
-        }, { taxableValue: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, invoiceValue: 0, count: 0 });
-
-        // Rate-wise summary
+        const b2b = sales
+            .filter((s: any) => GSTIN_REGEX.test(String(s.party_gstin || '')))
+            .map((s: any) => ({
+                gstin: s.party_gstin,
+                partyName: s.party_ledger_name,
+                invoiceNumber: s.invoice_number,
+                invoiceDate: s.invoice_date,
+                invoiceValue: round2(s.net_amount || 0),
+                taxableValue: round2(s.taxable_amount || 0),
+                cgst: round2(s.cgst_amount || 0),
+                sgst: round2(s.sgst_amount || 0),
+                igst: round2(s.igst_amount || 0),
+                cess: round2(s.cess_amount || 0),
+                placeOfSupply: s.place_of_supply || ''
+            }));
+        const b2c = sales
+            .filter((s: any) => !GSTIN_REGEX.test(String(s.party_gstin || '')))
+            .reduce((acc: any, s: any) => {
+                acc.taxableValue += s.taxable_amount || 0;
+                acc.cgst += s.cgst_amount || 0;
+                acc.sgst += s.sgst_amount || 0;
+                acc.igst += s.igst_amount || 0;
+                acc.cess += s.cess_amount || 0;
+                acc.invoiceValue += s.net_amount || 0;
+                acc.count += 1;
+                return acc;
+            }, { taxableValue: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, invoiceValue: 0, count: 0 });
         const rateMap = new Map();
-        sales.forEach(sale => {
-            if (sale.stock_entries) {
-                sale.stock_entries.forEach((item: any) => {
-                    const rate = item.tax_rate || 0;
-                    if (!rateMap.has(rate)) rateMap.set(rate, { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 });
-                    const entry = rateMap.get(rate);
-                    entry.taxable += item.amount || 0;
-                    // Pro-rata tax calculation if item tax not explicitly present
-                    // In real Tally data, we'd have tax per item, but here we estimate or use voucher totals if available
-                    // For now, let's use the item-level tax_rate if provided
-                    const taxFactor = rate / 100;
-                    if (sale.igst_amount > 0) {
-                        entry.igst += (item.amount || 0) * taxFactor;
-                    } else {
-                        entry.cgst += (item.amount || 0) * (taxFactor / 2);
-                        entry.sgst += (item.amount || 0) * (taxFactor / 2);
-                    }
-                    entry.total += (item.amount || 0) * (1 + taxFactor);
-                });
-            }
-        });
-
-        // POS (Place of Supply) distribution
-        const posMap = new Map();
-        sales.forEach(sale => {
-            const pos = sale.place_of_supply || 'Unknown';
-            if (!posMap.has(pos)) posMap.set(pos, { state: pos, taxable: 0, igst: 0, cgst: 0, sgst: 0, count: 0 });
-            const entry = posMap.get(pos);
-            entry.taxable += sale.taxable_amount || 0;
-            entry.igst += sale.igst_amount || 0;
-            entry.cgst += sale.cgst_amount || 0;
-            entry.sgst += sale.sgst_amount || 0;
-            entry.count++;
-        });
-
         const hsnMap = new Map();
+        const posMap = new Map();
         sales.forEach((sale: any) => {
-            (sale.stock_entries || []).forEach((item: any) => {
-                const hsn = item.hsn_code || 'N/A';
-                if (!hsnMap.has(hsn)) hsnMap.set(hsn, { hsn, description: item.stock_item_name || '', uqc: item.unit || 'NOS', quantity: 0, taxableValue: 0, cgst: 0, sgst: 0, igst: 0, totalValue: 0 });
-                const entry = hsnMap.get(hsn);
-                entry.quantity += item.quantity || 0;
-                entry.taxableValue += item.amount || 0;
-                entry.totalValue += item.amount || 0;
-
-                const rate = item.tax_rate || 0;
-                const taxFactor = rate / 100;
-                if (sale.igst_amount > 0) {
-                    entry.igst += (item.amount || 0) * taxFactor;
-                } else {
-                    entry.cgst += (item.amount || 0) * (taxFactor / 2);
-                    entry.sgst += (item.amount || 0) * (taxFactor / 2);
+            const pos = String(sale.place_of_supply || '').trim() || 'Unknown';
+            if (!posMap.has(pos)) {
+                posMap.set(pos, { state: pos, taxable: 0, igst: 0, cgst: 0, sgst: 0, count: 0 });
+            }
+            const posEntry = posMap.get(pos);
+            posEntry.taxable += sale.taxable_amount || 0;
+            posEntry.igst += sale.igst_amount || 0;
+            posEntry.cgst += sale.cgst_amount || 0;
+            posEntry.sgst += sale.sgst_amount || 0;
+            posEntry.count += 1;
+            (sale.line_items || []).forEach((line: any) => {
+                const rate = round2(line.effectiveRate || line.taxRate || 0);
+                if (!rateMap.has(rate)) {
+                    rateMap.set(rate, { rate, taxable: 0, cgst: 0, sgst: 0, igst: 0, cess: 0, total: 0 });
                 }
+                const rateEntry = rateMap.get(rate);
+                rateEntry.taxable += line.taxable || 0;
+                rateEntry.cgst += line.cgst || 0;
+                rateEntry.sgst += line.sgst || 0;
+                rateEntry.igst += line.igst || 0;
+                rateEntry.cess += line.cess || 0;
+                rateEntry.total += (line.taxable || 0) + (line.tax || 0) + (line.cess || 0);
+                const hsn = String(line.hsn_code || 'N/A').trim() || 'N/A';
+                if (!hsnMap.has(hsn)) {
+                    hsnMap.set(hsn, {
+                        hsn,
+                        description: line.description || '',
+                        uqc: line.unit || 'NOS',
+                        quantity: 0,
+                        taxableValue: 0,
+                        cgst: 0,
+                        sgst: 0,
+                        igst: 0,
+                        cess: 0,
+                        totalValue: 0
+                    });
+                }
+                const hsnEntry = hsnMap.get(hsn);
+                hsnEntry.quantity += line.quantity || 0;
+                hsnEntry.taxableValue += line.taxable || 0;
+                hsnEntry.cgst += line.cgst || 0;
+                hsnEntry.sgst += line.sgst || 0;
+                hsnEntry.igst += line.igst || 0;
+                hsnEntry.cess += line.cess || 0;
+                hsnEntry.totalValue += line.taxable || 0;
             });
         });
-
         const outwardSupplies = {
-            taxable: sales.reduce((sum: number, s: any) => sum + (s.taxable_amount || 0), 0),
-            cgst: sales.reduce((sum: number, s: any) => sum + (s.cgst_amount || 0), 0),
-            sgst: sales.reduce((sum: number, s: any) => sum + (s.sgst_amount || 0), 0),
-            igst: sales.reduce((sum: number, s: any) => sum + (s.igst_amount || 0), 0),
-            cess: sales.reduce((sum: number, s: any) => sum + (s.cess_amount || 0), 0)
+            taxable: round2(sales.reduce((sum: number, s: any) => sum + (s.taxable_amount || 0), 0)),
+            cgst: round2(sales.reduce((sum: number, s: any) => sum + (s.cgst_amount || 0), 0)),
+            sgst: round2(sales.reduce((sum: number, s: any) => sum + (s.sgst_amount || 0), 0)),
+            igst: round2(sales.reduce((sum: number, s: any) => sum + (s.igst_amount || 0), 0)),
+            cess: round2(sales.reduce((sum: number, s: any) => sum + (s.cess_amount || 0), 0))
         };
-
         const inputTaxCredit = {
-            taxable: purchases.reduce((sum: number, p: any) => sum + (p.taxable_amount || 0), 0),
-            cgst: purchases.reduce((sum: number, p: any) => sum + (p.cgst_amount || 0), 0),
-            sgst: purchases.reduce((sum: number, p: any) => sum + (p.sgst_amount || 0), 0),
-            igst: purchases.reduce((sum: number, p: any) => sum + (p.igst_amount || 0), 0),
-            cess: purchases.reduce((sum: number, p: any) => sum + (p.cess_amount || 0), 0)
+            taxable: round2(purchases.reduce((sum: number, p: any) => sum + (p.taxable_amount || 0), 0)),
+            cgst: round2(purchases.reduce((sum: number, p: any) => sum + (p.cgst_amount || 0), 0)),
+            sgst: round2(purchases.reduce((sum: number, p: any) => sum + (p.sgst_amount || 0), 0)),
+            igst: round2(purchases.reduce((sum: number, p: any) => sum + (p.igst_amount || 0), 0)),
+            cess: round2(purchases.reduce((sum: number, p: any) => sum + (p.cess_amount || 0), 0))
         };
-
+        const netLiability = {
+            igst: outwardSupplies.igst,
+            cgst: outwardSupplies.cgst,
+            sgst: outwardSupplies.sgst,
+            cess: outwardSupplies.cess
+        };
+        let igstCredit = inputTaxCredit.igst;
+        let cgstCredit = inputTaxCredit.cgst;
+        let sgstCredit = inputTaxCredit.sgst;
+        let cessCredit = inputTaxCredit.cess;
+        const utilization = { igst: 0, cgst: 0, sgst: 0, cess: 0 };
+        const useCredit = (type: 'igst' | 'cgst' | 'sgst' | 'cess', available: number) => {
+            if (available <= 0) return { remainingCredit: 0, utilized: 0 };
+            const utilized = Math.min(netLiability[type], available);
+            netLiability[type] -= utilized;
+            return { remainingCredit: available - utilized, utilized };
+        };
+        let usage = useCredit('igst', igstCredit);
+        igstCredit = usage.remainingCredit;
+        utilization.igst += usage.utilized;
+        usage = useCredit('cgst', igstCredit);
+        igstCredit = usage.remainingCredit;
+        utilization.cgst += usage.utilized;
+        usage = useCredit('sgst', igstCredit);
+        igstCredit = usage.remainingCredit;
+        utilization.sgst += usage.utilized;
+        usage = useCredit('cgst', cgstCredit);
+        cgstCredit = usage.remainingCredit;
+        utilization.cgst += usage.utilized;
+        usage = useCredit('igst', cgstCredit);
+        cgstCredit = usage.remainingCredit;
+        utilization.igst += usage.utilized;
+        usage = useCredit('sgst', sgstCredit);
+        sgstCredit = usage.remainingCredit;
+        utilization.sgst += usage.utilized;
+        usage = useCredit('igst', sgstCredit);
+        sgstCredit = usage.remainingCredit;
+        utilization.igst += usage.utilized;
+        usage = useCredit('cess', cessCredit);
+        cessCredit = usage.remainingCredit;
+        utilization.cess += usage.utilized;
         const netPayable = {
-            cgst: Math.max(0, outwardSupplies.cgst - inputTaxCredit.cgst),
-            sgst: Math.max(0, outwardSupplies.sgst - inputTaxCredit.sgst),
-            igst: Math.max(0, outwardSupplies.igst - inputTaxCredit.igst),
-            cess: Math.max(0, outwardSupplies.cess - inputTaxCredit.cess),
+            cgst: round2(Math.max(0, netLiability.cgst)),
+            sgst: round2(Math.max(0, netLiability.sgst)),
+            igst: round2(Math.max(0, netLiability.igst)),
+            cess: round2(Math.max(0, netLiability.cess)),
             total: 0
         };
-        netPayable.total = netPayable.cgst + netPayable.sgst + netPayable.igst + netPayable.cess;
-
+        netPayable.total = round2(netPayable.cgst + netPayable.sgst + netPayable.igst + netPayable.cess);
         return {
-            b2b, b2c, hsnSummary: Array.from(hsnMap.values()),
-            rateSummary: Array.from(rateMap.values()).sort((a, b) => b.rate - a.rate),
-            posSummary: Array.from(posMap.values()).sort((a, b) => b.taxable - a.taxable),
-            gstr3b: { outwardSupplies, inputTaxCredit, netPayable },
+            b2b,
+            b2c: {
+                taxableValue: round2(b2c.taxableValue),
+                cgst: round2(b2c.cgst),
+                sgst: round2(b2c.sgst),
+                igst: round2(b2c.igst),
+                cess: round2(b2c.cess),
+                invoiceValue: round2(b2c.invoiceValue),
+                count: b2c.count
+            },
+            hsnSummary: Array.from(hsnMap.values()).map((row: any) => ({
+                ...row,
+                quantity: round2(row.quantity),
+                taxableValue: round2(row.taxableValue),
+                cgst: round2(row.cgst),
+                sgst: round2(row.sgst),
+                igst: round2(row.igst),
+                cess: round2(row.cess),
+                totalValue: round2(row.totalValue)
+            })).sort((a: any, b: any) => b.taxableValue - a.taxableValue),
+            rateSummary: Array.from(rateMap.values()).map((row: any) => ({
+                ...row,
+                taxable: round2(row.taxable),
+                cgst: round2(row.cgst),
+                sgst: round2(row.sgst),
+                igst: round2(row.igst),
+                cess: round2(row.cess),
+                total: round2(row.total)
+            })).sort((a: any, b: any) => b.rate - a.rate),
+            posSummary: Array.from(posMap.values()).map((row: any) => ({
+                ...row,
+                taxable: round2(row.taxable),
+                cgst: round2(row.cgst),
+                sgst: round2(row.sgst),
+                igst: round2(row.igst)
+            })).sort((a: any, b: any) => b.taxable - a.taxable),
+            gstr3b: {
+                outwardSupplies,
+                inputTaxCredit,
+                utilization: {
+                    igst: round2(utilization.igst),
+                    cgst: round2(utilization.cgst),
+                    sgst: round2(utilization.sgst),
+                    cess: round2(utilization.cess)
+                },
+                netPayable
+            },
             totals: {
                 salesCount: sales.length,
                 purchasesCount: purchases.length,
-                totalSales: sales.reduce((sum: number, s: any) => sum + (s.net_amount || 0), 0),
-                totalPurchases: purchases.reduce((sum: number, p: any) => sum + (p.net_amount || 0), 0),
-                exemptedSales: sales.filter(s => (s.cgst_amount + s.sgst_amount + s.igst_amount) === 0).reduce((sum, s) => sum + (s.taxable_amount || 0), 0)
+                totalSales: round2(sales.reduce((sum: number, s: any) => sum + (s.net_amount || 0), 0)),
+                totalPurchases: round2(purchases.reduce((sum: number, p: any) => sum + (p.net_amount || 0), 0)),
+                exemptedSales: round2(sales
+                    .filter((s: any) => (s.cgst_amount + s.sgst_amount + s.igst_amount + s.cess_amount) === 0)
+                    .reduce((sum: number, s: any) => sum + (s.taxable_amount || 0), 0))
             }
         };
     };
@@ -395,7 +656,7 @@ export default function GSTReportsPage() {
                                     </div>
                                     <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
                                         <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Input Tax Credit</p>
-                                        <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</p>
+                                        <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</p>
                                     </div>
                                     <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
                                         <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Net Tax Payable</p>
@@ -556,7 +817,7 @@ export default function GSTReportsPage() {
                                     <PieChart size={24} className="text-[var(--primary)] mb-2" />
                                     <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Tax to Value Ratio</p>
                                     <p className="text-2xl font-black text-[var(--on-surface)]">
-                                        {Math.round(((reportData.b2c.cgst + reportData.b2c.sgst + reportData.b2c.igst) / (reportData.b2c.taxableValue || 1)) * 100)}%
+                                        {Math.round(((reportData.b2c.cgst + reportData.b2c.sgst + reportData.b2c.igst + reportData.b2c.cess) / (reportData.b2c.taxableValue || 1)) * 100)}%
                                     </p>
                                 </GlassCard>
                             </div>
@@ -569,7 +830,7 @@ export default function GSTReportsPage() {
                                     <div className="col-span-2">HSN/Description</div>
                                     <div className="text-right">Quantity</div>
                                     <div className="text-right">Taxable</div>
-                                    <div className="text-right">Tax (I+C+S)</div>
+                                    <div className="text-right">Tax (I+C+S+Cess)</div>
                                     <div className="text-right">Total</div>
                                 </div>
                                 <div className="grid gap-2">
@@ -581,8 +842,8 @@ export default function GSTReportsPage() {
                                             </div>
                                             <div className="text-right text-xs font-bold text-[var(--on-surface)]">{hsn.quantity} {hsn.uqc}</div>
                                             <div className="text-right text-[11px] font-medium opacity-70">{formatCurrency(hsn.taxableValue)}</div>
-                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(hsn.igst + hsn.cgst + hsn.sgst)}</div>
-                                            <div className="text-right text-xs font-black text-[var(--on-surface)]">{formatCurrency(hsn.totalValue + hsn.igst + hsn.cgst + hsn.sgst)}</div>
+                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0))}</div>
+                                            <div className="text-right text-xs font-black text-[var(--on-surface)]">{formatCurrency(hsn.totalValue + hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0))}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -603,7 +864,7 @@ export default function GSTReportsPage() {
                                             <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.outwardSupplies.igst)}</span></div>
                                             <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst)}</span></div>
                                             <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.outwardSupplies.sgst)}</span></div>
-                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Gross Liability</span><span className="text-lg font-black text-[var(--primary)]">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst)}</span></div>
+                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Gross Liability</span><span className="text-lg font-black text-[var(--primary)]">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst + reportData.gstr3b.outwardSupplies.cess)}</span></div>
                                         </div>
                                     </GlassCard>
 
@@ -613,11 +874,11 @@ export default function GSTReportsPage() {
                                             <Badge variant="default" className="text-[8px]">INPUT ASSET</Badge>
                                         </h3>
                                         <div className="space-y-4">
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">All Other ITC</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">All Other ITC</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</span></div>
                                             <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.igst)}</span></div>
                                             <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst)}</span></div>
                                             <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.inputTaxCredit.sgst)}</span></div>
-                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Total Eligible ITC</span><span className="text-lg font-black text-emerald-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst)}</span></div>
+                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Total Eligible ITC</span><span className="text-lg font-black text-emerald-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</span></div>
                                         </div>
                                     </GlassCard>
                                 </div>

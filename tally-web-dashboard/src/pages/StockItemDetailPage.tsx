@@ -30,6 +30,9 @@ const getFYStart = () => {
     return new Date(year, 3, 1).toISOString().split('T')[0];
 };
 
+const SALES_TYPES = new Set(['Sales', 'Sales Invoice']);
+const PURCHASE_TYPES = new Set(['Purchase', 'Purchase Invoice']);
+
 export default function StockItemDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -91,33 +94,6 @@ export default function StockItemDetailPage() {
         historyFilters.voucherType
     ]);
 
-
-    const fetchVouchersByIds = async (ids: string[]) => {
-        const uniqIds = [...new Set((ids || []).filter(Boolean))];
-        if (!selectedCompany?.id || uniqIds.length === 0) {
-            return { data: [], error: null };
-        }
-
-        const rows: any[] = [];
-        const chunkSize = 40;
-
-        for (let i = 0; i < uniqIds.length; i += chunkSize) {
-            const chunk = uniqIds.slice(i, i + chunkSize);
-            const { data, error } = await supabase
-                .from('vouchers')
-                .select('id, voucher_type, voucher_date, party_name, voucher_number, party_ledger_id')
-                .eq('company_id', selectedCompany.id)
-                .in('id', chunk);
-
-            if (error) {
-                return { data: rows, error };
-            }
-            rows.push(...(data || []));
-        }
-
-        return { data: rows, error: null };
-    };
-
     const loadStockHistory = async (sourceItem?: any) => {
         const itemRef = sourceItem || item;
         if (!itemRef || !selectedCompany?.id) return;
@@ -163,105 +139,92 @@ export default function StockItemDetailPage() {
     const loadItemDetails = async () => {
         setLoading(true);
         try {
-            // 1. Fetch Item Master
             const { data: itemData, error: itemError } = await supabase
                 .from('stock_items')
                 .select('*')
                 .eq('id', id)
                 .single();
-
             if (itemError) throw itemError;
             setItem(itemData);
-
-            // 2. Fetch All Transactions for this item (without FK join dependency)
-            const { data: entries, error: entriesError } = await supabase
-                .from('voucher_stock_entries')
-                .select('*')
-                .eq('stock_item_name', itemData.name)
-                .eq('company_id', selectedCompany.id)
-                .order('created_at', { ascending: false });
-
-            if (entriesError) throw entriesError;
-
-            const voucherIds = Array.from(new Set((entries || []).map((e: any) => e.voucher_id).filter(Boolean)));
-            let voucherMap: Record<string, any> = {};
-            if (voucherIds.length > 0) {
-                const { data: vouchers, error: voucherError } = await fetchVouchersByIds(voucherIds);
-                if (voucherError) throw voucherError;
-
-                (vouchers || []).forEach((v: any) => {
-                    voucherMap[v.id] = v;
-                });
-            }
-            // 3. Process Stats & Lists
-            let sQty = 0, sVal = 0, pQty = 0, pVal = 0, sCount = 0;
-            let lastSDate = null, lastSPrice = 0;
-
+            const { data: allHistory, error: allHistoryError } = await stockApi.getHistory(
+                selectedCompany.id,
+                itemData.id || itemData.name,
+                {
+                    sort: 'desc',
+                    limit: 10000
+                } as any
+            );
+            if (allHistoryError) throw allHistoryError;
+            const rows = allHistory?.rows || [];
+            let sQty = 0;
+            let sVal = 0;
+            let pQty = 0;
+            let pVal = 0;
+            let lastSDate: string | null = null;
+            let lastSPrice = 0;
+            let maxGstRate = 0;
+            const saleVoucherSet = new Set<string>();
             const custMap: Record<string, any> = {};
             const suppMap: Record<string, any> = {};
-
-            let maxGstRate = 0;
-
-            entries?.forEach(entry => {
-                const voucher = voucherMap[entry.voucher_id];
-                if (!voucher) return;
-
-                const type = voucher.voucher_type;
-                const qty = Math.abs(Number(entry.quantity) || 0);
-                const amt = Math.abs(Number(entry.amount) || 0);
-                const rate = Math.abs(Number(entry.rate) || 0);
-                const gstRate = Number(entry.gst_rate) || Number(entry.tax_rate) || 0;
+            rows.forEach((row: any) => {
+                const type = String(row.voucher_type || '').trim();
+                const party = String(row.party_name || '').trim() || 'Unknown Party';
+                const date = row.voucher_date || row.created_at || null;
+                const qtyAbs = Math.abs(Number(row.quantity) || 0);
+                const qtyDelta = Number(row.qty_delta || 0);
+                const qtyIn = Math.abs(Number(row.qty_in || (qtyDelta > 0 ? qtyDelta : 0)));
+                const qtyOut = Math.abs(Number(row.qty_out || (qtyDelta < 0 ? qtyDelta : 0)));
+                const inwardQty = qtyIn > 0 ? qtyIn : qtyAbs;
+                const outwardQty = qtyOut > 0 ? qtyOut : qtyAbs;
+                const amount = Math.abs(Number(row.amount) || 0);
+                const rate = Math.abs(Number(row.rate) || 0) || (qtyAbs > 0 ? amount / qtyAbs : 0);
+                const gstRate = Number(row.tax_rate ?? row.gst_rate ?? 0) || 0;
                 if (gstRate > maxGstRate) maxGstRate = gstRate;
-
-                const party = voucher.party_name;
-                const date = voucher.voucher_date;
-
-                if (type === 'Sales' || type === 'Sales Invoice') {
-                    sQty += qty;
-                    sVal += amt;
-                    sCount++;
-                    if (!lastSDate || new Date(date) > new Date(lastSDate)) {
+                if (SALES_TYPES.has(type)) {
+                    sQty += outwardQty;
+                    sVal += amount;
+                    if (row.voucher_id) saleVoucherSet.add(String(row.voucher_id));
+                    if (date && (!lastSDate || new Date(date).getTime() > new Date(lastSDate).getTime())) {
                         lastSDate = date;
                         lastSPrice = rate;
                     }
-
                     if (!custMap[party]) {
-                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: voucher.party_ledger_id };
+                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
                     }
-                    custMap[party].qty += qty;
-                    custMap[party].val += amt;
+                    custMap[party].qty += outwardQty;
+                    custMap[party].val += amount;
                     custMap[party].rates.push(rate);
-                    if (new Date(date) > new Date(custMap[party].lastDate)) custMap[party].lastDate = date;
-                } else if (type === 'Purchase') {
-                    pQty += qty;
-                    pVal += amt;
-
-                    if (!suppMap[party]) {
-                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: voucher.party_ledger_id };
+                    if (date && (!custMap[party].lastDate || new Date(date).getTime() > new Date(custMap[party].lastDate).getTime())) {
+                        custMap[party].lastDate = date;
                     }
-                    suppMap[party].qty += qty;
-                    suppMap[party].val += amt;
+                } else if (PURCHASE_TYPES.has(type)) {
+                    pQty += inwardQty;
+                    pVal += amount;
+                    if (!suppMap[party]) {
+                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
+                    }
+                    suppMap[party].qty += inwardQty;
+                    suppMap[party].val += amount;
                     suppMap[party].rates.push(rate);
-                    if (new Date(date) > new Date(suppMap[party].lastDate)) suppMap[party].lastDate = date;
+                    if (date && (!suppMap[party].lastDate || new Date(date).getTime() > new Date(suppMap[party].lastDate).getTime())) {
+                        suppMap[party].lastDate = date;
+                    }
                 }
             });
-
             setStats({
                 totalSalesQty: sQty,
                 totalSalesVal: sVal,
                 totalPurchaseQty: pQty,
                 totalPurchaseVal: pVal,
-                salesCount: sCount,
+                salesCount: saleVoucherSet.size,
                 lastSaleDate: lastSDate,
                 lastSalePrice: lastSPrice,
                 avgSalePrice: sQty > 0 ? sVal / sQty : 0,
-                maxGstRate: maxGstRate
+                maxGstRate
             });
-
             setCustomers(Object.values(custMap).sort((a, b) => b.val - a.val));
             setSuppliers(Object.values(suppMap).sort((a, b) => b.val - a.val));
             await loadStockHistory(itemData);
-
         } catch (error: any) {
             console.error('Error loading item details:', error);
         } finally {
@@ -514,8 +477,8 @@ export default function StockItemDetailPage() {
                                     <div className="divide-y divide-[var(--border)]">
                                         {historyRows.map((row: any) => (
                                             <button
-                                                key={row.id}
-                                                onClick={() => navigate('/vouchers/' + encodeURIComponent(row.voucher_id))}
+                                                key={row.entry_id || row.id || [row.voucher_id || 'v', row.voucher_date || '', row.party_name || ''].join('-')}
+                                                onClick={() => row.voucher_id && navigate('/vouchers/' + encodeURIComponent(row.voucher_id))}
                                                 className="w-full grid grid-cols-12 px-4 py-3 text-left hover:bg-[var(--surface-hover)]"
                                             >
                                                 <div className="col-span-3">
@@ -535,7 +498,7 @@ export default function StockItemDetailPage() {
                                                     <p className="text-xs font-black text-[var(--on-surface)]">{formatCurrency(row.amount)}</p>
                                                 </div>
                                                 <div className="col-span-2 text-right self-center">
-                                                    <p className="text-xs font-black text-[var(--primary)]">{Number(row.running_stock || 0).toFixed(2)}</p>
+                                                    <p className="text-xs font-black text-[var(--primary)]">{Number(row.running_stock_balance ?? row.running_stock ?? 0).toFixed(2)}</p>
                                                 </div>
                                             </button>
                                         ))}
