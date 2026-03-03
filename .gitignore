@@ -60,3 +60,28 @@ publish/
 *.log
 *.zip
 *.apk
+
+# Secret hardening (added by Codex)
+# Ignore env files everywhere, keep examples/templates trackable
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+!**/.env.sample
+!**/.env.template
+
+# Service account / credential artifacts
+**/firebase-service-account.json
+**/*service-account*.json
+**/*credentials*.json
+!**/*credentials*.example.json
+!**/*service-account*.example.json
+
+# Certificate/key bundles
+*.pem
+*.p12
+*.pfx
+
+# Local Tally dump files
+tally_response.xml
+**/tally_response.xml
