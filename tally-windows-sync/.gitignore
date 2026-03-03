@@ -38,7 +38,6 @@ ehthumbs.db
 Desktop.ini
 
 # App Specific
-appsettings.json
 logs/
 *.log
 tally_response.xml

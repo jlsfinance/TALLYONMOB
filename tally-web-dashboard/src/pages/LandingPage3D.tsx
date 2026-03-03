@@ -234,17 +234,17 @@ export default function LandingPage3D() {
                                 className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.1)]"
                             >
                                 <Sparkles size={12} />
-                                Enterprise Data Sync v2.9.7
+                                Enterprise Data Sync v2.10.0
                             </motion.div>
 
                             <motion.h1
                                 initial={{ opacity: 0, y: 30 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.6 }}
-                                className="text-6xl md:text-7xl lg:text-8xl font-black leading-[0.9] tracking-tighter"
+                                className="text-6xl md:text-8xl lg:text-[10rem] font-black leading-[0.85] tracking-tighter"
                             >
                                 Your Tally. <br />
-                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500">
+                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 animate-gradient-x">
                                     Now Liquid.
                                 </span>
                             </motion.h1>
@@ -253,10 +253,10 @@ export default function LandingPage3D() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.7 }}
-                                className="text-lg text-gray-400 max-w-lg font-medium leading-relaxed"
+                                className="text-xl text-gray-400 max-w-xl font-medium leading-relaxed"
                             >
                                 Experience 100% Free real-time synchronization. Access professional
-                                financial intelligence from your Tally machine to any device, anywhere.
+                                financial intelligence from your Tally machine to any device, in seconds.
                             </motion.p>
                         </div>
 
