@@ -1832,17 +1832,29 @@ FinishCompanySync:
 
                 foreach (var transaction in pending)
                 {
+                    var currentAttempt = GetRetryAttempt(transaction);
+
                     try
                     {
+                        await _apiClient.UpdatePendingTransactionStatusAsync(
+                            transaction.Id,
+                            "processing",
+                            null,
+                            null,
+                            currentAttempt);
                         JToken? voucherToken = ToJToken((object?)transaction.VoucherData);
                         if (voucherToken == null)
                         {
+                            var nextAttempt = currentAttempt + 1;
+                            var nextStatus = nextAttempt < MaxPendingPushRetries ? "pending" : "failed";
+                            var retryError = AppendRetryMetadata("No voucher data provided", nextAttempt);
+
                             await _apiClient.UpdatePendingTransactionStatusAsync(
                                 transaction.Id,
-                                "failed",
+                                nextStatus,
                                 null,
-                                "No voucher data provided",
-                                GetRetryAttempt(transaction) + 1);
+                                retryError,
+                                nextAttempt);
                             failCount++;
                             continue;
                         }
@@ -1920,7 +1932,7 @@ FinishCompanySync:
                         }
                         else
                         {
-                            var nextAttempt = GetRetryAttempt(transaction) + 1;
+                            var nextAttempt = currentAttempt + 1;
                             var nextStatus = nextAttempt < MaxPendingPushRetries ? "pending" : "failed";
                             var retryError = AppendRetryMetadata(error ?? "Unknown error", nextAttempt);
 
@@ -1937,7 +1949,7 @@ FinishCompanySync:
                     }
                     catch (Exception ex)
                     {
-                        var nextAttempt = GetRetryAttempt(transaction) + 1;
+                        var nextAttempt = currentAttempt + 1;
                         var nextStatus = nextAttempt < MaxPendingPushRetries ? "pending" : "failed";
                         var retryError = AppendRetryMetadata(ex.Message, nextAttempt);
 

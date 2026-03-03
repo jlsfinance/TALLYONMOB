@@ -234,7 +234,7 @@ export default function LandingPage3D() {
                                 className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.1)]"
                             >
                                 <Sparkles size={12} />
-                                Enterprise Data Sync v2.10.0
+                                Enterprise Data Sync v2.10.1
                             </motion.div>
 
                             <motion.h1
