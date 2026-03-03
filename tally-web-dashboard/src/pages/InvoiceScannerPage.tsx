@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+﻿import { useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
 import { callGemini } from '@/lib/GeminiService';
@@ -174,7 +174,7 @@ export default function InvoiceScannerPage() {
 
             setExtractedData(extracted);
             setStep('review');
-            toast.success('📄 Invoice data extracted by AI!');
+            toast.success('ðŸ“„ Invoice data extracted by AI!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to extract invoice data');
             setStep('capture');
@@ -412,12 +412,12 @@ export default function InvoiceScannerPage() {
 
             const { error: pendingError } = await (supabase as any)
                 .from('pending_transactions')
-                .insert(pendingTransaction);
+                .insert([pendingTransaction]);
 
             if (pendingError) throw new Error(pendingError.message || 'Failed to queue transaction for Tally sync');
 
             setStep('saved');
-            toast.success('✅ Invoice saved to vouchers!');
+            toast.success('âœ… Invoice saved to vouchers!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to save');
         } finally {
@@ -670,4 +670,5 @@ export default function InvoiceScannerPage() {
         </div>
     );
 }
+
 

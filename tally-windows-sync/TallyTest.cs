@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 class Program
 {
-    static async Task Main(string[] args)
+    static async Task TestMain(string[] args)
     {
         var companyName = "MAHESHWARI FOOTWEAR - (from 1-Apr-25)";
         

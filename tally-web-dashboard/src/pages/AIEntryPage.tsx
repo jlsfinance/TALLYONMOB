@@ -217,7 +217,7 @@ export default function AIEntryPage() {
                     voucher_data: voucherData,
                     status: 'pending',
                     created_by: user?.id,
-                });
+                }]);
 
             if (error) throw error;
 
@@ -555,6 +555,7 @@ export default function AIEntryPage() {
         </div>
     );
 }
+
 
 
 

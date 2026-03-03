@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, pendingTransactionApi } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -295,13 +295,13 @@ export default function EditVoucherPage() {
 
                 const { error } = await supabase
                     .from('pending_transactions')
-                    .insert({
+                    .insert([{
                         company_id: selectedCompany.id,
                         transaction_type: 'VOUCHER_EDIT',
                         voucher_data: modificationData,
                         status: 'pending',
                         created_by: user?.id
-                    });
+                    }]);
 
                 if (error) throw error;
 
@@ -368,7 +368,7 @@ export default function EditVoucherPage() {
                             <h1 className="text-xl font-black text-[var(--on-surface)] tracking-tight">Edit Voucher</h1>
                             <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
-                                    {isPending ? '⏳ Pending Entry' : `#${voucher.voucher_number || 'N/A'}`}
+                                    {isPending ? 'â³ Pending Entry' : `#${voucher.voucher_number || 'N/A'}`}
                                 </span>
                             </div>
                         </div>
@@ -535,7 +535,7 @@ export default function EditVoucherPage() {
                                                             >
                                                                 <span className="text-xs font-bold text-[var(--on-surface)] block">{stock.name}</span>
                                                                 <span className="text-[10px] text-[var(--text-muted)]">
-                                                                    {stock.hsn_code ? `HSN: ${stock.hsn_code}` : ''} {stock.unit ? `? ${stock.unit}` : ''} {stock.rate ? `? ₹${Number(stock.rate).toLocaleString('en-IN')}` : ''}
+                                                                    {stock.hsn_code ? `HSN: ${stock.hsn_code}` : ''} {stock.unit ? `? ${stock.unit}` : ''} {stock.rate ? `? â‚¹${Number(stock.rate).toLocaleString('en-IN')}` : ''}
                                                                 </span>
                                                             </button>
                                                         ))}
@@ -591,7 +591,7 @@ export default function EditVoucherPage() {
                                         <div>
                                             <label className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Amount</label>
                                             <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg py-1.5 px-2 text-xs font-bold text-[var(--on-surface)] text-right font-mono">
-                                                ₹{Number(item.amount).toLocaleString('en-IN')}
+                                                â‚¹{Number(item.amount).toLocaleString('en-IN')}
                                             </div>
                                         </div>
                                     </div>
@@ -652,3 +652,5 @@ export default function EditVoucherPage() {
         </div>
     );
 }
+
+
