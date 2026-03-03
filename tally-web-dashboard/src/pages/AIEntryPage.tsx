@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+﻿import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
@@ -31,10 +31,10 @@ const VOUCHER_TYPES: { key: VoucherType; label: string; icon: any; color: string
 ];
 
 const AI_TEMPLATES = [
-    { label: 'Sales Entry', prompt: 'Sold to [Party] for ₹[Amount]', type: 'Sales' as VoucherType },
-    { label: 'Purchase Entry', prompt: 'Purchased from [Supplier] for ₹[Amount]', type: 'Purchase' as VoucherType },
-    { label: 'Receipt', prompt: 'Received ₹[Amount] from [Party]', type: 'Receipt' as VoucherType },
-    { label: 'Payment', prompt: 'Paid ₹[Amount] to [Party]', type: 'Payment' as VoucherType },
+    { label: 'Sales Entry', prompt: 'Sold to [Party] for â‚¹[Amount]', type: 'Sales' as VoucherType },
+    { label: 'Purchase Entry', prompt: 'Purchased from [Supplier] for â‚¹[Amount]', type: 'Purchase' as VoucherType },
+    { label: 'Receipt', prompt: 'Received â‚¹[Amount] from [Party]', type: 'Receipt' as VoucherType },
+    { label: 'Payment', prompt: 'Paid â‚¹[Amount] to [Party]', type: 'Payment' as VoucherType },
 ];
 
 export default function AIEntryPage() {
@@ -97,15 +97,15 @@ export default function AIEntryPage() {
         else if (/\b(journal|transfer|adjust)\b/i.test(cleanText)) type = 'Journal';
 
         // Extract amount
-        const amountMatch = cleanText.match(/(?:₹|rs\.?|inr|rupees?)\s*([0-9,]+(?:\.\d{1,2})?)/i)
-            || cleanText.match(/([0-9,]+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|rupees?)/i)
+        const amountMatch = cleanText.match(/(?:â‚¹|rs\.?|inr|rupees?)\s*([0-9,]+(?:\.\d{1,2})?)/i)
+            || cleanText.match(/([0-9,]+(?:\.\d{1,2})?)\s*(?:â‚¹|rs\.?|rupees?)/i)
             || cleanText.match(/\b(\d{2,}(?:,\d{3})*(?:\.\d{1,2})?)\b/);
         const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : '';
 
         // Extract party name - remove common words
         let party = cleanText
-            .replace(/(?:₹|rs\.?|inr|rupees?\s*)[0-9,]+(?:\.\d{1,2})?/gi, '')
-            .replace(/[0-9,]+(?:\.\d{1,2})?\s*(?:₹|rs\.?|rupees?)/gi, '')
+            .replace(/(?:â‚¹|rs\.?|inr|rupees?\s*)[0-9,]+(?:\.\d{1,2})?/gi, '')
+            .replace(/[0-9,]+(?:\.\d{1,2})?\s*(?:â‚¹|rs\.?|rupees?)/gi, '')
             .replace(/\b(sold|sale|invoice|billed|bought|purchased|purchase|received|receipt|collected|paid|payment|given|from|to|for|of|the|a|an|with|on|in|at|by|jama|diya|kharch)\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
@@ -132,7 +132,7 @@ export default function AIEntryPage() {
             const parsed = parseAiInput(aiInput);
             setForm(parsed);
             setIsProcessing(false);
-            toast.success(`Detected: ${parsed.voucherType} of ₹${parsed.amount}`);
+            toast.success(`Detected: ${parsed.voucherType} of â‚¹${parsed.amount}`);
         }, 500);
     };
 
@@ -211,7 +211,7 @@ export default function AIEntryPage() {
 
             const { error } = await supabase
                 .from('pending_transactions')
-                .insert({
+                .insert([{ 
                     company_id: selectedCompany.id,
                     transaction_type: form.voucherType,
                     voucher_data: voucherData,
@@ -287,7 +287,7 @@ export default function AIEntryPage() {
                         <input
                             ref={inputRef}
                             type="text"
-                            placeholder='Try: "Sold to Rathi Traders for ₹25,000" or "Received Rs 50000 from Agarwal Ji"'
+                            placeholder='Try: "Sold to Rathi Traders for â‚¹25,000" or "Received Rs 50000 from Agarwal Ji"'
                             value={aiInput}
                             onChange={e => setAiInput(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleAiParse()}
@@ -394,7 +394,7 @@ export default function AIEntryPage() {
                         </div>
                     </div>
                     <div>
-                        <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 block">Amount (₹)</label>
+                        <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 block">Amount (â‚¹)</label>
                         <div className="relative">
                             <IndianRupee size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                             <input
@@ -458,7 +458,7 @@ export default function AIEntryPage() {
                                         onChange={e => updateLineItem(idx, 'rate', e.target.value)}
                                     />
                                     <span className="col-span-2 text-xs font-bold text-[var(--on-surface)] text-right font-mono">
-                                        ₹{parseFloat(item.amount || '0').toLocaleString('en-IN')}
+                                        â‚¹{parseFloat(item.amount || '0').toLocaleString('en-IN')}
                                     </span>
                                     <button
                                         onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
@@ -487,9 +487,9 @@ export default function AIEntryPage() {
                     >
                         <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">Preview</p>
                         <p className="text-sm text-[var(--on-surface)]">
-                            <span className="font-bold text-[var(--primary)]">{form.voucherType}</span> •{' '}
-                            <span className="font-semibold">{form.partyName}</span> •{' '}
-                            <span className="font-black text-emerald-500">₹{parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> ?{' '}
+                            <span className="font-bold text-[var(--primary)]">{form.voucherType}</span> â€¢{' '}
+                            <span className="font-semibold">{form.partyName}</span> â€¢{' '}
+                            <span className="font-black text-emerald-500">â‚¹{parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> ?{' '}
                             <span className="text-[var(--text-muted)]">{form.date}</span>
                         </p>
                     </motion.div>
@@ -539,7 +539,7 @@ export default function AIEntryPage() {
                                     </div>
                                     <div className="text-right">
                                         <p className="text-sm font-black text-[var(--on-surface)]">
-                                            ₹{(data.grand_total || data.total_amount || 0).toLocaleString('en-IN')}
+                                            â‚¹{(data.grand_total || data.total_amount || 0).toLocaleString('en-IN')}
                                         </p>
                                         <span className={`text-[8px] font-bold uppercase tracking-widest ${entry.status === 'synced' ? 'text-emerald-500' : entry.status === 'failed' ? 'text-red-500' : 'text-yellow-500'
                                             }`}>
@@ -555,4 +555,6 @@ export default function AIEntryPage() {
         </div>
     );
 }
+
+
 

@@ -1,10 +1,15 @@
-﻿import { matchLedgerWithGemini } from "@/lib/GeminiService";
+import { matchLedgerWithGemini } from "@/lib/GeminiService";
 import { bestFuzzyLedgerMatch } from "./fuzzy";
 import { normalizeNarration } from "./normalize";
 import type { BankTransactionRow, LedgerMappingRecord, LedgerSuggestion } from "./types";
 
+const MAPPING_STOP_WORDS = new Set([
+    "UPI", "NEFT", "RTGS", "IMPS", "BANK", "PAYMENT", "TRANSFER", "TRF", "REF", "UTR", "CHQ", "CHEQUE", "DEBIT", "CREDIT", "DR", "CR", "TXN", "TRANSACTION", "MOBILE", "INTERNET", "SALARY", "INCOME", "EXPENSE", "ACH", "ECS"
+]);
+
 function scoreExactMatch(narration: string, ledgers: string[]): string | null {
     const normalizedNarration = normalizeNarration(narration);
+    const paddedNarration = ` ${normalizedNarration} `;
 
     for (const ledger of ledgers) {
         const normalizedLedger = normalizeNarration(ledger);
@@ -14,7 +19,7 @@ function scoreExactMatch(narration: string, ledgers: string[]): string | null {
             return ledger;
         }
 
-        if (normalizedNarration.includes(` ${normalizedLedger} `) || normalizedNarration.startsWith(`${normalizedLedger} `)) {
+        if (paddedNarration.includes(` ${normalizedLedger} `)) {
             return ledger;
         }
     }
@@ -22,17 +27,75 @@ function scoreExactMatch(narration: string, ledgers: string[]): string | null {
     return null;
 }
 
+function tokenize(value: string): string[] {
+    return normalizeNarration(value)
+        .split(" ")
+        .map((token) => token.trim())
+        .filter(Boolean);
+}
+
+function overlapRatio(left: string, right: string): number {
+    const leftTokens = tokenize(left);
+    const rightTokens = tokenize(right);
+
+    if (leftTokens.length === 0 || rightTokens.length === 0) return 0;
+
+    const leftSet = new Set(leftTokens);
+    const rightSet = new Set(rightTokens);
+
+    let overlap = 0;
+    leftSet.forEach((token) => {
+        if (rightSet.has(token)) overlap += 1;
+    });
+
+    return overlap / Math.max(leftSet.size, rightSet.size);
+}
+
+export function deriveMappingKeyword(narration: string): string {
+    const tokens = tokenize(narration);
+
+    const useful = tokens.filter((token) => {
+        if (token.length < 3) return false;
+        if (/^\d+$/.test(token)) return false;
+        return !MAPPING_STOP_WORDS.has(token);
+    });
+
+    const selected = (useful.length > 0 ? useful : tokens.filter((token) => !/^\d+$/.test(token))).slice(0, 6);
+    return selected.join(" ").trim();
+}
+
 function findSavedMapping(
     normalizedNarration: string,
     mappings: LedgerMappingRecord[]
 ): LedgerMappingRecord | null {
-    const candidates = mappings
-        .filter((mapping) =>
-            normalizedNarration.includes(normalizeNarration(mapping.normalizedKeyword || ""))
-        )
-        .sort((a, b) => (b.normalizedKeyword?.length || 0) - (a.normalizedKeyword?.length || 0));
+    const narration = normalizeNarration(normalizedNarration);
+    const narrationKeyword = deriveMappingKeyword(narration);
 
-    return candidates[0] || null;
+    let best: { mapping: LedgerMappingRecord | null; score: number } = { mapping: null, score: -1 };
+
+    mappings.forEach((mapping) => {
+        const keyword = normalizeNarration(mapping.normalizedKeyword || "");
+        if (!keyword) return;
+
+        let score = -1;
+
+        if (narration.includes(keyword)) {
+            score = 1000 + keyword.length;
+        } else if (narrationKeyword && (keyword.includes(narrationKeyword) || narrationKeyword.includes(keyword))) {
+            score = 600 + Math.min(keyword.length, narrationKeyword.length);
+        } else {
+            const ratio = overlapRatio(narration, keyword);
+            if (ratio >= 0.6) {
+                score = Math.round(ratio * 100);
+            }
+        }
+
+        if (score > best.score) {
+            best = { mapping, score };
+        }
+    });
+
+    return best.mapping;
 }
 
 export function manualLedgerSuggestion(ledgerName: string): LedgerSuggestion {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+﻿import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +8,7 @@ import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
 import { FREE_PLAN_LIMITS } from '@/features/automation/constants';
 import { parseBankStatementRowsFromUnknown, parseBankStatementWorkbook } from '@/features/automation/bankStatement';
-import { manualLedgerSuggestion, suggestLedgerHybrid } from '@/features/automation/ledgerMatcher';
+import { deriveMappingKeyword, manualLedgerSuggestion, suggestLedgerHybrid } from '@/features/automation/ledgerMatcher';
 import { generateTallyXml as generateTallyXmlLocal } from '@/features/automation/tallyXml';
 import { getAutomationMode, isCloudAllowed, setAutomationMode as persistAutomationMode, type AutomationMode } from '@/features/automation/mode';
 import {
@@ -114,6 +114,28 @@ function confidenceBadgeClass(score: number) {
     return 'bg-red-100 text-red-700';
 }
 
+function buildRowFingerprint(row: Pick<BankTransactionRow, 'date' | 'normalizedNarration' | 'debit' | 'credit'>): string {
+    const side = row.debit > 0 ? `D:${row.debit.toFixed(2)}` : `C:${row.credit.toFixed(2)}`;
+    return `${row.date}|${row.normalizedNarration}|${side}`;
+}
+
+function dedupeRows(rows: BankTransactionRow[]): BankTransactionRow[] {
+    const seen = new Set<string>();
+    const deduped: BankTransactionRow[] = [];
+
+    rows.forEach((row) => {
+        const fingerprint = buildRowFingerprint(row);
+        if (seen.has(fingerprint)) return;
+        seen.add(fingerprint);
+        deduped.push({
+            ...row,
+            id: `row-${deduped.length + 1}`
+        });
+    });
+
+    return deduped;
+}
+
 export default function BankAutomationPage() {
     const { clientId: clientIdFromParams } = useParams();
     const { selectedCompany, user, companies } = useAuth() as any;
@@ -214,37 +236,43 @@ export default function BankAutomationPage() {
             return;
         }
 
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (!isExcelFile(file) && !isPdfFile(file) && !isImageFile(file)) {
-            toast.error('Supported formats: .xlsx, .xls, .pdf, .png, .jpg, .jpeg, .webp');
-            event.target.value = '';
-            return;
-        }
+        const files = Array.from(event.target.files || []);
+        if (files.length === 0) return;
 
         try {
-            let parsedRows: BankTransactionRow[] = [];
+            const allRows: BankTransactionRow[] = [];
+            const failedFiles: string[] = [];
 
-            if (isExcelFile(file)) {
-                const buffer = await file.arrayBuffer();
-                parsedRows = parseBankStatementWorkbook(buffer);
-            } else {
-                parsedRows = await extractRowsFromDocumentWithGemini(file);
+            for (const file of files) {
+                if (!isExcelFile(file) && !isPdfFile(file) && !isImageFile(file)) {
+                    failedFiles.push(file.name);
+                    continue;
+                }
+
+                try {
+                    const parsedRows = isExcelFile(file)
+                        ? parseBankStatementWorkbook(await file.arrayBuffer())
+                        : await extractRowsFromDocumentWithGemini(file);
+                    allRows.push(...parsedRows);
+                } catch (_) {
+                    failedFiles.push(file.name);
+                }
             }
 
-            if (parsedRows.length === 0) {
+            if (allRows.length === 0) {
                 toast.error('No usable rows found in this statement');
                 return;
             }
 
-            if (parsedRows.length > FREE_PLAN_LIMITS.maxTransactionsPerUpload) {
-                toast.error(`Free plan limit: max ${FREE_PLAN_LIMITS.maxTransactionsPerUpload} transactions per upload`);
-                return;
+            const dedupedRows = dedupeRows(allRows);
+            await runHybridMatching(dedupedRows);
+
+            if (failedFiles.length > 0) {
+                toast(`${failedFiles.length} file skipped. Supported: .xlsx, .xls, .pdf, .png, .jpg, .jpeg, .webp`);
             }
 
-            await runHybridMatching(parsedRows);
-            toast.success(`Loaded ${parsedRows.length} transactions from ${file.name}`);
+            const fileLabel = files.length === 1 ? files[0].name : `${files.length} files`;
+            toast.success(`Loaded ${dedupedRows.length} transactions from ${fileLabel}`);
         } catch (error: any) {
             toast.error(error?.message || 'Failed to parse uploaded file');
         } finally {
@@ -257,27 +285,34 @@ export default function BankAutomationPage() {
         if (!targetRow || !user?.id || !clientId || !ledgerName) return;
         if (isClientLimitExceeded) return;
 
-        const updatedRows = rows.map((row) =>
-            row.id === rowId
-                ? {
-                    ...row,
-                    suggestion: manualLedgerSuggestion(ledgerName)
-                }
-                : row
-        );
+        const targetKeyword = deriveMappingKeyword(targetRow.normalizedNarration || targetRow.narration) || targetRow.normalizedNarration;
+
+        const updatedRows = rows.map((row) => {
+            const rowKeyword = deriveMappingKeyword(row.normalizedNarration || row.narration) || row.normalizedNarration;
+            const applyToRow = row.id === rowId
+                || (targetKeyword && rowKeyword && (rowKeyword === targetKeyword || rowKeyword.includes(targetKeyword) || targetKeyword.includes(rowKeyword)));
+
+            if (!applyToRow) return row;
+
+            return {
+                ...row,
+                suggestion: manualLedgerSuggestion(ledgerName)
+            };
+        });
         setRows(updatedRows);
 
         const localMapping: LedgerMappingRecord = {
             userId: user.id,
             clientId,
-            normalizedKeyword: targetRow.normalizedNarration,
+            normalizedKeyword: targetKeyword || targetRow.normalizedNarration,
             ledgerName,
             createdAt: new Date().toISOString()
         };
 
         saveLocalLedgerMapping(localMapping);
         setMappings((prev) => mergeLedgerMappings([localMapping], prev));
-        toast.success('Ledger mapping saved');
+        const impactedRows = updatedRows.filter((row) => row.suggestion.ledgerName === ledgerName).length;
+        toast.success(`Ledger mapping saved (applied to ${impactedRows} rows)`);
     };
 
     const generateTallyXml = async () => {
@@ -344,7 +379,7 @@ export default function BankAutomationPage() {
                 </div>
                 <div className="text-xs text-[var(--text-muted)] grid md:grid-cols-2 gap-2">
                     <p>Max {FREE_PLAN_LIMITS.maxClients} clients per user</p>
-                    <p>Max {FREE_PLAN_LIMITS.maxTransactionsPerUpload} transactions per upload</p>
+                    <p>Upload full statement supported (larger files may take longer)</p>
                     <p>No WhatsApp automation</p>
                     <p>No direct GST filing</p>
                     <p>No real-time Tally sync</p>
@@ -360,8 +395,8 @@ export default function BankAutomationPage() {
 
             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-3">
                 <label className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm font-medium cursor-pointer hover:opacity-90">
-                    Upload Bank Statement (.xlsx/.xls/.pdf/image)
-                    <input type="file" accept={SUPPORTED_UPLOAD_ACCEPT} className="hidden" onChange={onUploadFile} />
+                    Upload Bank Statement Files
+                    <input type="file" multiple accept={SUPPORTED_UPLOAD_ACCEPT} className="hidden" onChange={onUploadFile} />
                 </label>
 
                 <button
@@ -379,7 +414,7 @@ export default function BankAutomationPage() {
                             ? cloudAllowed
                                 ? 'Running local matching with cloud fallback...'
                                 : 'Running local matching...'
-                            : `${rows.length} rows parsed ? ${unmatchedCount} need manual review`}
+                            : `${rows.length} rows parsed, ${unmatchedCount} need manual review`}
                 </div>
             </div>
 
@@ -447,6 +482,7 @@ export default function BankAutomationPage() {
         </div>
     );
 }
+
 
 
 

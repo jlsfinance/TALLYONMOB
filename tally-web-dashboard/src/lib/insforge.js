@@ -1,4 +1,4 @@
-import { createClient } from "@insforge/sdk";
+﻿import { createClient } from "@insforge/sdk";
 const API_KEY = import.meta.env.VITE_INSFORGE_KEY || "ik_9bef5476d1f848d9f06212a645525293";
 const API_URL = import.meta.env.VITE_INSFORGE_URL || "https://3uq8fv8r.ap-southeast.insforge.app";
 const client = createClient({ baseUrl: API_URL, anonKey: API_KEY });
@@ -503,10 +503,40 @@ const syncHistoryApi = { list: async (companyId, limitCount = 20) => db.from("sy
     return { data: null, error };
   return { data: { totalSyncs: data.length, lastSync: data[0] || null, successCount: data.filter((s) => s.status === "completed").length, failedCount: data.filter((s) => s.status === "failed").length, totalRecordsSynced: data.reduce((sum, s) => sum + (s.total_records || 0), 0) }, error: null };
 } };
+const normalizePendingVoucherData = (transactionType, voucherData) => {
+  const safe = voucherData && typeof voucherData === "object" ? { ...voucherData } : {};
+  if (!safe.voucher_type_name && transactionType)
+    safe.voucher_type_name = transactionType;
+  if (!safe.voucher_type && transactionType)
+    safe.voucher_type = transactionType;
+  if (!safe.voucher_date && safe.date)
+    safe.voucher_date = safe.date;
+  if (!safe.invoice_date && safe.voucher_date)
+    safe.invoice_date = safe.voucher_date;
+  return safe;
+};
 const pendingTransactionApi = { create: async (companyId, transactionType, voucherData) => {
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return { data: null, error: new Error("company_id is required") };
+  }
   const { data: { user } } = await auth.getCurrentUser();
-  const payload = { company_id: companyId, transaction_type: transactionType, voucher_data: voucherData, status: "pending", created_by: user?.id || null, created_at: (/* @__PURE__ */ new Date()).toISOString() };
-  return await db.from("pending_transactions").insert(payload).select().single();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const payload = {
+    company_id: normalizedCompanyId,
+    transaction_type: String(transactionType || "Vouchers"),
+    voucher_data: normalizePendingVoucherData(transactionType, voucherData),
+    status: "pending",
+    created_by: user?.id || null,
+    created_at: now
+  };
+  const batchInsert = await db.from("pending_transactions").insert([payload]).select().single();
+  if (!batchInsert.error)
+    return batchInsert;
+  const objectInsert = await db.from("pending_transactions").insert(payload).select().single();
+  if (!objectInsert.error)
+    return objectInsert;
+  return batchInsert;
 }, list: async (companyId, status = null) => {
   let q = db.from("pending_transactions").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
   if (Array.isArray(status) && status.length > 0)
@@ -541,3 +571,4 @@ export {
   syncHistoryApi,
   voucherApi
 };
+

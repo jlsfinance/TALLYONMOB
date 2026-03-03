@@ -138,9 +138,17 @@ export function parseBankStatementRowsFromUnknown(input: unknown): BankTransacti
 
 export function parseBankStatementWorkbook(buffer: ArrayBuffer): BankTransactionRow[] {
     const workbook = XLSX.read(buffer, { type: "array" });
-    const firstSheet = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[firstSheet];
+    const rawRows: Record<string, unknown>[] = [];
 
-    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    workbook.SheetNames.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) return;
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+        if (rows.length > 0) {
+            rawRows.push(...rows);
+        }
+    });
+
     return normalizeBankStatementRows(rawRows);
 }
+
