@@ -1877,13 +1877,31 @@ FinishCompanySync:
                             "total",
                             "totalAmount") ?? 0m;
 
-                        DateTime voucherDate = GetTokenDate(
+                        var parsedVoucherDate = GetTokenDate(
                             voucherToken,
                             "invoice_date",
                             "invoiceDate",
                             "voucher_date",
                             "voucherDate",
-                            "date") ?? DateTime.Today;
+                            "date",
+                            "entry_date",
+                            "entryDate");
+
+                        DateTime voucherDate;
+                        if (parsedVoucherDate.HasValue && IsValidVoucherDate(parsedVoucherDate.Value))
+                        {
+                            voucherDate = parsedVoucherDate.Value.Date;
+                        }
+                        else if (IsValidVoucherDate(transaction.CreatedAt))
+                        {
+                            voucherDate = transaction.CreatedAt.Date;
+                            AddLog($"   Voucher date missing/invalid, using created date {voucherDate:dd-MMM-yyyy}");
+                        }
+                        else
+                        {
+                            voucherDate = DateTime.Today;
+                            AddLog($"   Voucher date missing/invalid, using today {voucherDate:dd-MMM-yyyy}");
+                        }
 
                         string narration = GetTokenString(voucherToken, "narration", "notes", "description", "memo")
                             ?? "Created from TallySync App";
@@ -1932,6 +1950,33 @@ FinishCompanySync:
                         }
                         else
                         {
+                            if (IsVoucherDateMissingError(error))
+                            {
+                                var forcedDate = DateTime.Today;
+                                AddLog($"   Tally reported missing voucher date. Retrying with forced date {forcedDate:dd-MMM-yyyy}...");
+
+                                var (retrySuccess, retryVoucherNumber, retryErrorMessage) = await _tallyConnector.PushVoucherToTallyAsync(
+                                    company.Name,
+                                    normalizedType,
+                                    forcedDate,
+                                    partyLedger,
+                                    amount,
+                                    narration,
+                                    ledgerEntries.Count > 0 ? ledgerEntries : null,
+                                    inventoryEntries.Count > 0 ? inventoryEntries : null
+                                );
+
+                                if (retrySuccess)
+                                {
+                                    await _apiClient.UpdatePendingTransactionStatusAsync(transaction.Id, "synced", retryVoucherNumber, null, 0);
+                                    AddLog($"   Created in Tally after date retry: {retryVoucherNumber}");
+                                    successCount++;
+                                    continue;
+                                }
+
+                                error = retryErrorMessage ?? error;
+                            }
+
                             var nextAttempt = currentAttempt + 1;
                             var nextStatus = nextAttempt < MaxPendingPushRetries ? "pending" : "failed";
                             var retryError = AppendRetryMetadata(error ?? "Unknown error", nextAttempt);
@@ -2070,13 +2115,137 @@ FinishCompanySync:
                     continue;
                 }
 
-                if (DateTime.TryParse(candidate.ToString(), out var parsedDate))
+                if (candidate.Type == JTokenType.Date)
                 {
-                    return parsedDate;
+                    var dateValue = candidate.Value<DateTime>();
+                    if (IsValidVoucherDate(dateValue))
+                    {
+                        return dateValue.Date;
+                    }
+
+                    continue;
+                }
+
+                if ((candidate.Type == JTokenType.Integer || candidate.Type == JTokenType.Float)
+                    && long.TryParse(candidate.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var epochNumber))
+                {
+                    var epochDate = TryParseUnixDate(epochNumber);
+                    if (epochDate.HasValue)
+                    {
+                        return epochDate.Value.Date;
+                    }
+                }
+
+                if (TryParseFlexibleDate(candidate.ToString(), out var parsedDate))
+                {
+                    return parsedDate.Date;
                 }
             }
 
             return null;
+        }
+
+        private static bool TryParseFlexibleDate(string? value, out DateTime parsedDate)
+        {
+            parsedDate = default;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var text = value.Trim();
+            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var epochNumber))
+            {
+                var epochDate = TryParseUnixDate(epochNumber);
+                if (epochDate.HasValue)
+                {
+                    parsedDate = epochDate.Value;
+                    return true;
+                }
+            }
+
+            string[] formats =
+            {
+                "yyyy-MM-dd",
+                "yyyy/MM/dd",
+                "dd-MM-yyyy",
+                "dd/MM/yyyy",
+                "MM/dd/yyyy",
+                "yyyyMMdd",
+                "ddMMyyyy",
+                "dd-MMM-yyyy",
+                "dd MMM yyyy",
+                "yyyy-MM-ddTHH:mm:ss",
+                "yyyy-MM-ddTHH:mm:ssZ",
+                "yyyy-MM-ddTHH:mm:ss.fffZ",
+                "yyyy-MM-ddTHH:mm:ss.fffffffZ",
+                "yyyy-MM-ddTHH:mm:ssK",
+                "yyyy-MM-ddTHH:mm:ss.fffK",
+                "o"
+            };
+
+            if (DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out parsedDate)
+                || DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out parsedDate)
+                || DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.AllowWhiteSpaces, out parsedDate))
+            {
+                if (IsValidVoucherDate(parsedDate))
+                {
+                    parsedDate = parsedDate.Date;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static DateTime? TryParseUnixDate(long rawValue)
+        {
+            if (rawValue <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                DateTime date;
+                // >= 13 digits is typically Unix milliseconds
+                if (rawValue >= 1000000000000)
+                {
+                    date = DateTimeOffset.FromUnixTimeMilliseconds(rawValue).LocalDateTime;
+                }
+                else
+                {
+                    date = DateTimeOffset.FromUnixTimeSeconds(rawValue).LocalDateTime;
+                }
+
+                return IsValidVoucherDate(date) ? date.Date : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool IsValidVoucherDate(DateTime value)
+        {
+            if (value == DateTime.MinValue || value == DateTime.MaxValue)
+            {
+                return false;
+            }
+
+            var year = value.Year;
+            return year >= 1900 && year <= DateTime.Today.Year + 10;
+        }
+        private static bool IsVoucherDateMissingError(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            var normalized = message.Trim();
+            return normalized.IndexOf("voucher date", StringComparison.OrdinalIgnoreCase) >= 0
+                && normalized.IndexOf("missing", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool? GetTokenBool(JToken? token, params string[] keys)
@@ -2405,11 +2574,4 @@ FinishCompanySync:
         }
     }
 }
-
-
-
-
-
-
-
 

@@ -2158,77 +2158,145 @@ namespace TallySyncApp.Services
         {
             try
             {
-                SyncLogger.Log($"ðŸ“¤ Pushing {voucherType} to Tally: {partyLedger} â‚¹{amount}");
+                var normalizedVoucherType = string.IsNullOrWhiteSpace(voucherType) ? "Receipt" : voucherType.Trim();
+                var normalizedPartyLedger = string.IsNullOrWhiteSpace(partyLedger) ? "Cash" : partyLedger.Trim();
+                var voucherTypeLower = normalizedVoucherType.ToLowerInvariant();
+                var safeAmount = Math.Abs(amount);
+                var voucherDateValue = voucherDate.Date;
+                if (voucherDateValue == DateTime.MinValue || voucherDateValue.Year < 1900)
+                {
+                    voucherDateValue = DateTime.Today;
+                }
 
-                // Build XML for creating voucher in Tally
+                bool isSalesLike = voucherTypeLower.Contains("sale");
+                bool isPurchaseLike = voucherTypeLower.Contains("purchase");
+                bool isReceiptLike = voucherTypeLower.StartsWith("receipt");
+                bool isPaymentLike = voucherTypeLower.StartsWith("payment");
+                bool hasInventory = inventoryEntries != null && inventoryEntries.Any();
+                bool useInvoiceView = hasInventory && (isSalesLike || isPurchaseLike);
+
+                SyncLogger.Log($"Pushing {normalizedVoucherType} to Tally: {normalizedPartyLedger} amount={safeAmount:0.##} date={voucherDateValue:yyyy-MM-dd}");
+
+                void AppendLedgerEntryXml(StringBuilder xml, string ledgerName, decimal signedAmount)
+                {
+                    if (string.IsNullOrWhiteSpace(ledgerName) || signedAmount == 0)
+                    {
+                        return;
+                    }
+
+                    var absAmountText = Math.Abs(signedAmount).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                    var formattedAmount = signedAmount < 0 ? $"-{absAmountText}" : absAmountText;
+                    xml.AppendLine($@"
+            <ALLLEDGERENTRIES.LIST>
+                <LEDGERNAME>{XmlEscape(ledgerName)}</LEDGERNAME>
+                <ISDEEMEDPOSITIVE>{(signedAmount < 0 ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
+                <AMOUNT>{formattedAmount}</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>");
+                }
+
                 var ledgerEntriesXml = new StringBuilder();
-                
-                if (ledgerEntries != null && ledgerEntries.Any())
+                if (ledgerEntries != null && ledgerEntries.Any(entry => entry != null && !string.IsNullOrWhiteSpace(entry.LedgerName) && entry.Amount != 0))
                 {
                     foreach (var entry in ledgerEntries)
                     {
-                        ledgerEntriesXml.AppendLine($@"
-            <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{XmlEscape(entry.LedgerName)}</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>{(entry.Amount >= 0 ? "No" : "Yes")}</ISDEEMEDPOSITIVE>
-                <AMOUNT>{(entry.Amount >= 0 ? "" : "-")}{Math.Abs(entry.Amount)}</AMOUNT>
-            </ALLLEDGERENTRIES.LIST>");
+                        if (entry == null)
+                        {
+                            continue;
+                        }
+
+                        AppendLedgerEntryXml(ledgerEntriesXml, entry.LedgerName, entry.Amount);
                     }
                 }
                 else
                 {
-                    // Default: Party ledger (debit for sales, credit for purchases)
-                    bool isSaleType = voucherType.Contains("Sales") || voucherType.Contains("Receipt");
-                    ledgerEntriesXml.AppendLine($@"
-            <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{XmlEscape(partyLedger)}</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>{(isSaleType ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
-                <AMOUNT>{(isSaleType ? "" : "-")}{amount}</AMOUNT>
-            </ALLLEDGERENTRIES.LIST>
-            <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{(isSaleType ? "Sales" : "Purchase")}</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>{(isSaleType ? "No" : "Yes")}</ISDEEMEDPOSITIVE>
-                <AMOUNT>{(isSaleType ? "-" : "")}{amount}</AMOUNT>
-            </ALLLEDGERENTRIES.LIST>");
+                    string counterLedger = isSalesLike
+                        ? "Sales"
+                        : isPurchaseLike
+                            ? "Purchase"
+                            : isReceiptLike || isPaymentLike
+                                ? "Cash"
+                                : "Suspense A/c";
+
+                    decimal partySignedAmount = (isSalesLike || isPaymentLike) ? -safeAmount : safeAmount;
+                    decimal counterSignedAmount = -partySignedAmount;
+
+                    AppendLedgerEntryXml(ledgerEntriesXml, normalizedPartyLedger, partySignedAmount);
+                    AppendLedgerEntryXml(ledgerEntriesXml, counterLedger, counterSignedAmount);
                 }
 
                 var inventoryXml = new StringBuilder();
-                if (inventoryEntries != null && inventoryEntries.Any())
+                if (hasInventory)
                 {
-                    foreach (var item in inventoryEntries)
+                    foreach (var item in inventoryEntries ?? Enumerable.Empty<VoucherInventoryEntry>())
                     {
+                        if (item == null || string.IsNullOrWhiteSpace(item.StockItemName))
+                        {
+                            continue;
+                        }
+
+                        var quantity = Math.Abs(item.Quantity);
+                        if (quantity <= 0)
+                        {
+                            quantity = 1;
+                        }
+
+                        var rate = Math.Abs(item.Rate);
+                        var lineAmount = Math.Abs(item.Amount);
+
+                        if (lineAmount <= 0 && rate > 0)
+                        {
+                            lineAmount = quantity * rate;
+                        }
+
+                        if (rate <= 0 && quantity > 0 && lineAmount > 0)
+                        {
+                            rate = lineAmount / quantity;
+                        }
+
+                        var unit = string.IsNullOrWhiteSpace(item.Unit) ? "Nos" : item.Unit!;
+                        var quantityText = quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                        var rateText = rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        var amountText = lineAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
                         var gstXmlBuilder = new StringBuilder();
-                        if (!string.IsNullOrEmpty(item.HsnCode) || item.TaxRate.HasValue)
+                        if (!string.IsNullOrWhiteSpace(item.HsnCode) || item.TaxRate.HasValue)
                         {
                             gstXmlBuilder.AppendLine("                <GSTDETAILS.LIST>");
-                            
-                            if (!string.IsNullOrEmpty(item.HsnCode))
-                                gstXmlBuilder.AppendLine($"                    <HSNCODE>{item.HsnCode}</HSNCODE>");
-                                
+
+                            if (!string.IsNullOrWhiteSpace(item.HsnCode))
+                            {
+                                gstXmlBuilder.AppendLine($"                    <HSNCODE>{XmlEscape(item.HsnCode)}</HSNCODE>");
+                            }
+
                             if (item.TaxRate.HasValue)
                             {
-                                gstXmlBuilder.AppendLine($"                    <RATEOFTAXCALCULATION>{item.TaxRate}</RATEOFTAXCALCULATION>");
-                                gstXmlBuilder.AppendLine($"                    <GSTOVRDNNATURE>Taxable</GSTOVRDNNATURE>");
+                                var taxRateText = item.TaxRate.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                                gstXmlBuilder.AppendLine($"                    <RATEOFTAXCALCULATION>{taxRateText}</RATEOFTAXCALCULATION>");
+                                gstXmlBuilder.AppendLine("                    <GSTOVRDNNATURE>Taxable</GSTOVRDNNATURE>");
                             }
-                            
-                            string taxability = item.Taxability ?? ((item.TaxRate ?? 0) > 0 ? "Taxable" : "Exempt");
-                            gstXmlBuilder.AppendLine($"                    <TAXABILITY>{taxability}</TAXABILITY>");
-                            
+
+                            string taxability = string.IsNullOrWhiteSpace(item.Taxability)
+                                ? ((item.TaxRate ?? 0) > 0 ? "Taxable" : "Exempt")
+                                : item.Taxability!;
+                            gstXmlBuilder.AppendLine($"                    <TAXABILITY>{XmlEscape(taxability)}</TAXABILITY>");
                             gstXmlBuilder.AppendLine("                </GSTDETAILS.LIST>");
                         }
-                        string hsnXml = gstXmlBuilder.ToString();
 
                         inventoryXml.AppendLine($@"
             <ALLINVENTORYENTRIES.LIST>
                 <STOCKITEMNAME>{XmlEscape(item.StockItemName)}</STOCKITEMNAME>
-                {hsnXml}
-                <ACTUALQTY>{item.Quantity} {XmlEscape(item.Unit)}</ACTUALQTY>
-                <BILLEDQTY>{item.Quantity} {XmlEscape(item.Unit)}</BILLEDQTY>
-                <RATE>{item.Rate}/{XmlEscape(item.Unit)}</RATE>
-                <AMOUNT>{item.Amount}</AMOUNT>
+{gstXmlBuilder}
+                <ACTUALQTY>{quantityText} {XmlEscape(unit)}</ACTUALQTY>
+                <BILLEDQTY>{quantityText} {XmlEscape(unit)}</BILLEDQTY>
+                <RATE>{rateText}/{XmlEscape(unit)}</RATE>
+                <AMOUNT>{amountText}</AMOUNT>
             </ALLINVENTORYENTRIES.LIST>");
                     }
                 }
+
+                string invoiceModeXml = useInvoiceView
+                    ? "                        <ISINVOICE>Yes</ISINVOICE>\n                        <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>"
+                    : string.Empty;
 
                 var request = $@"
 <ENVELOPE>
@@ -2240,18 +2308,20 @@ namespace TallySyncApp.Services
             <REQUESTDESC>
                 <REPORTNAME>Vouchers</REPORTNAME>
                 <STATICVARIABLES>
-                    <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                    <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
                 </STATICVARIABLES>
             </REQUESTDESC>
             <REQUESTDATA>
                 <TALLYMESSAGE xmlns:UDF=""TallyUDF"">
-                    <VOUCHER VCHTYPE=""{XmlEscape(voucherType)}"" ACTION=""Create"">
-                        <DATE>{voucherDate:yyyyMMdd}</DATE>
-                        <VOUCHERTYPENAME>{XmlEscape(voucherType)}</VOUCHERTYPENAME>
-                        <PARTYLEDGERNAME>{XmlEscape(partyLedger)}</PARTYLEDGERNAME>
+                    <VOUCHER VCHTYPE=""{XmlEscape(normalizedVoucherType)}"" ACTION=""Create"">
+                        <DATE>{voucherDateValue:yyyyMMdd}</DATE>
+                        <EFFECTIVEDATE>{voucherDateValue:yyyyMMdd}</EFFECTIVEDATE>
+                        <VOUCHERTYPENAME>{XmlEscape(normalizedVoucherType)}</VOUCHERTYPENAME>
+                        <PARTYLEDGERNAME>{XmlEscape(normalizedPartyLedger)}</PARTYLEDGERNAME>
                         <NARRATION>{XmlEscape(narration ?? "")}</NARRATION>
-                        {ledgerEntriesXml}
-                        {inventoryXml}
+{invoiceModeXml}
+{ledgerEntriesXml}
+{inventoryXml}
                     </VOUCHER>
                 </TALLYMESSAGE>
             </REQUESTDATA>
@@ -2260,38 +2330,65 @@ namespace TallySyncApp.Services
 </ENVELOPE>";
 
                 var doc = await SendRequestAsync(request, companyName, 30);
-
                 if (doc == null)
                 {
                     return (false, null, "No response from Tally");
                 }
 
-                // Check for success in response
-                var responseText = doc.ToString();
-                
-                // Look for CREATED element (successful creation)
-                var created = doc.Descendants("CREATED").FirstOrDefault()?.Value;
+                var created = doc.Descendants("CREATED").FirstOrDefault()?.Value?.Trim();
                 if (created == "1")
                 {
-                    // Try to get the voucher number from response
-                    var voucherNumber = doc.Descendants("VOUCHERNUMBER").FirstOrDefault()?.Value;
-                    SyncLogger.Log($"âœ… Voucher created in Tally: {voucherNumber ?? "Success"}");
+                    var voucherNumber = doc.Descendants("VOUCHERNUMBER").FirstOrDefault()?.Value?.Trim();
+                    SyncLogger.Log($"Voucher created in Tally: {voucherNumber ?? "Success"}");
                     return (true, voucherNumber, null);
                 }
 
-                // Check for errors
-                var errorMsg = doc.Descendants("LINEERROR").FirstOrDefault()?.Value ??
-                               doc.Descendants("ERRORS").FirstOrDefault()?.Value ??
-                               "Unknown error creating voucher";
-
-                SyncLogger.Log($"âŒ Tally rejected voucher: {errorMsg}");
+                var errorMsg = ExtractTallyImportError(doc);
+                SyncLogger.Log($"Tally rejected voucher: {errorMsg}");
                 return (false, null, errorMsg);
             }
             catch (Exception ex)
             {
-                SyncLogger.Log($"âŒ PushVoucherToTallyAsync error: {ex.Message}");
+                SyncLogger.Log($"PushVoucherToTallyAsync error: {ex.Message}");
                 return (false, null, ex.Message);
             }
+        }
+
+        private static string ExtractTallyImportError(XDocument doc)
+        {
+            var lineErrors = doc.Descendants("LINEERROR")
+                .Select(x => x.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
+
+            if (lineErrors.Count > 0)
+            {
+                return string.Join(" | ", lineErrors);
+            }
+
+            var errorNodes = doc.Descendants("ERROR")
+                .Select(x => x.Value?.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
+
+            if (errorNodes.Count > 0)
+            {
+                return string.Join(" | ", errorNodes);
+            }
+
+            var errorsValue = doc.Descendants("ERRORS").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(errorsValue) && errorsValue != "0")
+            {
+                return errorsValue;
+            }
+
+            var created = doc.Descendants("CREATED").FirstOrDefault()?.Value?.Trim() ?? "0";
+            var altered = doc.Descendants("ALTERED").FirstOrDefault()?.Value?.Trim() ?? "0";
+            var ignored = doc.Descendants("IGNORED").FirstOrDefault()?.Value?.Trim() ?? "0";
+            var errors = errorsValue ?? "0";
+            return $"Tally import failed (Created={created}, Altered={altered}, Errors={errors}, Ignored={ignored})";
         }
         // =============================================
         // NEW MASTER DATA FETCH METHODS
@@ -2857,6 +2954,4 @@ namespace TallySyncApp.Services
         }
     }
 }
-
-
 

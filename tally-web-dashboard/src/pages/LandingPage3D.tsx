@@ -24,8 +24,6 @@ import {
     FileText,
     Play,
     ChevronDown,
-    Menu,
-    X,
     MessageSquare,
     Send
 } from 'lucide-react';
@@ -107,8 +105,8 @@ export default function LandingPage3D() {
     const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth() as any;
     const heroRef = useRef(null);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [downloadUrl, setDownloadUrl] = useState('https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLinkSetup.exe');
+    const [use3DHero, setUse3DHero] = useState(false);
     const { scrollYProgress } = useScroll();
 
     // Parallax Effects
@@ -120,6 +118,15 @@ export default function LandingPage3D() {
             navigate('/dashboard', { replace: true });
         }
     }, [user, authLoading, navigate]);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia('(min-width: 1024px)');
+        const handleChange = () => setUse3DHero(mediaQuery.matches);
+
+        handleChange();
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
 
     useEffect(() => {
         companyApi.getAppSettings().then(({ data }) => {
@@ -177,7 +184,7 @@ export default function LandingPage3D() {
             <motion.nav
                 initial={{ y: -100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="fixed top-0 left-0 right-0 z-[100] p-6 lg:p-8 pointer-events-none"
+                className="fixed top-0 left-0 right-0 z-[100] p-3 sm:p-6 lg:p-8 pointer-events-none"
             >
                 <div className="max-w-7xl mx-auto flex items-center justify-between pointer-events-auto">
                     <div className="flex items-center gap-3">
@@ -201,7 +208,7 @@ export default function LandingPage3D() {
                         </button>
                         <button
                             onClick={() => navigate('/login')}
-                            className="group px-6 py-3 bg-white text-black text-xs font-black uppercase tracking-[0.2em] rounded-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 shadow-2xl shadow-cyan-500/10"
+                            className="group px-4 sm:px-6 py-2.5 sm:py-3 bg-white text-black text-[10px] sm:text-xs font-black uppercase tracking-[0.18em] rounded-lg sm:rounded-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 shadow-2xl shadow-cyan-500/10"
                         >
                             Get Started
                             <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
@@ -209,102 +216,219 @@ export default function LandingPage3D() {
                     </div>
                 </div>
             </motion.nav>
-
-            {/* --- Mobile Menu --- */}
-            <div className="lg:hidden fixed bottom-6 right-6 z-[110]">
-                <button
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="w-14 h-14 rounded-full bg-cyan-500 text-white flex items-center justify-center shadow-2xl shadow-cyan-500/50"
-                >
-                    {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-                </button>
-            </div>
-
             {/* --- Hero Section --- */}
-            <section ref={heroRef} className="relative min-h-screen flex items-center px-6 lg:px-12 pt-20 overflow-hidden">
-                <ThreeDHeroScene />
+            <section ref={heroRef} className="relative min-h-[100svh] flex items-center px-4 sm:px-6 lg:px-12 pt-20 sm:pt-24 pb-12 sm:pb-20 overflow-hidden">
+                {use3DHero ? (
+                    <ThreeDHeroScene />
+                ) : (
+                    <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#05182f] via-[#031225] to-[#040b18]" />
+                )}
 
-                <div className="max-w-7xl mx-auto w-full relative z-10 grid lg:grid-cols-2 gap-20 items-center">
-                    <motion.div style={{ y: yHero, opacity: opacityHero }} className="space-y-10">
-                        <div className="space-y-4">
-                            <motion.div
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: 0.5 }}
-                                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.1)]"
+                <div className="absolute inset-0 z-[1] pointer-events-none">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_25%,rgba(20,184,166,0.24),transparent_38%)]" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(59,130,246,0.22),transparent_42%)]" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#030712]/40 via-[#030712]/75 to-[#030712]" />
+                    <div className="absolute -right-24 top-1/4 h-72 w-72 rounded-full bg-emerald-500/20 blur-[120px]" />
+                    <div className="absolute -left-24 bottom-8 h-72 w-72 rounded-full bg-sky-500/20 blur-[120px]" />
+                </div>
+
+                <div className="max-w-7xl mx-auto w-full relative z-10 grid xl:grid-cols-[minmax(0,1fr)_440px] gap-8 lg:gap-12 items-center">
+                    <motion.div style={use3DHero ? { y: yHero, opacity: opacityHero } : undefined} className="space-y-6 sm:space-y-8">
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.45 }}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-cyan-400/35 bg-cyan-500/10 text-[11px] sm:text-xs font-black uppercase tracking-[0.2em] text-cyan-200"
+                        >
+                            <Sparkles size={13} className="text-cyan-300" />
+                            <span className="sm:hidden">Built for Tally Teams</span><span className="hidden sm:inline">Built for Indian Accounting Teams</span>
+                        </motion.div>
+
+                        <div className="space-y-5">
+                            <motion.h1
+                                initial={{ opacity: 0, y: 30 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.55 }}
+                                className="hidden sm:block text-[clamp(3.4rem,8vw,6.2rem)] font-black leading-[0.9] tracking-[-0.03em]"
                             >
-                                <Sparkles size={12} />
-                                Enterprise Data Sync v2.10.1
-                            </motion.div>
+                                Tally Access,
+                                <br />
+                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-300 via-sky-400 to-emerald-300">
+                                    Without Office Boundaries.
+                                </span>
+                            </motion.h1>
 
                             <motion.h1
                                 initial={{ opacity: 0, y: 30 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.6 }}
-                                className="text-6xl md:text-8xl lg:text-[10rem] font-black leading-[0.85] tracking-tighter"
+                                transition={{ delay: 0.55 }}
+                                className="sm:hidden text-[2.95rem] font-black leading-[0.92] tracking-[-0.03em]"
                             >
-                                Your Tally. <br />
-                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 animate-gradient-x">
-                                    Now Liquid.
+                                Your Tally,
+                                <br />
+                                <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-300 via-sky-400 to-emerald-300">
+                                    On Every Screen.
                                 </span>
                             </motion.h1>
 
                             <motion.p
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: 0.7 }}
-                                className="text-xl text-gray-400 max-w-xl font-medium leading-relaxed"
+                                transition={{ delay: 0.65 }}
+                                className="text-base sm:text-lg text-slate-300 max-w-xl sm:max-w-2xl font-medium leading-relaxed"
                             >
-                                Experience 100% Free real-time synchronization. Access professional
-                                financial intelligence from your Tally machine to any device, in seconds.
+                                Create vouchers from web, AI assistant, or desktop, then sync instantly with your Tally process.
+                                Faster reporting, cleaner GST data, and smooth experience across desktop and mobile.
                             </motion.p>
                         </div>
 
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.8 }}
-                            className="flex flex-col sm:flex-row gap-4"
+                            transition={{ delay: 0.72 }}
+                            className="grid gap-3 sm:grid-cols-2 max-w-2xl"
+                        >
+                            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-sm text-slate-200 flex items-start gap-3">
+                                <CheckCircle size={18} className="text-emerald-400 mt-0.5 shrink-0" />
+                                <span>Website or AI-created entries are queued and pushed to Tally with traceable status.</span>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 text-sm text-slate-200 flex items-start gap-3">
+                                <Shield size={18} className="text-cyan-300 mt-0.5 shrink-0" />
+                                <span>GST data, stock movement, and ledger impact stay consistent across all views.</span>
+                            </div>
+                        </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.78 }}
+                            className="flex flex-col sm:flex-row gap-3 sm:gap-4"
                         >
                             <button
                                 onClick={() => navigate('/login')}
-                                className="px-10 py-5 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl text-sm font-black uppercase tracking-widest hover:scale-[1.02] hover:shadow-2xl hover:shadow-cyan-500/40 transition-all flex items-center justify-center gap-3 group"
+                                className="group w-full sm:w-auto px-7 sm:px-10 py-4 sm:py-5 bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 rounded-2xl text-sm font-black uppercase tracking-[0.18em] hover:scale-[1.02] transition-all flex items-center justify-center gap-3 shadow-[0_16px_40px_rgba(14,165,233,0.35)]"
                             >
-                                Start Syncing Now
-                                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                Start Free Sync
+                                <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
                             </button>
                             <button
                                 onClick={() => window.open(downloadUrl, '_blank')}
-                                className="px-10 py-5 bg-white/5 border border-white/5 hover:border-white/10 hover:bg-white/10 backdrop-blur-xl rounded-2xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3"
+                                className="w-full sm:w-auto px-7 sm:px-10 py-4 sm:py-5 rounded-2xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm font-black uppercase tracking-[0.16em] transition-all flex items-center justify-center gap-3"
                             >
-                                <Monitor size={18} />
-                                Desktop Link
+                                <Monitor size={17} />
+                                Download Windows App
                             </button>
                         </motion.div>
 
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            transition={{ delay: 1 }}
-                            className="flex items-center gap-8 pt-6"
+                            transition={{ delay: 0.88 }}
+                            className="hidden sm:flex flex-wrap items-center gap-3 pt-1"
                         >
-                            <div className="flex -space-x-4">
-                                {[1, 2, 3, 4].map(i => (
-                                    <div key={i} className="w-12 h-12 rounded-full border-4 border-[#030712] bg-gray-800 overflow-hidden ring-1 ring-white/10">
-                                        <img src={`https://i.pravatar.cc/100?img=${i + 10}`} alt="user" className="w-full h-full object-cover grayscale opacity-50 hover:grayscale-0 hover:opacity-100 transition-all" />
-                                    </div>
-                                ))}
-                                <div className="w-12 h-12 rounded-full border-4 border-[#030712] bg-cyan-500 flex items-center justify-center text-[10px] font-black ring-1 ring-white/10">
-                                    10K+
-                                </div>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-bold text-slate-300">
+                                <Smartphone size={14} className="text-emerald-300" /> Mobile Dashboard
                             </div>
-                            <div>
-                                <div className="flex gap-1 mb-1">
-                                    {[1, 2, 3, 4, 5].map(i => <Sparkles key={i} size={10} className="text-cyan-400 fill-cyan-400" />)}
-                                </div>
-                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Global Trust Index</p>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-bold text-slate-300">
+                                <Monitor size={14} className="text-sky-300" /> Desktop Connector
+                            </div>
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-bold text-slate-300">
+                                <Cloud size={14} className="text-cyan-300" /> Cloud Analytics
                             </div>
                         </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.9 }}
+                            className="sm:hidden grid grid-cols-3 gap-2"
+                        >
+                            <div className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2.5 text-center">
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Uptime</p>
+                                <p className="text-sm font-black text-cyan-200 mt-0.5">99.9%</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2.5 text-center">
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Delay</p>
+                                <p className="text-sm font-black text-cyan-200 mt-0.5">0.2s</p>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2.5 text-center">
+                                <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Support</p>
+                                <p className="text-sm font-black text-cyan-200 mt-0.5">24x7</p>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, x: 30, scale: 0.96 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        transition={{ delay: 0.82, duration: 0.7 }}
+                        className="relative hidden xl:block"
+                    >
+                        <div className="rounded-[28px] border border-white/10 bg-[#071226]/70 backdrop-blur-2xl p-5 sm:p-6 shadow-[0_30px_90px_rgba(4,26,50,0.45)]">
+                            <div className="flex items-center justify-between mb-5">
+                                <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Live Sync Snapshot</p>
+                                <span className="text-[11px] font-bold text-emerald-300">Updated now</span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-3 mb-5">
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-black">Push Rate</p>
+                                    <p className="text-xl font-black text-white mt-1">99.9%</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-black">Avg Delay</p>
+                                    <p className="text-xl font-black text-white mt-1">0.2s</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                                    <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-black">GST Rules</p>
+                                    <p className="text-xl font-black text-white mt-1">Auto</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                                    <div className="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-300 flex items-center justify-center shrink-0">
+                                        <Zap size={15} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">Voucher posted from web panel</p>
+                                        <p className="text-xs text-slate-400">Mapped with ledger + stock lines, then queued to Tally.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-300 flex items-center justify-center shrink-0">
+                                        <RefreshCw size={15} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">AI bank statement mapped</p>
+                                        <p className="text-xs text-slate-400">Known names auto-match; unknown entries ask manual mapping once.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                                    <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-300 flex items-center justify-center shrink-0">
+                                        <FileText size={15} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">GST and stock drilldown refreshed</p>
+                                        <p className="text-xs text-slate-400">Running balances stay aligned with voucher timeline.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-white/10 bg-gradient-to-r from-white/[0.05] to-white/[0.02] px-4 py-3.5">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Trusted Network</p>
+                                <div className="mt-2.5 flex items-center justify-between gap-3">
+                                    <div className="flex -space-x-2">
+                                        {['CA', 'SM', 'TR', 'FM'].map((label) => (
+                                            <div key={label} className="w-8 h-8 rounded-full border-2 border-[#071226] bg-slate-700/80 text-[10px] font-black text-cyan-200 flex items-center justify-center">
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-300">10K+ firms across India</p>
+                                </div>
+                            </div>
+                        </div>
                     </motion.div>
                 </div>
 
@@ -312,10 +436,10 @@ export default function LandingPage3D() {
                 <motion.div
                     animate={{ y: [0, 10, 0] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 text-gray-600"
+                    className="hidden md:flex absolute bottom-10 left-1/2 -translate-x-1/2 flex-col items-center gap-4 text-gray-500"
                 >
                     <span className="text-[8px] font-black uppercase tracking-[0.5em] rotate-180 [writing-mode:vertical-lr]">Scroll</span>
-                    <div className="w-[1px] h-12 bg-gradient-to-b from-gray-800 to-transparent" />
+                    <div className="w-[1px] h-12 bg-gradient-to-b from-gray-700 to-transparent" />
                 </motion.div>
             </section>
 

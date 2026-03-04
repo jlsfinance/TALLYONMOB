@@ -69,9 +69,9 @@ Name: "startupicon"; Description: "Start TallyLink when Windows starts"; GroupDe
 
 [Files]
 ; Main exe (published single file)
-Source: "..\..\tallysyncapp\TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\..\tallysyncapp\TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Config file
-Source: "..\..\tallysyncapp\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
+Source: "{#SourcePath}\..\..\tallysyncapp\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 ; Icon (embedded in the exe already)
 
 [Icons]

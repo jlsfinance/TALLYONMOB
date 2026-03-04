@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
@@ -31,10 +31,10 @@ const VOUCHER_TYPES: { key: VoucherType; label: string; icon: any; color: string
 ];
 
 const AI_TEMPLATES = [
-    { label: 'Sales Entry', prompt: 'Sold to [Party] for â‚¹[Amount]', type: 'Sales' as VoucherType },
-    { label: 'Purchase Entry', prompt: 'Purchased from [Supplier] for â‚¹[Amount]', type: 'Purchase' as VoucherType },
-    { label: 'Receipt', prompt: 'Received â‚¹[Amount] from [Party]', type: 'Receipt' as VoucherType },
-    { label: 'Payment', prompt: 'Paid â‚¹[Amount] to [Party]', type: 'Payment' as VoucherType },
+    { label: 'Sales Entry', prompt: 'Sold to [Party] for Rs [Amount]', type: 'Sales' as VoucherType },
+    { label: 'Purchase Entry', prompt: 'Purchased from [Supplier] for Rs [Amount]', type: 'Purchase' as VoucherType },
+    { label: 'Receipt', prompt: 'Received Rs [Amount] from [Party]', type: 'Receipt' as VoucherType },
+    { label: 'Payment', prompt: 'Paid Rs [Amount] to [Party]', type: 'Payment' as VoucherType },
 ];
 
 export default function AIEntryPage() {
@@ -43,7 +43,10 @@ export default function AIEntryPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [ledgerSuggestions, setLedgerSuggestions] = useState<string[]>([]);
+    const [stockSuggestions, setStockSuggestions] = useState<string[]>([]);
+    const [stockMetaByName, setStockMetaByName] = useState<Record<string, any>>({});
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
     const [recentEntries, setRecentEntries] = useState<any[]>([]);
     const [form, setForm] = useState<EntryForm>({
         voucherType: 'Sales',
@@ -58,29 +61,78 @@ export default function AIEntryPage() {
 
     useEffect(() => {
         if (selectedCompany?.id) {
-            loadLedgers();
+            loadMasterSuggestions();
             loadRecentEntries();
         }
     }, [selectedCompany]);
 
-    const loadLedgers = async () => {
-        const { data } = await supabase
-            .from('ledgers')
-            .select('name')
-            .eq('company_id', selectedCompany.id)
-            .in('parent', ['Sundry Debtors', 'Sundry Creditors', 'Cash-in-Hand', 'Bank Accounts'])
-            .order('name')
-            .limit(500);
-        setLedgerSuggestions((data || []).map(l => l.name));
+    const toUniqueNames = (values: any[]): string[] => {
+        const byLower = new Map<string, string>();
+        for (const raw of values || []) {
+            const name = String(raw || '').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (!byLower.has(key)) byLower.set(key, name);
+        }
+        return Array.from(byLower.values()).sort((a, b) => a.localeCompare(b));
+    };
+
+    const loadMasterSuggestions = async () => {
+        const companyId = selectedCompany?.id;
+        if (!companyId) return;
+
+        const [ledgerRes, voucherPartyRes, voucherLedgerRes, stockItemsRes, stockEntryRes] = await Promise.all([
+            supabase.from('ledgers').select('name').eq('company_id', companyId).order('name').limit(2000),
+            supabase.from('vouchers').select('party_name').eq('company_id', companyId).not('party_name', 'is', null).limit(2000),
+            supabase.from('voucher_ledger_entries').select('ledger_name').eq('company_id', companyId).not('ledger_name', 'is', null).limit(2000),
+            supabase.from('stock_items').select('name, hsn_code, gst_rate, unit, base_unit, rate').eq('company_id', companyId).order('name').limit(2000),
+            supabase.from('voucher_stock_entries').select('stock_item_name').eq('company_id', companyId).not('stock_item_name', 'is', null).limit(2000)
+        ]);
+
+        const ledgerNames = toUniqueNames([
+            ...(ledgerRes.data || []).map((row: any) => row?.name),
+            ...(voucherPartyRes.data || []).map((row: any) => row?.party_name),
+            ...(voucherLedgerRes.data || []).map((row: any) => row?.ledger_name)
+        ]);
+
+        const stockNames = toUniqueNames([
+            ...(stockItemsRes.data || []).map((row: any) => row?.name),
+            ...(stockEntryRes.data || []).map((row: any) => row?.stock_item_name)
+        ]);
+
+        const metaMap: Record<string, any> = {};
+        (stockItemsRes.data || []).forEach((row: any) => {
+            const key = String(row?.name || '').trim().toLowerCase();
+            if (!key) return;
+            metaMap[key] = {
+                hsn_code: row?.hsn_code || '',
+                gst_rate: Number(row?.gst_rate || 0),
+                unit: row?.unit || row?.base_unit || 'Nos',
+                rate: Number(row?.rate || 0)
+            };
+        });
+
+        setLedgerSuggestions(ledgerNames);
+        setStockSuggestions(stockNames);
+        setStockMetaByName(metaMap);
     };
 
     const loadRecentEntries = async () => {
-        const { data } = await supabase
+        const companyId = selectedCompany?.id;
+        if (!companyId) return;
+
+        const { data, error } = await supabase
             .from('pending_transactions')
             .select('*')
-            .eq('company_id', selectedCompany.id)
+            .eq('company_id', companyId)
             .order('created_at', { ascending: false })
             .limit(10);
+
+        if (error) {
+            setRecentEntries([]);
+            return;
+        }
+
         setRecentEntries(data || []);
     };
 
@@ -97,15 +149,15 @@ export default function AIEntryPage() {
         else if (/\b(journal|transfer|adjust)\b/i.test(cleanText)) type = 'Journal';
 
         // Extract amount
-        const amountMatch = cleanText.match(/(?:â‚¹|rs\.?|inr|rupees?)\s*([0-9,]+(?:\.\d{1,2})?)/i)
-            || cleanText.match(/([0-9,]+(?:\.\d{1,2})?)\s*(?:â‚¹|rs\.?|rupees?)/i)
+        const amountMatch = cleanText.match(/(?:rs\.?|inr|rupees?)\s*([0-9,]+(?:\.\d{1,2})?)/i)
+            || cleanText.match(/([0-9,]+(?:\.\d{1,2})?)\s*(?:rs\.?|rupees?)/i)
             || cleanText.match(/\b(\d{2,}(?:,\d{3})*(?:\.\d{1,2})?)\b/);
         const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : '';
 
         // Extract party name - remove common words
         let party = cleanText
-            .replace(/(?:â‚¹|rs\.?|inr|rupees?\s*)[0-9,]+(?:\.\d{1,2})?/gi, '')
-            .replace(/[0-9,]+(?:\.\d{1,2})?\s*(?:â‚¹|rs\.?|rupees?)/gi, '')
+            .replace(/(?:rs\.?|inr|rupees?\s*)[0-9,]+(?:\.\d{1,2})?/gi, '')
+            .replace(/[0-9,]+(?:\.\d{1,2})?\s*(?:rs\.?|rupees?)/gi, '')
             .replace(/\b(sold|sale|invoice|billed|bought|purchased|purchase|received|receipt|collected|paid|payment|given|from|to|for|of|the|a|an|with|on|in|at|by|jama|diya|kharch)\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
@@ -132,7 +184,7 @@ export default function AIEntryPage() {
             const parsed = parseAiInput(aiInput);
             setForm(parsed);
             setIsProcessing(false);
-            toast.success(`Detected: ${parsed.voucherType} of â‚¹${parsed.amount}`);
+            toast.success(`Detected: ${parsed.voucherType} of Rs ${parsed.amount}`);
         }, 500);
     };
 
@@ -196,12 +248,24 @@ export default function AIEntryPage() {
             };
 
             if (form.voucherType === 'Sales' || form.voucherType === 'Purchase') {
-                voucherData.items = form.items.filter(i => i.name).map(i => ({
-                    stock_item_name: i.name,
-                    quantity: parseFloat(i.qty) || 1,
-                    rate: parseFloat(i.rate) || 0,
-                    amount: parseFloat(i.amount) || 0,
-                }));
+                voucherData.items = form.items.filter(i => i.name).map(i => {
+                    const key = String(i.name || '').trim().toLowerCase();
+                    const meta = stockMetaByName[key] || {};
+                    const qty = parseFloat(i.qty) || 1;
+                    const rate = parseFloat(i.rate) || Number(meta.rate || 0);
+                    const amount = parseFloat(i.amount) || (qty * rate) || 0;
+                    const taxRate = Number(meta.gst_rate || 0);
+                    return {
+                        stock_item_name: i.name,
+                        quantity: qty,
+                        rate,
+                        amount,
+                        unit: meta.unit || 'Nos',
+                        hsn_code: meta.hsn_code || null,
+                        tax_rate: taxRate,
+                        gst_rate: taxRate,
+                    };
+                });
             }
 
             if (form.voucherType === 'Receipt' || form.voucherType === 'Payment') {
@@ -217,9 +281,17 @@ export default function AIEntryPage() {
                     voucher_data: voucherData,
                     status: 'pending',
                     created_by: user?.id,
+                    owner_id: user?.id,
                 }]);
 
-            if (error) throw error;
+            if (error) {
+                const isMissingPendingTable = Number((error as any)?.status) === 404
+                    || String((error as any)?.message || '').toLowerCase().includes('pending_transactions');
+                if (isMissingPendingTable) {
+                    throw new Error('pending_transactions table is missing in backend');
+                }
+                throw error;
+            }
 
             toast.success(`${form.voucherType} entry created! Will be synced to Tally.`);
             setForm({
@@ -233,18 +305,31 @@ export default function AIEntryPage() {
             setAiInput('');
             loadRecentEntries();
         } catch (error: any) {
-            console.error('Submit error:', error);
-            toast.error('Failed to create entry: ' + (error.message || 'Unknown error'));
+            const message = String(error?.message || 'Unknown error');
+            if (message.toLowerCase().includes('pending_transactions')) {
+                toast.error('Pending queue table missing hai. Backend migration run karo.');
+            } else {
+                toast.error('Failed to create entry: ' + message);
+            }
         }
         setIsProcessing(false);
     };
 
     const filteredSuggestions = useMemo(() => {
-        if (!form.partyName || form.partyName.length < 2) return [];
+        const needle = String(form.partyName || '').trim().toLowerCase();
+        if (!needle) return ledgerSuggestions.slice(0, 8);
         return ledgerSuggestions.filter(l =>
-            l.toLowerCase().includes(form.partyName.toLowerCase())
+            l.toLowerCase().includes(needle)
         ).slice(0, 8);
     }, [form.partyName, ledgerSuggestions]);
+
+    const getFilteredStockSuggestions = (value: string) => {
+        const needle = String(value || '').trim().toLowerCase();
+        if (!needle) return stockSuggestions.slice(0, 8);
+        return stockSuggestions
+            .filter(name => name.toLowerCase().includes(needle))
+            .slice(0, 8);
+    };
 
     const updateLineItem = (idx: number, field: string, value: string) => {
         const newItems = [...form.items];
@@ -271,7 +356,7 @@ export default function AIEntryPage() {
                     </div>
                     <div>
                         <h1 className="text-3xl font-black text-[var(--on-surface)] tracking-tighter">AI Auto Entry</h1>
-                        <p className="text-xs text-[var(--text-muted)]">Type or speak naturally ? Auto-creates Tally vouchers</p>
+                        <p className="text-xs text-[var(--text-muted)]">Type or speak naturally - Auto-creates Tally vouchers</p>
                     </div>
                 </div>
             </div>
@@ -287,7 +372,7 @@ export default function AIEntryPage() {
                         <input
                             ref={inputRef}
                             type="text"
-                            placeholder='Try: "Sold to Rathi Traders for â‚¹25,000" or "Received Rs 50000 from Agarwal Ji"'
+                            placeholder='Try: "Sold to Rathi Traders for Rs 25,000" or "Received Rs 50000 from Agarwal Ji"'
                             value={aiInput}
                             onChange={e => setAiInput(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleAiParse()}
@@ -394,7 +479,7 @@ export default function AIEntryPage() {
                         </div>
                     </div>
                     <div>
-                        <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 block">Amount (â‚¹)</label>
+                        <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1.5 block">Amount (Rs)</label>
                         <div className="relative">
                             <IndianRupee size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                             <input
@@ -437,12 +522,40 @@ export default function AIEntryPage() {
                         <div className="space-y-2">
                             {form.items.map((item, idx) => (
                                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                                    <input
-                                        className="col-span-5 bg-[var(--surface-variant)] border border-[var(--border)] rounded-lg py-2 px-3 text-xs text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
-                                        placeholder="Item name"
-                                        value={item.name}
-                                        onChange={e => updateLineItem(idx, 'name', e.target.value)}
-                                    />
+                                    <div className="col-span-5 relative">
+                                        <input
+                                            className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-lg py-2 px-3 text-xs text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                            placeholder="Item name"
+                                            value={item.name}
+                                            onFocus={() => setFocusedItemIndex(idx)}
+                                            onBlur={() => setTimeout(() => setFocusedItemIndex(current => current === idx ? null : current), 120)}
+                                            onChange={e => updateLineItem(idx, 'name', e.target.value)}
+                                        />
+                                        <AnimatePresence>
+                                            {focusedItemIndex === idx && getFilteredStockSuggestions(item.name).length > 0 && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: -5 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, y: -5 }}
+                                                    className="absolute top-full left-0 right-0 mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-xl z-40 max-h-40 overflow-y-auto"
+                                                >
+                                                    {getFilteredStockSuggestions(item.name).map((name, sIdx) => (
+                                                        <button
+                                                            key={sIdx}
+                                                            type="button"
+                                                            onMouseDown={() => {
+                                                                updateLineItem(idx, 'name', name);
+                                                                setFocusedItemIndex(null);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs text-[var(--on-surface)] hover:bg-[var(--surface-variant)] border-b border-[var(--border)]/20 last:border-0"
+                                                        >
+                                                            {name}
+                                                        </button>
+                                                    ))}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
                                     <input
                                         className="col-span-2 bg-[var(--surface-variant)] border border-[var(--border)] rounded-lg py-2 px-3 text-xs text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)] text-center"
                                         placeholder="Qty"
@@ -458,7 +571,7 @@ export default function AIEntryPage() {
                                         onChange={e => updateLineItem(idx, 'rate', e.target.value)}
                                     />
                                     <span className="col-span-2 text-xs font-bold text-[var(--on-surface)] text-right font-mono">
-                                        â‚¹{parseFloat(item.amount || '0').toLocaleString('en-IN')}
+                                        Rs {parseFloat(item.amount || '0').toLocaleString('en-IN')}
                                     </span>
                                     <button
                                         onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))}
@@ -487,9 +600,9 @@ export default function AIEntryPage() {
                     >
                         <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">Preview</p>
                         <p className="text-sm text-[var(--on-surface)]">
-                            <span className="font-bold text-[var(--primary)]">{form.voucherType}</span> â€¢{' '}
-                            <span className="font-semibold">{form.partyName}</span> â€¢{' '}
-                            <span className="font-black text-emerald-500">â‚¹{parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> ?{' '}
+                            <span className="font-bold text-[var(--primary)]">{form.voucherType}</span> | {' '}
+                            <span className="font-semibold">{form.partyName}</span> | {' '}
+                            <span className="font-black text-emerald-500">Rs {parseFloat(form.amount || '0').toLocaleString('en-IN')}</span> {' '}
                             <span className="text-[var(--text-muted)]">{form.date}</span>
                         </p>
                     </motion.div>
@@ -530,7 +643,7 @@ export default function AIEntryPage() {
                                             }`} />
                                         <div>
                                             <p className="text-xs font-bold text-[var(--on-surface)]">
-                                                {entry.transaction_type} ? {data.party_name || 'N/A'}
+                                                {entry.transaction_type} | {data.party_name || 'N/A'}
                                             </p>
                                             <p className="text-[10px] text-[var(--text-muted)]">
                                                 {entry.created_at ? format(new Date(entry.created_at), 'dd MMM yy, hh:mm a') : ''}
@@ -539,7 +652,7 @@ export default function AIEntryPage() {
                                     </div>
                                     <div className="text-right">
                                         <p className="text-sm font-black text-[var(--on-surface)]">
-                                            â‚¹{(data.grand_total || data.total_amount || 0).toLocaleString('en-IN')}
+                                            Rs {(data.grand_total || data.total_amount || 0).toLocaleString('en-IN')}
                                         </p>
                                         <span className={`text-[8px] font-bold uppercase tracking-widest ${entry.status === 'synced' ? 'text-emerald-500' : entry.status === 'failed' ? 'text-red-500' : 'text-yellow-500'
                                             }`}>

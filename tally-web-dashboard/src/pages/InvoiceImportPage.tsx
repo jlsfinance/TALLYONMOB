@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
 import type { InvoiceDraft } from '@/features/automation/types';
@@ -10,6 +11,7 @@ import { extractInvoiceFromPdfLocal } from '@/features/automation/invoiceLocalEx
 import { getAutomationMode, isCloudAllowed, setAutomationMode as persistAutomationMode, type AutomationMode } from '@/features/automation/mode';
 import { getLocalInvoices, mergeInvoices, saveLocalInvoice, type LocalInvoiceRecord } from '@/features/automation/localStore';
 import { getUserGeminiApiKey } from '@/lib/userGeminiKey';
+import { callGemini } from '@/lib/GeminiService';
 
 const EMPTY_INVOICE: InvoiceDraft = {
     gstin: '',
@@ -23,7 +25,6 @@ const EMPTY_INVOICE: InvoiceDraft = {
     invoiceType: 'B2C'
 };
 
-import { callGemini } from '@/lib/GeminiService';
 
 function toBase64(buffer: ArrayBuffer) {
     let binary = '';
@@ -73,6 +74,110 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
     };
 }
 
+function normalizeDateInput(value: string): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return raw;
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+        return '';
+    }
+
+    return parsed.toISOString().slice(0, 10);
+}
+
+async function fetchImportedInvoicesFromCloud(clientId: string, userId: string): Promise<LocalInvoiceRecord[]> {
+    const { data, error } = await supabase
+        .from('imported_invoices')
+        .select('id, gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, hsn_code, created_at, invoice_type')
+        .eq('company_id', clientId)
+        .eq('created_by', userId)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+
+    if (error) throw error;
+
+    return (data || []).map((item: any) => normalizeInvoiceRecord({
+        $id: item?.id,
+        gstin: item?.gstin,
+        invoiceNumber: item?.invoice_number,
+        date: item?.invoice_date,
+        taxableValue: item?.taxable_value,
+        cgst: item?.cgst,
+        sgst: item?.sgst,
+        igst: item?.igst,
+        hsn: item?.hsn_code,
+        invoiceType: item?.invoice_type,
+        createdAt: item?.created_at
+    }, userId, clientId));
+}
+
+async function upsertImportedInvoiceToCloud(clientId: string, userId: string, record: LocalInvoiceRecord) {
+    const invoiceDate = normalizeDateInput(record.date) || new Date().toISOString().slice(0, 10);
+
+    const { data: existing, error: existingError } = await supabase
+        .from('imported_invoices')
+        .select('id')
+        .eq('company_id', clientId)
+        .eq('created_by', userId)
+        .eq('invoice_number', record.invoiceNumber)
+        .eq('invoice_date', invoiceDate)
+        .limit(1);
+
+    if (existingError) throw existingError;
+
+    const payload = {
+        company_id: clientId,
+        owner_id: userId,
+        created_by: userId,
+        source: 'invoice_import',
+        gstin: record.gstin || '',
+        invoice_number: record.invoiceNumber,
+        invoice_date: invoiceDate,
+        hsn_code: record.hsn || '',
+        taxable_value: Number(record.taxableValue || 0),
+        cgst: Number(record.cgst || 0),
+        sgst: Number(record.sgst || 0),
+        igst: Number(record.igst || 0),
+        total_tax: Number(record.cgst || 0) + Number(record.sgst || 0) + Number(record.igst || 0),
+        total_amount: Number(record.taxableValue || 0) + Number(record.cgst || 0) + Number(record.sgst || 0) + Number(record.igst || 0),
+        invoice_type: record.invoiceType || (record.gstin ? 'B2B' : 'B2C'),
+        status: 'draft',
+        raw_payload: {
+            gstin: record.gstin,
+            invoiceNumber: record.invoiceNumber,
+            date: record.date,
+            taxableValue: record.taxableValue,
+            cgst: record.cgst,
+            sgst: record.sgst,
+            igst: record.igst,
+            hsn: record.hsn,
+            invoiceType: record.invoiceType
+        },
+        updated_at: new Date().toISOString()
+    };
+
+    const existingId = (existing || [])[0]?.id;
+    if (existingId) {
+        const { error: updateError } = await supabase
+            .from('imported_invoices')
+            .update(payload)
+            .eq('id', existingId);
+
+        if (updateError) throw updateError;
+        return;
+    }
+
+    const { error: insertError } = await supabase
+        .from('imported_invoices')
+        .insert([{ ...payload, created_at: new Date().toISOString() }]);
+
+    if (insertError) throw insertError;
+}
 async function extractInvoiceUsingCloud(file: File, geminiApiKey?: string): Promise<{ extracted: InvoiceDraft; rawTextPreview: string }> {
     const fileBuffer = await file.arrayBuffer();
     const base64File = toBase64(fileBuffer);
@@ -151,10 +256,32 @@ export default function InvoiceImportPage() {
         persistAutomationMode(nextMode);
     };
 
-    const loadSavedInvoices = async (_activeMode: AutomationMode) => {
+    const loadSavedInvoices = async (activeMode: AutomationMode) => {
         if (!user?.id || !clientId) return;
+
         const localItems = getLocalInvoices(user.id, clientId);
         setSavedInvoices(localItems);
+
+        if (!isCloudAllowed(activeMode)) {
+            return;
+        }
+
+        try {
+            const cloudItems = await fetchImportedInvoicesFromCloud(clientId, user.id);
+            cloudItems.forEach((item) => saveLocalInvoice(item));
+            setSavedInvoices(mergeInvoices(localItems, cloudItems));
+        } catch (error: any) {
+            const message = String(error?.message || '').toLowerCase();
+            if (localItems.length === 0) {
+                if (message.includes('imported_invoices') || message.includes('404')) {
+                    toast.error('imported_invoices table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                } else if (message.includes('401') || message.includes('permission') || message.includes('policy')) {
+                    toast.error('No permission to load cloud invoices. Re-login and run RLS SQL patch.');
+                } else {
+                    toast.error(error?.message || 'Failed to load invoices from cloud');
+                }
+            }
+        }
     };
 
 
@@ -265,7 +392,25 @@ export default function InvoiceImportPage() {
             );
 
             saveLocalInvoice(localRecord);
-            toast.success('Invoice saved locally');
+
+            let cloudSaved = false;
+            if (cloudAllowed) {
+                try {
+                    await upsertImportedInvoiceToCloud(clientId, user.id, localRecord);
+                    cloudSaved = true;
+                } catch (cloudError: any) {
+                    const message = String(cloudError?.message || '').toLowerCase();
+                    if (message.includes('imported_invoices') || message.includes('404')) {
+                        toast.error('imported_invoices table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                    } else if (message.includes('401') || message.includes('permission') || message.includes('policy')) {
+                        toast.error('No permission to save cloud invoice. Re-login and run RLS SQL patch.');
+                    } else {
+                        toast.error(cloudError?.message || 'Cloud save failed. Invoice kept locally.');
+                    }
+                }
+            }
+
+            toast.success(cloudSaved ? 'Invoice saved locally + cloud' : 'Invoice saved locally');
 
             setDraft(EMPTY_INVOICE);
             setRawTextPreview('');
@@ -480,6 +625,10 @@ export default function InvoiceImportPage() {
         </div>
     );
 }
+
+
+
+
 
 
 

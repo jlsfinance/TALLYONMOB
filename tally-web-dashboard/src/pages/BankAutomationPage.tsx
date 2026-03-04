@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -91,7 +91,7 @@ async function extractRowsFromDocumentWithGemini(file: File): Promise<BankTransa
     return parsedRows;
 }
 
-// Ledger mappings are loaded/saved from local storage only (no backend needed)
+// Ledger mappings are saved locally first and synced to cloud when available
 
 async function fetchCloudLedgers(clientId: string): Promise<string[]> {
     const { data, error } = await supabase
@@ -106,6 +106,89 @@ async function fetchCloudLedgers(clientId: string): Promise<string[]> {
     return (data || [])
         .map((item: any) => String(item.name || '').trim())
         .filter(Boolean);
+}
+
+async function fetchCloudLedgerMappings(clientId: string, userId: string): Promise<LedgerMappingRecord[]> {
+    const { data, error } = await supabase
+        .from('bank_ledger_mappings')
+        .select('normalized_keyword, ledger_name, created_at')
+        .eq('company_id', clientId)
+        .eq('created_by', userId)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+
+    if (error) throw error;
+
+    return (data || [])
+        .map((item: any) => {
+            const normalizedKeyword = String(item?.normalized_keyword || '').trim();
+            const ledgerName = String(item?.ledger_name || '').trim();
+            if (!normalizedKeyword || !ledgerName) return null;
+
+            return {
+                userId,
+                clientId,
+                normalizedKeyword,
+                ledgerName,
+                createdAt: String(item?.created_at || new Date().toISOString())
+            } as LedgerMappingRecord;
+        })
+        .filter(Boolean) as LedgerMappingRecord[];
+}
+
+async function persistCloudLedgerMapping(record: LedgerMappingRecord): Promise<void> {
+    const normalizedKeyword = String(record.normalizedKeyword || '').trim();
+    const ledgerName = String(record.ledgerName || '').trim();
+    if (!normalizedKeyword || !ledgerName) return;
+
+    const { data: existingRows, error: fetchError } = await supabase
+        .from('bank_ledger_mappings')
+        .select('id, ledger_name')
+        .eq('company_id', record.clientId)
+        .eq('created_by', record.userId)
+        .eq('normalized_keyword', normalizedKeyword)
+        .limit(1);
+
+    if (fetchError) throw fetchError;
+
+    const existing = (existingRows || [])[0] as any;
+    const now = new Date().toISOString();
+
+    if (existing?.id) {
+        if (String(existing.ledger_name || '').trim() === ledgerName) {
+            return;
+        }
+
+        const { error: updateError } = await supabase
+            .from('bank_ledger_mappings')
+            .update({
+                ledger_name: ledgerName,
+                source: 'manual',
+                confidence: 100,
+                owner_id: record.userId,
+                updated_at: now
+            })
+            .eq('id', existing.id);
+
+        if (updateError) throw updateError;
+        return;
+    }
+
+    const { error: insertError } = await supabase
+        .from('bank_ledger_mappings')
+        .insert([{
+            company_id: record.clientId,
+            owner_id: record.userId,
+            created_by: record.userId,
+            normalized_keyword: normalizedKeyword,
+            ledger_name: ledgerName,
+            source: 'manual',
+            confidence: 100,
+            created_at: now,
+            updated_at: now
+        }]);
+
+    if (insertError) throw insertError;
 }
 
 function confidenceBadgeClass(score: number) {
@@ -151,6 +234,7 @@ export default function BankAutomationPage() {
     const [rows, setRows] = useState<BankPreviewRow[]>([]);
     const [loadingMasters, setLoadingMasters] = useState(false);
     const [matching, setMatching] = useState(false);
+    const [queueing, setQueueing] = useState(false);
 
     const isClientLimitExceeded = (companies?.length || 0) > FREE_PLAN_LIMITS.maxClients;
     const cloudAllowed = isCloudAllowed(mode);
@@ -180,13 +264,29 @@ export default function BankAutomationPage() {
         setLedgers(localLedgers);
         setMappings(localMappings);
 
-        // Try to fetch ledgers from Supabase (this works without backend)
+        if (!isCloudAllowed(activeMode)) {
+            setLoadingMasters(false);
+            return;
+        }
+
         try {
-            const cloudLedgers = await fetchCloudLedgers(clientId);
+            const [cloudLedgers, cloudMappings] = await Promise.all([
+                fetchCloudLedgers(clientId),
+                fetchCloudLedgerMappings(clientId, user.id)
+            ]);
+
             const mergedLedgers = Array.from(new Set([...localLedgers, ...cloudLedgers]));
+            const mergedMappings = mergeLedgerMappings(cloudMappings, localMappings);
+
             setLedgers(mergedLedgers);
-            if (cloudLedgers.length > 0) {
+            setMappings(mergedMappings);
+
+            if (mergedLedgers.length > 0) {
                 saveLocalLedgers(user.id, clientId, mergedLedgers);
+            }
+
+            if (cloudMappings.length > 0) {
+                cloudMappings.forEach((mapping) => saveLocalLedgerMapping(mapping));
             }
         } catch (error: any) {
             if (localLedgers.length === 0) {
@@ -311,6 +411,18 @@ export default function BankAutomationPage() {
 
         saveLocalLedgerMapping(localMapping);
         setMappings((prev) => mergeLedgerMappings([localMapping], prev));
+
+        if (cloudAllowed) {
+            try {
+                await persistCloudLedgerMapping(localMapping);
+            } catch (error: any) {
+                const message = String(error?.message || '').toLowerCase();
+                if (message.includes('bank_ledger_mappings') || message.includes('404') || message.includes('401')) {
+                    toast('Cloud mapping table missing/unauthorized. Local memory is still saved.');
+                }
+            }
+        }
+
         const impactedRows = updatedRows.filter((row) => row.suggestion.ledgerName === ledgerName).length;
         toast.success(`Ledger mapping saved (applied to ${impactedRows} rows)`);
     };
@@ -363,6 +475,83 @@ export default function BankAutomationPage() {
         }
     };
 
+    const queueMappedRowsToTally = async () => {
+        if (!clientId || !user?.id) {
+            toast.error('Missing client/user context');
+            return;
+        }
+
+        const usableRows = rows.filter((row) => row.suggestion.ledgerName && (row.debit > 0 || row.credit > 0));
+        if (usableRows.length === 0) {
+            toast.error('No mapped rows available to queue');
+            return;
+        }
+
+        setQueueing(true);
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            const pendingRows = usableRows.map((row) => {
+                const isPayment = row.debit > 0;
+                const amount = Number(isPayment ? row.debit : row.credit) || 0;
+                const voucherType = isPayment ? 'Payment' : 'Receipt';
+                const voucherDate = row.date || today;
+
+                return {
+                    company_id: clientId,
+                    owner_id: user.id,
+                    created_by: user.id,
+                    status: 'pending',
+                    transaction_type: voucherType,
+                    voucher_data: {
+                        source: 'bank_automation',
+                        voucher_type: voucherType,
+                        voucher_type_name: voucherType,
+                        voucher_date: voucherDate,
+                        date: voucherDate,
+                        party_ledger_name: row.suggestion.ledgerName,
+                        party_name: row.suggestion.ledgerName,
+                        amount,
+                        total_amount: amount,
+                        narration: row.narration,
+                        bank_transaction: {
+                            narration: row.narration,
+                            debit: row.debit || 0,
+                            credit: row.credit || 0
+                        },
+                        ledger_entries: [
+                            {
+                                ledger_name: row.suggestion.ledgerName,
+                                amount,
+                                is_debit: isPayment
+                            }
+                        ]
+                    }
+                };
+            });
+
+            const { error } = await (supabase as any)
+                .from('pending_transactions')
+                .insert(pendingRows);
+
+            if (error) {
+                const message = String(error?.message || '').toLowerCase();
+                if (message.includes('pending_transactions') || message.includes('404')) {
+                    throw new Error('pending_transactions table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                }
+                if (message.includes('401') || message.includes('permission') || message.includes('policy')) {
+                    throw new Error('No permission to queue bank entries. Re-login and re-run optional SQL with RLS policies.');
+                }
+                throw error;
+            }
+
+            toast.success(`${pendingRows.length} bank entries queued for Tally push`);
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to queue bank entries');
+        } finally {
+            setQueueing(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <HeaderPortal type="title">
@@ -405,6 +594,14 @@ export default function BankAutomationPage() {
                     className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--on-surface)] disabled:opacity-50"
                 >
                     Generate Tally XML
+                </button>
+
+                <button
+                    onClick={queueMappedRowsToTally}
+                    disabled={queueing || rows.length === 0 || isClientLimitExceeded}
+                    className="px-4 py-2 rounded-lg bg-[var(--primary)] text-white text-sm font-medium disabled:opacity-50"
+                >
+                    {queueing ? 'Queueing...' : 'Queue to Tally Sync'}
                 </button>
 
                 <div className="text-xs text-[var(--text-muted)]">
@@ -482,6 +679,13 @@ export default function BankAutomationPage() {
         </div>
     );
 }
+
+
+
+
+
+
+
 
 
 

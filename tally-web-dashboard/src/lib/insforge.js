@@ -1,4 +1,4 @@
-﻿import { createClient } from "@insforge/sdk";
+import { createClient } from "@insforge/sdk";
 const API_KEY = import.meta.env.VITE_INSFORGE_KEY || "ik_9bef5476d1f848d9f06212a645525293";
 const API_URL = import.meta.env.VITE_INSFORGE_URL || "https://3uq8fv8r.ap-southeast.insforge.app";
 const client = createClient({ baseUrl: API_URL, anonKey: API_KEY });
@@ -11,6 +11,7 @@ const normalizeError = (error, fallbackMessage) => {
     return new Error(error);
   return new Error(fallbackMessage);
 };
+const isJwtToken = (token) => typeof token === "string" && token.split(".").length === 3;
 const authCompat = client.auth;
 const nativeGetCurrentSession = typeof authCompat.getCurrentSession === "function" ? authCompat.getCurrentSession.bind(authCompat) : null;
 const nativeGetCurrentUser = typeof authCompat.getCurrentUser === "function" ? authCompat.getCurrentUser.bind(authCompat) : null;
@@ -18,14 +19,14 @@ const getSessionLikeFromPayload = (payload) => {
   const session = payload?.session || payload || {};
   const user = session?.user || payload?.user || null;
   const accessToken = session?.accessToken || session?.access_token || payload?.accessToken || payload?.access_token || payload?.token || null;
-  if (!user || !accessToken)
+  if (!user || !isJwtToken(accessToken))
     return null;
   return { user, accessToken };
 };
 const persistSessionFromPayload = (payload) => {
   try {
     const session = getSessionLikeFromPayload(payload);
-    if (!session)
+    if (!session || !isJwtToken(session.accessToken))
       return false;
     client.tokenManager?.setStorageMode?.();
     client.tokenManager?.saveSession?.(session);
@@ -48,8 +49,10 @@ const clearClientSession = () => {
 try {
   client.tokenManager?.setStorageMode?.();
   const existingToken = client.tokenManager?.getAccessToken?.();
-  if (existingToken) {
+  if (isJwtToken(existingToken)) {
     client.getHttpClient?.()?.setAuthToken?.(existingToken);
+  } else {
+    client.getHttpClient?.()?.setAuthToken?.(null);
   }
 } catch (_) {
 }
@@ -97,8 +100,8 @@ if (typeof authCompat.signInWithGoogle !== "function") {
 }
 if (typeof authCompat.setSession !== "function") {
   authCompat.setSession = async ({ access_token: accessToken, refresh_token: refreshToken }) => {
-    if (!accessToken) {
-      return { data: { session: null }, error: new Error("access_token is required") };
+    if (!isJwtToken(accessToken)) {
+      return { data: { session: null }, error: new Error("valid JWT access_token is required") };
     }
     try {
       const tokenManager = client.tokenManager;
@@ -126,7 +129,7 @@ if (typeof authCompat.setSession !== "function") {
 authCompat.getCurrentUser = async () => {
   try {
     const session = client.tokenManager?.getSession?.() || null;
-    if (session?.accessToken && session?.user) {
+    if (isJwtToken(session?.accessToken) && session?.user) {
       client.getHttpClient?.()?.setAuthToken?.(session.accessToken);
       return { data: { user: session.user }, error: null };
     }
@@ -144,7 +147,7 @@ authCompat.getCurrentUser = async () => {
 authCompat.getCurrentSession = async () => {
   try {
     const session = client.tokenManager?.getSession?.() || null;
-    if (session?.accessToken && session?.user) {
+    if (isJwtToken(session?.accessToken) && session?.user) {
       client.getHttpClient?.()?.setAuthToken?.(session.accessToken);
       return { data: { session }, error: null };
     }
@@ -153,7 +156,8 @@ authCompat.getCurrentSession = async () => {
       return { data: { session: null }, error };
     const user = data?.user || null;
     const accessToken = client.tokenManager?.getAccessToken?.() || null;
-    return { data: { session: user && accessToken ? { user, accessToken } : null }, error: null };
+    const safeAccessToken = isJwtToken(accessToken) ? accessToken : null;
+    return { data: { session: user && safeAccessToken ? { user, accessToken: safeAccessToken } : null }, error: null };
   } catch (error) {
     return { data: { session: null }, error: normalizeError(error, "Failed to get session") };
   }

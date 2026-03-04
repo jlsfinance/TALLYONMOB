@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
 import { FREE_PLAN_LIMITS } from '@/features/automation/constants';
@@ -29,18 +30,67 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
         sgst: toNumber(raw?.sgst, 0),
         igst: toNumber(raw?.igst, 0),
         hsn: String(raw?.hsn || raw?.hsnCode || raw?.hsn_code || '').trim(),
-        invoiceType: gstin ? 'B2B' : 'B2C',
+        invoiceType: String(raw?.invoiceType || raw?.invoice_type || (gstin ? 'B2B' : 'B2C')).toUpperCase(),
         createdAt: String(raw?.createdAt || raw?.$createdAt || new Date().toISOString())
     };
 }
 
-async function fetchInvoices(userId: string, clientId: string) {
-    const response = await fetch(`/api/invoices?userId=${encodeURIComponent(userId)}&clientId=${encodeURIComponent(clientId)}`);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        throw new Error(payload?.error || 'Failed to fetch invoices');
-    }
-    return payload.invoices || [];
+async function fetchImportedInvoicesFromCloud(userId: string, clientId: string) {
+    const { data, error } = await supabase
+        .from('imported_invoices')
+        .select('id, gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, hsn_code, invoice_type, created_at')
+        .eq('company_id', clientId)
+        .eq('created_by', userId)
+        .order('created_at', { ascending: false })
+        .limit(10000);
+
+    if (error) throw error;
+
+    return (data || []).map((item: any) => ({
+        $id: item?.id,
+        gstin: item?.gstin,
+        invoiceNumber: item?.invoice_number,
+        date: item?.invoice_date,
+        taxableValue: item?.taxable_value,
+        cgst: item?.cgst,
+        sgst: item?.sgst,
+        igst: item?.igst,
+        hsn: item?.hsn_code,
+        invoiceType: item?.invoice_type,
+        createdAt: item?.created_at
+    }));
+}
+
+async function saveGstAutomationRunToCloud({
+    userId,
+    clientId,
+    sourceMode,
+    invoices,
+    result
+}: {
+    userId: string;
+    clientId: string;
+    sourceMode: 'local' | 'cloud';
+    invoices: LocalInvoiceRecord[];
+    result: any;
+}) {
+    const validation = result?.validation || {};
+
+    const { error } = await supabase
+        .from('gst_automation_runs')
+        .insert([{
+            company_id: clientId,
+            owner_id: userId,
+            created_by: userId,
+            source_mode: sourceMode,
+            invoice_count: invoices.length,
+            result_json: result,
+            validation_errors: validation?.errors || [],
+            validation_warnings: validation?.warnings || [],
+            created_at: new Date().toISOString()
+        }]);
+
+    if (error) throw error;
 }
 
 export default function GstAutomationPage() {
@@ -84,13 +134,20 @@ export default function GstAutomationPage() {
                 return;
             }
 
-            const cloudItems = await fetchInvoices(user.id, clientId);
+            const cloudItems = await fetchImportedInvoicesFromCloud(user.id, clientId);
             const normalizedCloud = cloudItems.map((item: any) => normalizeInvoiceRecord(item, user.id, clientId));
             normalizedCloud.forEach((item: LocalInvoiceRecord) => saveLocalInvoice(item));
             setInvoices(mergeInvoices(localItems, normalizedCloud));
         } catch (error: any) {
+            const message = String(error?.message || '').toLowerCase();
             if (localItems.length === 0) {
-                toast.error(error?.message || 'Failed to load invoices');
+                if (message.includes('imported_invoices') || message.includes('404')) {
+                    toast.error('imported_invoices table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                } else if (message.includes('401') || message.includes('permission') || message.includes('policy')) {
+                    toast.error('No permission to load cloud invoices. Re-login and run RLS SQL patch.');
+                } else {
+                    toast.error(error?.message || 'Failed to load invoices');
+                }
             } else {
                 toast('Cloud sync unavailable. Using local invoices.');
             }
@@ -113,38 +170,33 @@ export default function GstAutomationPage() {
 
         setGenerating(true);
         try {
-            let payload: any = null;
-            let source: 'local' | 'cloud' = 'local';
-
-            try {
-                payload = generateGstr1JsonLocal(clientId, invoices);
-            } catch (localError) {
-                if (!cloudAllowed) {
-                    throw localError;
-                }
-
-                const response = await fetch('/api/generate-gst-json', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        clientId,
-                        invoices
-                    })
-                });
-
-                const cloudPayload = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    throw new Error(cloudPayload?.error || 'Failed to generate GST JSON');
-                }
-
-                payload = cloudPayload;
-                source = 'cloud';
-            }
+            const payload = generateGstr1JsonLocal(clientId, invoices);
+            const source: 'local' | 'cloud' = 'local';
 
             setResult(payload);
             setResultSource(source);
+
+            if (cloudAllowed && user?.id) {
+                try {
+                    const sourceMode: 'local' | 'cloud' = mode === 'local' ? 'local' : 'cloud';
+                    await saveGstAutomationRunToCloud({
+                        userId: user.id,
+                        clientId,
+                        sourceMode,
+                        invoices,
+                        result: payload
+                    });
+                } catch (saveError: any) {
+                    const message = String(saveError?.message || '').toLowerCase();
+                    if (message.includes('gst_automation_runs') || message.includes('404')) {
+                        toast.error('gst_automation_runs table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                    } else if (message.includes('401') || message.includes('permission') || message.includes('policy')) {
+                        toast.error('No permission to save GST run in cloud. Re-login and run RLS SQL patch.');
+                    } else {
+                        toast.error(saveError?.message || 'Generated JSON, but failed to save GST run in cloud');
+                    }
+                }
+            }
 
             if (payload.validation?.isValid) {
                 toast.success(`GSTR-1 JSON generated from ${source} mode`);
@@ -281,7 +333,7 @@ export default function GstAutomationPage() {
                         {result.validation.errors?.length > 0 ? (
                             <ul className="text-xs text-red-600 space-y-1">
                                 {result.validation.errors.map((err: string, idx: number) => (
-                                    <li key={idx}>? {err}</li>
+                                    <li key={idx}>- {err}</li>
                                 ))}
                             </ul>
                         ) : (
@@ -294,7 +346,7 @@ export default function GstAutomationPage() {
                         {result.validation.warnings?.length > 0 ? (
                             <ul className="text-xs text-amber-600 space-y-1">
                                 {result.validation.warnings.map((warn: string, idx: number) => (
-                                    <li key={idx}>? {warn}</li>
+                                    <li key={idx}>- {warn}</li>
                                 ))}
                             </ul>
                         ) : (
@@ -315,3 +367,6 @@ export default function GstAutomationPage() {
         </div>
     );
 }
+
+
+

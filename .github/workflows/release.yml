@@ -14,10 +14,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
         
@@ -98,7 +98,7 @@ jobs:
       shell: pwsh
 
     - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
         generate_release_notes: true
@@ -109,27 +109,45 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Update Download URL in Supabase
+    - name: Update Download URL in InsForge
       if: startsWith(github.ref, 'refs/tags/')
       continue-on-error: true
       run: |
         $DL_URL = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/TallyLinkSetup.exe"
         $BODY = @{ value = $DL_URL } | ConvertTo-Json
-        
+
+        $BASE_URL_RAW = if ($env:INSFORGE_URL) { $env:INSFORGE_URL } else { $env:SUPABASE_URL }
+        $BASE_URL = if ($BASE_URL_RAW) { $BASE_URL_RAW.TrimEnd('/') } else { "" }
+        $API_KEY = if ($env:INSFORGE_ANON_KEY) { $env:INSFORGE_ANON_KEY } else { $env:SUPABASE_ANON_KEY }
+        $AUTH_TOKEN = if ($env:INSFORGE_SERVICE_ROLE_KEY) { $env:INSFORGE_SERVICE_ROLE_KEY } else { $env:SUPABASE_SERVICE_ROLE_KEY }
+
+        if (-not $BASE_URL) { throw "Missing INSFORGE_URL (or SUPABASE_URL) secret" }
+        if (-not $API_KEY) { throw "Missing INSFORGE_ANON_KEY (or SUPABASE_ANON_KEY) secret" }
+
+
+        $URI = "$BASE_URL/api/database/records/app_settings?key=eq.windows_app_download_url"
+
+        $HEADERS = @{
+          "apikey" = $API_KEY;
+          "Content-Type" = "application/json";
+          "Prefer" = "return=minimal"
+        }
+
+        if ($AUTH_TOKEN) {
+          $HEADERS["Authorization"] = "Bearer $AUTH_TOKEN"
+        }
+
         Invoke-RestMethod -Method Patch `
-          -Uri "${{ secrets.SUPABASE_URL }}/rest/v1/app_settings?key=eq.windows_app_download_url" `
-          -Headers @{ 
-            "apikey" = "${{ secrets.SUPABASE_ANON_KEY }}";
-            "Authorization" = "Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}";
-            "Content-Type" = "application/json";
-            "Prefer" = "return=minimal"
-          } `
+          -Uri $URI `
+          -Headers $HEADERS `
           -Body $BODY
-        
-        Write-Host "Download URL updated to: $DL_URL"
+
+        Write-Host "Download URL updated in InsForge: $DL_URL"
       shell: pwsh
       env:
+        INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
+        INSFORGE_ANON_KEY: ${{ secrets.INSFORGE_ANON_KEY }}
+        INSFORGE_SERVICE_ROLE_KEY: ${{ secrets.INSFORGE_SERVICE_ROLE_KEY }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
