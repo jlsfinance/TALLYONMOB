@@ -1,0 +1,11 @@
+{
+  "name": "bizsync-agent",
+  "private": true,
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter @bizsync/api --filter @bizsync/web dev",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  }
+}
