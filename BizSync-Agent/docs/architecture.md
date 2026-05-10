@@ -11,3 +11,5 @@
 - `POST /rag/query`
 - `POST /analytics/summary`
 - `POST /webhooks/{telegram|whatsapp|imessage}`
+
+- `POST /rag/compare-item-rate` (payload: itemName + fileNames[]) for cross-file rate comparison like Bairathi vs Topseries.
