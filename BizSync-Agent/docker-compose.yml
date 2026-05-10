@@ -1,0 +1,8 @@
+services:
+  api:
+    build: ./apps/api
+    env_file: .env.example
+    ports: ["3001:3001"]
+  web:
+    build: ./apps/web
+    ports: ["3000:3000"]
