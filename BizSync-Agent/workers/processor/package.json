@@ -1,0 +1,10 @@
+{
+  "name": "@bizsync/worker",
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "echo build-ok",
+    "lint": "echo lint-ok",
+    "test": "echo test-ok"
+  },
+  "dependencies": {"bullmq":"^5.17.0"}
+}
