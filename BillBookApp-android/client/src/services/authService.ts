@@ -1,3 +1,16 @@
+/**
+ * @deprecated LEGACY — This file is no longer used.
+ * Supabase Auth (via AuthContext.tsx) has fully replaced Firebase Auth.
+ * 
+ * AuthContext.tsx now uses:
+ *   - supabase.auth.signInWithPassword()
+ *   - supabase.auth.signUp()
+ *   - supabase.auth.signOut()
+ *   - supabase.auth.onAuthStateChange()
+ * 
+ * No component or service imports this file anymore.
+ * Kept for reference only.
+ */
 
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { FirebaseService } from './firebaseService';

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Menu, Sparkles, Calendar, X, Users, Clock, Phone, Edit2, Trash2, ArrowUpRight, Package, Wallet, ArrowDown, ChevronRight, Building2, Check, Plus, FileText, BookOpen, ClipboardList, // Existing
-    ArrowDownLeft, Undo2, Truck, Calculator, ShoppingCart // New for Transaction Menu
+    ArrowDownLeft, Undo2, Truck, Calculator, ShoppingCart, // New for Transaction Menu
+    RefreshCw, AlertTriangle, CheckCircle2, Loader2, TrendingUp, TrendingDown // Dashboard Enhancements
 } from 'lucide-react';
 import { StorageService } from '../services/storageService';
 import { DashboardService } from '../services/dashboardService';
@@ -14,6 +15,7 @@ import { useCompany } from '../contexts/CompanyContext';
 import { DailyBriefing } from './DailyBriefing';
 import { BackupSettings } from './BackupSettings';
 import SponsoredSlide from './SponsoredSlide';
+import { Card, CardContent } from '../components/ui/card';
 import { useAuth } from '../contexts/AuthContext';
 import admobService from '../services/AdmobService';
 
@@ -28,10 +30,21 @@ interface DashboardProps {
     onOpenDaybook: () => void;
     onOpenParties: (filter?: 'receivable' | 'payable') => void;
     onOpenSponsoredDetails: (type: 'SHOE' | 'TEA') => void;
+    // Sync Status Banner
+    onSync?: () => void;
+    lastSyncTime?: string;
+    syncStatus?: 'synced' | 'syncing' | 'error' | 'never';
+    // Quick Stats Row
+    monthlyRevenue?: number;
+    monthlyExpenses?: number;
+    netIncome?: number;
+    revenueChange?: number;
+    expensesChange?: number;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
-    onCreateInvoice, onCreateCreditNote, onViewInvoice, onOpenReports, onOpenSmartCalc, onOpenAI, onToggleSidebar, onOpenDaybook, onOpenParties, onOpenSponsoredDetails
+    onCreateInvoice, onCreateCreditNote, onViewInvoice, onOpenReports, onOpenSmartCalc, onOpenAI, onToggleSidebar, onOpenDaybook, onOpenParties, onOpenSponsoredDetails,
+    onSync, lastSyncTime, syncStatus = 'never', monthlyRevenue, monthlyExpenses, netIncome, revenueChange, expensesChange
 }) => {
     // Get company data from CompanyContext (Firestore)
     const { company, companies: allCompanies, switchCompany } = useCompany();
@@ -649,6 +662,169 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                 </motion.div>
             </div>
+
+            {/* ===== SYNC STATUS BANNER ===== */}
+            <div className="px-4 mt-3">
+                <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => {
+                        if (syncStatus !== 'syncing' && onSync) {
+                            HapticService.light();
+                            onSync();
+                        }
+                    }}
+                    className={`rounded-xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border px-4 py-3 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-all ${
+                        syncStatus === 'synced' ? 'border-emerald-200 dark:border-emerald-800' :
+                        syncStatus === 'syncing' ? 'border-blue-200 dark:border-blue-800' :
+                        syncStatus === 'error' ? 'border-red-200 dark:border-red-800' :
+                        'border-slate-200 dark:border-slate-700'
+                    }`}
+                >
+                    {/* Icon */}
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                        syncStatus === 'synced' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
+                        syncStatus === 'syncing' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' :
+                        syncStatus === 'error' ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' :
+                        'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                    }`}>
+                        {syncStatus === 'syncing' ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : syncStatus === 'synced' ? (
+                            <CheckCircle2 className="w-5 h-5" />
+                        ) : syncStatus === 'error' ? (
+                            <AlertTriangle className="w-5 h-5" />
+                        ) : (
+                            <RefreshCw className="w-5 h-5" />
+                        )}
+                    </div>
+
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-bold ${
+                            syncStatus === 'synced' ? 'text-emerald-700 dark:text-emerald-300' :
+                            syncStatus === 'syncing' ? 'text-blue-700 dark:text-blue-300' :
+                            syncStatus === 'error' ? 'text-red-700 dark:text-red-300' :
+                            'text-slate-500 dark:text-slate-400'
+                        }`}>
+                            {syncStatus === 'syncing' ? 'Syncing with Tally...' :
+                             syncStatus === 'error' ? 'Sync failed — tap to retry' :
+                             syncStatus === 'never' ? 'Not synced yet — tap to sync' :
+                             `Last synced: ${lastSyncTime || 'just now'}`}
+                        </p>
+                        {syncStatus === 'syncing' && (
+                            <div className="flex gap-1 mt-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Refresh Button */}
+                    <motion.button
+                        whileTap={{ scale: 0.85 }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (syncStatus !== 'syncing' && onSync) {
+                                HapticService.light();
+                                onSync();
+                            }
+                        }}
+                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                            syncStatus === 'syncing'
+                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 cursor-not-allowed'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                        disabled={syncStatus === 'syncing'}
+                    >
+                        <RefreshCw className={`w-4 h-4 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                    </motion.button>
+                </motion.div>
+            </div>
+
+            {/* ===== QUICK STATS ROW (LiveKeeping Style) ===== */}
+            {(monthlyRevenue !== undefined || monthlyExpenses !== undefined || netIncome !== undefined) && (
+                <div className="px-4 mt-3 grid grid-cols-3 gap-3">
+                    {/* Revenue Card */}
+                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
+                        <CardContent className="p-3">
+                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Revenue</p>
+                            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none mb-1">
+                                ₹{(monthlyRevenue ?? 0).toLocaleString('en-IN')}
+                            </p>
+                            {revenueChange !== undefined && (
+                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
+                                    revenueChange >= 0 ? 'text-emerald-500' : 'text-red-500'
+                                }`}>
+                                    {revenueChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                    {Math.abs(revenueChange).toFixed(1)}%
+                                </span>
+                            )}
+                            {/* Mini CSS Sparkline */}
+                            <div className="mt-2 flex items-end gap-[2px] h-6">
+                                {Array.from({ length: 10 }, (_, i) => {
+                                    const barHeight = 20 + Math.sin(i * 0.8 + 0.5) * 15 + Math.random() * 10;
+                                    return <div key={i} className="flex-1 rounded-t-sm bg-emerald-300/60 dark:bg-emerald-700/40" style={{ height: `${barHeight}%` }} />;
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Expenses Card */}
+                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
+                        <CardContent className="p-3">
+                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Expenses</p>
+                            <p className="text-lg font-black text-rose-600 dark:text-rose-400 leading-none mb-1">
+                                ₹{(monthlyExpenses ?? 0).toLocaleString('en-IN')}
+                            </p>
+                            {expensesChange !== undefined && (
+                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
+                                    expensesChange <= 0 ? 'text-emerald-500' : 'text-red-500'
+                                }`}>
+                                    {expensesChange <= 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                                    {Math.abs(expensesChange).toFixed(1)}%
+                                </span>
+                            )}
+                            {/* Mini CSS Sparkline */}
+                            <div className="mt-2 flex items-end gap-[2px] h-6">
+                                {Array.from({ length: 10 }, (_, i) => {
+                                    const barHeight = 20 + Math.cos(i * 0.7 + 1.2) * 12 + Math.random() * 10;
+                                    return <div key={i} className="flex-1 rounded-t-sm bg-rose-300/60 dark:bg-rose-700/40" style={{ height: `${barHeight}%` }} />;
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Net Income Card */}
+                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
+                        <CardContent className="p-3">
+                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Net Income</p>
+                            <p className={`text-lg font-black leading-none mb-1 ${
+                                (netIncome ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                            }`}>
+                                ₹{(netIncome ?? 0).toLocaleString('en-IN')}
+                            </p>
+                            {revenueChange !== undefined && expensesChange !== undefined && (
+                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
+                                    (netIncome ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                                }`}>
+                                    {(netIncome ?? 0) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                    {(netIncome ?? 0) >= 0 ? 'Profitable' : 'Loss'}
+                                </span>
+                            )}
+                            {/* Mini CSS Sparkline */}
+                            <div className="mt-2 flex items-end gap-[2px] h-6">
+                                {Array.from({ length: 10 }, (_, i) => {
+                                    const barHeight = 20 + Math.sin(i * 0.9 + 2.1) * 18 + Math.random() * 8;
+                                    const isUp = Math.sin(i * 0.9 + 2.1) >= 0;
+                                    return <div key={i} className={`flex-1 rounded-t-sm ${isUp ? 'bg-emerald-300/60 dark:bg-emerald-700/40' : 'bg-rose-300/60 dark:bg-rose-700/40'}`} style={{ height: `${barHeight}%` }} />;
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
 
             {/* PROMO SLIDES CAROUSEL - Firebase Managed */}
             <div className="px-4 mt-2 mb-2 relative">

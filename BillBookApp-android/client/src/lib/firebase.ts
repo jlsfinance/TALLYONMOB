@@ -1,58 +1,52 @@
+/**
+ * @deprecated LEGACY — Firebase is no longer used for primary data storage.
+ * Kept as reference and for remaining Firebase-dependent features:
+ * - FCM push notifications (firebase-messaging-sw.js)
+ * - Global broadcast system (notificationService.ts)
+ * - Analytics tracking (analyticsService.ts)
+ * - Public bill viewing (PublicBillView.tsx)
+ * 
+ * Hardcoded API keys have been replaced with environment variable references.
+ * Configure via VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, etc.
+ * or set VITE_FIREBASE_PROJECT_ID to auto-configure.
+ */
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
-// Assuming FirebaseConfig type is defined elsewhere or needs to be added.
-// For the purpose of this edit, we'll assume it's available or will be handled.
-// If not, you might need to define it, e.g.:
-// type FirebaseConfig = {
-//   apiKey: string;
-//   authDomain: string;
-//   projectId: string;
-//   storageBucket: string;
-//   messagingSenderId: string;
-//   appId: string;
-// };
+// Read from environment variables with fallback (for existing deployments)
+const getFirebaseConfig = () => {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || "";
+  const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "";
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || "";
+  const storageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "";
+  const messagingSenderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "";
+  const appId = import.meta.env.VITE_FIREBASE_APP_ID || "";
 
-const firebaseConfigAccounting = {
-  apiKey: "AIzaSyDOhuszbQuXpMO0WY-FXzkyY8dABjj4MHg",
-  authDomain: "sample-firebase-ai-app-1f72d.firebaseapp.com",
-  projectId: "sample-firebase-ai-app-1f72d",
-  storageBucket: "sample-firebase-ai-app-1f72d.firebasestorage.app",
-  messagingSenderId: "231225025529",
-  appId: "1:231225025529:web:e079fe0aa1be713625d328"
+  // If no env vars are set, use the project ID as a hint for auto-config
+  if (!apiKey && !projectId) {
+    console.warn(
+      "[firebase.ts] No Firebase env vars found (VITE_FIREBASE_*). " +
+      "Set VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, etc. in .env"
+    );
+  }
+
+  return { apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId };
 };
 
-const firebaseConfigRecords = {
-  apiKey: "AIzaSyC9osscWhA01zJU1VgSKdqH3zoZx_SuOnw",
-  authDomain: "jls-finance-company.firebaseapp.com",
-  projectId: "jls-finance-company",
-  storageBucket: "jls-finance-company.firebasestorage.app",
-  messagingSenderId: "550122742532",
-  appId: "1:550122742532:web:e079fe0aa1be713625d328" // Approx ID or placeholder
-};
+const firebaseConfig = getFirebaseConfig();
 
 // Application 1: Accounting (Default)
 const accountingApp = getApps().length > 0 && getApps().find(a => a.name === 'accounting-app')
   ? getApp('accounting-app')
-  : initializeApp(firebaseConfigAccounting, 'accounting-app');
+  : initializeApp(firebaseConfig, 'accounting-app');
 
 export const auth = getAuth(accountingApp);
 export const db = getFirestore(accountingApp);
-
-// Application 2: Records (Ledger Module - JLS Suite)
-const recordsApp = getApps().length > 0 && getApps().find(a => a.name === 'records-app')
-  ? getApp('records-app')
-  : initializeApp(firebaseConfigRecords, 'records-app');
-
-export const recordsAuth = getAuth(recordsApp);
-export const recordsDb = getFirestore(recordsApp);
 
 // Enable offline persistence for Accounting DB (Default)
 if (typeof window !== "undefined") {
   enableIndexedDbPersistence(db).catch((err) => {
     console.warn("Accounting Persistence Error:", err.code);
   });
-  // Optional: Enable for Records DB too if needed, but managing dual persistence might be tricky in one tab.
-  // We'll leave it simple for now.
 }

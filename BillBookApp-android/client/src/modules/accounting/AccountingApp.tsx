@@ -24,6 +24,11 @@ import { PublicBillView } from '../../components/PublicBillView';
 import { BackupSettings } from '../../components/BackupSettings';
 import PostSaveSummary from '../../components/PostSaveSummary';
 import SponsoredDetails from '../../components/SponsoredDetails';
+import LedgersPage from '../../components/LedgersPage';
+import VouchersPage from '../../components/VouchersPage';
+import ReportsHub from '../../components/ReportsHub';
+import SyncSettings from '../../components/SyncSettings';
+import { useTallyData } from '@/hooks/useTallyData';
 import { ViewState, Invoice } from '@/types';
 import { StorageService } from '../../services/storageService';
 import { FirebaseService } from '../../services/firebaseService';
@@ -48,8 +53,6 @@ const AccountingApp: React.FC = () => {
     const { user, loading: authLoading } = useAuth();
     const { company, loading: companyLoading, permissionError } = useCompany();
     const { theme, setTheme } = useTheme();
-    const { showKeySetup, isConfigured: isAIConfigured } = useAI();
-
     const { showKeySetup, isConfigured: isAIConfigured } = useAI();
 
     const [appMode, setAppMode] = useState<'TALLY' | 'NORMAL' | null>(() =>
@@ -80,6 +83,9 @@ const AccountingApp: React.FC = () => {
     const [showBackupSettings, setShowBackupSettings] = useState(false);
     const [daybookDate, setDaybookDate] = useState<string | null>(null);
     const [sponsoredType, setSponsoredType] = useState<'SHOE' | 'TEA' | null>(null);
+
+    // Tally Data Hook
+    const { ledgers, vouchers, dashboardStats, loading: tallyLoading, refresh: refreshTally, lastRefreshed, isSimulated } = useTallyData('jls-finance-ltd');
 
     // Handle Browser Back Button
     useEffect(() => {
@@ -444,6 +450,14 @@ const AccountingApp: React.FC = () => {
                                         setSponsoredType(type);
                                         navigateToView(ViewState.SPONSORED_DETAILS);
                                     }}
+                                    onSync={() => refreshTally()}
+                                    lastSyncTime={lastRefreshed ? `${Math.floor((Date.now() - new Date(lastRefreshed).getTime()) / 60000)} mins ago` : undefined}
+                                    syncStatus={tallyLoading ? 'syncing' : lastRefreshed ? 'synced' : 'never'}
+                                    monthlyRevenue={dashboardStats?.monthlyRevenue}
+                                    monthlyExpenses={dashboardStats?.monthlyExpenses}
+                                    netIncome={dashboardStats?.netIncome}
+                                    revenueChange={dashboardStats?.revenueChange}
+                                    expensesChange={dashboardStats?.expensesChange}
                                 />
                             )}
 
@@ -485,9 +499,49 @@ const AccountingApp: React.FC = () => {
                             {currentView === ViewState.EXPENSES && <Expenses />}
                             {currentView === ViewState.PAYMENTS && <Payments onBack={() => setCurrentView(ViewState.DASHBOARD)} createTrigger={triggerPaymentCreate} />}
                             {currentView === ViewState.REPORTS && <Reports onBack={() => setCurrentView(ViewState.DASHBOARD)} />}
+                            {currentView === ViewState.REPORTS_HUB && (
+                                <ReportsHub
+                                    onBack={() => setCurrentView(ViewState.DASHBOARD)}
+                                    onReportSelect={(reportId: string) => {
+                                        // Map report IDs to existing views
+                                        const reportMap: Record<string, ViewState> = {
+                                            'profit_loss': ViewState.REPORTS,
+                                            'daybook': ViewState.DAYBOOK,
+                                            'party_outstanding': ViewState.CUSTOMERS,
+                                            'customer_analytics': ViewState.REPORTS,
+                                            'bill_profit': ViewState.REPORTS,
+                                            'sales_summary': ViewState.REPORTS,
+                                            'stock_summary': ViewState.INVENTORY,
+                                            'balance_sheet': ViewState.REPORTS,
+                                        };
+                                        setCurrentView(reportMap[reportId] || ViewState.REPORTS);
+                                    }}
+                                />
+                            )}
+                            {currentView === ViewState.LEDGERS && (
+                                <LedgersPage
+                                    ledgers={ledgers}
+                                    onBack={() => setCurrentView(ViewState.DASHBOARD)}
+                                    onLedgerSelect={() => setCurrentView(ViewState.DASHBOARD)}
+                                    onRefresh={() => refreshTally()}
+                                    lastSyncTime={lastRefreshed ? 'Last synced: ' + Math.floor((Date.now() - new Date(lastRefreshed).getTime()) / 60000) + ' mins ago' : undefined}
+                                />
+                            )}
+                            {currentView === ViewState.VOUCHERS && (
+                                <VouchersPage
+                                    vouchers={vouchers}
+                                    onBack={() => setCurrentView(ViewState.DASHBOARD)}
+                                    onVoucherSelect={() => setCurrentView(ViewState.DASHBOARD)}
+                                    onNewVoucher={() => setCurrentView(ViewState.CREATE_INVOICE)}
+                                    onRefresh={() => refreshTally()}
+                                />
+                            )}
                             {(currentView === ViewState.ALL_INVOICES || currentView === ViewState.INVOICES) && <AllInvoices title="Sales" createLabel="Add Sale" onView={handleViewInvoice} onEdit={handleEditInvoice} onDelete={handleDeleteInvoice} onViewLedger={handleViewCustomerLedger} />}
                             {currentView === ViewState.PURCHASES && <AllInvoices title="Purchases" createLabel="Add Purchase" invoices={purchases} onView={handleViewInvoice} onEdit={handleEditPurchase} onDelete={handleDeletePurchase} onViewLedger={handleViewCustomerLedger} />}
                             {currentView === ViewState.SETTINGS && <Settings />}
+                            {currentView === ViewState.SYNC_SETTINGS && (
+                                <SyncSettings onBack={() => setCurrentView(ViewState.DASHBOARD)} />
+                            )}
 
                             {currentView === ViewState.VIEW_INVOICE && selectedInvoice && (
                                 <InvoiceView
@@ -597,7 +651,7 @@ const AccountingApp: React.FC = () => {
                     )}
                 </main>
 
-                {!['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS'].includes(currentView) && (
+                {!['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS', 'LEDGER_DETAIL', 'VOUCHER_DETAIL', 'SYNC_SETTINGS'].includes(currentView) && (
                     <MobileBottomNav
                         currentView={currentView}
                         onChangeView={(view) => {

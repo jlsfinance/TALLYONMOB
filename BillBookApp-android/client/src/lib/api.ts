@@ -1,3 +1,10 @@
+/**
+ * @deprecated LEGACY — This file is no longer used.
+ * Invoice fetching is now handled by StorageService + supabaseDataService.
+ * PDF download is handled by the invoice print/export components.
+ * No component or service imports this file anymore.
+ * Kept for reference only.
+ */
 import { db } from './firebase';
 import { collection, getDocs } from 'firebase/firestore';
 

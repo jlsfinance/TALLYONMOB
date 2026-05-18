@@ -30,16 +30,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setIsModalOpen(false);
     };
 
-    // Keep isConfigured in sync with AIService
+    // Check config on mount (no polling — events keep it in sync)
     React.useEffect(() => {
-        const interval = setInterval(() => {
-            const current = AIService.isConfigured();
-            if (current !== isConfigured) {
-                setIsConfigured(current);
-            }
-        }, 2000);
-        return () => clearInterval(interval);
-    }, [isConfigured]);
+        refreshConfig();
+    }, []);
 
     return (
         <AIContext.Provider value={{

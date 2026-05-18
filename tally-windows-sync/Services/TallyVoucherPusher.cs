@@ -178,6 +178,10 @@ namespace TallySyncApp.Services
             {
                 var voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
                 
+                // Log raw data for debugging
+                SyncLogger.Log($">>> GenerateTallyVoucherXml for ID={transaction.Id}, Type={transaction.TransactionType}");
+                SyncLogger.Log($"    Company: {companyName}");
+                
                 // Normalize voucher type - database may store table names like "VOUCHERS"
                 var rawType = transaction.TransactionType?.Trim().ToUpper() ?? "";
                 
@@ -194,6 +198,8 @@ namespace TallySyncApp.Services
                 var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
                 var partyName = voucherData["party_name"]?.ToString() ?? "";
                 var narration = voucherData["narration"]?.ToString() ?? "";
+
+                SyncLogger.Log($"    Resolved Type: {rawType}, Party: {partyName}, Date: {voucherDate:yyyy-MM-dd}");
 
                 // Build the XML based on normalized voucher type
                 switch (rawType)
@@ -250,6 +256,36 @@ namespace TallySyncApp.Services
             var roundOff = data["round_off"]?.Value<decimal>() ?? 0;
             var grandTotal = data["grand_total"]?.Value<decimal>() ?? totalAmount + cgst + sgst + igst + roundOff;
             var salesLedger = data["sales_ledger"]?.ToString() ?? "Sales Account";
+
+            SyncLogger.Log($">>> Generating Sales XML:");
+            SyncLogger.Log($"    Party: {partyName}, Date: {date:yyyyMMdd}, Total: {totalAmount}, GrandTotal: {grandTotal}");
+            SyncLogger.Log($"    Items count: {items.Count}, CGST: {cgst}, SGST: {sgst}, IGST: {igst}");
+
+            // Also check for alternative field names used by web dashboard
+            if (cgst == 0 && sgst == 0 && igst == 0)
+            {
+                // Try alternative field names used by some frontends
+                var totalCgst = data["totalCgst"]?.Value<decimal>() ?? 0;
+                var totalSgst = data["totalSgst"]?.Value<decimal>() ?? 0;
+                var totalIgst = data["totalIgst"]?.Value<decimal>() ?? 0;
+                if (totalCgst > 0 || totalSgst > 0 || totalIgst > 0)
+                {
+                    SyncLogger.Log($"    Found alternative GST field names: CGST={totalCgst}, SGST={totalSgst}, IGST={totalIgst}");
+                    cgst = totalCgst;
+                    sgst = totalSgst;
+                    igst = totalIgst;
+                }
+            }
+
+            // Recalculate grandTotal if it's zero and we have components
+            if (grandTotal == 0)
+            {
+                var subtotal = data["subtotal"]?.Value<decimal>() ?? 0;
+                if (subtotal > 0)
+                    totalAmount = subtotal;
+                grandTotal = totalAmount + cgst + sgst + igst + roundOff;
+                SyncLogger.Log($"    Recalculated grandTotal: {grandTotal} (subtotal={totalAmount}, tax={cgst + sgst + igst})");
+            }
             
             var xml = new StringBuilder();
             xml.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
@@ -333,13 +369,23 @@ namespace TallySyncApp.Services
             }
 
             // Inventory entries
+            int itemIndex = 0;
             foreach (var item in items)
             {
-                var itemName = item["stock_item_name"]?.ToString() ?? "";
+                itemIndex++;
+                var itemName = item["stock_item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
                 var qty = item["quantity"]?.Value<decimal>() ?? 0;
                 var rate = item["rate"]?.Value<decimal>() ?? 0;
                 var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
                 var unit = item["unit"]?.ToString() ?? "Nos";
+
+                if (string.IsNullOrEmpty(itemName))
+                {
+                    SyncLogger.Log($"    ⚠️ Sales Item #{itemIndex} has no stock_item_name, skipping");
+                    continue;
+                }
+
+                SyncLogger.Log($"    Sales Item #{itemIndex}: {itemName}, Qty: {qty}, Rate: {rate}, Amount: {amount}");
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
@@ -354,6 +400,9 @@ namespace TallySyncApp.Services
                 xml.AppendLine("              </ACCOUNTINGALLOCATIONS.LIST>");
                 xml.AppendLine("            </ALLINVENTORYENTRIES.LIST>");
             }
+
+            // Add serial number as a basic auto-number if Tally expects it
+            xml.AppendLine("            <SERIALNO>1</SERIALNO>");
 
             xml.AppendLine("          </VOUCHER>");
             xml.AppendLine("        </TALLYMESSAGE>");

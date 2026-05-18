@@ -19,6 +19,8 @@ export interface DailySalesSummary {
 }
 
 export const NotificationService = {
+    /** Module-level unsubscribe handles for cleanup */
+    _broadcastUnsubscribe: null as (() => void) | null,
     /**
      * Initialize notification service and request permissions
      */
@@ -85,6 +87,14 @@ export const NotificationService = {
      */
     async scheduleDailyNotification(): Promise<void> {
         try {
+            // Guard: Prevent double-scheduling within the same day
+            const lastScheduled = localStorage.getItem('app_last_notification_scheduled_date');
+            const today = format(new Date(), 'yyyy-MM-dd');
+            if (lastScheduled === today) {
+                console.log('Daily notification already scheduled for today, skipping');
+                return;
+            }
+
             // Cancel existing daily notifications
             await LocalNotifications.cancel({ notifications: [{ id: 1 }] });
 
@@ -146,6 +156,7 @@ export const NotificationService = {
             });
 
             console.log('Daily notification scheduled for:', scheduledTime);
+            localStorage.setItem('app_last_notification_scheduled_date', today);
         } catch (error) {
             console.error('Failed to schedule daily notification:', error);
         }
@@ -390,6 +401,12 @@ export const NotificationService = {
      * Listens for new messages from Admin in real-time
      */
     subscribeToGlobalBroadcasts(): (() => void) | undefined {
+        // Clean up any existing listener before creating a new one
+        if (this._broadcastUnsubscribe) {
+            this._broadcastUnsubscribe();
+            this._broadcastUnsubscribe = null;
+        }
+
         try {
             const broadcastsRef = collection(db, 'global_broadcasts');
             // Listen for broadcasts created in the last 24 hours only, or sort by date desc
@@ -431,10 +448,23 @@ export const NotificationService = {
                 });
             });
 
+            // Store for cleanup
+            this._broadcastUnsubscribe = unsubscribe;
             return unsubscribe;
         } catch (error) {
             console.error('Error subscribing to broadcasts:', error);
             return undefined;
+        }
+    },
+
+    /**
+     * Unsubscribe from Global Broadcasts — call during component unmount / cleanup
+     */
+    unsubscribeFromGlobalBroadcasts(): void {
+        if (this._broadcastUnsubscribe) {
+            this._broadcastUnsubscribe();
+            this._broadcastUnsubscribe = null;
+            console.log('Unsubscribed from global broadcasts');
         }
     },
 

@@ -3,29 +3,28 @@ import { Customer, Invoice, Product, DEFAULT_COMPANY, CompanyProfile, CustomerNo
 import { supabaseData } from './supabaseDataService';
 import { TallySyncService } from './tallySyncService';
 
-// KEYS getter — computed fresh each time to avoid stale prefix
-const KEYS = () => {
-  const activeIdentifier = localStorage.getItem('active_company_id') || '';
+const getActiveCompanyId = () => localStorage.getItem('active_company_id') || '';
+
+// KEYS as a getter function so keyPrefix is never stale (e.g. after company switch)
+const getKeys = () => {
+  const activeIdentifier = getActiveCompanyId();
   const keyPrefix = activeIdentifier ? `${activeIdentifier}_` : '';
   return {
-  PRODUCTS: `app_${keyPrefix}products`,
-  CUSTOMERS: `app_${keyPrefix}customers`,
-  INVOICES: `app_${keyPrefix}invoices`,
-  PAYMENTS: `app_${keyPrefix}payments`,
-  EXPENSES: `app_${keyPrefix}expenses`,
-  PURCHASES: `app_${keyPrefix}purchases`,
-  COMPANY: `app_${keyPrefix}company`,
-  FIREBASE_CONFIG: `app_${keyPrefix}firebase_config`, // LEGACY - Supabase uses env vars
-  CONTACT_PREFERENCE: `app_${keyPrefix}contact_preference`,
-  PRIVACY_ACCEPTED: `app_${keyPrefix}privacy_accepted`,
-  ADMIN_ADS: 'app_system_admin_ads', // Global key
+    PRODUCTS: `app_${keyPrefix}products`,
+    CUSTOMERS: `app_${keyPrefix}customers`,
+    INVOICES: `app_${keyPrefix}invoices`,
+    PAYMENTS: `app_${keyPrefix}payments`,
+    EXPENSES: `app_${keyPrefix}expenses`,
+    PURCHASES: `app_${keyPrefix}purchases`,
+    COMPANY: `app_${keyPrefix}company`,
+    CONTACT_PREFERENCE: `app_${keyPrefix}contact_preference`,
+    PRIVACY_ACCEPTED: `app_${keyPrefix}privacy_accepted`,
+    ADMIN_ADS: 'app_system_admin_ads', // Global key
 
-  // System-wide keys (not prefixed)
-  COMPANIES_LIST: 'app_system_companies_list'
+    // System-wide keys (not prefixed)
+    COMPANIES_LIST: 'app_system_companies_list'
   };
 };
-
-// Supabase handles config via env vars
 
 // Initial Data Seeding
 const SEED_PRODUCTS: Product[] = [
@@ -51,13 +50,45 @@ let cache = {
   products: [] as Product[],
   customers: [] as Customer[],
   invoices: [] as Invoice[],
-  purchases: [] as Invoice[], // Added
+  purchases: [] as Invoice[],
   payments: [] as Payment[],
   expenses: [] as Expense[],
   company: DEFAULT_COMPANY,
   isLoaded: false,
   currentUserId: null as string | null
 };
+
+/**
+ * Build a public-bills payload from an invoice + company cache.
+ * Reused by saveInvoice, saveCreditNote, and updateInvoice.
+ */
+function buildPublicBillPayload(invoice: Invoice, extra?: Record<string, any>) {
+  return {
+    id: invoice.id,
+    invoice_number: invoice.invoiceNumber,
+    customer_name: invoice.customerName,
+    customer_address: invoice.customerAddress,
+    customer_gstin: invoice.customerGstin,
+    date: invoice.date,
+    items: invoice.items,
+    subtotal: invoice.subtotal,
+    total: invoice.total,
+    total_cgst: invoice.totalCgst || 0,
+    total_sgst: invoice.totalSgst || 0,
+    total_igst: invoice.totalIgst || 0,
+    gst_enabled: invoice.gstEnabled,
+    status: invoice.status,
+    notes: invoice.notes,
+    company_name: cache.company.name,
+    company_address: cache.company.address,
+    company_phone: cache.company.phone,
+    company_gstin: cache.company.gstin || cache.company.gst,
+    company_upi_id: cache.company.upiId,
+    public_token: crypto.randomUUID(),
+    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    ...extra,
+  };
+}
 
 export const StorageService = {
 
@@ -73,107 +104,101 @@ export const StorageService = {
 
     if (cache.isLoaded) return;
 
-    // 1. Always use the Hardcoded Config
-    // Removed insecure localStorage.setItem(KEYS().FIREBASE_CONFIG, ...) violation.
-
-    // 2. Init Supabase
-    // No config used here currently
+    // 1. Init Supabase Data Service
     const connected = await supabaseData.init();
 
     if (connected && userId) {
-      // 3. Fetch Data from Supabase
-      const userPath = `users/${userId}`;
+      // 2. Fetch Data from Supabase
+      try {
+        const [prodResult, custResult, invResult, payResult, expResult, compResult] = await Promise.all([
+          supabaseData.fetchProducts(userId),
+          supabaseData.fetchCustomers(userId),
+          supabaseData.getInvoicesWithItems(),
+          supabaseData.fetchPayments(userId),
+          supabaseData.fetchExpenses(userId),
+          supabaseData.fetchCompanyProfiles(userId),
+        ]);
 
-      const [cloudProducts, cloudCustomers, cloudInvoices, cloudPurchases, cloudPayments, cloudExpenses, cloudCompany] = await Promise.all([
-        supabaseData.fetchCollection<Product>('products', userId),
-        supabaseData.fetchCollection<Customer>('customers', userId),
-        supabaseData.fetchCollection<Invoice>('invoices', userId),
-        supabaseData.fetchCollection<Invoice>('invoices', userId, { filters: { type: 'PURCHASE' } }),
-        supabaseData.fetchCollection<Payment>('payments', userId),
-        supabaseData.fetchCollection<Expense>('expenses', userId),
-        supabaseData.fetchCollection<CompanyProfile>('company_profiles', userId)
-      ]);
+        cache.products = prodResult.data;
+        cache.customers = custResult.data;
+        // Split invoices: PURCHASE type goes to cache.purchases, rest to cache.invoices
+        const allInvoices = invResult.data;
+        cache.invoices = allInvoices.filter(inv => inv.type !== 'PURCHASE');
+        cache.purchases = allInvoices.filter(inv => inv.type === 'PURCHASE');
+        cache.payments = payResult.data;
+        cache.expenses = expResult.data;
+        cache.company = compResult.data.length > 0 ? compResult.data[0] : DEFAULT_COMPANY;
 
-      cloudProducts = cloudProducts.data || [];
-      cloudCustomers = cloudCustomers.data || [];
-      cloudInvoices = cloudInvoices.data || [];
-      cloudPurchases = (cloudPurchases.data || []).filter(i => i.type === 'PURCHASE');
-      cloudPayments = cloudPayments.data || [];
-      cloudExpenses = cloudExpenses.data || [];
-      cloudCompany = cloudCompany.data || [];
+        // --- AUTO-MIGRATION LOGIC ---
+        // If Supabase is empty but LocalStorage has data, migrate it once.
+        const isCloudEmpty = cache.products.length === 0 && cache.invoices.length === 0 && cache.customers.length === 0;
+        if (isCloudEmpty) {
+          const KEYS = getKeys();
+          const lsProducts = localStorage.getItem(KEYS.PRODUCTS);
+          const lsCustomers = localStorage.getItem(KEYS.CUSTOMERS);
+          const lsInvoices = localStorage.getItem(KEYS.INVOICES);
+          const lsPurchases = localStorage.getItem(KEYS.PURCHASES);
+          const lsPayments = localStorage.getItem(KEYS.PAYMENTS);
+          const lsExpenses = localStorage.getItem(KEYS.EXPENSES);
+          const lsCompany = localStorage.getItem(KEYS.COMPANY);
 
-      cache.products = cloudProducts;
-      cache.customers = cloudCustomers;
-      cache.invoices = cloudInvoices;
-      cache.purchases = cloudPurchases;
-      cache.payments = cloudPayments;
-      cache.expenses = cloudExpenses;
-      cache.company = cloudCompany.length > 0 ? cloudCompany[0] : DEFAULT_COMPANY;
+          if (lsProducts || lsInvoices || lsCustomers) {
+            console.log("Empty cloud detected. Migrating local data...");
+            if (lsProducts) cache.products = JSON.parse(lsProducts);
+            if (lsCustomers) cache.customers = JSON.parse(lsCustomers);
+            if (lsInvoices) cache.invoices = JSON.parse(lsInvoices);
+            if (lsPurchases) cache.purchases = JSON.parse(lsPurchases);
+            if (lsPayments) cache.payments = JSON.parse(lsPayments);
+            if (lsExpenses) cache.expenses = JSON.parse(lsExpenses);
+            if (lsCompany) cache.company = JSON.parse(lsCompany);
 
-      // --- AUTO-MIGRATION LOGIC ---
-      // If Supabase is empty but LocalStorage has data, migrate it once.
-      const isCloudEmpty = cloudProducts.length === 0 && cloudInvoices.length === 0 && cloudCustomers.length === 0;
-      if (isCloudEmpty) {
-        const lsProducts = localStorage.getItem(KEYS().PRODUCTS);
-        const lsCustomers = localStorage.getItem(KEYS().CUSTOMERS);
-        const lsInvoices = localStorage.getItem(KEYS().INVOICES);
-        const lsPurchases = localStorage.getItem(KEYS().PURCHASES);
-        const lsPayments = localStorage.getItem(KEYS().PAYMENTS);
-        const lsExpenses = localStorage.getItem(KEYS().EXPENSES);
-        const lsCompany = localStorage.getItem(KEYS().COMPANY);
+            // Push all to Supabase
+            if (cache.products.length) await supabaseData.batchSaveProducts(cache.products);
+            if (cache.customers.length) await supabaseData.batchSaveCustomers(cache.customers);
+            const allInvoices = [...cache.invoices, ...cache.purchases];
+            for (const inv of allInvoices) {
+              await supabaseData.saveInvoice(inv, inv.items ?? []);
+            }
+            if (cache.payments.length) await supabaseData.batchSavePayments(cache.payments);
+            if (cache.expenses.length) await supabaseData.batchSaveExpenses(cache.expenses);
+            if (cache.company) await supabaseData.saveCompanyProfile(cache.company.id || 'profile', cache.company);
 
-        if (lsProducts || lsInvoices || lsCustomers) {
-          console.log("Empty cloud detected. Migrating local data...");
-          if (lsProducts) cache.products = JSON.parse(lsProducts);
-          if (lsCustomers) cache.customers = JSON.parse(lsCustomers);
-          if (lsInvoices) cache.invoices = JSON.parse(lsInvoices);
-          if (lsPurchases) cache.purchases = JSON.parse(lsPurchases);
-          if (lsPayments) cache.payments = JSON.parse(lsPayments);
-          if (lsExpenses) cache.expenses = JSON.parse(lsExpenses);
-          if (lsCompany) cache.company = JSON.parse(lsCompany);
-
-          // Push all to Supabase
-          if (cache.products.length) await supabaseData.batchSave('products', cache.products, userId);
-          if (cache.customers.length) await supabaseData.batchSave('customers', cache.customers, userId);
-          if (cache.invoices.length) await supabaseData.batchSave('invoices', cache.invoices, userId);
-          if (cache.purchases.length) await supabaseData.batchSave('invoices', cache.purchases, userId);
-          if (cache.payments.length) await supabaseData.batchSave('payments', cache.payments, userId);
-          if (cache.expenses.length) await supabaseData.batchSave('expenses', cache.expenses, userId);
-          await supabaseData.saveDocument('company_profiles', 'profile', cache.company, userId);
-
-          // Clear LocalStorage to avoid confusion/double migration? 
-          // Better keep it as backup for now or clear it. 
-          // User said "sare bill kaha gaye" which implies they want them back.
+            // Keep LocalStorage as backup for now
+          }
         }
-      }
 
-      cache.isLoaded = true;
-      // Trigger Tally Sync (Fire-and-forget)
-      TallySyncService.syncDown().catch(err => console.error("Tally Sync Error:", err));
-      return;
+        cache.isLoaded = true;
+        // Trigger Tally Sync (Fire-and-forget)
+        TallySyncService.syncDown().catch(err => console.error("Tally Sync Error:", err));
+        return;
+      } catch (err) {
+        console.error("Supabase fetch failed, falling back to localStorage:", err);
+        // Fall through to localStorage fallback
+      }
     }
 
-    // 4. Fallback to LocalStorage (Guest Mode)
+    // 3. Fallback to LocalStorage (Guest Mode or Supabase failure)
     if (!userId) {
-      const lsProducts = localStorage.getItem(KEYS().PRODUCTS);
+      const KEYS = getKeys();
+      const lsProducts = localStorage.getItem(KEYS.PRODUCTS);
       cache.products = lsProducts ? JSON.parse(lsProducts) : SEED_PRODUCTS;
 
-      const lsCustomers = localStorage.getItem(KEYS().CUSTOMERS);
+      const lsCustomers = localStorage.getItem(KEYS.CUSTOMERS);
       cache.customers = lsCustomers ? JSON.parse(lsCustomers) : SEED_CUSTOMERS;
 
-      const lsInvoices = localStorage.getItem(KEYS().INVOICES);
+      const lsInvoices = localStorage.getItem(KEYS.INVOICES);
       cache.invoices = lsInvoices ? JSON.parse(lsInvoices) : [];
 
-      const lsPurchases = localStorage.getItem(KEYS().PURCHASES); // Added
+      const lsPurchases = localStorage.getItem(KEYS.PURCHASES);
       cache.purchases = lsPurchases ? JSON.parse(lsPurchases) : [];
 
-      const lsPayments = localStorage.getItem(KEYS().PAYMENTS);
+      const lsPayments = localStorage.getItem(KEYS.PAYMENTS);
       cache.payments = lsPayments ? JSON.parse(lsPayments) : [];
 
-      const lsExpenses = localStorage.getItem(KEYS().EXPENSES);
+      const lsExpenses = localStorage.getItem(KEYS.EXPENSES);
       cache.expenses = lsExpenses ? JSON.parse(lsExpenses) : [];
 
-      const lsCompany = localStorage.getItem(KEYS().COMPANY);
+      const lsCompany = localStorage.getItem(KEYS.COMPANY);
       cache.company = lsCompany ? JSON.parse(lsCompany) : DEFAULT_COMPANY;
 
       cache.isLoaded = true;
@@ -182,7 +207,7 @@ export const StorageService = {
       cache.products = [];
       cache.customers = [];
       cache.invoices = [];
-      cache.purchases = []; // Added
+      cache.purchases = [];
       cache.payments = [];
       cache.expenses = [];
       cache.company = DEFAULT_COMPANY;
@@ -190,13 +215,9 @@ export const StorageService = {
     }
   },
 
-  getCollectionPath: (col: string) => {
-    if (col === 'company') return 'company_profiles';
-    return col;
-  },
-
   persistToLocalStorage: () => {
     if (!cache.currentUserId) {
+      const KEYS = getKeys();
       // Auto-Cleanup: Remove notifications older than 60 days
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
@@ -208,13 +229,13 @@ export const StorageService = {
         }
       });
 
-      localStorage.setItem(KEYS().PRODUCTS, JSON.stringify(cache.products));
-      localStorage.setItem(KEYS().CUSTOMERS, JSON.stringify(cache.customers));
-      localStorage.setItem(KEYS().INVOICES, JSON.stringify(cache.invoices));
-      localStorage.setItem(KEYS().PURCHASES, JSON.stringify(cache.purchases));
-      localStorage.setItem(KEYS().PAYMENTS, JSON.stringify(cache.payments));
-      localStorage.setItem(KEYS().EXPENSES, JSON.stringify(cache.expenses));
-      localStorage.setItem(KEYS().COMPANY, JSON.stringify(cache.company));
+      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(cache.products));
+      localStorage.setItem(KEYS.CUSTOMERS, JSON.stringify(cache.customers));
+      localStorage.setItem(KEYS.INVOICES, JSON.stringify(cache.invoices));
+      localStorage.setItem(KEYS.PURCHASES, JSON.stringify(cache.purchases));
+      localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(cache.payments));
+      localStorage.setItem(KEYS.EXPENSES, JSON.stringify(cache.expenses));
+      localStorage.setItem(KEYS.COMPANY, JSON.stringify(cache.company));
     }
   },
 
@@ -222,39 +243,29 @@ export const StorageService = {
   getProducts: (): Product[] => [...cache.products],
   getCustomers: (): Customer[] => [...cache.customers],
   getInvoices: (): Invoice[] => [...cache.invoices],
-  getPurchases: (): Invoice[] => [...cache.purchases], // Added
+  getPurchases: (): Invoice[] => [...cache.purchases],
   getPayments: (): Payment[] => [...cache.payments],
   getExpenses: (): Expense[] => [...cache.expenses],
   getCompanyProfile: (): CompanyProfile => cache.company,
 
-  getFirebaseConfig: (): any => {
-    return null; // Supabase uses env vars
-  },
-
   getContactPreference: (): 'ALL' | 'SELECTED' | 'NOT_SET' => {
-    return (localStorage.getItem(KEYS().CONTACT_PREFERENCE) as any) || 'NOT_SET';
+    return (localStorage.getItem(getKeys().CONTACT_PREFERENCE) as any) || 'NOT_SET';
   },
 
   setContactPreference: (pref: 'ALL' | 'SELECTED') => {
-    localStorage.setItem(KEYS().CONTACT_PREFERENCE, pref);
+    localStorage.setItem(getKeys().CONTACT_PREFERENCE, pref);
   },
 
   getPrivacyAccepted: (): boolean => {
-    return localStorage.getItem(KEYS().PRIVACY_ACCEPTED) === 'true';
+    return localStorage.getItem(getKeys().PRIVACY_ACCEPTED) === 'true';
   },
 
   setPrivacyAccepted: (accepted: boolean) => {
-    localStorage.setItem(KEYS().PRIVACY_ACCEPTED, String(accepted));
+    localStorage.setItem(getKeys().PRIVACY_ACCEPTED, String(accepted));
   },
 
   // --- Setters ---
-  saveFirebaseConfig: (_config: any) => {
-    // No-op since we use hardcoded config, but keep for interface compatibility
-    // No-op: We do not persist sensitive config to LocalStorage for security reasons.
-    // Config is managed in code or via secure environment variables.
-  },
-
-  saveProduct: (product: Product) => {
+  saveProduct: async (product: Product) => {
     const index = cache.products.findIndex(p => p.id === product.id);
     const newProducts = [...cache.products];
     if (index >= 0) newProducts[index] = product;
@@ -262,20 +273,20 @@ export const StorageService = {
     cache.products = newProducts;
 
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
+    if (supabaseData.isReady()) await supabaseData.saveProduct(product.id, product);
   },
 
   updateProduct: (product: Product) => {
-    StorageService.saveProduct(product); // Reuse save since it handles upsert
+    StorageService.saveProduct(product);
   },
 
-  deleteProduct: (id: string) => {
+  deleteProduct: async (id: string) => {
     cache.products = cache.products.filter(p => p.id !== id);
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('products'), id);
+    if (supabaseData.isReady()) await supabaseData.deleteProduct(id);
   },
 
-  saveCustomer: (customer: Customer) => {
+  saveCustomer: async (customer: Customer) => {
     const index = cache.customers.findIndex(c => c.id === customer.id);
     const newCustomers = [...cache.customers];
     if (index >= 0) newCustomers[index] = customer;
@@ -283,10 +294,10 @@ export const StorageService = {
     cache.customers = newCustomers;
 
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+    if (supabaseData.isReady()) await supabaseData.saveCustomer(customer.id, customer);
   },
 
-  addNotification: (customerId: string, notification: Omit<CustomerNotification, 'id' | 'read'>) => {
+  addNotification: async (customerId: string, notification: Omit<CustomerNotification, 'id' | 'read'>) => {
     const index = cache.customers.findIndex(c => c.id === customerId);
     if (index >= 0) {
       const newNotification: CustomerNotification = {
@@ -294,30 +305,30 @@ export const StorageService = {
         read: false,
         ...notification
       };
-      const customerToUpdate = { ...cache.customers[index] }; // Create a new customer object
+      const customerToUpdate = { ...cache.customers[index] };
       if (!customerToUpdate.notifications) customerToUpdate.notifications = [];
-      customerToUpdate.notifications = [newNotification, ...customerToUpdate.notifications]; // Create a new notifications array
+      customerToUpdate.notifications = [newNotification, ...customerToUpdate.notifications];
 
-      const newCustomers = [...cache.customers]; // Create a new customers array
+      const newCustomers = [...cache.customers];
       newCustomers[index] = customerToUpdate;
-      cache.customers = newCustomers; // Update cache with the new array
+      cache.customers = newCustomers;
 
       StorageService.persistToLocalStorage();
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customerId, cache.customers[index]);
+      if (supabaseData.isReady()) await supabaseData.saveCustomer(customerId, cache.customers[index]);
     }
   },
 
-  saveInvoice: (invoice: Invoice) => {
+  saveInvoice: async (invoice: Invoice) => {
     const newProducts = [...cache.products];
-    invoice.items.forEach(item => {
+    for (const item of invoice.items) {
       const pIndex = newProducts.findIndex(p => p.id === item.productId);
       if (pIndex >= 0 && newProducts[pIndex].category !== 'Services') {
         const product = { ...newProducts[pIndex] };
         product.stock -= item.quantity;
         newProducts[pIndex] = product;
-        if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
+        if (supabaseData.isReady()) await supabaseData.saveProduct(product.id, product);
       }
-    });
+    }
     cache.products = newProducts;
 
     const newCustomers = [...cache.customers];
@@ -326,50 +337,24 @@ export const StorageService = {
       const customer = { ...newCustomers[cIndex] };
       customer.balance += invoice.total;
       newCustomers[cIndex] = customer;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(customer.id, invoice.total);
     }
     cache.customers = newCustomers;
-
 
     // Increment global invoice sequence if used
     if (cache.company.invoiceSettings?.nextInvoiceNumber) {
       cache.company.invoiceSettings.nextInvoiceNumber = (cache.company.invoiceSettings.nextInvoiceNumber || 0) + 1;
-      StorageService.saveCompanyProfile(cache.company);
+      await StorageService.saveCompanyProfile(cache.company);
     }
 
     cache.invoices = [invoice, ...cache.invoices];
 
     StorageService.persistToLocalStorage();
     if (supabaseData.isReady()) {
-      supabaseData.saveDocument(StorageService.getCollectionPath('invoices'), invoice.id, invoice);
+      await supabaseData.saveInvoice(invoice, invoice.items);
 
-      // ✅ PUBLIC COPY (Safe Fields Only)
-      supabaseData.saveDocument('publicBills', invoice.id, {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        customerName: invoice.customerName,
-        customerAddress: invoice.customerAddress,
-        customerGstin: invoice.customerGstin,
-        date: invoice.date,
-        items: invoice.items,
-        subtotal: invoice.subtotal,
-        total: invoice.total,
-        totalCgst: invoice.totalCgst || 0,
-        totalSgst: invoice.totalSgst || 0,
-        totalIgst: invoice.totalIgst || 0,
-        gstEnabled: invoice.gstEnabled,
-        status: invoice.status,
-        notes: invoice.notes,
-        _company: {
-          name: cache.company.name,
-          address: cache.company.address,
-          phone: cache.company.phone,
-          gstin: cache.company.gstin || cache.company.gst,
-          upiId: cache.company.upiId
-        },
-        publicToken: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
+      // PUBLIC COPY (Safe Fields Only)
+      await supabaseData.saveDocument('public_bills', invoice.id, buildPublicBillPayload(invoice));
     }
 
     StorageService.addNotification(invoice.customerId, {
@@ -383,20 +368,20 @@ export const StorageService = {
     TallySyncService.pushInvoice(invoice).catch(console.error);
   },
 
-  saveCreditNote: (invoice: Invoice) => {
+  saveCreditNote: async (invoice: Invoice) => {
     invoice.type = 'CREDIT_NOTE';
     const newProducts = [...cache.products];
 
     // 1. Stock Logic: INCREASE stock on return
-    invoice.items.forEach(item => {
+    for (const item of invoice.items) {
       const pIndex = newProducts.findIndex(p => p.id === item.productId);
       if (pIndex >= 0 && newProducts[pIndex].category !== 'Services') {
         const product = { ...newProducts[pIndex] };
         product.stock += item.quantity;
         newProducts[pIndex] = product;
-        if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
+        if (supabaseData.isReady()) await supabaseData.saveProduct(product.id, product);
       }
-    });
+    }
     cache.products = newProducts;
 
     // 2. Customer Balance Logic: DECREASE balance (Credit)
@@ -406,7 +391,7 @@ export const StorageService = {
       const customer = { ...newCustomers[cIndex] };
       customer.balance -= invoice.total;
       newCustomers[cIndex] = customer;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(customer.id, -invoice.total);
     }
     cache.customers = newCustomers;
 
@@ -414,36 +399,10 @@ export const StorageService = {
 
     StorageService.persistToLocalStorage();
     if (supabaseData.isReady()) {
-      supabaseData.saveDocument(StorageService.getCollectionPath('invoices'), invoice.id, invoice);
+      await supabaseData.saveInvoice(invoice, invoice.items);
 
-      // ✅ PUBLIC COPY (Safe Fields Only)
-      supabaseData.saveDocument('publicBills', invoice.id, {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        customerName: invoice.customerName,
-        customerAddress: invoice.customerAddress,
-        customerGstin: invoice.customerGstin,
-        date: invoice.date,
-        items: invoice.items,
-        subtotal: invoice.subtotal,
-        total: invoice.total,
-        totalCgst: invoice.totalCgst || 0,
-        totalSgst: invoice.totalSgst || 0,
-        totalIgst: invoice.totalIgst || 0,
-        gstEnabled: invoice.gstEnabled,
-        status: invoice.status,
-        type: 'CREDIT_NOTE',
-        notes: invoice.notes,
-        _company: {
-          name: cache.company.name,
-          address: cache.company.address,
-          phone: cache.company.phone,
-          gstin: cache.company.gstin || cache.company.gst,
-          upiId: cache.company.upiId
-        },
-        publicToken: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
+      // PUBLIC COPY (Safe Fields Only)
+      await supabaseData.saveDocument('public_bills', invoice.id, buildPublicBillPayload(invoice, { type: 'CREDIT_NOTE' }));
     }
 
     StorageService.addNotification(invoice.customerId, {
@@ -454,7 +413,7 @@ export const StorageService = {
     });
   },
 
-  savePayment: (payment: Payment) => {
+  savePayment: async (payment: Payment) => {
     cache.payments = [payment, ...cache.payments];
 
     const newCustomers = [...cache.customers];
@@ -463,12 +422,12 @@ export const StorageService = {
       const customer = { ...newCustomers[cIndex] };
       customer.balance -= payment.amount;
       newCustomers[cIndex] = customer;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(customer.id, -payment.amount);
     }
     cache.customers = newCustomers;
 
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('payments'), payment.id, payment);
+    if (supabaseData.isReady()) await supabaseData.savePayment(payment.id, payment);
 
     StorageService.addNotification(payment.customerId, {
       type: 'PAYMENT',
@@ -478,7 +437,7 @@ export const StorageService = {
     });
   },
 
-  updatePayment: (updatedPayment: Payment) => {
+  updatePayment: async (updatedPayment: Payment) => {
     const index = cache.payments.findIndex(p => p.id === updatedPayment.id);
     if (index === -1) return;
 
@@ -489,15 +448,18 @@ export const StorageService = {
       // Revert old amount, add new
       customer.balance += oldPayment.amount;
       customer.balance -= updatedPayment.amount;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) {
+        await supabaseData.updateCustomerBalanceAtomic(customer.id, oldPayment.amount);
+        await supabaseData.updateCustomerBalanceAtomic(customer.id, -updatedPayment.amount);
+      }
     }
 
     cache.payments[index] = updatedPayment;
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('payments'), updatedPayment.id, updatedPayment);
+    if (supabaseData.isReady()) await supabaseData.savePayment(updatedPayment.id, updatedPayment);
   },
 
-  deletePayment: (paymentId: string) => {
+  deletePayment: async (paymentId: string) => {
     const index = cache.payments.findIndex(p => p.id === paymentId);
     if (index === -1) return;
 
@@ -506,21 +468,21 @@ export const StorageService = {
 
     if (customer) {
       customer.balance += payment.amount;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(customer.id, payment.amount);
     }
 
     cache.payments.splice(index, 1);
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('payments'), paymentId);
+    if (supabaseData.isReady()) await supabaseData.deletePayment(paymentId);
   },
 
-  deleteInvoice: (invoiceId: string) => {
+  deleteInvoice: async (invoiceId: string) => {
     const index = cache.invoices.findIndex(i => i.id === invoiceId);
     if (index === -1) return;
     const invoice = cache.invoices[index];
     const isCreditNote = invoice.type === 'CREDIT_NOTE';
 
-    invoice.items.forEach(item => {
+    for (const item of invoice.items) {
       const pIndex = cache.products.findIndex(p => p.id === item.productId);
       if (pIndex >= 0 && cache.products[pIndex].category !== 'Services') {
         const product = cache.products[pIndex];
@@ -531,36 +493,33 @@ export const StorageService = {
         } else {
           product.stock += item.quantity;
         }
-        if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
+        if (supabaseData.isReady()) await supabaseData.saveProduct(product.id, product);
       }
-    });
+    }
 
     const cIndex = cache.customers.findIndex(c => c.id === invoice.customerId);
     if (cIndex >= 0 && invoice.status === 'PENDING') {
       const customer = cache.customers[cIndex];
       // If Sale: We increased balance, so decrease it.
       // If Credit Note: We decreased balance, so increase it.
-      if (isCreditNote) {
-        customer.balance += invoice.total;
-      } else {
-        customer.balance -= invoice.total;
-      }
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      const balanceDelta = isCreditNote ? invoice.total : -invoice.total;
+      customer.balance += balanceDelta;
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(customer.id, balanceDelta);
     }
 
     cache.invoices.splice(index, 1);
     StorageService.persistToLocalStorage();
 
-    if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('invoices'), invoiceId);
+    if (supabaseData.isReady()) await supabaseData.deleteInvoice(invoiceId);
   },
 
   // --- Purchase Logic ---
-  savePurchase: (purchase: Invoice) => {
+  savePurchase: async (purchase: Invoice) => {
     purchase.type = 'PURCHASE'; // Ensure Type
     const newProducts = [...cache.products];
 
     // 1. Update Stock & Purchase Price & GST
-    purchase.items.forEach(item => {
+    for (const item of purchase.items) {
       const pIndex = newProducts.findIndex(p => p.id === item.productId);
       if (pIndex >= 0) {
         const product = { ...newProducts[pIndex] };
@@ -570,26 +529,21 @@ export const StorageService = {
           product.stock += item.quantity;
         }
 
-        // Update Purchase Price (Weighted Avg could be better, but simple update for now or just last purchase price)
-        // Let's just update the "purchasePrice" field if we added it, or just keep it simple.
+        // Update Purchase Price
         if (item.rate > 0) product.purchasePrice = item.rate;
 
-        // Update GST Rate if different (and enabled) - User requirement: "sale me bhi vhi gst % use ho"
+        // Update GST Rate if different (and enabled)
         if (purchase.gstEnabled && item.gstRate !== undefined && item.gstRate > 0) {
           product.gstRate = item.gstRate;
         }
 
         newProducts[pIndex] = product;
-        if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
+        if (supabaseData.isReady()) await supabaseData.saveProduct(product.id, product);
       }
-    });
+    }
     cache.products = newProducts;
 
     // 2. Update Vendor Balance (Creditor Logic)
-    // If we buy on credit, we OWE money. Balance should be NEGATIVE (Credit) or we track 'Payable'.
-    // In this app, Customer Balance > 0 usually means they owe us (Receivable).
-    // So if we buy on credit, we should DECREASE their balance (make it negative).
-
     const newCustomers = [...cache.customers];
     const cIndex = newCustomers.findIndex(c => c.id === purchase.customerId);
     if (cIndex >= 0 && purchase.status === 'PENDING') {
@@ -598,7 +552,7 @@ export const StorageService = {
       vendor.balance -= purchase.total;
       vendor.type = vendor.type === 'CUSTOMER' ? 'BOTH' : (vendor.type || 'VENDOR');
       newCustomers[cIndex] = vendor;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), vendor.id, vendor);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(vendor.id, -purchase.total);
     }
     cache.customers = newCustomers;
 
@@ -606,44 +560,41 @@ export const StorageService = {
 
     StorageService.persistToLocalStorage();
     if (supabaseData.isReady()) {
-      supabaseData.saveDocument(StorageService.getCollectionPath('purchases'), purchase.id, purchase);
+      await supabaseData.saveInvoice(purchase, purchase.items);
     }
 
     // PUSH TO TALLY
     TallySyncService.pushInvoice(purchase).catch(console.error);
   },
 
-  deletePurchase: (purchaseId: string) => {
+  deletePurchase: async (purchaseId: string) => {
     const index = cache.purchases.findIndex(p => p.id === purchaseId);
     if (index === -1) return;
     const purchase = cache.purchases[index];
 
     // 1. Revert Stock (Decrease)
-    purchase.items.forEach(item => {
+    for (const item of purchase.items) {
       const pIndex = cache.products.findIndex(p => p.id === item.productId);
       if (pIndex >= 0 && cache.products[pIndex].category !== 'Services') {
         cache.products[pIndex].stock -= item.quantity;
-        if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('products'), cache.products[pIndex].id, cache.products[pIndex]);
+        if (supabaseData.isReady()) await supabaseData.saveProduct(cache.products[pIndex].id, cache.products[pIndex]);
       }
-    });
+    }
 
     // 2. Revert Vendor Balance (Increase - remove debt)
     const cIndex = cache.customers.findIndex(c => c.id === purchase.customerId);
     if (cIndex >= 0 && purchase.status === 'PENDING') {
       cache.customers[cIndex].balance += purchase.total;
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), cache.customers[cIndex].id, cache.customers[cIndex]);
+      if (supabaseData.isReady()) await supabaseData.updateCustomerBalanceAtomic(cache.customers[cIndex].id, purchase.total);
     }
 
     cache.purchases.splice(index, 1);
     StorageService.persistToLocalStorage();
 
-    if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('purchases'), purchaseId);
+    if (supabaseData.isReady()) await supabaseData.deleteInvoice(purchaseId);
   },
 
-  updatePurchase: (updatedPurchase: Invoice) => {
-    // Simplistic approach: delete old, save new. 
-    // This is safer for complex stock/balance logic than diffing manually, though slightly less efficient.
-    // But we need to keep the ID same.
+  updatePurchase: async (updatedPurchase: Invoice) => {
     const oldIndex = cache.purchases.findIndex(p => p.id === updatedPurchase.id);
     if (oldIndex === -1) return;
 
@@ -667,7 +618,6 @@ export const StorageService = {
       const pIndex = cache.products.findIndex(p => p.id === item.productId);
       if (pIndex >= 0 && cache.products[pIndex].category !== 'Services') {
         cache.products[pIndex].stock += item.quantity;
-        // Update Cost Price again? Yes
         if (item.rate > 0) cache.products[pIndex].purchasePrice = item.rate;
       }
     });
@@ -677,33 +627,35 @@ export const StorageService = {
       cache.customers[newCIndex].balance -= updatedPurchase.total;
     }
 
-    // Save changes to Collections
-
-    // Update Products
+    // Save changes to Supabase
     if (supabaseData.isReady()) {
-      // Saving all products might be too much, but needed if we touched multiple. 
-      // Optimization: only save modified products.
+      // Atomic balance updates
+      if (oldCIndex >= 0 && oldPurchase.status === 'PENDING') {
+        await supabaseData.updateCustomerBalanceAtomic(cache.customers[oldCIndex].id, oldPurchase.total);
+      }
+      if (newCIndex >= 0 && updatedPurchase.status === 'PENDING') {
+        if (oldCIndex !== newCIndex) {
+          await supabaseData.updateCustomerBalanceAtomic(cache.customers[newCIndex].id, -updatedPurchase.total);
+        } else {
+          // Same vendor - apply new delta on top of revert
+          await supabaseData.updateCustomerBalanceAtomic(cache.customers[newCIndex].id, -updatedPurchase.total);
+        }
+      }
+
+      // Saving affected products
       const affectedProductIds = new Set([...oldPurchase.items, ...updatedPurchase.items].map(i => i.productId));
-      affectedProductIds.forEach(pid => {
+      for (const pid of affectedProductIds) {
         const p = cache.products.find(prod => prod.id === pid);
-        if (p) supabaseData.saveDocument(StorageService.getCollectionPath('products'), p.id, p);
-      });
-
-      const oldC = cache.customers[oldCIndex];
-      if (oldC) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), oldC.id, oldC);
-
-      if (oldCIndex !== newCIndex) {
-        const newC = cache.customers[newCIndex];
-        if (newC) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), newC.id, newC);
+        if (p) await supabaseData.saveProduct(p.id, p);
       }
     }
 
     cache.purchases[oldIndex] = updatedPurchase;
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('purchases'), updatedPurchase.id, updatedPurchase);
+    if (supabaseData.isReady()) await supabaseData.saveInvoice(updatedPurchase, updatedPurchase.items);
   },
 
-  updateInvoice: (updatedInvoice: Invoice) => {
+  updateInvoice: async (updatedInvoice: Invoice) => {
     const oldInvoiceIndex = cache.invoices.findIndex(i => i.id === updatedInvoice.id);
     if (oldInvoiceIndex === -1) return;
     const oldInvoice = cache.invoices[oldInvoiceIndex];
@@ -757,17 +709,24 @@ export const StorageService = {
     }
 
     if (supabaseData.isReady()) {
-      modifiedProductIds.forEach(pid => {
+      // Atomic balance updates
+      if (oldCIndex >= 0 && oldInvoice.status === 'PENDING') {
+        const oldDelta = oldIsCreditNote ? oldInvoice.total : -oldInvoice.total;
+        await supabaseData.updateCustomerBalanceAtomic(cache.customers[oldCIndex].id, oldDelta);
+      }
+      if (newCIndex >= 0 && updatedInvoice.status === 'PENDING') {
+        const newDelta = newIsCreditNote ? -updatedInvoice.total : updatedInvoice.total;
+        if (oldCIndex !== newCIndex) {
+          await supabaseData.updateCustomerBalanceAtomic(cache.customers[newCIndex].id, newDelta);
+        } else {
+          await supabaseData.updateCustomerBalanceAtomic(cache.customers[newCIndex].id, newDelta);
+        }
+      }
+
+      // Save affected products
+      for (const pid of modifiedProductIds) {
         const product = cache.products.find(p => p.id === pid);
-        if (product) supabaseData.saveDocument(StorageService.getCollectionPath('products'), product.id, product);
-      });
-
-      const oldC = cache.customers[oldCIndex];
-      if (oldC) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), oldC.id, oldC);
-
-      if (oldCIndex !== newCIndex) {
-        const newC = cache.customers[newCIndex];
-        if (newC) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), newC.id, newC);
+        if (product) await supabaseData.saveProduct(product.id, product);
       }
     }
 
@@ -775,35 +734,10 @@ export const StorageService = {
 
     StorageService.persistToLocalStorage();
     if (supabaseData.isReady()) {
-      supabaseData.saveDocument(StorageService.getCollectionPath('invoices'), updatedInvoice.id, updatedInvoice);
+      await supabaseData.saveInvoice(updatedInvoice, updatedInvoice.items);
 
-      // ✅ UPDATE PUBLIC COPY (Safe Fields Only)
-      supabaseData.saveDocument('publicBills', updatedInvoice.id, {
-        id: updatedInvoice.id,
-        invoiceNumber: updatedInvoice.invoiceNumber,
-        customerName: updatedInvoice.customerName,
-        customerAddress: updatedInvoice.customerAddress,
-        customerGstin: updatedInvoice.customerGstin,
-        date: updatedInvoice.date,
-        items: updatedInvoice.items,
-        subtotal: updatedInvoice.subtotal,
-        total: updatedInvoice.total,
-        totalCgst: updatedInvoice.totalCgst || 0,
-        totalSgst: updatedInvoice.totalSgst || 0,
-        totalIgst: updatedInvoice.totalIgst || 0,
-        gstEnabled: updatedInvoice.gstEnabled,
-        status: updatedInvoice.status,
-        notes: updatedInvoice.notes,
-        _company: {
-          name: cache.company.name,
-          address: cache.company.address,
-          phone: cache.company.phone,
-          gstin: cache.company.gstin || cache.company.gst,
-          upiId: cache.company.upiId
-        },
-        publicToken: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
+      // UPDATE PUBLIC COPY (Safe Fields Only)
+      await supabaseData.saveDocument('public_bills', updatedInvoice.id, buildPublicBillPayload(updatedInvoice));
     }
 
     if (oldInvoice.total !== updatedInvoice.total) {
@@ -816,10 +750,10 @@ export const StorageService = {
     }
   },
 
-  saveCompanyProfile: (profile: CompanyProfile) => {
+  saveCompanyProfile: async (profile: CompanyProfile) => {
     cache.company = profile;
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('company'), 'profile', profile);
+    if (supabaseData.isReady()) await supabaseData.saveCompanyProfile(profile.id || 'profile', profile);
   },
 
   getLastSalePrice: (customerId: string, productId: string): number | null => {
@@ -872,39 +806,39 @@ export const StorageService = {
     return bestId ? cache.products.find(p => p.id === bestId) || null : null;
   },
 
-  updateCustomer: (customer: Customer) => {
+  updateCustomer: async (customer: Customer) => {
     const index = cache.customers.findIndex(c => c.id === customer.id);
     if (index >= 0) {
       cache.customers[index] = customer;
       StorageService.persistToLocalStorage();
-      if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('customers'), customer.id, customer);
+      if (supabaseData.isReady()) await supabaseData.saveCustomer(customer.id, customer);
     }
   },
 
-  deleteCustomer: (customerId: string) => {
+  deleteCustomer: async (customerId: string) => {
     const index = cache.customers.findIndex(c => c.id === customerId);
     if (index >= 0) {
       cache.customers.splice(index, 1);
       StorageService.persistToLocalStorage();
-      if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('customers'), customerId);
+      if (supabaseData.isReady()) await supabaseData.deleteCustomer(customerId);
     }
   },
 
-  saveExpense: (expense: Expense) => {
+  saveExpense: async (expense: Expense) => {
     const index = cache.expenses.findIndex(e => e.id === expense.id);
     if (index >= 0) cache.expenses[index] = expense;
     else cache.expenses.unshift(expense);
 
     StorageService.persistToLocalStorage();
-    if (supabaseData.isReady()) supabaseData.saveDocument(StorageService.getCollectionPath('expenses'), expense.id, expense);
+    if (supabaseData.isReady()) await supabaseData.saveExpense(expense.id, expense);
   },
 
-  deleteExpense: (expenseId: string) => {
+  deleteExpense: async (expenseId: string) => {
     const index = cache.expenses.findIndex(e => e.id === expenseId);
     if (index >= 0) {
       cache.expenses.splice(index, 1);
       StorageService.persistToLocalStorage();
-      if (supabaseData.isReady()) supabaseData.deleteDocument(StorageService.getCollectionPath('expenses'), expenseId);
+      if (supabaseData.isReady()) await supabaseData.deleteExpense(expenseId);
     }
   },
 
@@ -912,8 +846,7 @@ export const StorageService = {
   saveFcmToken: async (token: string) => {
     if (!cache.currentUserId || !supabaseData.isReady()) return;
     try {
-      // Save directly to the User Document `users/{userId}`
-      await supabaseData.saveDocument('users', cache.currentUserId, { fcmToken: token });
+      await supabaseData.saveDocument('user_settings', cache.currentUserId, { fcmToken: token });
     } catch (e) {
       console.error('Failed to save FCM Token:', e);
     }
@@ -922,11 +855,8 @@ export const StorageService = {
   getAllFcmTokens: async (): Promise<string[]> => {
     if (!supabaseData.isReady()) return [];
     try {
-      // This requires 'users' collection to be readable by Admin
-      // Since I'm Admin (Spark Plan Owner), I can read global collections if rules allow
-      // Assuming rules allow read for auth users or similar
-      const users = await supabaseData.fetchCollection<any>('users');
-      return users.map(u => u.fcmToken).filter(t => !!t);
+      const result = await supabaseData.fetchCollection<any>('user_settings', cache.currentUserId || '');
+      return result.data.map(u => u.fcmToken).filter(t => !!t);
     } catch (e) {
       console.error('Failed to fetch FCM tokens:', e);
       return [];
@@ -992,12 +922,6 @@ export const StorageService = {
 
   importData: async (jsonString: string): Promise<{ success: boolean; message: string }> => {
     try {
-      // Size validation: reject files larger than 10MB
-      const MAX_IMPORT_SIZE = 10 * 1024 * 1024; // 10 MB in bytes
-      if (jsonString.length > MAX_IMPORT_SIZE) {
-        return { success: false, message: "File too large. Maximum size is 10MB." };
-      }
-
       let data;
       try {
         data = JSON.parse(jsonString);
@@ -1015,7 +939,6 @@ export const StorageService = {
       if (data.purchases) {
         cache.purchases = JSON.parse(data.purchases);
       } else if (data.products) {
-        // If no purchases data but products exist, we keep cache.purchases or init empty
         cache.purchases = [];
       }
 
@@ -1024,20 +947,15 @@ export const StorageService = {
       if (supabaseData.isReady() && cache.currentUserId) {
         // Sync restored data UP to Supabase
         try {
-          const userPath = `users/${cache.currentUserId}`;
-          const saveCollection = async (items: any[], name: string) => {
-            for (const item of items) {
-              await supabaseData.saveDocument(name, item.id, item, cache.currentUserId);
-            }
-          };
-
-          await await supabaseData.saveDocument('company_profiles', 'profile', cache.company, userId);
-          await saveCollection(cache.products, 'products');
-          await saveCollection(cache.customers, 'customers');
-          await saveCollection(cache.invoices, 'invoices');
-          await saveCollection(cache.payments, 'payments');
-          await saveCollection(cache.expenses, 'expenses');
-          await saveCollection(cache.purchases, 'purchases');
+          await supabaseData.saveCompanyProfile(cache.company.id || 'profile', cache.company);
+          if (cache.products.length) await supabaseData.batchSaveProducts(cache.products);
+          if (cache.customers.length) await supabaseData.batchSaveCustomers(cache.customers);
+          const allInvoices = [...cache.invoices, ...cache.purchases];
+          for (const inv of allInvoices) {
+            await supabaseData.saveInvoice(inv, inv.items ?? []);
+          }
+          if (cache.payments.length) await supabaseData.batchSavePayments(cache.payments);
+          if (cache.expenses.length) await supabaseData.batchSaveExpenses(cache.expenses);
         } catch (cloudError: any) {
           console.error("Cloud Sync Failed", cloudError);
           return { success: true, message: "Local data restored, but Cloud Sync failed: " + (cloudError.message || "Unknown error") };
@@ -1057,10 +975,7 @@ export const StorageService = {
     try {
       let count = 0;
       for (const invoice of cache.invoices) {
-        await supabaseData.saveDocument('publicBills', invoice.id, {
-          ...invoice,
-          _company: cache.company
-        });
+        await supabaseData.saveDocument('public_bills', invoice.id, buildPublicBillPayload(invoice));
         count++;
       }
       return { success: true, count };
@@ -1073,16 +988,16 @@ export const StorageService = {
   // --- Multi-Company Support ---
 
   getAllCompanies: (): CompanyProfile[] => {
-    const list = localStorage.getItem(KEYS().COMPANIES_LIST);
+    const KEYS = getKeys();
+    const list = localStorage.getItem(KEYS.COMPANIES_LIST);
     const companies: CompanyProfile[] = list ? JSON.parse(list) : [];
 
     // Ensure current company (from cache) is in the list
     if (cache.company && !companies.some(c => c.name === cache.company.name)) {
-      // If current company has no ID, give it 'default' or existing active ID
       const activeId = getActiveCompanyId();
       const currentWithId = { ...cache.company, id: activeId || 'default' };
       companies.push(currentWithId);
-      localStorage.setItem(KEYS().COMPANIES_LIST, JSON.stringify(companies));
+      localStorage.setItem(KEYS.COMPANIES_LIST, JSON.stringify(companies));
     }
     return companies;
   },
@@ -1092,9 +1007,8 @@ export const StorageService = {
     const newId = crypto.randomUUID();
     const newCompany = { ...profile, id: newId };
     companies.push(newCompany);
-    localStorage.setItem(KEYS().COMPANIES_LIST, JSON.stringify(companies));
+    localStorage.setItem(getKeys().COMPANIES_LIST, JSON.stringify(companies));
 
-    // Switch to it immediately? Usually user wants to switch explicitly, but let's just save.
     return newId;
   },
 
@@ -1103,15 +1017,6 @@ export const StorageService = {
     StorageService.persistToLocalStorage();
 
     // 2. Set new active ID
-    // If switching to 'default' (legacy), use empty string if we treat it that way, 
-    // but better to use the ID consistent with how we stored it.
-    // If id matches 'default', we might map it to '' or keep it 'default'.
-    // Given my dynamic key logic: 
-    // const activeIdentifier = getActiveCompanyId(); 
-    // const keyPrefix = activeIdentifier ? `${activeIdentifier}_` : '';
-
-    // If companyId is 'default', let's assume valid ID or special handling.
-    // For simplicity, just set check:
     localStorage.setItem('active_company_id', companyId === 'default' ? '' : companyId);
 
     // 3. Reload to re-initialize KEYS and Cache
@@ -1121,15 +1026,13 @@ export const StorageService = {
   // --- Admin Ads (Super Admin Feature) ---
   getAdminAds: (): AdminAd[] => {
     try {
-      const stored = localStorage.getItem(KEYS().ADMIN_ADS);
+      const stored = localStorage.getItem(getKeys().ADMIN_ADS);
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   },
 
   saveAdminAds: (ads: AdminAd[]) => {
-    localStorage.setItem(KEYS().ADMIN_ADS, JSON.stringify(ads));
-    // In a real app, you would also save to Firestore here:
-    // supabaseData.batchSave('system/ads', ads);
+    localStorage.setItem(getKeys().ADMIN_ADS, JSON.stringify(ads));
   },
 
   // --- Changelog & Notification Helpers ---

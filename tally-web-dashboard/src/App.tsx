@@ -36,6 +36,9 @@ import Dashboard3DPage from './pages/Dashboard3DPage';
 import LandingPage3D from './pages/LandingPage3D';
 import ProfitLossPage from './pages/ProfitLossPage';
 import BalanceSheetPage from './pages/BalanceSheetPage';
+import TrialBalancePage from './pages/TrialBalancePage';
+import DayBookPage from './pages/DayBookPage';
+import CashFlowPage from './pages/CashFlowPage';
 import AuthCallback from './pages/AuthCallback';
 import OnboardingPage from './pages/OnboardingPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
@@ -217,6 +220,9 @@ function AppContent() {
                                 <Route path="/invoice/:id" element={<InvoicePDFPage />} />
                                 <Route path="/profit-loss" element={<ProfitLossPage />} />
                                 <Route path="/balance-sheet" element={<BalanceSheetPage />} />
+                                <Route path="/trial-balance" element={<TrialBalancePage />} />
+                                <Route path="/day-book" element={<DayBookPage />} />
+                                <Route path="/cash-flow" element={<CashFlowPage />} />
                                 <Route path="/sales-analytics" element={<SalesAnalyticsPage />} />
                                 <Route path="/bank-reconciliation" element={<BankReconciliationPage />} />
                                 <Route path="/ai-entry" element={<AIEntryPage />} />

@@ -1,3 +1,26 @@
+/**
+ * @deprecated LEGACY — This file is no longer imported by any routes.
+ * ================================================================
+ *  ██████  ███████  █████  ██████      ██████   ██████  ██████  ███████
+ * ██       ██      ██   ██ ██   ██     ██   ██ ██    ██ ██   ██ ██
+ * ██   ███ █████   ███████ ██   ██     ██   ██ ██    ██ ██   ██ █████
+ * ██    ██ ██      ██   ██ ██   ██     ██   ██ ██    ██ ██   ██ ██
+ *  ██████  ███████ ██   ██ ██████      ██████   ██████  ██████  ███████
+ * ================================================================
+ * The project has fully migrated to Firebase Admin SDK for server-side
+ * data access (see server/firebase-admin.ts) and Supabase for client-side
+ * data access (see client/src/services/supabaseDataService.ts).
+ *
+ * This full Drizzle ORM implementation of DatabaseStorage is dead code.
+ * No routes import { storage } from "./storage" anymore.
+ * Kept for reference only.
+ *
+ * To reinstate in the future:
+ *   1. Ensure DATABASE_URL is set
+ *   2. Import { storage } from "./storage" in routes.ts
+ *   3. Add Drizzle schema tables to @shared/schema
+ * ================================================================
+ */
 import {
   customers,
   products,

@@ -3,49 +3,254 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <!-- Global Styles -->
+        <!-- ========== COLOR PALETTE ========== -->
+        <Color x:Key="PrimaryColor">#2563EB</Color>
+        <Color x:Key="PrimaryDarkColor">#1D4ED8</Color>
+        <Color x:Key="PrimaryLightColor">#DBEAFE</Color>
+        <Color x:Key="SuccessColor">#10B981</Color>
+        <Color x:Key="DangerColor">#EF4444</Color>
+        <Color x:Key="WarningColor">#F59E0B</Color>
+        <Color x:Key="Gray50">#F9FAFB</Color>
+        <Color x:Key="Gray100">#F3F4F6</Color>
+        <Color x:Key="Gray200">#E5E7EB</Color>
+        <Color x:Key="Gray300">#D1D5DB</Color>
+        <Color x:Key="Gray400">#9CA3AF</Color>
+        <Color x:Key="Gray500">#6B7280</Color>
+        <Color x:Key="Gray600">#4B5563</Color>
+        <Color x:Key="Gray700">#374151</Color>
+        <Color x:Key="Gray800">#1F2937</Color>
+        <Color x:Key="Gray900">#111827</Color>
+
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="PrimaryLightBrush" Color="#DBEAFE"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#10B981"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#EF4444"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="WhiteBrush" Color="White"/>
+        <SolidColorBrush x:Key="Gray100Brush" Color="#F3F4F6"/>
+        <SolidColorBrush x:Key="Gray200Brush" Color="#E5E7EB"/>
+        <SolidColorBrush x:Key="Gray300Brush" Color="#D1D5DB"/>
+        <SolidColorBrush x:Key="Gray500Brush" Color="#6B7280"/>
+        <SolidColorBrush x:Key="Gray600Brush" Color="#4B5563"/>
+        <SolidColorBrush x:Key="Gray700Brush" Color="#374151"/>
+        <SolidColorBrush x:Key="SidebarBgBrush" Color="#1E293B"/>
+
+        <!-- ========== CARD SHADOW ========== -->
+        <DropShadowEffect x:Key="CardShadow" BlurRadius="16" ShadowDepth="3" Color="#000000" Opacity="0.08"/>
+        <DropShadowEffect x:Key="CardShadowHover" BlurRadius="20" ShadowDepth="4" Color="#2563EB" Opacity="0.12"/>
+
+        <!-- ========== GLOBAL STYLES ========== -->
+
+        <!-- Default Window Style -->
+        <Style TargetType="Window">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="TextElement.Foreground" Value="#1F2937"/>
+            <Setter Property="AllowsTransparency" Value="False"/>
+            <Setter Property="WindowStyle" Value="SingleBorderWindow"/>
+            <Setter Property="ResizeMode" Value="CanResizeWithGrip"/>
+        </Style>
+
+        <!-- Modern Button -->
         <Style x:Key="ModernButton" TargetType="Button">
-            <Setter Property="Background" Value="#4A90D9"/>
+            <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="20,10"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinHeight" Value="40"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" 
-                                CornerRadius="4"
+                        <Border x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" 
-                                              VerticalAlignment="Center"/>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#1D4ED8"/>
+                                <Setter TargetName="RootBorder" Property="Effect" Value="{StaticResource CardShadowHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#1E40AF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#D1D5DB"/>
+                                <Setter Property="Foreground" Value="#9CA3AF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Danger Button -->
+        <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+            <Setter Property="Background" Value="#EF4444"/>
+            <Setter Property="Foreground" Value="White"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#3A7BC8"/>
+                    <Setter Property="Background" Value="#DC2626"/>
                 </Trigger>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="#CCCCCC"/>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#B91C1C"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="StatusCard" TargetType="Border">
+        <!-- Ghost Button -->
+        <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#2563EB"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#DBEAFE"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#BFDBFE"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Card Template -->
+        <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="White"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="8"/>
+            <Setter Property="Effect" Value="{StaticResource CardShadow}"/>
+            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- Status Card -->
+        <Style x:Key="StatusCard" TargetType="Border" BasedOn="{StaticResource Card}">
             <Setter Property="Padding" Value="16"/>
             <Setter Property="Margin" Value="8"/>
-            <Setter Property="Effect">
+            <Setter Property="MinWidth" Value="180"/>
+        </Style>
+
+        <!-- KPI Card -->
+        <Style x:Key="KpiCard" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="6"/>
+            <Setter Property="MinHeight" Value="110"/>
+            <Setter Property="MinWidth" Value="200"/>
+        </Style>
+
+        <!-- Modern TextBox -->
+        <Style x:Key="ModernTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="#F9FAFB"/>
+            <Setter Property="Foreground" Value="#1F2937"/>
+            <Setter Property="Template">
                 <Setter.Value>
-                    <DropShadowEffect BlurRadius="10" 
-                                      ShadowDepth="2" 
-                                      Color="#000000" 
-                                      Opacity="0.1"/>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter TargetName="Border" Property="Background" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#9CA3AF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Modern PasswordBox -->
+        <Style x:Key="ModernPasswordBox" TargetType="PasswordBox">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderBrush" Value="#D1D5DB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="#F9FAFB"/>
+            <Setter Property="Foreground" Value="#1F2937"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border x:Name="Border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter TargetName="Border" Property="Background" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#9CA3AF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern ProgressBar -->
+        <Style TargetType="ProgressBar">
+            <Setter Property="Height" Value="8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="#E5E7EB"/>
+            <Setter Property="Foreground" Value="#2563EB"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid MinHeight="{TemplateBinding Height}">
+                            <Border x:Name="PART_Track"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="4"/>
+                            <Border x:Name="PART_Indicator"
+                                    Background="{TemplateBinding Foreground}"
+                                    CornerRadius="4"
+                                    HorizontalAlignment="Left"
+                                    Width="{Binding Value, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Null}}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ScrollViewer Style -->
+        <Style TargetType="ScrollViewer">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CanContentScroll" Value="True"/>
+        </Style>
+
+        <!-- Vertical ScrollBar Thinner -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
     </Application.Resources>
 </Application>

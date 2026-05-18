@@ -11,7 +11,7 @@ namespace TallySyncApp
         public MainWindow()
         {
             InitializeComponent();
-            
+
             // Set user email in data context
             if (App.AuthService?.CurrentSession != null)
             {
@@ -20,6 +20,59 @@ namespace TallySyncApp
                 {
                     vm.UserEmail = App.AuthService.CurrentSession.Email;
                 }
+            }
+
+            // Set icon text for nav buttons (since can't use x:Key from resources in triggers)
+            Loaded += (s, e) =>
+            {
+                SetNavIcon(NavDashboard, "📊");
+                SetNavIcon(NavSyncStatus, "📋");
+                SetNavIcon(NavSettings, "⚙️");
+                SetNavIcon(NavHistory, "📜");
+
+                // Default to dashboard
+                PageTitle.Text = "Dashboard";
+            };
+        }
+
+        private void SetNavIcon(System.Windows.Controls.RadioButton btn, string icon)
+        {
+            // Find the IconText TextBlock within the template
+            var iconText = btn.Template?.FindName("IconText", btn) as System.Windows.Controls.TextBlock;
+            if (iconText != null)
+                iconText.Text = icon;
+        }
+
+        private void NavButton_Checked(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is System.Windows.Controls.RadioButton btn)) return;
+
+            // Hide all panels
+            DashboardPanel.Visibility = Visibility.Collapsed;
+            SyncStatusPanel.Visibility = Visibility.Collapsed;
+            SettingsPanel.Visibility = Visibility.Collapsed;
+            HistoryPanel.Visibility = Visibility.Collapsed;
+
+            // Show selected panel
+            var tag = btn.Tag?.ToString();
+            switch (tag)
+            {
+                case "DashboardPanel":
+                    DashboardPanel.Visibility = Visibility.Visible;
+                    PageTitle.Text = "Dashboard";
+                    break;
+                case "SyncStatusPanel":
+                    SyncStatusPanel.Visibility = Visibility.Visible;
+                    PageTitle.Text = "Sync Status";
+                    break;
+                case "SettingsPanel":
+                    SettingsPanel.Visibility = Visibility.Visible;
+                    PageTitle.Text = "Settings";
+                    break;
+                case "HistoryPanel":
+                    HistoryPanel.Visibility = Visibility.Visible;
+                    PageTitle.Text = "History";
+                    break;
             }
         }
 

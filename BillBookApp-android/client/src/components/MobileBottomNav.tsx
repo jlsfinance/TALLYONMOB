@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { ViewState } from '../types';
-import { LayoutDashboard, FileText, Menu, Plus, Users, Settings, LogOut, Upload, X, Receipt, ArrowDownLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { LayoutDashboard, BookOpen, FileText, BarChart3, Grid, Plus, Users, Settings, LogOut, Upload, X, Receipt, ArrowDownLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { HapticService } from '@/services/hapticService';
@@ -29,6 +29,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, onChange
     { id: ViewState.EXPENSES, label: 'Expenses', icon: Receipt, color: 'text-red-500', bgColor: 'bg-red-50' },
     { id: ViewState.PAYMENTS, label: 'Receipts', icon: ArrowDownLeft, color: 'text-green-500', bgColor: 'bg-green-50' },
     { id: ViewState.IMPORT, label: 'Import Data', icon: Upload, color: 'text-purple-500', bgColor: 'bg-purple-50' },
+    { id: ViewState.SYNC_SETTINGS, label: 'Sync Settings', icon: Upload, color: 'text-cyan-500', bgColor: 'bg-cyan-50' },
     { id: ViewState.SETTINGS, label: 'Settings', icon: Settings, color: 'text-gray-500', bgColor: 'bg-gray-50' },
   ];
 
@@ -147,9 +148,9 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, onChange
         </div>
       )}
 
-      {/* Material 3 Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface-container dark:bg-surface-container-low border-t border-border/50 pb-safe z-30">
-        <div className="flex justify-around items-center px-4 max-w-lg mx-auto py-3">
+      {/* Material 3 Bottom Navigation Bar - BizAnalyst Style */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 pb-safe z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <div className="flex justify-around items-center px-2 max-w-lg mx-auto py-2">
           <NavButton
             active={currentView === ViewState.DASHBOARD}
             onClick={() => handleNavClick(ViewState.DASHBOARD)}
@@ -157,22 +158,28 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, onChange
             label="Home"
           />
           <NavButton
-            active={currentView === ViewState.INVOICES}
-            onClick={() => handleNavClick(ViewState.INVOICES)}
+            active={currentView === ViewState.LEDGERS || currentView === ViewState.LEDGER_DETAIL}
+            onClick={() => handleNavClick(ViewState.LEDGERS)}
+            icon={BookOpen}
+            label="Ledgers"
+          />
+          <NavButton
+            active={currentView === ViewState.VOUCHERS || currentView === ViewState.VOUCHER_DETAIL}
+            onClick={() => handleNavClick(ViewState.VOUCHERS)}
             icon={FileText}
-            label="Invoices"
+            label="Vouchers"
           />
           <NavButton
-            active={currentView === ViewState.PAYMENTS}
-            onClick={() => handleNavClick(ViewState.PAYMENTS)}
-            icon={ArrowDownLeft}
-            label="Receipts"
+            active={currentView === ViewState.REPORTS_HUB || currentView === ViewState.REPORTS || currentView === ViewState.DAYBOOK}
+            onClick={() => handleNavClick(ViewState.REPORTS_HUB)}
+            icon={BarChart3}
+            label="Reports"
           />
           <NavButton
-            active={isMenuOpen}
+            active={isMenuOpen || currentView === ViewState.MORE_MENU}
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            icon={Menu}
-            label="Menu"
+            icon={Grid}
+            label="More"
           />
         </div>
       </div>

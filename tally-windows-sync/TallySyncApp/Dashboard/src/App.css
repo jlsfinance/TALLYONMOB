@@ -1,42 +1,639 @@
-#root {
-  max-width: 1280px;
+/* =============================================
+   TallySync Dashboard — Dark Modern Theme
+   ============================================= */
+
+/* ---- CSS Variables ---- */
+:root {
+  --bg-primary: #0F172A;
+  --bg-secondary: #1E293B;
+  --bg-card: #1E293B;
+  --bg-card-hover: #253349;
+  --bg-input: #1E293B;
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+
+  --accent-blue: #2563EB;
+  --accent-blue-hover: #1D4ED8;
+  --accent-blue-light: #3B82F6;
+  --accent-green: #10B981;
+  --accent-green-bg: rgba(16, 185, 129, 0.1);
+  --accent-red: #EF4444;
+  --accent-red-bg: rgba(239, 68, 68, 0.1);
+  --accent-yellow: #F59E0B;
+  --accent-purple: #8B5CF6;
+
+  --border-color: #334155;
+  --border-radius: 12px;
+  --border-radius-sm: 8px;
+  --border-radius-lg: 16px;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --shadow-blue: 0 4px 20px rgba(37, 99, 235, 0.2);
+
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --transition: all 0.2s ease;
+}
+
+/* ---- Layout ---- */
+.dashboard {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Header ---- */
+.dashboard-header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 16px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  width: 40px;
+  height: 40px;
+  background: var(--accent-blue);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: bold;
+  color: white;
+}
+
+.logo-text h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.logo-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.header-right {
+  display: flex;
+  gap: 12px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.status-dot.disconnected {
+  background: var(--accent-red);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+/* ---- Content ---- */
+.dashboard-content {
+  padding: 28px 32px;
+  max-width: 1100px;
+  width: 100%;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* ---- Status Cards Row ---- */
+.status-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.status-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  transition: var(--transition);
+}
+
+.status-card:hover {
+  border-color: var(--accent-blue);
+  box-shadow: var(--shadow-blue);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tally-icon {
+  background: rgba(37, 99, 235, 0.15);
+  color: var(--accent-blue-light);
+}
+
+.cloud-icon {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.sync-icon {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-purple);
+}
+
+.card-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.card-body {
+  display: flex;
+  align-items: center;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.connection-status.connected {
+  color: var(--accent-green);
+}
+
+.connection-status.disconnected {
+  color: var(--accent-red);
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.connection-status.connected .status-indicator {
+  background: var(--accent-green);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  animation: pulse 2s infinite;
+}
+
+.connection-status.disconnected .status-indicator {
+  background: var(--accent-red);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.sync-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.time-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.date-value {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---- Progress Section ---- */
+.progress-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 24px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.progress-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.sync-status-text {
+  font-size: 13px;
+  color: var(--accent-blue-light);
+  font-weight: 500;
+}
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-primary);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-light));
+  border-radius: 5px;
+  transition: width 0.5s ease;
+  min-width: 4px;
+}
+
+.progress-percentage {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-blue-light);
+  min-width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 4px 0 16px;
+}
+
+.progress-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value.processed {
+  color: var(--accent-green);
+}
+
+.stat-value.remaining {
+  color: var(--accent-yellow);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ---- Record Counts ---- */
+.record-counts {
+  margin: 0;
+}
+
+.record-counts h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--text-primary);
+}
+
+.count-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.count-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: var(--transition);
+}
+
+.count-card:hover {
+  border-color: rgba(37, 99, 235, 0.3);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.count-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.count-card.ledgers .count-icon {
+  background: rgba(37, 99, 235, 0.15);
+  color: var(--accent-blue-light);
+}
+
+.count-card.vouchers .count-icon {
+  background: var(--accent-green-bg);
+  color: var(--accent-green);
+}
+
+.count-card.stock .count-icon {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-purple);
+}
+
+.count-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.count-number {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.count-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ---- Sync Controls ---- */
+.sync-controls {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0;
+}
+
+.sync-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 36px;
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: var(--shadow-blue);
+}
+
+.sync-button:hover:not(:disabled) {
+  background: var(--accent-blue-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(37, 99, 235, 0.3);
+}
+
+.sync-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--accent-blue);
+}
+
+.sync-button.syncing {
+  background: var(--accent-blue-hover);
+}
+
+.sync-icon-btn {
+  font-size: 18px;
+  transition: transform 0.3s ease;
+}
+
+.sync-icon-btn.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ---- Log Terminal ---- */
+.log-terminal {
+  background: #0D1117;
+  border: 1px solid #30363D;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.terminal-header {
+  background: #161B22;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #30363D;
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.red { background: #EF4444; }
+.dot.yellow { background: #F59E0B; }
+.dot.green { background: #10B981; }
+
+.terminal-title {
+  font-size: 12px;
+  color: #8B949E;
+  font-family: var(--font-mono);
+  margin-left: 8px;
+}
+
+.terminal-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: #484F58;
+  font-family: var(--font-mono);
+  font-style: italic;
+}
+
+.terminal-body {
+  padding: 16px;
+  min-height: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.terminal-empty {
+  color: #484F58;
+  font-style: italic;
+}
+
+.terminal-line {
+  color: #4ADE80;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-line::before {
+  content: '> ';
+  color: #8B949E;
+}
+
+/* Scrollbar styling */
+.terminal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.terminal-body::-webkit-scrollbar-track {
+  background: #0D1117;
+}
+
+.terminal-body::-webkit-scrollbar-thumb {
+  background: #30363D;
+  border-radius: 3px;
+}
+
+.terminal-body::-webkit-scrollbar-thumb:hover {
+  background: #484F58;
+}
+
+/* ---- Animations ---- */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .dashboard-content {
+    padding: 16px;
   }
-  to {
-    transform: rotate(360deg);
+
+  .status-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .count-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-stats {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .dashboard-header {
+    padding: 12px 16px;
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+
+  .status-badge {
+    padding: 4px 10px;
+    font-size: 11px;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+@media (min-width: 769px) and (max-width: 1024px) {
+  .status-cards {
+    grid-template-columns: repeat(3, 1fr);
   }
-}
 
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
+  .count-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }

@@ -1,15 +1,44 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { ledgerApi, masterApi, pendingTransactionApi } from '@/lib/supabase';
+import { ledgerApi, masterApi } from '@/lib/supabase';
 import { format } from 'date-fns';
 import {
     Plus, Trash2, Save, Eye, X, Banknote, ArrowLeft,
     AlertCircle, Calculator, Package, UserPlus, User,
-    Phone, ChevronRight, Search
+    Phone, ChevronRight, Search, CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Autocomplete from '@/components/shared/Autocomplete';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+
+// Toast notification component
+function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 5000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: -50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -50, scale: 0.95 }}
+            className={`fixed top-6 right-6 z-[9999] flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border ${
+                type === 'success'
+                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/30'
+                    : 'bg-red-600 text-white border-red-400 shadow-red-500/30'
+            }`}
+        >
+            {type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+            <span className="text-sm font-bold">{message}</span>
+            <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg transition-all">
+                <X size={18} />
+            </button>
+        </motion.div>
+    );
+}
 
 // Types
 interface InvoiceItem {
@@ -85,6 +114,7 @@ export default function CreateInvoicePage() {
     const [calcError, setCalcError] = useState('');
     const [showProductModal, setShowProductModal] = useState(false);
     const [newProductName, setNewProductName] = useState('');
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     const modalRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -207,9 +237,18 @@ export default function CreateInvoicePage() {
     const { subtotal, cgst, sgst, igst, total, billDiscount } = totals();
 
     const handleSubmit = async () => {
-        if (!selectedCustomerId) return alert('Please select a customer');
-        if (items.length === 0) return alert('Please add at least one item');
-        if (items.some(i => !i.productId)) return alert('Some items have no product selected');
+        if (!selectedCustomerId) {
+            setToast({ message: 'Please select a customer', type: 'error' });
+            return;
+        }
+        if (items.length === 0) {
+            setToast({ message: 'Please add at least one item', type: 'error' });
+            return;
+        }
+        if (items.some(i => !i.productId)) {
+            setToast({ message: 'Some items have no product selected', type: 'error' });
+            return;
+        }
 
         setSubmitting(true);
         try {
@@ -237,17 +276,35 @@ export default function CreateInvoicePage() {
                 gstEnabled: (cgst + sgst + igst) > 0
             };
 
-            await pendingTransactionApi.create(
-                selectedCompany.id,
-                'Sales',
-                invoiceData
-            );
+            // Post to backend API (which saves to pending_transactions in Supabase)
+            const res = await fetch(`${API_BASE}/payments/pending`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    companyId: selectedCompany.id,
+                    voucherType: 'Sales',
+                    voucherData: invoiceData
+                })
+            });
 
-            alert('Invoice saved successfully! It will be synced shortly.');
-            navigate('/sales');
-        } catch (error) {
+            const result = await res.json();
+
+            if (!res.ok || !result.success) {
+                throw new Error(result.error || result.message || 'Failed to save invoice');
+            }
+
+            setToast({
+                message: `✅ Invoice saved! It will be synced to Tally shortly.`,
+                type: 'success'
+            });
+
+            setTimeout(() => navigate('/sales'), 2000);
+        } catch (error: any) {
             console.error('Error saving invoice:', error);
-            alert('Failed to save invoice');
+            setToast({
+                message: error?.message || 'Failed to save invoice. Please try again.',
+                type: 'error'
+            });
         } finally {
             setSubmitting(false);
         }
@@ -819,6 +876,17 @@ export default function CreateInvoicePage() {
                     )
                 }
             </AnimatePresence >
+
+            {/* Toast Notification */}
+            <AnimatePresence>
+                {toast && (
+                    <Toast
+                        message={toast.message}
+                        type={toast.type}
+                        onClose={() => setToast(null)}
+                    />
+                )}
+            </AnimatePresence>
         </div >
     );
 }
