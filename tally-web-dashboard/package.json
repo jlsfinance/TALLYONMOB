@@ -24,7 +24,7 @@
         "@google/generative-ai": "^0.24.1",
         "@headlessui/react": "^2.2.9",
         "@heroicons/react": "^2.2.0",
-        "@insforge/sdk": "^1.1.6-dev.0",
+        "@insforge/sdk": "^1.2.9",
         "@react-three/drei": "^9.0.0",
         "@react-three/fiber": "^8.18.0",
         "@supabase/supabase-js": "^2.98.0",
@@ -60,4 +60,3 @@
         "vite": "^4.4.5"
     }
 }
-

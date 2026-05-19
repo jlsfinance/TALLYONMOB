@@ -1,11 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
-import { Capacitor } from '@capacitor/core';
+import { createClient } from '@insforge/sdk';
 
-// Fallback to hardcoded values for Capacitor/Mobile builds where .env might be missing
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lcsehcwocqvxrrgbmhcz.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxjc2VoY3dvY3F2eHJyZ2JtaGN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMDg4NTEsImV4cCI6MjA4NDg4NDg1MX0.NcPhO9plyRhijUd4YZlJR2Of_sGBFRKb1HvGDgCMjt4';
+const baseUrl = import.meta.env.VITE_INFORGE_URL;
+const anonKey = import.meta.env.VITE_INFORGE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const insforge = createClient({
+    baseUrl,
+    anonKey,
     auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
                 const response = await fetch(url, options);
                 return response;
             } catch (error) {
-                console.error('Supabase Fetch Error Details:', {
+                console.error('Insforge Fetch Error Details:', {
                     url,
                     method: options?.method,
                     error: error.message,
@@ -31,10 +31,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     }
 });
 
+export const supabase = insforge;
+
 // Auth helper functions
 export const auth = {
     signUp: async (email, password, fullName) => {
-        const { data, error } = await supabase.auth.signUp({
+        const { data, error } = await insforge.auth.signUp({
             email,
             password,
             options: {
@@ -45,7 +47,7 @@ export const auth = {
     },
 
     signIn: async (email, password) => {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await insforge.auth.signInWithPassword({
             email,
             password
         });
@@ -58,7 +60,7 @@ export const auth = {
             ? 'com.tallysync.app://auth/callback'
             : window.location.origin + '/auth/callback';
 
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        const { data, error } = await insforge.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: redirectUrl,
@@ -72,22 +74,22 @@ export const auth = {
     },
 
     signOut: async () => {
-        const { error } = await supabase.auth.signOut();
+        const { error } = await insforge.auth.signOut();
         return { error };
     },
 
     getSession: async () => {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await insforge.auth.getSession();
         return session;
     },
 
     getUser: async () => {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await insforge.auth.getUser();
         return user;
     },
 
     onAuthStateChange: (callback) => {
-        return supabase.auth.onAuthStateChange(callback);
+        return insforge.auth.onAuthStateChange(callback);
     }
 };
 
@@ -95,13 +97,13 @@ export const auth = {
 export const companyApi = {
     // List only companies owned by current user
     list: async () => {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await insforge.auth.getUser();
 
         if (!user) {
             return { data: [], error: 'Not authenticated' };
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('companies')
             .select('*')
             // RLS policy handles security (showing owned + unowned companies)
@@ -111,7 +113,7 @@ export const companyApi = {
 
 
     getById: async (id) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('companies')
             .select('*')
             .eq('id', id)
@@ -121,7 +123,7 @@ export const companyApi = {
 
     // Get app settings (for download URL, etc.)
     getAppSettings: async () => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('app_settings')
             .select('key, value');
 
@@ -137,11 +139,11 @@ export const companyApi = {
 
     getSummary: async (companyId) => {
         const [ledgers, vouchers, salesVouchers, purchaseVouchers, stockItems] = await Promise.all([
-            supabase.from('ledgers').select('id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('vouchers').select('id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Sales').eq('is_deleted', false),
-            supabase.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Purchase').eq('is_deleted', false),
-            supabase.from('stock_items').select('id', { count: 'exact' }).eq('company_id', companyId)
+            insforge.database.from('ledgers').select('id', { count: 'exact' }).eq('company_id', companyId),
+            insforge.database.from('vouchers').select('id', { count: 'exact' }).eq('company_id', companyId),
+            insforge.database.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Sales').eq('is_deleted', false),
+            insforge.database.from('vouchers').select('total_amount, grand_total').eq('company_id', companyId).eq('voucher_type', 'Purchase').eq('is_deleted', false),
+            insforge.database.from('stock_items').select('id', { count: 'exact' }).eq('company_id', companyId)
         ]);
 
         return {
@@ -168,7 +170,7 @@ export const companyApi = {
             ];
 
             for (const table of tables) {
-                const { error } = await supabase
+                const { error } = await insforge.database
                     .from(table)
                     .delete()
                     .eq('company_id', companyId);
@@ -190,7 +192,7 @@ export const companyApi = {
 // Ledger API
 export const ledgerApi = {
     list: async (companyId, parentGroup = null) => {
-        let query = supabase
+        let query = insforge.database
             .from('ledgers')
             .select('*')
             .eq('company_id', companyId)
@@ -205,7 +207,7 @@ export const ledgerApi = {
     },
 
     getById: async (id) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('ledgers')
             .select('*')
             .eq('id', id)
@@ -214,7 +216,7 @@ export const ledgerApi = {
     },
 
     getGroups: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('ledgers')
             .select('parent')
             .eq('company_id', companyId)
@@ -225,7 +227,7 @@ export const ledgerApi = {
     },
 
     getTransactions: async (ledgerId, fromDate, toDate) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('*')
             .or(`party_name.eq.${ledgerId}`)
@@ -240,7 +242,7 @@ export const ledgerApi = {
 // Voucher API
 export const voucherApi = {
     list: async (companyId, { fromDate, toDate, type, party } = {}) => {
-        let query = supabase
+        let query = insforge.database
             .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
@@ -258,14 +260,14 @@ export const voucherApi = {
 
     getById: async (id) => {
         // First try by id, then by voucher_id
-        let { data, error } = await supabase
+        let { data, error } = await insforge.database
             .from('vouchers')
             .select('*')
             .eq('id', id)
             .single();
 
         if (!data) {
-            const fallback = await supabase
+            const fallback = await insforge.database
                 .from('vouchers')
                 .select('*')
                 .eq('voucher_id', id)
@@ -277,8 +279,8 @@ export const voucherApi = {
         // Fetch related entries
         if (data) {
             const [ledgerEntries, stockEntries] = await Promise.all([
-                supabase.from('voucher_ledger_entries').select('*').eq('voucher_id', data.id),
-                supabase.from('voucher_stock_entries').select('*').eq('voucher_id', data.id)
+                insforge.database.from('voucher_ledger_entries').select('*').eq('voucher_id', data.id),
+                insforge.database.from('voucher_stock_entries').select('*').eq('voucher_id', data.id)
             ]);
             data.ledger_entries = ledgerEntries.data || [];
             data.stock_entries = stockEntries.data || [];
@@ -287,7 +289,7 @@ export const voucherApi = {
     },
 
     getTypes: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('voucher_type')
             .eq('company_id', companyId);
@@ -300,7 +302,7 @@ export const voucherApi = {
 // Master Data API (Ledgers, Stock)
 export const masterApi = {
     getLedgers: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('ledgers')
             .select('id, name, parent, current_balance')
             .eq('company_id', companyId)
@@ -310,7 +312,7 @@ export const masterApi = {
     },
 
     getStockItems: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('stock_items')
             .select('*') // Get all fields
             .eq('company_id', companyId)
@@ -323,7 +325,7 @@ export const masterApi = {
 // Sales API (using vouchers table with voucher_type filter)
 export const salesApi = {
     list: async (companyId, { fromDate, toDate, party } = {}) => {
-        let query = supabase
+        let query = insforge.database
             .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
@@ -341,7 +343,7 @@ export const salesApi = {
 
     getById: async (id) => {
         // Fetch voucher record
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('*')
             .eq('id', id)
@@ -349,14 +351,14 @@ export const salesApi = {
 
         if (data) {
             // Fetch voucher_ledger_entries
-            const { data: ledgerEntries } = await supabase
+            const { data: ledgerEntries } = await insforge.database
                 .from('voucher_ledger_entries')
                 .select('*')
                 .eq('voucher_id', id);
             data.ledger_entries = ledgerEntries || [];
 
             // Fetch voucher_stock_entries
-            const { data: stockEntries } = await supabase
+            const { data: stockEntries } = await insforge.database
                 .from('voucher_stock_entries')
                 .select('*')
                 .eq('voucher_id', id);
@@ -370,7 +372,7 @@ export const salesApi = {
 // Purchases API (using vouchers table with voucher_type filter)
 export const purchasesApi = {
     list: async (companyId, { fromDate, toDate, party } = {}) => {
-        let query = supabase
+        let query = insforge.database
             .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
@@ -388,7 +390,7 @@ export const purchasesApi = {
 
     getById: async (id) => {
         // Fetch voucher record
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('*')
             .eq('id', id)
@@ -396,14 +398,14 @@ export const purchasesApi = {
 
         if (data) {
             // Fetch voucher_ledger_entries
-            const { data: ledgerEntries } = await supabase
+            const { data: ledgerEntries } = await insforge.database
                 .from('voucher_ledger_entries')
                 .select('*')
                 .eq('voucher_id', id);
             data.ledger_entries = ledgerEntries || [];
 
             // Fetch voucher_stock_entries
-            const { data: stockEntries } = await supabase
+            const { data: stockEntries } = await insforge.database
                 .from('voucher_stock_entries')
                 .select('*')
                 .eq('voucher_id', id);
@@ -417,7 +419,7 @@ export const purchasesApi = {
 // Stock API
 export const stockApi = {
     list: async (companyId, stockGroup = null) => {
-        let query = supabase
+        let query = insforge.database
             .from('stock_items')
             .select('*')
             .eq('company_id', companyId)
@@ -433,7 +435,7 @@ export const stockApi = {
     },
 
     getById: async (id) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('stock_items')
             .select('*')
             .eq('id', id)
@@ -442,7 +444,7 @@ export const stockApi = {
     },
 
     getGroups: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('stock_items')
             .select('stock_group')
             .eq('company_id', companyId)
@@ -456,7 +458,7 @@ export const stockApi = {
 // Reports API
 export const reportsApi = {
     getLedgerStatement: async (companyId, ledgerName, fromDate, toDate) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('*')
             .eq('company_id', companyId)
@@ -468,7 +470,7 @@ export const reportsApi = {
     },
 
     getSalesSummary: async (companyId, fromDate, toDate) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('voucher_date, total_amount, grand_total, party_name')
             .eq('company_id', companyId)
@@ -480,7 +482,7 @@ export const reportsApi = {
     },
 
     getPurchaseSummary: async (companyId, fromDate, toDate) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('vouchers')
             .select('voucher_date, total_amount, grand_total, party_name')
             .eq('company_id', companyId)
@@ -492,7 +494,7 @@ export const reportsApi = {
     },
 
     getStockSummary: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('stock_items')
             .select('name, unit, opening_stock, current_stock, rate')
             .eq('company_id', companyId)
@@ -508,7 +510,7 @@ export const reportsApi = {
 export const syncHistoryApi = {
     // Get sync history for a company
     list: async (companyId, limit = 20) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('sync_history')
             .select('*')
             .eq('company_id', companyId)
@@ -519,7 +521,7 @@ export const syncHistoryApi = {
 
     // Get single sync details
     getById: async (syncId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('sync_history')
             .select('*')
             .eq('id', syncId)
@@ -531,7 +533,7 @@ export const syncHistoryApi = {
     deleteSync: async (syncId, companyId) => {
         try {
             // Get the sync record first
-            const { data: sync, error: fetchError } = await supabase
+            const { data: sync, error: fetchError } = await insforge.database
                 .from('sync_history')
                 .select('voucher_ids')
                 .eq('id', syncId)
@@ -542,26 +544,26 @@ export const syncHistoryApi = {
             // Delete vouchers from this sync batch
             if (sync?.voucher_ids && sync.voucher_ids.length > 0) {
                 // Delete related voucher_ledger_entries first
-                await supabase
+                await insforge.database
                     .from('voucher_ledger_entries')
                     .delete()
                     .in('voucher_id', sync.voucher_ids);
 
                 // Delete related voucher_stock_entries
-                await supabase
+                await insforge.database
                     .from('voucher_stock_entries')
                     .delete()
                     .in('voucher_id', sync.voucher_ids);
 
                 // Delete vouchers
-                await supabase
+                await insforge.database
                     .from('vouchers')
                     .delete()
                     .in('id', sync.voucher_ids);
             }
 
             // Delete the sync history record
-            const { error: deleteError } = await supabase
+            const { error: deleteError } = await insforge.database
                 .from('sync_history')
                 .delete()
                 .eq('id', syncId);
@@ -576,7 +578,7 @@ export const syncHistoryApi = {
 
     // Get sync statistics
     getStats: async (companyId) => {
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('sync_history')
             .select('sync_type, status, total_records, started_at')
             .eq('company_id', companyId)
@@ -604,9 +606,9 @@ export const syncHistoryApi = {
 export const pendingTransactionApi = {
     // Create a new pending transaction
     create: async (companyId, transactionType, voucherData) => {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await insforge.auth.getUser();
 
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('pending_transactions')
             .insert({
                 company_id: companyId,
@@ -623,7 +625,7 @@ export const pendingTransactionApi = {
 
     // Get all pending transactions for a company
     list: async (companyId, status = null) => {
-        let query = supabase
+        let query = insforge.database
             .from('pending_transactions')
             .select('*')
             .eq('company_id', companyId)
@@ -639,7 +641,7 @@ export const pendingTransactionApi = {
 
     // Get pending count
     getPendingCount: async (companyId) => {
-        const { count, error } = await supabase
+        const { count, error } = await insforge.database
             .from('pending_transactions')
             .select('*', { count: 'exact', head: true })
             .eq('company_id', companyId)
@@ -680,7 +682,7 @@ export const pendingTransactionApi = {
             updates.synced_at = new Date().toISOString();
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await insforge.database
             .from('pending_transactions')
             .update(updates)
             .eq('id', id)
@@ -691,7 +693,7 @@ export const pendingTransactionApi = {
 
     // Delete pending transaction
     delete: async (id) => {
-        const { error } = await supabase
+        const { error } = await insforge.database
             .from('pending_transactions')
             .delete()
             .eq('id', id)

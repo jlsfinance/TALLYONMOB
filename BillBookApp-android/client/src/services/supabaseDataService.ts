@@ -159,7 +159,7 @@ async function fetchRows<T = Record<string, any>>(
   options?: PaginationOptions & { filters?: Record<string, any> },
 ): Promise<{ data: T[]; error: string | null }> {
   try {
-    let query = supabase
+    let query = supabase.database
       .from(table)
       .select('*')
       .eq('user_id', userId)
@@ -204,7 +204,7 @@ async function fetchRowById<T = Record<string, any>>(
   try {
     const userId = await getUserId();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase.database
       .from(table)
       .select('*')
       .eq('id', id)
@@ -240,7 +240,7 @@ async function saveRow<T = Record<string, any>>(
     // Ensure user_id is set for RLS
     const rowData = { ...data, id, user_id: userId };
 
-    const { data: result, error } = await supabase
+    const { data: result, error } = await supabase.database
       .from(table)
       .upsert(rowData, { onConflict: 'id' })
       .select()
@@ -267,7 +267,7 @@ async function deleteRow(
   try {
     const userId = await getUserId();
 
-    const { error } = await supabase
+    const { error } = await supabase.database
       .from(table)
       .delete()
       .eq('id', id)
@@ -436,7 +436,7 @@ export const supabaseData = {
           user_id: userId,
         }));
 
-        const { error } = await supabase.from(table).upsert(rowsToInsert, { onConflict: 'id' });
+        const { error } = await supabase.database.from(table).upsert(rowsToInsert, { onConflict: 'id' });
 
         if (error) {
           return { error: `Batch save failed at chunk: ${error.message}` };
@@ -462,7 +462,7 @@ export const supabaseData = {
     try {
       const userId = await getUserId();
 
-      const { data, error } = await supabase
+      const { data, error } = await supabase.database
         .from(TABLES.COMPANY_PROFILES)
         .select('invoice_settings')
         .eq('id', companyProfileId)
@@ -507,7 +507,7 @@ export const supabaseData = {
       const userId = await getUserId();
 
       // Verify the customer belongs to this user (RLS enforcement)
-      const { data: customer, error: customerError } = await supabase
+      const { data: customer, error: customerError } = await supabase.database
         .from(TABLES.CUSTOMERS)
         .select('id')
         .eq('id', customerId)
@@ -546,7 +546,7 @@ export const supabaseData = {
     try {
       const userId = await getUserId();
 
-      let query = supabase
+      let query = supabase.database
         .from(TABLES.INVOICES)
         .select(`
           *,
@@ -641,7 +641,7 @@ export const supabaseData = {
       const invoiceRow = mapTypeToRow(invoice);
       invoiceRow.user_id = userId;
 
-      const { data: savedInvoice, error: invoiceError } = await supabase
+      const { data: savedInvoice, error: invoiceError } = await supabase.database
         .from(TABLES.INVOICES)
         .upsert({ ...invoiceRow, id: invoiceId }, { onConflict: 'id' })
         .select()
@@ -652,14 +652,14 @@ export const supabaseData = {
       }
 
       // --- Step 2: Delete existing items for this invoice (clean slate) ---
-      const { error: deleteItemsError } = await supabase
+      const { error: deleteItemsError } = await supabase.database
         .from(TABLES.INVOICE_ITEMS)
         .delete()
         .eq('invoice_id', invoiceId);
 
       if (deleteItemsError) {
         // Attempt rollback of invoice
-        await supabase.from(TABLES.INVOICES).delete().eq('id', invoiceId).eq('user_id', userId);
+        await supabase.database.from(TABLES.INVOICES).delete().eq('id', invoiceId).eq('user_id', userId);
         return { data: null, error: `Failed to clear old invoice items: ${deleteItemsError.message}` };
       }
 
@@ -673,13 +673,13 @@ export const supabaseData = {
         // Chunk if too many items
         const itemChunks = chunkArray(itemRows, BATCH_CHUNK_SIZE);
         for (const chunk of itemChunks) {
-          const { error: insertItemsError } = await supabase
+          const { error: insertItemsError } = await supabase.database
             .from(TABLES.INVOICE_ITEMS)
             .insert(chunk);
 
           if (insertItemsError) {
             // Attempt rollback of invoice
-            await supabase.from(TABLES.INVOICES).delete().eq('id', invoiceId).eq('user_id', userId);
+            await supabase.database.from(TABLES.INVOICES).delete().eq('id', invoiceId).eq('user_id', userId);
             return { data: null, error: `Failed to save invoice items: ${insertItemsError.message}` };
           }
         }
@@ -820,7 +820,7 @@ export const supabaseData = {
     try {
       const userId = await getUserId();
 
-      const { data: invoiceRow, error: invoiceError } = await supabase
+      const { data: invoiceRow, error: invoiceError } = await supabase.database
         .from(TABLES.INVOICES)
         .select('*')
         .eq('id', id)
@@ -835,7 +835,7 @@ export const supabaseData = {
       }
 
       // Fetch items for this invoice
-      const { data: itemsRows, error: itemsError } = await supabase
+      const { data: itemsRows, error: itemsError } = await supabase.database
         .from(TABLES.INVOICE_ITEMS)
         .select('*')
         .eq('invoice_id', id);
@@ -877,7 +877,7 @@ export const supabaseData = {
       const userId = await getUserId();
 
       // Delete invoice_items first (enforce FK constraint via app logic)
-      const { error: deleteItemsError } = await supabase
+      const { error: deleteItemsError } = await supabase.database
         .from(TABLES.INVOICE_ITEMS)
         .delete()
         .eq('invoice_id', id);
@@ -887,7 +887,7 @@ export const supabaseData = {
       }
 
       // Delete the invoice
-      const { error } = await supabase
+      const { error } = await supabase.database
         .from(TABLES.INVOICES)
         .delete()
         .eq('id', id)
@@ -1084,13 +1084,13 @@ export const supabaseData = {
     try {
       // Delete in order respecting foreign key constraints
       // invoice_items first (child of invoices)
-      const { error: itemsErr } = await supabase
+      const { error: itemsErr } = await supabase.database
         .from(TABLES.INVOICE_ITEMS)
         .delete()
         .in(
           'invoice_id',
           (
-            await supabase
+            await supabase.database
               .from(TABLES.INVOICES)
               .select('id')
               .eq('user_id', userId)
@@ -1099,42 +1099,42 @@ export const supabaseData = {
       if (itemsErr) return { error: itemsErr.message };
 
       // Then delete invoices
-      const { error: invErr } = await supabase
+      const { error: invErr } = await supabase.database
         .from(TABLES.INVOICES)
         .delete()
         .eq('user_id', userId);
       if (invErr) return { error: invErr.message };
 
       // Payments
-      const { error: payErr } = await supabase
+      const { error: payErr } = await supabase.database
         .from(TABLES.PAYMENTS)
         .delete()
         .eq('user_id', userId);
       if (payErr) return { error: payErr.message };
 
       // Customers
-      const { error: custErr } = await supabase
+      const { error: custErr } = await supabase.database
         .from(TABLES.CUSTOMERS)
         .delete()
         .eq('user_id', userId);
       if (custErr) return { error: custErr.message };
 
       // Products
-      const { error: prodErr } = await supabase
+      const { error: prodErr } = await supabase.database
         .from(TABLES.PRODUCTS)
         .delete()
         .eq('user_id', userId);
       if (prodErr) return { error: prodErr.message };
 
       // Expenses
-      const { error: expErr } = await supabase
+      const { error: expErr } = await supabase.database
         .from(TABLES.EXPENSES)
         .delete()
         .eq('user_id', userId);
       if (expErr) return { error: expErr.message };
 
       // Company profiles
-      const { error: compErr } = await supabase
+      const { error: compErr } = await supabase.database
         .from(TABLES.COMPANY_PROFILES)
         .delete()
         .eq('user_id', userId);

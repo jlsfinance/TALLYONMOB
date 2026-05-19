@@ -32,7 +32,7 @@ export const DashboardService = {
     fetchPromoSlides: async (): Promise<PromoSlide[]> => {
         try {
             // Example Supabase call:
-            // const { data } = await supabase.from('promo_slides').select('*').eq('isActive', true);
+            // const { data } = await supabase.database.from('promo_slides').select('*').eq('isActive', true);
             // return data || [];
             return [];
         } catch (error) {

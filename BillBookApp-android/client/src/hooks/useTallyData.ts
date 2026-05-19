@@ -86,9 +86,14 @@ export interface VoucherFilters {
 
 function isSupabaseConfigured(): boolean {
   try {
-    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    return !!url && !!key && url.length > 0 && key.length > 0;
+    const url = import.meta.env.VITE_INFORGE_URL as string | undefined;
+    const key = import.meta.env.VITE_INFORGE_ANON_KEY as string | undefined;
+    // Fallback to Supabase env vars for backwards compatibility
+    const url2 = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const key2 = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    const hasUrl = !!url || !!url2;
+    const hasKey = !!key || !!key2;
+    return hasUrl && hasKey;
   } catch {
     return false;
   }
@@ -265,7 +270,7 @@ export async function fetchLedgers(companyId: string): Promise<LedgerItem[]> {
       return generateSimulatedLedgers(companyId);
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase.database
       .from('ledgers')
       .select('id, name, parent_group, closing_balance, opening_balance, master_id')
       .eq('company_id', companyId)
@@ -310,7 +315,7 @@ export async function fetchVouchers(
       return generateSimulatedVouchers(companyId, filters);
     }
 
-    let query = supabase
+    let query = supabase.database
       .from('vouchers')
       .select('id, company_id, voucher_number, voucher_type, vch_date, amount, party_ledger_name, time, payment_mode, narration, gst_total')
       .eq('company_id', companyId)
@@ -377,7 +382,7 @@ export async function fetchStockItems(companyId: string): Promise<StockItem[]> {
       return generateSimulatedStock(companyId);
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase.database
       .from('stock')
       .select('*')
       .eq('company_id', companyId)
@@ -419,17 +424,17 @@ export async function fetchDashboardStats(companyId: string): Promise<DashboardS
 
     // Fetch data in parallel for dashboard computation
     const [ledgersResult, vouchersResult, stockResult] = await Promise.all([
-      supabase
+      supabase.database
         .from('ledgers')
         .select('name, parent_group, closing_balance')
         .eq('company_id', companyId),
-      supabase
+      supabase.database
         .from('vouchers')
         .select('voucher_type, amount, vch_date, party_ledger_name')
         .eq('company_id', companyId)
         .gte('vch_date', getMonthStartDate())
         .limit(5000),
-      supabase
+      supabase.database
         .from('stock')
         .select('name, closing_balance, rate')
         .eq('company_id', companyId),
@@ -545,7 +550,7 @@ export interface UseTallyDataReturn extends TallyDataState {
  * Usage:
  *   const { ledgers, vouchers, loading, error, refresh } = useTallyData('company-uuid');
  *
- * When Supabase env vars (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not set,
+ * When Insforge env vars (VITE_INFORGE_URL, VITE_INFORGE_ANON_KEY / VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not set,
  * the hook transparently falls back to realistic simulated data.
  */
 export function useTallyData(initialCompanyId?: string): UseTallyDataReturn {

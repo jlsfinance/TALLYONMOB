@@ -13,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@insforge/sdk": "^1.2.9",
     "@supabase/supabase-js": "^2.93.3",
     "axios": "^1.13.4",
     "compression": "^1.8.1",

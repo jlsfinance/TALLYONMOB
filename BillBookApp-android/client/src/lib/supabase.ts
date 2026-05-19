@@ -1,9 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@insforge/sdk';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const insforgeUrl = import.meta.env.VITE_INFORGE_URL;
+const insforgeAnonKey = import.meta.env.VITE_INFORGE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient({
+  baseUrl: insforgeUrl,
+  anonKey: insforgeAnonKey,
+});
 
 // Auth helper functions
 export const auth = {
@@ -49,7 +52,7 @@ export const auth = {
 // Company API
 export const companyApi = {
     list: async () => {
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('companies')
             .select('*')
             .order('name');
@@ -57,7 +60,7 @@ export const companyApi = {
     },
 
     getById: async (id: string) => {
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('companies')
             .select('*')
             .eq('id', id)
@@ -67,11 +70,11 @@ export const companyApi = {
 
     getSummary: async (companyId: string) => {
         const [ledgers, vouchers, sales, purchases, stock] = await Promise.all([
-            supabase.from('ledgers').select('id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('vouchers').select('voucher_id', { count: 'exact' }).eq('company_id', companyId),
-            supabase.from('sales').select('net_amount').eq('company_id', companyId),
-            supabase.from('purchases').select('net_amount').eq('company_id', companyId),
-            supabase.from('stock').select('id', { count: 'exact' }).eq('company_id', companyId)
+            supabase.database.from('ledgers').select('id', { count: 'exact' }).eq('company_id', companyId),
+            supabase.database.from('vouchers').select('voucher_id', { count: 'exact' }).eq('company_id', companyId),
+            supabase.database.from('sales').select('net_amount').eq('company_id', companyId),
+            supabase.database.from('purchases').select('net_amount').eq('company_id', companyId),
+            supabase.database.from('stock').select('id', { count: 'exact' }).eq('company_id', companyId)
         ]);
 
         return {
@@ -91,7 +94,7 @@ export const companyApi = {
 export const pendingTransactionApi = {
     // Create a new pending transaction
     create: async (companyId: string, transactionType: string, voucherData: any, createdBy: string | null = null) => {
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('pending_transactions')
             .insert({
                 company_id: companyId,
@@ -107,7 +110,7 @@ export const pendingTransactionApi = {
 
     // List pending transactions for a company
     list: async (companyId: string, status: string | null = null) => {
-        let query = supabase
+        let query = supabase.database
             .from('pending_transactions')
             .select('*')
             .eq('company_id', companyId)
@@ -123,7 +126,7 @@ export const pendingTransactionApi = {
 
     // Get pending count (for badge/notification)
     getPendingCount: async (companyId: string) => {
-        const { count, error } = await supabase
+        const { count, error } = await supabase.database
             .from('pending_transactions')
             .select('*', { count: 'exact', head: true })
             .eq('company_id', companyId)
@@ -135,7 +138,7 @@ export const pendingTransactionApi = {
 // Master Data API (Ledgers, Stock)
 export const masterApi = {
     getLedgers: async (companyId: string) => {
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('ledgers')
             .select('id, name, parent_group, closing_balance')
             .eq('company_id', companyId)
@@ -145,7 +148,7 @@ export const masterApi = {
     },
 
     getStockItems: async (companyId: string) => {
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('stock')
             .select('*')
             .eq('company_id', companyId)
@@ -158,7 +161,7 @@ export const masterApi = {
 // Sales API
 export const salesApi = {
     list: async (companyId: string, { fromDate, toDate, party }: any = {}) => {
-        let query = supabase
+        let query = supabase.database
             .from('sales')
             .select('*')
             .eq('company_id', companyId)
@@ -174,7 +177,7 @@ export const salesApi = {
 
     getById: async (id: string) => {
         // Fetch sales record
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('sales')
             .select('*')
             .eq('id', id)
@@ -182,7 +185,7 @@ export const salesApi = {
 
         if (data) {
             // Fetch sales_items separately
-            const { data: itemsData } = await supabase
+            const { data: itemsData } = await supabase.database
                 .from('sales_items')
                 .select('*')
                 .eq('sale_id', id);
@@ -196,7 +199,7 @@ export const salesApi = {
 // Purchases API
 export const purchasesApi = {
     list: async (companyId: string, { fromDate, toDate, party }: any = {}) => {
-        let query = supabase
+        let query = supabase.database
             .from('purchases')
             .select('*')
             .eq('company_id', companyId)
@@ -212,7 +215,7 @@ export const purchasesApi = {
 
     getById: async (id: string) => {
         // Fetch purchase record
-        const { data, error } = await supabase
+        const { data, error } = await supabase.database
             .from('purchases')
             .select('*')
             .eq('id', id)
@@ -220,7 +223,7 @@ export const purchasesApi = {
 
         if (data) {
             // Fetch purchase_items separately
-            const { data: itemsData } = await supabase
+            const { data: itemsData } = await supabase.database
                 .from('purchase_items')
                 .select('*')
                 .eq('purchase_id', id);

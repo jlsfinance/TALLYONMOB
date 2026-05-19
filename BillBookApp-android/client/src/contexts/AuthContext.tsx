@@ -1,6 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+
+// Local type definitions (replaces direct Supabase SDK type imports)
+interface User {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, any>;
+  [key: string]: any;
+}
+interface Session {
+  user: User;
+  access_token?: string;
+  refresh_token?: string;
+  [key: string]: any;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -34,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-      console.log("Supabase Auth State Changed:", _event, session?.user?.email);
+      console.log("Auth State Changed:", _event, session?.user?.email);
     });
 
     return () => subscription.unsubscribe();
@@ -79,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteAccount = async () => {
-    // Note: Supabase requires Admin API to delete users, or an RPC.
+    // Note: Requires Admin API to delete users, or an RPC.
     // For now, we will sign out. Proper deletion requires Edge Function.
     console.warn("Account deletion requested. Signing out for safety.");
     await signOut();
