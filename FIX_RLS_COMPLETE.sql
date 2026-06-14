@@ -29,7 +29,8 @@ BEGIN
     END IF;
 
     -- Add owner_id to stock_items
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'stock_items' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.stock_items') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'stock_items' AND column_name = 'owner_id') THEN
         ALTER TABLE stock_items ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 
@@ -54,27 +55,32 @@ BEGIN
     END IF;
 
     -- Add owner_id to voucher_ledger_entries
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'voucher_ledger_entries' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.voucher_ledger_entries') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'voucher_ledger_entries' AND column_name = 'owner_id') THEN
         ALTER TABLE voucher_ledger_entries ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 
     -- Add owner_id to voucher_stock_entries
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'voucher_stock_entries' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.voucher_stock_entries') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'voucher_stock_entries' AND column_name = 'owner_id') THEN
         ALTER TABLE voucher_stock_entries ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 
     -- Add owner_id to bank_allocations
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bank_allocations' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.bank_allocations') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'bank_allocations' AND column_name = 'owner_id') THEN
         ALTER TABLE bank_allocations ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 
     -- Add owner_id to bill_allocations
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bill_allocations' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.bill_allocations') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'bill_allocations' AND column_name = 'owner_id') THEN
         ALTER TABLE bill_allocations ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 
     -- Add owner_id to gst_details
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gst_details' AND column_name = 'owner_id') THEN
+    IF to_regclass('public.gst_details') IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'gst_details' AND column_name = 'owner_id') THEN
         ALTER TABLE gst_details ADD COLUMN owner_id UUID REFERENCES auth.users(id);
     END IF;
 

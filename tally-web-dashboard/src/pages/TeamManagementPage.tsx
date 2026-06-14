@@ -26,7 +26,8 @@ const ROLES: { value: Role; label: string; desc: string; icon: any; color: strin
 ];
 
 export default function TeamManagementPage() {
-    const { selectedCompany, user } = useAuth() as any;
+    const { selectedCompany, user, userRole } = useAuth() as any;
+    const canManageTeam = userRole === 'owner' || userRole === 'admin';
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [loading, setLoading] = useState(true);
     const [showInvite, setShowInvite] = useState(false);
@@ -123,10 +124,12 @@ export default function TeamManagementPage() {
                     </h1>
                     <p className="text-sm text-[var(--text-muted)] mt-1">Manage who has access to {selectedCompany?.name}</p>
                 </div>
-                <button onClick={() => setShowInvite(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 text-white rounded-lg text-sm font-medium hover:bg-violet-600 transition-all">
-                    <UserPlus className="w-4 h-4" /> Invite
-                </button>
+                {canManageTeam && (
+                    <button onClick={() => setShowInvite(true)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-violet-500 text-white rounded-lg text-sm font-medium hover:bg-violet-600 transition-all">
+                        <UserPlus className="w-4 h-4" /> Invite
+                    </button>
+                )}
             </div>
 
             {/* Role Cards */}
@@ -211,7 +214,7 @@ export default function TeamManagementPage() {
                                         <p className="text-xs text-[var(--text-muted)]">{member.email}</p>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        {!isOwner && !isCurrentUser && (
+                                        {!isOwner && !isCurrentUser && canManageTeam && (
                                             <>
                                                 <select value={member.role} onChange={(e) => changeRole(member.id, e.target.value as Role)}
                                                     className="px-2 py-1 bg-[var(--background)] border border-[var(--border)] rounded text-xs text-[var(--on-surface)]">
@@ -224,6 +227,11 @@ export default function TeamManagementPage() {
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </>
+                                        )}
+                                        {!isOwner && !isCurrentUser && !canManageTeam && (
+                                            <span className="text-xs px-2 py-1 bg-gray-500/10 text-gray-400 rounded-full font-medium capitalize">
+                                                {member.role}
+                                            </span>
                                         )}
                                         {isOwner && (
                                             <span className="text-xs px-2 py-1 bg-amber-500/20 text-amber-400 rounded-full font-medium">

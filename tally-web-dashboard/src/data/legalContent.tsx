@@ -91,7 +91,7 @@ export const LEGAL_CONTENT: Record<string, LegalPage> = {
                 title: 'Article 7: Third-Party Sub-processors',
                 content: 'We utilize a curated list of vendors to offer our services. All vendors are subject to strict DPAs (Data Processing Addendums) and annual security reviews.',
                 subsections: [
-                    { subtitle: '7.1 Infrastructure', body: 'Supabase (Google Cloud) for Database, Vercel for Frontend, and Firebase for Notifications. These providers are chosen for their high-availability and security certifications.' },
+                    { subtitle: '7.1 Infrastructure', body: 'InsForge-managed backend services for database and authentication APIs, with Vercel for frontend hosting. These providers are chosen for their high-availability and security certifications.' },
                     { subtitle: '7.2 Communication', body: 'Razorpay for Payments, Twilio for WhatsApp Alerts. These providers only receive the minimum data required to execute their specific function.' },
                     { subtitle: '7.3 Data Localization', body: 'For Indian customers, we enforce data localization, ensuring that your primary financial database resides in cloud regions within India (Mumbai/Hyderabad).' }
                 ]
@@ -497,7 +497,7 @@ export const LEGAL_CONTENT: Record<string, LegalPage> = {
         articles: [
             {
                 title: 'Article 1: Infrastructure and Physical Security',
-                content: 'Our cloud architecture is hosted on enterprise-grade infrastructure managed by world-class providers (Supabase/GCP).',
+                content: 'Our cloud architecture is hosted on enterprise-grade infrastructure managed by world-class providers (InsForge-managed backend services and Vercel).',
                 subsections: [
                     { subtitle: '1.1 Data Center Compliance', body: 'All physical servers are located in ISO 27001 and SOC 2 Type II compliant data centers.' },
                     { subtitle: '1.2 Biometric Access', body: 'Physical access is restricted via multi-factor biometrics and 24/7 armed security patrols.' }
@@ -914,7 +914,7 @@ export const LEGAL_CONTENT: Record<string, LegalPage> = {
                 title: 'Article 1: Cloud Providers',
                 content: 'We use globally recognized infrastructure partners.',
                 subsections: [
-                    { subtitle: '1.1 Storage & DB', body: 'Supabase Inc. (Database and Auth), Vercel (Edge Functions and Hosting).' },
+                    { subtitle: '1.1 Storage & DB', body: 'InsForge-managed backend services (Database and Auth APIs), Vercel (Frontend Hosting).' },
                     { subtitle: '1.2 Backup storage', body: 'Amazon Web Services (AWS) S3 in the India (Mumbai) region for off-site backups.' }
                 ]
             },

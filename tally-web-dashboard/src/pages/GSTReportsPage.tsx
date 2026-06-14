@@ -8,6 +8,7 @@ import { GlassCard, MetricCard, Badge, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CompactYearFilter } from '../components/shared/CompactYearFilter';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import { toast } from 'react-hot-toast';
 
 // Helper component for empty states
 const EmptyState = ({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) => (
@@ -560,6 +561,174 @@ export default function GSTReportsPage() {
         URL.revokeObjectURL(url);
     };
 
+    const handleExportCSV = () => {
+        if (!reportData) return;
+        
+        let headers: { key: string; label: string }[] = [];
+        let exportData: any[] = [];
+        let filename = `${activeTab.toUpperCase()}_Report_${period}_${selectedCompany.name}.csv`;
+
+        switch (activeTab) {
+            case 'summary':
+                headers = [
+                    { key: 'metric', label: 'Metric' },
+                    { key: 'value', label: 'Value' }
+                ];
+                exportData = [
+                    { metric: 'Outward Taxable Value', value: reportData.gstr3b.outwardSupplies.taxable },
+                    { metric: 'Exempted/Nil Rated Sales', value: reportData.totals.exemptedSales },
+                    { metric: 'Input Tax Credit (ITC)', value: reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess },
+                    { metric: 'Net Tax Payable', value: reportData.gstr3b.netPayable.total }
+                ];
+                break;
+
+            case 'rates':
+                headers = [
+                    { key: 'rateLabel', label: 'Tax Rate' },
+                    { key: 'taxable', label: 'Taxable Value' },
+                    { key: 'igst', label: 'IGST' },
+                    { key: 'cgst_sgst', label: 'CGST / SGST' },
+                    { key: 'total', label: 'Total Value' }
+                ];
+                exportData = reportData.rateSummary.map((r: any) => ({
+                    rateLabel: `${r.rate}% GST`,
+                    taxable: r.taxable,
+                    igst: r.igst,
+                    cgst_sgst: r.cgst + r.sgst,
+                    total: r.total
+                }));
+                break;
+
+            case 'pos':
+                headers = [
+                    { key: 'state', label: 'Place of Supply' },
+                    { key: 'count', label: 'Transactions Count' },
+                    { key: 'taxable', label: 'Taxable Value' },
+                    { key: 'cgst_sgst', label: 'CGST / SGST' },
+                    { key: 'igst', label: 'IGST' }
+                ];
+                exportData = reportData.posSummary.map((p: any) => ({
+                    state: p.state,
+                    count: p.count,
+                    taxable: p.taxable,
+                    cgst_sgst: p.cgst + p.sgst,
+                    igst: p.igst
+                }));
+                break;
+
+            case 'b2b':
+                headers = [
+                    { key: 'gstin', label: 'GSTIN' },
+                    { key: 'partyName', label: 'Party Name' },
+                    { key: 'invoiceNumber', label: 'Invoice Number' },
+                    { key: 'invoiceDate', label: 'Invoice Date' },
+                    { key: 'invoiceValue', label: 'Invoice Value' },
+                    { key: 'cgst_sgst', label: 'CGST + SGST' },
+                    { key: 'igst', label: 'IGST' }
+                ];
+                exportData = reportData.b2b.map((inv: any) => ({
+                    gstin: inv.gstin,
+                    partyName: inv.partyName,
+                    invoiceNumber: inv.invoiceNumber,
+                    invoiceDate: inv.invoiceDate,
+                    invoiceValue: inv.invoiceValue,
+                    cgst_sgst: inv.cgst + inv.sgst,
+                    igst: inv.igst
+                }));
+                break;
+
+            case 'b2c':
+                headers = [
+                    { key: 'count', label: 'Total Bills' },
+                    { key: 'taxableValue', label: 'Taxable Value' },
+                    { key: 'cgst', label: 'CGST' },
+                    { key: 'sgst', label: 'SGST' },
+                    { key: 'igst', label: 'IGST' },
+                    { key: 'cess', label: 'CESS' },
+                    { key: 'invoiceValue', label: 'Invoice Value' }
+                ];
+                exportData = [reportData.b2c];
+                break;
+
+            case 'hsn':
+                headers = [
+                    { key: 'hsn', label: 'HSN Code' },
+                    { key: 'description', label: 'Description' },
+                    { key: 'quantity', label: 'Quantity' },
+                    { key: 'uqc', label: 'UOM (Unit)' },
+                    { key: 'taxableValue', label: 'Taxable Value' },
+                    { key: 'tax', label: 'GST Tax (I+C+S+Cess)' },
+                    { key: 'total', label: 'Total Value' }
+                ];
+                exportData = reportData.hsnSummary.map((hsn: any) => ({
+                    hsn: hsn.hsn,
+                    description: hsn.description,
+                    quantity: hsn.quantity,
+                    uqc: hsn.uqc,
+                    taxableValue: hsn.taxableValue,
+                    tax: hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0),
+                    total: hsn.totalValue + hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0)
+                }));
+                break;
+
+            case 'gstr3b':
+                headers = [
+                    { key: 'section', label: 'Section' },
+                    { key: 'taxable', label: 'Taxable Value' },
+                    { key: 'igst', label: 'IGST' },
+                    { key: 'cgst', label: 'CGST' },
+                    { key: 'sgst', label: 'SGST' },
+                    { key: 'cess', label: 'CESS' },
+                    { key: 'total', label: 'Total GST' }
+                ];
+                exportData = [
+                    {
+                        section: '3.1 Outward Supplies (Liability)',
+                        taxable: reportData.gstr3b.outwardSupplies.taxable,
+                        igst: reportData.gstr3b.outwardSupplies.igst,
+                        cgst: reportData.gstr3b.outwardSupplies.cgst,
+                        sgst: reportData.gstr3b.outwardSupplies.sgst,
+                        cess: reportData.gstr3b.outwardSupplies.cess,
+                        total: reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst + reportData.gstr3b.outwardSupplies.cess
+                    },
+                    {
+                        section: '4.0 Eligible ITC (Input Asset)',
+                        taxable: reportData.gstr3b.inputTaxCredit.taxable || 0,
+                        igst: reportData.gstr3b.inputTaxCredit.igst,
+                        cgst: reportData.gstr3b.inputTaxCredit.cgst,
+                        sgst: reportData.gstr3b.inputTaxCredit.sgst,
+                        cess: reportData.gstr3b.inputTaxCredit.cess,
+                        total: reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess
+                    },
+                    {
+                        section: 'Net Payable Liability',
+                        taxable: 'N/A',
+                        igst: reportData.gstr3b.netPayable.igst,
+                        cgst: reportData.gstr3b.netPayable.cgst,
+                        sgst: reportData.gstr3b.netPayable.sgst,
+                        cess: reportData.gstr3b.netPayable.cess,
+                        total: reportData.gstr3b.netPayable.total
+                    }
+                ];
+                break;
+
+            default:
+                break;
+        }
+
+        if (exportData.length === 0) {
+            toast.error('No data to export.');
+            return;
+        }
+
+        import('../lib/exportToCSV').then(({ exportToCSV }) => {
+            exportToCSV(exportData, headers, filename);
+            toast.success(`${activeTab.toUpperCase()} CSV Exported successfully.`);
+        }).catch(err => {
+            toast.error('Failed to export CSV: ' + err.message);
+        });
+    };
+
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount || 0);
 
     if (!selectedCompany) return null;
@@ -590,6 +759,9 @@ export default function GSTReportsPage() {
                     </button>
                     <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 text-[var(--primary)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--primary)]/20 shadow-sm">
                         <Download size={14} /> <span className="hidden sm:inline">GSTR-3B</span>
+                    </button>
+                    <button onClick={handleExportCSV} disabled={!reportData || loading} className="px-3 py-2 text-[var(--on-surface)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--on-surface)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--border)] shadow-sm">
+                        <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
                     </button>
                 </div>
             </HeaderPortal>

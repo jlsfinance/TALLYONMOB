@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/data_provider.dart';
@@ -113,91 +114,131 @@ class _VoucherListScreenState extends State<VoucherListScreen> {
             child: Consumer<DataProvider>(
               builder: (context, dataProvider, child) {
                 if (dataProvider.isLoading) {
-                  return const Center(child: CircularProgressIndicator());
+                  return ListView.builder(
+                    itemCount: 8,
+                    padding: const EdgeInsets.all(8),
+                    itemBuilder: (context, index) {
+                      return Shimmer.fromColors(
+                        baseColor: Colors.grey[850]!,
+                        highlightColor: Colors.grey[700]!,
+                        child: Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.white,
+                            ),
+                            title: Container(
+                              height: 16,
+                              color: Colors.white,
+                            ),
+                            subtitle: Container(
+                              height: 12,
+                              color: Colors.white,
+                              margin: const EdgeInsets.only(top: 8),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
                 }
 
                 if (dataProvider.vouchers.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.receipt_long, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text(
-                          'No vouchers found',
-                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                  return RefreshIndicator(
+                    onRefresh: _fetchVouchers,
+                    child: ListView(
+                      children: const [
+                        SizedBox(height: 150),
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.receipt_long, size: 64, color: Colors.grey),
+                              SizedBox(height: 16),
+                              Text(
+                                'No vouchers found',
+                                style: TextStyle(color: Colors.grey, fontSize: 16),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: dataProvider.vouchers.length,
-                  padding: const EdgeInsets.all(8),
-                  itemBuilder: (context, index) {
-                    final Voucher voucher = dataProvider.vouchers[index];
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: _getVoucherColor(voucher.voucherType)
-                              .withOpacity(0.1),
-                          child: Icon(
-                            _getVoucherIcon(voucher.voucherType),
-                            color: _getVoucherColor(voucher.voucherType),
-                            size: 20,
+                return RefreshIndicator(
+                  onRefresh: _fetchVouchers,
+                  child: ListView.builder(
+                    itemCount: dataProvider.vouchers.length,
+                    padding: const EdgeInsets.all(8),
+                    itemBuilder: (context, index) {
+                      final Voucher voucher = dataProvider.vouchers[index];
+                      return Card(
+                        elevation: 2,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: _getVoucherColor(voucher.voucherType)
+                                .withOpacity(0.1),
+                            child: Icon(
+                              _getVoucherIcon(voucher.voucherType),
+                              color: _getVoucherColor(voucher.voucherType),
+                              size: 20,
+                            ),
                           ),
-                        ),
-                        title: Text(
-                          voucher.rawData?['party_name'] ?? 'Unknown Party',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          '${voucher.voucherType} • #${voucher.voucherNumber ?? "N/A"}',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '₹${voucher.amount?.toStringAsFixed(2) ?? "0.00"}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                          title: Text(
+                            voucher.rawData?['party_name'] ?? 'Unknown Party',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            '${voucher.voucherType} • #${voucher.voucherNumber ?? "N/A"}',
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '₹${voucher.amount?.toStringAsFixed(2) ?? "0.00"}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
-                            ),
-                            Text(
-                              voucher.vchDate != null
-                                  ? DateFormat('dd MMM yyyy')
-                                      .format(voucher.vchDate!)
-                                  : 'No Date',
-                              style: const TextStyle(
-                                  fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
+                              Text(
+                                voucher.vchDate != null
+                                    ? DateFormat('dd MMM yyyy')
+                                        .format(voucher.vchDate!)
+                                    : 'No Date',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    VoucherDetailScreen(voucher: voucher),
+                              ),
+                            );
+                          },
                         ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  VoucherDetailScreen(voucher: voucher),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 );
               },
             ),
-          ),
+          ),  ),
         ],
       ),
       floatingActionButton: FloatingActionButton(

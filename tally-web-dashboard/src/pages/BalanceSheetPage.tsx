@@ -71,18 +71,26 @@ export default function BalanceSheetPage() {
     const loadBalanceSheet = async () => {
         setLoading(true);
         try {
-            // Fetch all ledgers
-            const { data: ledgers, error } = await supabase
-                .from('ledgers')
-                .select('*')
-                .eq('company_id', selectedCompany.id);
+            const [ledgersRes, stockRes] = await Promise.all([
+                supabase
+                    .from('ledgers')
+                    .select('*')
+                    .eq('company_id', selectedCompany.id),
+                supabase
+                    .from('stock_items')
+                    .select('name, closing_value, current_stock, rate')
+                    .eq('company_id', selectedCompany.id)
+            ]);
 
-            if (error) throw error;
+            if (ledgersRes.error) throw ledgersRes.error;
 
-            // Categorization rules based on Tally ledger groups
+            const ledgers = ledgersRes.data || [];
+            const stockItems = stockRes.data || [];
+
             const assetGroups = {
                 fixed: ['Fixed Assets', 'Investments', 'Secured Loans (Asset)', 'Plant and Machinery'],
-                current: ['Current Assets', 'Stock-in-hand', 'Sundry Debtors', 'Deposits (Asset)', 'Loans (Asset)', 'Loans and Advances (Asset)'],
+                current: ['Current Assets', 'Sundry Debtors', 'Deposits (Asset)', 'Loans (Asset)', 'Loans and Advances (Asset)'],
+                stock: ['Stock-in-Hand', 'Stock-in-hand', 'Stock in Hand', 'Closing Stock'],
                 bank: ['Bank Accounts', 'Bank OD A/c', 'Bank OCC A/c'],
                 cash: ['Cash-in-hand', 'Cash']
             };
@@ -94,22 +102,39 @@ export default function BalanceSheetPage() {
                 creditors: ['Sundry Creditors', 'Trade Payables']
             };
 
-            // Helper to categorize ledgers
-            const categorizeLedgers = (patterns: string[]): LedgerItem[] => {
-                return (ledgers || [])
-                    .filter((l: any) => patterns.some(p =>
-                        ((l.parent || l.parent_group || '')).toLowerCase().includes(p.toLowerCase()) ||
-                        ((l.ledger_type || l.ledger_group || '')).toLowerCase().includes(p.toLowerCase())
-                    ))
-                    .map((l: any) => ({
-                        name: l.name,
-                        balance: Math.abs(Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0)
-                    }));
+            const normalizeGroup = (ledger: any) => String(
+                ledger.parent
+                || ledger.parent_group
+                || ledger.ledger_type
+                || ledger.ledger_group
+                || ''
+            ).trim();
+
+            const groupMatches = (groupName: string, patterns: string[]) => {
+                const text = groupName.toLowerCase();
+                return patterns.some((pattern) => text.includes(pattern.toLowerCase()));
             };
 
-            // Get ledgers for each category
+            const categorizeLedgers = (includePatterns: string[], excludePatterns: string[] = []): LedgerItem[] => {
+                return ledgers
+                    .filter((ledger: any) => {
+                        const groupName = normalizeGroup(ledger);
+                        if (!groupMatches(groupName, includePatterns)) return false;
+                        if (excludePatterns.length > 0 && groupMatches(groupName, excludePatterns)) return false;
+                        return true;
+                    })
+                    .map((ledger: any) => ({
+                        name: ledger.name,
+                        balance: Math.abs(Number(ledger.current_balance ?? ledger.closing_balance ?? ledger.opening_balance) || 0)
+                    }))
+                    .filter((ledger: LedgerItem) => ledger.balance > 0);
+            };
+
+            const sumLedgers = (items: LedgerItem[]) => items.reduce((sum, ledger) => sum + ledger.balance, 0);
+
             const fixedAssetsLedgers = categorizeLedgers(assetGroups.fixed);
-            const currentAssetsLedgers = categorizeLedgers(assetGroups.current);
+            const nonStockCurrentAssetLedgers = categorizeLedgers(assetGroups.current, assetGroups.stock);
+            const stockLedgerRows = categorizeLedgers(assetGroups.stock);
             const bankLedgers = categorizeLedgers(assetGroups.bank);
             const cashLedgers = categorizeLedgers(assetGroups.cash);
 
@@ -118,8 +143,19 @@ export default function BalanceSheetPage() {
             const currentLiabLedgers = categorizeLedgers(liabilityGroups.current);
             const creditorLedgers = categorizeLedgers(liabilityGroups.creditors);
 
-            // Calculate totals
-            const sumLedgers = (items: LedgerItem[]) => items.reduce((sum, l) => sum + l.balance, 0);
+            const directClosingStockValue = stockItems.reduce((sum: number, item: any) => sum + (Number(item.closing_value) || 0), 0);
+            const derivedClosingStockValue = stockItems.reduce((sum: number, item: any) => {
+                const quantity = Number(item.current_stock) || 0;
+                const rate = Number(item.rate) || 0;
+                return sum + (quantity * rate);
+            }, 0);
+            const computedStockValue = directClosingStockValue > 0 ? directClosingStockValue : derivedClosingStockValue;
+
+            const stockAssetRows: LedgerItem[] = computedStockValue > 0
+                ? [{ name: 'Closing Stock', balance: computedStockValue }]
+                : stockLedgerRows;
+
+            const currentAssetsLedgers = [...stockAssetRows, ...nonStockCurrentAssetLedgers];
 
             const fixedTotal = sumLedgers(fixedAssetsLedgers);
             const currentTotal = sumLedgers(currentAssetsLedgers);
@@ -155,7 +191,6 @@ export default function BalanceSheetPage() {
         }
         setLoading(false);
     };
-
     const toggleGroup = (groupName: string) => {
         setExpandedGroups(prev =>
             prev.includes(groupName)

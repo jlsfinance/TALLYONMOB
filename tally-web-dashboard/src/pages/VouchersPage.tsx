@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { FixedSizeList as List } from 'react-window';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, pendingTransactionApi } from '../lib/insforge';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -8,9 +10,11 @@ import {
     FileText, Search, Activity, ArrowUpRight, ArrowDownLeft,
     Zap, Calendar
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import {
     Spinner, EmptyState
 } from '../components/ui/GlassUI';
+import { SkeletonTable } from '../components/ui/Skeleton';
 import TransactionCard from '../components/shared/TransactionCard';
 import { CompactDateFilter } from '../components/shared/CompactDateFilter';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
@@ -19,8 +23,6 @@ export default function VouchersPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [vouchers, setVouchers] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState(searchParams.get('party') || '');
     const [selectedType, setSelectedType] = useState(searchParams.get('type') || 'all');
     const [syncStatusFilter, setSyncStatusFilter] = useState<string | null>(null);
@@ -37,14 +39,24 @@ export default function VouchersPage() {
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>(() => format(new Date(), 'yyyy-MM'));
 
-    const voucherTypes = [
-        { key: 'all', label: 'All', icon: <Activity size={12} /> },
-        { key: 'Sales', label: 'Sales', icon: <ArrowUpRight size={12} /> },
-        { key: 'Purchase', label: 'Purchase', icon: <ArrowDownLeft size={12} /> },
-        { key: 'Receipt', label: 'Receipt', icon: <Zap size={12} /> },
-        { key: 'Payment', label: 'Payment', icon: <Zap size={12} /> },
-        { key: 'Pending', label: 'Pending Sync', icon: <Activity size={12} /> },
-    ];
+    const handleExportCSV = () => {
+        const headers = [
+            { key: 'voucher_number', label: 'Voucher No' },
+            { key: 'voucher_type', label: 'Type' },
+            { key: 'voucher_date', label: 'Date' },
+            { key: 'party_name', label: 'Party Name' },
+            { key: 'total_amount', label: 'Amount' }
+        ];
+        import('../lib/exportToCSV').then(({ exportToCSV }) => {
+            exportToCSV(
+                filteredVouchers,
+                headers,
+                `Vouchers_${selectedCompany.name}_${selectedMonth || selectedFy}.csv`
+            );
+        }).catch(err => {
+            toast.error('Failed to export: ' + err.message);
+        });
+    };
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -52,9 +64,8 @@ export default function VouchersPage() {
         const startYear = parseInt(startYearText);
         const months = [];
 
-        // FY starts from April of startYear to March of startYear + 1
         for (let i = 0; i < 12; i++) {
-            const date = new Date(startYear, 3 + i, 1); // 3 = April
+            const date = new Date(startYear, 3 + i, 1);
             months.push({
                 key: format(date, 'yyyy-MM'),
                 label: format(date, 'MMM'),
@@ -63,7 +74,6 @@ export default function VouchersPage() {
                 end: format(endOfMonth(date), 'yyyy-MM-dd')
             });
         }
-        // Add an "ALL" option for the full year
         const allOption = {
             key: 'all',
             label: 'ALL',
@@ -72,34 +82,26 @@ export default function VouchersPage() {
             end: `${startYear + 1}-03-31`
         };
 
-        return [allOption, ...months.reverse()]; // Show ALL then latest months first
+        return [allOption, ...months.reverse()];
     }, [selectedFy]);
 
-    // Simplified auto-selection (Default to ALL as per user request)
     useEffect(() => {
         if (searchTerm) {
             setSelectedMonth('all');
         }
     }, [searchTerm]);
 
-    useEffect(() => {
-        if (selectedMonth && selectedCompany?.id) loadVouchers();
-    }, [selectedMonth, selectedType, selectedFy, selectedCompany?.id]);
+    const { data: vouchersData, isLoading: vouchersLoading } = useQuery(
+        ['vouchers', selectedCompany?.id, selectedMonth, selectedType, selectedFy],
+        async () => {
+            const companyId = selectedCompany?.id;
+            if (!companyId || !selectedMonth) return [];
 
-    const loadVouchers = async () => {
-        const companyId = selectedCompany?.id;
-        if (!companyId || !selectedMonth) return;
-
-        const requestId = ++activeRequestRef.current;
-        setLoading(true);
-
-        // Handle Pending Transactions explicitly
-        if (selectedType === 'Pending') {
-            try {
+            if (selectedType === 'Pending') {
                 const { data, error } = await pendingTransactionApi.list(companyId, 'pending');
                 if (error) throw error;
 
-                const mapped = (data || []).map((current: any) => ({
+                return (data || []).map((current: any) => ({
                     id: current.id,
                     voucher_number: current.voucher_data?.voucher_number || 'PENDING',
                     party_name: current.voucher_data?.party_name || 'Unknown',
@@ -108,32 +110,11 @@ export default function VouchersPage() {
                     total_amount: current.voucher_data?.grand_total || 0,
                     sync_status: 'Pending'
                 }));
-
-                if (requestId === activeRequestRef.current) {
-                    setVouchers(mapped);
-                }
-            } catch (err) {
-                console.error('Failed to load pending vouchers:', err);
-                if (requestId === activeRequestRef.current) {
-                    setVouchers([]);
-                }
-            } finally {
-                if (requestId === activeRequestRef.current) {
-                    setLoading(false);
-                }
             }
-            return;
-        }
 
-        const monthObj = monthsInFy.find((m: any) => m.key === selectedMonth);
-        if (!monthObj) {
-            if (requestId === activeRequestRef.current) {
-                setLoading(false);
-            }
-            return;
-        }
+            const monthObj = monthsInFy.find((m: any) => m.key === selectedMonth);
+            if (!monthObj) return [];
 
-        try {
             const limit = selectedMonth === 'all' ? 2000 : 1000;
             let query = supabase.from('vouchers')
                 .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
@@ -151,23 +132,18 @@ export default function VouchersPage() {
             const { data, error } = await query;
             if (error) throw error;
 
-            if (requestId === activeRequestRef.current) {
-                setVouchers((data || []).map((v: any) => ({
-                    ...v,
-                    total_amount: Number(v.total_amount ?? v.grand_total ?? 0)
-                })));
-            }
-        } catch (err) {
-            console.error('Failed to load vouchers:', err);
-            if (requestId === activeRequestRef.current) {
-                setVouchers([]);
-            }
-        } finally {
-            if (requestId === activeRequestRef.current) {
-                setLoading(false);
-            }
+            return (data || []).map((v: any) => ({
+                ...v,
+                total_amount: Number(v.total_amount ?? v.grand_total ?? 0)
+            }));
+        },
+        {
+            enabled: !!selectedCompany?.id && !!selectedMonth,
         }
-    };
+    );
+
+    const vouchers = vouchersData || [];
+    const loading = vouchersLoading;
 
     const filteredVouchers = vouchers.filter(v =>
         v.party_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -220,13 +196,21 @@ export default function VouchersPage() {
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <CompactDateFilter
-                    selectedFy={selectedFy}
-                    onFyChange={setSelectedFy}
-                    selectedMonth={selectedMonth}
-                    onMonthChange={setSelectedMonth}
-                    monthsInFy={monthsInFy}
-                />
+                <div className="flex items-center gap-2">
+                    <CompactDateFilter
+                        selectedFy={selectedFy}
+                        onFyChange={setSelectedFy}
+                        selectedMonth={selectedMonth}
+                        onMonthChange={setSelectedMonth}
+                        monthsInFy={monthsInFy}
+                    />
+                    <button
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                        Export CSV
+                    </button>
+                </div>
             </HeaderPortal>
 
             {/* Sticky Header Section for Mobile */}
@@ -261,26 +245,35 @@ export default function VouchersPage() {
             {/* Stream List */}
             <AnimatePresence mode="wait">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <Spinner size="md" />
-                        <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)] mt-4">Streaming Node Data...</p>
-                    </div>
+                    <SkeletonTable rows={8} cols={5} />
                 ) : filteredVouchers.length === 0 ? (
                     <EmptyState icon={<FileText size={48} />} title="No Records" description="Try another month or FY" />
                 ) : (
-                    <div className="space-y-1.5">
-                        {filteredVouchers.map((v, idx) => (
-                            <TransactionCard
-                                key={v.voucher_id || v.id || idx}
-                                type={v.voucher_type}
-                                partyName={v.party_name || (v.voucher_type + ' #' + v.voucher_number)}
-                                voucherNumber={v.voucher_number}
-                                date={v.voucher_date}
-                                amount={Number(v.total_amount) || 0}
-                                status={v.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(v.id)}`)}
-                            />
-                        ))}
+                    <div className="space-y-1.5 h-[650px] overflow-hidden">
+                        <List
+                            height={650}
+                            itemCount={filteredVouchers.length}
+                            itemSize={74}
+                            width="100%"
+                        >
+                            {({ index, style }) => {
+                                const v = filteredVouchers[index];
+                                return (
+                                    <div style={style} className="pr-2 pb-1.5">
+                                        <TransactionCard
+                                            key={v.voucher_id || v.id || index}
+                                            type={v.voucher_type}
+                                            partyName={v.party_name || (v.voucher_type + ' #' + v.voucher_number)}
+                                            voucherNumber={v.voucher_number}
+                                            date={v.voucher_date}
+                                            amount={Number(v.total_amount) || 0}
+                                            status={v.sync_status || 'Synced'}
+                                            onClick={() => navigate(`/vouchers/${encodeURIComponent(v.id)}`)}
+                                        />
+                                    </div>
+                                );
+                            }}
+                        </List>
                     </div>
                 )}
             </AnimatePresence>

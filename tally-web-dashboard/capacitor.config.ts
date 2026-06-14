@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-    appId: 'com.tallysync.app',
-    appName: 'TallySync',
+    appId: 'com.jls.billbook',
+    appName: 'JLS Bill',
     webDir: 'dist',
     server: {
         androidScheme: 'https'
@@ -27,10 +27,6 @@ const config: CapacitorConfig = {
         }
     },
     android: {
-        buildOptions: {
-            keystorePath: undefined,
-            keystoreAlias: undefined
-        },
         allowMixedContent: false,
         backgroundColor: '#030712'
     }

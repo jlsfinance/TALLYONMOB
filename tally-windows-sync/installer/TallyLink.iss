@@ -1,8 +1,8 @@
-; TallyLink Installer Script for Inno Setup 6
+﻿; TallyLink Installer Script for Inno Setup 6
 ; Creates a proper Windows installer with license, path selection, shortcuts, etc.
 
 #define AppName "TallyLink"
-#define AppVersion "2.7.0"
+#define AppVersion "2.10.7"
 #define AppPublisher "TallyLink"
 #define AppURL "https://tallyonmob.vercel.app"
 #define AppExeName "TallyLink.exe"
@@ -119,3 +119,8 @@ begin
     ForceDirectories(ExpandConstant('{app}\Logs'));
   end;
 end;
+
+
+
+
+

@@ -7,6 +7,7 @@ import 'ledger_list_screen.dart';
 import 'voucher_list_screen.dart';
 import 'stock_list_screen.dart';
 import 'reports_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -189,6 +190,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: Text(authProvider.selectedCompanyName ?? 'Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.swap_horiz),
             tooltip: 'Switch Company',

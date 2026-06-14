@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const crypto = require('crypto');
 const { Client, Databases, Users, Query, ID } = require('node-appwrite');
 
@@ -12,6 +12,207 @@ const client = new Client()
 const databases = new Databases(client);
 const users = new Users(client);
 const DB_ID = 'tally_sync_db';
+
+// --- TOTP AND 2FA UTILITY FUNCTIONS ---
+function base32Decode(str) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    str = str.replace(/=+$/, '').toUpperCase();
+    let len = str.length;
+    let val = 0;
+    let count = 0;
+    const bytes = [];
+    for (let i = 0; i < len; i++) {
+        const idx = alphabet.indexOf(str[i]);
+        if (idx === -1) throw new Error('Invalid base32 character');
+        val = (val << 5) | idx;
+        count += 5;
+        if (count >= 8) {
+            bytes.push((val >> (count - 8)) & 255);
+            count -= 8;
+        }
+    }
+    return Buffer.from(bytes);
+}
+
+function base32Encode(buffer) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let val = 0;
+    let count = 0;
+    let str = '';
+    for (let i = 0; i < buffer.length; i++) {
+        val = (val << 8) | buffer[i];
+        count += 8;
+        while (count >= 5) {
+            str += alphabet[(val >> (count - 5)) & 31];
+            count -= 5;
+        }
+    }
+    if (count > 0) {
+        str += alphabet[(val << (5 - count)) & 31];
+    }
+    return str;
+}
+
+function generateSecret(length = 20) {
+    const bytes = crypto.randomBytes(length);
+    return base32Encode(bytes);
+}
+
+function verifyTOTP(secret, code, window = 1) {
+    try {
+        const key = base32Decode(secret);
+        const epoch = Math.floor(Date.now() / 1000);
+        const counter = Math.floor(epoch / 30);
+        
+        for (let i = -window; i <= window; i++) {
+            const c = counter + i;
+            const buf = Buffer.alloc(8);
+            buf.writeUInt32BE(0, 0);
+            buf.writeUInt32BE(c, 4);
+            
+            const hmac = crypto.createHmac('sha1', key);
+            hmac.update(buf);
+            const hmacResult = hmac.digest();
+            
+            const offset = hmacResult[hmacResult.length - 1] & 0xf;
+            const binary = ((hmacResult[offset] & 0x7f) << 24) |
+                           ((hmacResult[offset + 1] & 0xff) << 16) |
+                           ((hmacResult[offset + 2] & 0xff) << 8) |
+                           (hmacResult[offset + 3] & 0xff);
+            
+            const otpVal = binary % 1000000;
+            const otpStr = String(otpVal).padStart(6, '0');
+            if (otpStr === String(code).trim()) {
+                return true;
+            }
+        }
+    } catch (err) {
+        console.error('verifyTOTP error:', err);
+    }
+    return false;
+}
+
+async function getAppwriteUser(req) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw new Error('Missing token');
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const response = await fetch('https://nyc.cloud.appwrite.io/v1/account', {
+        headers: {
+            'X-Appwrite-Project': '69a06098003b91c827a9',
+            'X-Appwrite-Session': token
+        }
+    });
+    if (!response.ok) {
+        throw new Error('Unauthorized');
+    }
+    return await response.json();
+}
+
+async function getUser2FASettings(userId) {
+    try {
+        await ensureCollectionAndAttributes('user_profiles');
+        const doc = await databases.getDocument(DB_ID, 'user_profiles', userId);
+        const data = doc.json_data ? JSON.parse(doc.json_data) : doc;
+        return {
+            two_factor_enabled: !!data.two_factor_enabled,
+            two_factor_secret: data.two_factor_secret || null
+        };
+    } catch (e) {
+        return { two_factor_enabled: false, two_factor_secret: null };
+    }
+}
+
+async function saveUser2FASettings(userId, email, enabled, secret) {
+    await ensureCollectionAndAttributes('user_profiles');
+    const data = {
+        id: userId,
+        email: email,
+        two_factor_enabled: enabled,
+        two_factor_secret: secret,
+        updated_at: new Date().toISOString()
+    };
+    const jsonBlob = JSON.stringify(data);
+    const dataHash = crypto.createHash('sha1').update(jsonBlob).digest('hex');
+    const appwritePayload = {
+        json_data: jsonBlob,
+        data_hash: dataHash
+    };
+    try {
+        await databases.createDocument(DB_ID, 'user_profiles', userId, appwritePayload);
+    } catch (e) {
+        if (e.code === 409) {
+            await databases.updateDocument(DB_ID, 'user_profiles', userId, appwritePayload);
+        } else {
+            throw e;
+        }
+    }
+}
+
+async function logActivity(req, action, details = {}) {
+    try {
+        let actorId = 'system';
+        let actorEmail = 'system@tallylink.com';
+
+        if (req.headers.authorization) {
+            try {
+                const user = await getAppwriteUser(req);
+                actorId = user.$id;
+                actorEmail = user.email;
+            } catch (err) {
+                // ignore
+            }
+        } else if (req.headers['x-api-key']) {
+            actorId = 'tally_sync_agent';
+            actorEmail = 'sync@tallylink.com';
+        }
+
+        const pathParts = req.path.split('/').filter(p => p !== '');
+        const tableName = pathParts[0] || 'unknown';
+
+        let companyId = req.query.company_id || req.body.company_id || '';
+        if (!companyId && Array.isArray(req.body)) {
+            companyId = req.body[0]?.company_id || '';
+        } else if (!companyId && req.body && typeof req.body === 'object') {
+            companyId = req.body.company_id || '';
+        }
+
+        const logDoc = {
+            id: ID.unique(),
+            user_id: actorId,
+            user_email: actorEmail,
+            company_id: String(companyId || ''),
+            action: action || `${req.method} ${tableName}`,
+            details: JSON.stringify({
+                method: req.method,
+                path: req.path,
+                ip: req.ip || req.headers['x-forwarded-for'] || '',
+                userAgent: req.headers['user-agent'] || '',
+                ...details
+            }),
+            created_at: new Date().toISOString()
+        };
+
+        // Don't recursively log audit logs
+        if (tableName !== 'audit_logs') {
+            await ensureCollectionAndAttributes('audit_logs');
+            const jsonBlob = JSON.stringify(logDoc);
+            const dataHash = crypto.createHash('sha1').update(jsonBlob).digest('hex');
+            const appwritePayload = {
+                json_data: jsonBlob,
+                data_hash: dataHash,
+                company_id: logDoc.company_id,
+                name: logDoc.action
+            };
+            await databases.createDocument(DB_ID, 'audit_logs', logDoc.id, appwritePayload);
+            console.log(`[Audit Log] ${logDoc.action} by ${actorEmail}`);
+        }
+    } catch (err) {
+        console.error('Failed to write audit log:', err.message);
+    }
+}
+// --- END OF TOTP AND 2FA UTILITY FUNCTIONS ---
 
 // Safely create coll/attrs dynamically
 async function ensureCollectionAndAttributes(collectionId, sampleData) {
@@ -82,12 +283,107 @@ router.use('/', async (req, res) => {
 
         // MOCK SUPABASE AUTH ROUTE
         if (tableName === 'auth') {
+            // Check 2FA custom routes first
+            if (req.path.includes('2fa/setup')) {
+                try {
+                    const user = await getAppwriteUser(req);
+                    const secret = generateSecret();
+                    const qrCodeUrl = `otpauth://totp/TallyLink:${encodeURIComponent(user.email)}?secret=${secret}&issuer=TallyLink`;
+                    return res.json({ secret, qrCodeUrl });
+                } catch (e) {
+                    return res.status(401).json({ error: 'unauthorized', message: e.message || 'Unauthorized' });
+                }
+            }
+
+            if (req.path.includes('2fa/enable')) {
+                const { secret, code } = req.body;
+                try {
+                    const user = await getAppwriteUser(req);
+                    const isValid = verifyTOTP(secret, code);
+                    if (!isValid) {
+                        return res.status(400).json({ error: 'invalid_code', message: 'Invalid 2FA code. Verification failed.' });
+                    }
+                    await saveUser2FASettings(user.$id, user.email, true, secret);
+                    await logActivity(req, '2FA Enabled', { user_id: user.$id });
+                    return res.json({ success: true, message: 'Two-factor authentication enabled.' });
+                } catch (e) {
+                    return res.status(400).json({ error: 'bad_request', message: e.message || 'Verification failed' });
+                }
+            }
+
+            if (req.path.includes('2fa/disable')) {
+                const { code } = req.body;
+                try {
+                    const user = await getAppwriteUser(req);
+                    const settings = await getUser2FASettings(user.$id);
+                    if (!settings.two_factor_enabled || !settings.two_factor_secret) {
+                        return res.status(400).json({ error: 'not_enabled', message: '2FA is not enabled.' });
+                    }
+                    const isValid = verifyTOTP(settings.two_factor_secret, code);
+                    if (!isValid) {
+                        return res.status(400).json({ error: 'invalid_code', message: 'Invalid 2FA code. Verification failed.' });
+                    }
+                    await saveUser2FASettings(user.$id, user.email, false, null);
+                    await logActivity(req, '2FA Disabled', { user_id: user.$id });
+                    return res.json({ success: true, message: 'Two-factor authentication disabled.' });
+                } catch (e) {
+                    return res.status(400).json({ error: 'bad_request', message: e.message || 'Failed to disable 2FA' });
+                }
+            }
+
+            if (req.path.includes('2fa/status')) {
+                try {
+                    const user = await getAppwriteUser(req);
+                    const settings = await getUser2FASettings(user.$id);
+                    return res.json({ enabled: settings.two_factor_enabled });
+                } catch (e) {
+                    return res.status(401).json({ error: 'unauthorized', message: e.message || 'Unauthorized' });
+                }
+            }
+
+            if (req.path.includes('2fa/verify-login')) {
+                const { temp_token, user_id, email, code } = req.body;
+                try {
+                    const settings = await getUser2FASettings(user_id);
+                    if (!settings.two_factor_enabled || !settings.two_factor_secret) {
+                        return res.status(400).json({ error: 'not_enabled', message: '2FA is not enabled.' });
+                    }
+                    const isValid = verifyTOTP(settings.two_factor_secret, code);
+                    if (!isValid) {
+                        // Delete the temporary session on Appwrite so it cannot be used
+                        await fetch(`https://nyc.cloud.appwrite.io/v1/account/sessions/${temp_token}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-Appwrite-Project': '69a06098003b91c827a9',
+                                'X-Appwrite-Session': temp_token
+                            }
+                        });
+                        await logActivity(req, '2FA Login Failed', { user_id, reason: 'Invalid code' });
+                        return res.status(400).json({ error: 'invalid_code', message: 'Invalid 2FA verification code. Session terminated.' });
+                    }
+                    // Code is valid! Return the final session
+                    await logActivity(req, '2FA Login Success', { user_id });
+                    return res.json({
+                        access_token: temp_token,
+                        refresh_token: temp_token,
+                        expires_in: 31536000,
+                        user: {
+                            id: user_id,
+                            email: email
+                        }
+                    });
+                } catch (e) {
+                    return res.status(400).json({ error: 'bad_request', message: e.message || 'Verification failed' });
+                }
+            }
+
             const isSignup = req.path.includes('signup');
 
             if (req.method === 'POST' && isSignup) {
                 const { email, password, data } = req.body;
                 try {
                     const user = await users.create(ID.unique(), email, undefined, password, data?.full_name);
+                    await logActivity(req, 'User Signup', { userEmail: email });
                     return res.json({
                         access_token: 'fake-token-do-login-next',
                         user: { id: user.$id, email: user.email }
@@ -109,6 +405,19 @@ router.use('/', async (req, res) => {
                     const data = await response.json();
 
                     if (response.ok) {
+                        // Check if 2FA is enabled
+                        const settings = await getUser2FASettings(data.userId);
+                        if (settings.two_factor_enabled) {
+                            await logActivity(req, '2FA Code Requested', { userId: data.userId });
+                            return res.json({
+                                two_factor_required: true,
+                                temp_token: data.$id,
+                                user_id: data.userId,
+                                email: email
+                            });
+                        }
+
+                        await logActivity(req, 'User Login Success', { userId: data.userId });
                         return res.json({
                             access_token: data.$id,
                             refresh_token: data.$id,
@@ -164,6 +473,7 @@ router.use('/', async (req, res) => {
             if (!Array.isArray(data)) data = [data];
 
             await ensureCollectionAndAttributes(tableName);
+            logActivity(req, `Modify ${tableName}`, { recordCount: data.length });
 
             const WRITE_CONCURRENCY = 20;
             for (let i = 0; i < data.length; i += WRITE_CONCURRENCY) {

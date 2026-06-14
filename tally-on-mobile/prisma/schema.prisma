@@ -1,0 +1,383 @@
+// Prisma Schema for Tally On Mobile SaaS Platform
+// Multi-tenant architecture with company isolation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USERS & AUTH ───────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  name          String
+  phone         String?
+  role          UserRole @default(VIEWER)
+  isActive      Boolean  @default(true) @map("is_active")
+  avatarUrl     String?  @map("avatar_url")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  companyUsers  CompanyUser[]
+  auditLogs     AuditLog[]
+  syncHistory   SyncHistory[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+// ─── COMPANIES & TENANTS ────────────────────────────────────────────────────
+
+model Company {
+  id            String   @id @default(cuid())
+  name          String
+  gstin         String?
+  address       String?
+  city          String?
+  state         String?
+  pincode       String?
+  phone         String?
+  email         String?
+  financialYearStart DateTime? @map("financial_year_start")
+  booksBeginDate     DateTime? @map("books_begin_date")
+  tallyGuid     String?  @unique @map("tally_guid")
+  tallyCompany  String?  @map("tally_company_name")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  companyUsers  CompanyUser[]
+  ledgers       Ledger[]
+  vouchers      Voucher[]
+  stockItems    StockItem[]
+  syncHistory   SyncHistory[]
+  devices       Device[]
+  subscriptions Subscription[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@map("companies")
+}
+
+model CompanyUser {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  companyId String   @map("company_id")
+  role      CompanyRole @default(VIEWER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("company_users")
+}
+
+enum CompanyRole {
+  OWNER
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+// ─── TALLY DATA ─────────────────────────────────────────────────────────────
+
+model Ledger {
+  id              String   @id @default(cuid())
+  companyId       String   @map("company_id")
+  tallyGuid       String?  @map("tally_guid")
+  name            String
+  alias           String?
+  parent          String
+  ledgerType      String?  @map("ledger_type")
+  openingBalance  Decimal  @default(0) @map("opening_balance")
+  closingBalance  Decimal  @default(0) @map("closing_balance")
+  gstin           String?
+  pan             String?
+  phone           String?
+  email           String?
+  address         String?
+  state           String?
+  country         String?
+  isActive        Boolean  @default(true) @map("is_active")
+  masterId        Int?     @map("master_id")
+  alterId         Int?     @map("alter_id")
+  syncedAt        DateTime? @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, tallyGuid])
+  @@index([companyId, name])
+  @@index([companyId, parent])
+  @@index([companyId, ledgerType])
+  @@map("ledgers")
+}
+
+model Voucher {
+  id              String   @id @default(cuid())
+  companyId       String   @map("company_id")
+  tallyGuid       String?  @map("tally_guid")
+  voucherNumber   String   @map("voucher_number")
+  voucherType     String   @map("voucher_type")
+  voucherDate     DateTime @map("voucher_date")
+  partyName       String   @map("party_name")
+  narration       String?
+  referenceNumber String?  @map("reference_number")
+  totalAmount     Decimal  @default(0) @map("total_amount")
+  grandTotal      Decimal  @default(0) @map("grand_total")
+  isCancelled     Boolean  @default(false) @map("is_cancelled")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  isOptional      Boolean  @default(false) @map("is_optional")
+  masterId        Int?     @map("master_id")
+  alterId         Int?     @map("alter_id")
+  syncBatchId     String?  @map("sync_batch_id")
+  syncedAt        DateTime? @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ledgerEntries   VoucherLedgerEntry[]
+  stockEntries    VoucherStockEntry[]
+
+  @@unique([companyId, tallyGuid])
+  @@index([companyId, voucherDate])
+  @@index([companyId, voucherType])
+  @@index([companyId, partyName])
+  @@index([companyId, isDeleted])
+  @@map("vouchers")
+}
+
+model VoucherLedgerEntry {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  voucherId     String   @map("voucher_id")
+  ledgerName    String   @map("ledger_name")
+  amount        Decimal  @default(0)
+  isDebit       Boolean  @default(false) @map("is_debit")
+  isPartyLedger Boolean  @default(false) @map("is_party_ledger")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  voucher       Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, voucherId])
+  @@index([companyId, ledgerName])
+  @@map("voucher_ledger_entries")
+}
+
+model VoucherStockEntry {
+  id             String   @id @default(cuid())
+  companyId      String   @map("company_id")
+  voucherId      String   @map("voucher_id")
+  stockItemName  String   @map("stock_item_name")
+  quantity       Decimal  @default(0)
+  unit           String?
+  rate           Decimal  @default(0)
+  amount         Decimal  @default(0)
+  taxRate        Decimal? @map("tax_rate")
+  hsnCode        String?  @map("hsn_code")
+  godown         String?
+  isInward       Boolean  @default(false) @map("is_inward")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  voucher        Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, voucherId])
+  @@index([companyId, stockItemName])
+  @@map("voucher_stock_entries")
+}
+
+model StockItem {
+  id              String   @id @default(cuid())
+  companyId       String   @map("company_id")
+  tallyGuid       String?  @map("tally_guid")
+  name            String
+  alias           String?
+  stockGroup      String   @map("stock_group")
+  stockCategory   String?  @map("stock_category")
+  unit            String?
+  hsnCode         String?  @map("hsn_code")
+  gstRate         Decimal? @map("gst_rate")
+  openingBalance  Decimal  @default(0) @map("opening_balance")
+  openingValue    Decimal  @default(0) @map("opening_value")
+  closingBalance  Decimal  @default(0) @map("closing_balance")
+  closingValue    Decimal  @default(0) @map("closing_value")
+  rate            Decimal? @map("rate")
+  masterId        Int?     @map("master_id")
+  alterId         Int?     @map("alter_id")
+  isActive        Boolean  @default(true) @map("is_active")
+  syncedAt        DateTime? @map("synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, tallyGuid])
+  @@index([companyId, name])
+  @@index([companyId, stockGroup])
+  @@map("stock_items")
+}
+
+// ─── SYNC & DEVICES ─────────────────────────────────────────────────────────
+
+model SyncHistory {
+  id            String     @id @default(cuid())
+  companyId     String     @map("company_id")
+  userId        String?    @map("user_id")
+  deviceId      String?    @map("device_id")
+  status        SyncStatus @default(IN_PROGRESS)
+  syncType      String     @map("sync_type")
+  totalRecords  Int        @default(0) @map("total_records")
+  newRecords    Int        @default(0) @map("new_records")
+  updatedRecords Int       @default(0) @map("updated_records")
+  deletedRecords Int       @default(0) @map("deleted_records")
+  errorMessage  String?    @map("error_message")
+  startedAt     DateTime   @default(now()) @map("started_at")
+  completedAt   DateTime?  @map("completed_at")
+  duration      Int?       // seconds
+
+  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user          User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, startedAt])
+  @@map("sync_history")
+}
+
+enum SyncStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+model Device {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  deviceName    String   @map("device_name")
+  deviceType    String   @default("desktop") @map("device_type")
+  machineId     String?  @map("machine_id")
+  apiKey        String   @unique @map("api_key")
+  isActive      Boolean  @default(true) @map("is_active")
+  lastSyncAt    DateTime? @map("last_sync_at")
+  tallyVersion  String?  @map("tally_version")
+  ipAddress     String?  @map("ip_address")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("devices")
+}
+
+// ─── SUBSCRIPTIONS ──────────────────────────────────────────────────────────
+
+model Subscription {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  plan          SubscriptionPlan @default(FREE)
+  status        SubscriptionStatus @default(ACTIVE)
+  startDate     DateTime @default(now()) @map("start_date")
+  endDate       DateTime? @map("end_date")
+  maxCompanies  Int      @default(1) @map("max_companies")
+  maxUsers      Int      @default(3) @map("max_users")
+  maxSyncs      Int      @default(10) @map("max_syncs_per_day")
+  features      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId])
+  @@map("subscriptions")
+}
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELLED
+}
+
+// ─── AUDIT & NOTIFICATIONS ──────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  userId      String?  @map("user_id")
+  action      String
+  entity      String
+  entityId    String?  @map("entity_id")
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, entity])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  userId      String?  @map("user_id")
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean  @default(false) @map("is_read")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, userId, isRead])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  SYNC_COMPLETE
+  SYNC_FAILED
+  SYSTEM
+  ALERT
+  INFO
+}
+
+// ─── APP SETTINGS ───────────────────────────────────────────────────────────
+
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

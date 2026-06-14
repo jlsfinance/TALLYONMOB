@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,6 +33,7 @@ namespace TallySyncApp.Services
         private const int CIRCUIT_BREAKER_RESET_SECONDS = 60;    // Wait 60s before retrying after circuit break
         private const int MAX_RETRY_TIMEOUT_SECONDS = 600;       // Max 10 minutes per request
         private const int SAFE_RECORD_LIMIT = 5000;              // Max records to fetch in one Tally request
+        private const string VoucherCollectionFetchFields = "MASTERID, ALTERID, GUID, DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, AMOUNT, NARRATION, STATENAME, PLACEOFSUPPLY, ISOPTIONAL, ISINVOICE, PERSISTEDVIEW, OBJVIEW, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME, ALLLEDGERENTRIES.LIST, ALLLEDGERENTRIES.LIST.LEDGERNAME, ALLLEDGERENTRIES.LIST.AMOUNT, LEDGERENTRIES.LIST, LEDGERENTRIES.LIST.LEDGERNAME, LEDGERENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST, ALLINVENTORYENTRIES.LIST.STOCKITEMNAME, ALLINVENTORYENTRIES.LIST.DSPVCHITEMNAME, ALLINVENTORYENTRIES.LIST.ITEMNAME, ALLINVENTORYENTRIES.LIST.BILLEDQTY, ALLINVENTORYENTRIES.LIST.ACTUALQTY, ALLINVENTORYENTRIES.LIST.DSPVCHQTY, ALLINVENTORYENTRIES.LIST.QTY, ALLINVENTORYENTRIES.LIST.RATE, ALLINVENTORYENTRIES.LIST.DSPVCHRATE, ALLINVENTORYENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, ALLINVENTORYENTRIES.LIST.DISCOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHDISCOUNT, ALLINVENTORYENTRIES.LIST.HSNCODE, ALLINVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, ALLINVENTORYENTRIES.LIST.GSTRATE, ALLINVENTORYENTRIES.LIST.IGSTRATE, ALLINVENTORYENTRIES.LIST.TAXABILITY, INVENTORYENTRIES.LIST, INVENTORYENTRIES.LIST.STOCKITEMNAME, INVENTORYENTRIES.LIST.DSPVCHITEMNAME, INVENTORYENTRIES.LIST.ITEMNAME, INVENTORYENTRIES.LIST.BILLEDQTY, INVENTORYENTRIES.LIST.ACTUALQTY, INVENTORYENTRIES.LIST.DSPVCHQTY, INVENTORYENTRIES.LIST.QTY, INVENTORYENTRIES.LIST.RATE, INVENTORYENTRIES.LIST.DSPVCHRATE, INVENTORYENTRIES.LIST.AMOUNT, INVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, INVENTORYENTRIES.LIST.DISCOUNT, INVENTORYENTRIES.LIST.DSPVCHDISCOUNT, INVENTORYENTRIES.LIST.HSNCODE, INVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, INVENTORYENTRIES.LIST.GSTRATE, INVENTORYENTRIES.LIST.IGSTRATE, INVENTORYENTRIES.LIST.TAXABILITY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY";
 
         // Circuit breaker state
         private int _consecutiveFailures = 0;
@@ -124,13 +126,13 @@ namespace TallySyncApp.Services
                     var elapsed = (DateTime.Now - _circuitBreakerTrippedAt).TotalSeconds;
                     if (elapsed < CIRCUIT_BREAKER_RESET_SECONDS)
                     {
-                        SyncLogger.Log($"ðŸ›¡ï¸ CIRCUIT BREAKER ACTIVE: {MAX_CONSECUTIVE_FAILURES} consecutive failures. " +
+                        SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â CIRCUIT BREAKER ACTIVE: {MAX_CONSECUTIVE_FAILURES} consecutive failures. " +
                             $"Waiting {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s before retry to protect Tally.");
-                        Log($"ðŸ›¡ï¸ CIRCUIT BREAKER: {_consecutiveFailures} failures, wait {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s");
+                        Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â CIRCUIT BREAKER: {_consecutiveFailures} failures, wait {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s");
                         return null;
                     }
                     // Reset after cooldown period
-                    SyncLogger.Log("ðŸ”„ Circuit breaker reset - retrying Tally connection");
+                    SyncLogger.Log("Ã°Å¸â€â€ž Circuit breaker reset - retrying Tally connection");
                     _consecutiveFailures = 0;
                 }
 
@@ -154,7 +156,7 @@ namespace TallySyncApp.Services
                     if (!response.IsSuccessStatusCode)
                     {
                         _consecutiveFailures++;
-                        Log($"âŒ Tally HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+                        Log($"Ã¢ÂÅ’ Tally HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
                         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
                             _circuitBreakerTrippedAt = DateTime.Now;
                         return null;
@@ -164,9 +166,9 @@ namespace TallySyncApp.Services
                     var contentLength = response.Content.Headers.ContentLength;
                     if (contentLength.HasValue && contentLength.Value > MAX_XML_RESPONSE_SIZE)
                     {
-                        SyncLogger.Log($"ðŸ›¡ï¸ SAFETY: Response too large ({contentLength.Value / (1024 * 1024)}MB > {MAX_XML_RESPONSE_MB}MB limit). " +
+                        SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â SAFETY: Response too large ({contentLength.Value / (1024 * 1024)}MB > {MAX_XML_RESPONSE_MB}MB limit). " +
                             "Skipping to prevent memory crash. Reduce batch size.");
-                        Log($"ðŸ›¡ï¸ Response TOO LARGE: {contentLength.Value / (1024 * 1024)}MB");
+                        Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â Response TOO LARGE: {contentLength.Value / (1024 * 1024)}MB");
                         return null;
                     }
 
@@ -175,13 +177,13 @@ namespace TallySyncApp.Services
                     // Double-check actual response size
                     if (responseContent.Length > MAX_XML_RESPONSE_SIZE)
                     {
-                        SyncLogger.Log($"ðŸ›¡ï¸ SAFETY: Response body too large ({responseContent.Length / (1024 * 1024)}MB). Skipping.");
+                        SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â SAFETY: Response body too large ({responseContent.Length / (1024 * 1024)}MB). Skipping.");
                         return null;
                     }
 
                     // Always save response for debugging
                     SyncLogger.SaveFile("last_tally_response.xml", responseContent);
-                    Log($"ðŸ“¨ Tally response: {responseContent.Length} chars");
+                    Log($"Ã°Å¸â€œÂ¨ Tally response: {responseContent.Length} chars");
                     
                     string sanitizedContent = SanitizeXmlString(responseContent);
                     
@@ -201,8 +203,8 @@ namespace TallySyncApp.Services
                 _consecutiveFailures++;
                 if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
                     _circuitBreakerTrippedAt = DateTime.Now;
-                SyncLogger.Log($"âš ï¸ Tally request timed out after {customTimeout ?? _timeout}s (failure #{_consecutiveFailures})");
-                Log($"âš ï¸ TIMEOUT: Tally did not respond in {customTimeout ?? _timeout}s");
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally request timed out after {customTimeout ?? _timeout}s (failure #{_consecutiveFailures})");
+                Log($"Ã¢Å¡Â Ã¯Â¸Â TIMEOUT: Tally did not respond in {customTimeout ?? _timeout}s");
                 return null;
             }
             catch (HttpRequestException ex)
@@ -210,7 +212,7 @@ namespace TallySyncApp.Services
                 _consecutiveFailures++;
                 if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
                     _circuitBreakerTrippedAt = DateTime.Now;
-                SyncLogger.Log($"âš ï¸ Tally connection error: {ex.Message} (failure #{_consecutiveFailures})");
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally connection error: {ex.Message} (failure #{_consecutiveFailures})");
                 return null;
             }
             catch (Exception ex)
@@ -218,8 +220,180 @@ namespace TallySyncApp.Services
                 _consecutiveFailures++;
                 if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
                     _circuitBreakerTrippedAt = DateTime.Now;
-                SyncLogger.Log($"âš ï¸ Tally request error: {ex.Message} (failure #{_consecutiveFailures})");
-                Log($"âŒ Tally error: {ex.Message}");
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally request error: {ex.Message} (failure #{_consecutiveFailures})");
+                Log($"Ã¢ÂÅ’ Tally error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Send XML request to Tally and return sanitized XML text without materializing the full DOM.
+        /// </summary>
+        private async Task<string?> SendRequestRawAsync(string xmlRequest, string? companyName = null, int? customTimeout = null)
+        {
+            try
+            {
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    var elapsed = (DateTime.Now - _circuitBreakerTrippedAt).TotalSeconds;
+                    if (elapsed < CIRCUIT_BREAKER_RESET_SECONDS)
+                    {
+                        SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â CIRCUIT BREAKER ACTIVE: {MAX_CONSECUTIVE_FAILURES} consecutive failures. " +
+                            $"Waiting {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s before retry to protect Tally.");
+                        Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â CIRCUIT BREAKER: {_consecutiveFailures} failures, wait {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s");
+                        return null;
+                    }
+
+                    SyncLogger.Log("Ã°Å¸â€â€ž Circuit breaker reset - retrying Tally connection");
+                    _consecutiveFailures = 0;
+                }
+
+                var timeSinceLastRequest = (DateTime.Now - _lastRequestTime).TotalMilliseconds;
+                if (timeSinceLastRequest < REQUEST_COOLDOWN_MS)
+                {
+                    await Task.Delay(REQUEST_COOLDOWN_MS - (int)timeSinceLastRequest).ConfigureAwait(false);
+                }
+                _lastRequestTime = DateTime.Now;
+
+                SyncLogger.Log($">>> Tally Request [{companyName ?? "Global"}]: XML Length {xmlRequest.Length}");
+                SyncLogger.SaveFile("last_tally_request.xml", xmlRequest);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(customTimeout ?? _timeout));
+                var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
+                var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _consecutiveFailures++;
+                    Log($"Ã¢âÅ’ Tally HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+                    if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                        _circuitBreakerTrippedAt = DateTime.Now;
+                    return null;
+                }
+
+                var contentLength = response.Content.Headers.ContentLength;
+                if (contentLength.HasValue && contentLength.Value > MAX_XML_RESPONSE_SIZE)
+                {
+                    SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â SAFETY: Response too large ({contentLength.Value / (1024 * 1024)}MB > {MAX_XML_RESPONSE_MB}MB limit). " +
+                        "Skipping to prevent memory crash. Reduce batch size.");
+                    Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â Response TOO LARGE: {contentLength.Value / (1024 * 1024)}MB");
+                    return null;
+                }
+
+                var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (responseContent.Length > MAX_XML_RESPONSE_SIZE)
+                {
+                    SyncLogger.Log($"Ã°Å¸â€ºÂ¡Ã¯Â¸Â SAFETY: Response body too large ({responseContent.Length / (1024 * 1024)}MB). Skipping.");
+                    return null;
+                }
+
+                SyncLogger.SaveFile("last_tally_response.xml", responseContent);
+                Log($"Ã°Å¸â€œÂ¨ Tally response: {responseContent.Length} chars");
+
+                _consecutiveFailures = 0;
+                return SanitizeXmlString(responseContent);
+            }
+            catch (TaskCanceledException)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally request timed out after {customTimeout ?? _timeout}s (failure #{_consecutiveFailures})");
+                Log($"Ã¢Å¡Â Ã¯Â¸Â TIMEOUT: Tally did not respond in {customTimeout ?? _timeout}s");
+                return null;
+            }
+            catch (HttpRequestException ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally connection error: {ex.Message} (failure #{_consecutiveFailures})");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally request error: {ex.Message} (failure #{_consecutiveFailures})");
+                Log($"Ã¢â’ Tally error: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task<TextReader?> SendRequestReaderAsync(string xmlRequest, string? companyName = null, int? customTimeout = null)
+        {
+            try
+            {
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    var elapsed = (DateTime.Now - _circuitBreakerTrippedAt).TotalSeconds;
+                    if (elapsed < CIRCUIT_BREAKER_RESET_SECONDS)
+                    {
+                        SyncLogger.Log($"🛡️ CIRCUIT BREAKER ACTIVE: {MAX_CONSECUTIVE_FAILURES} consecutive failures. " +
+                            $"Waiting {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s before retry to protect Tally.");
+                        Log($"🛡️ CIRCUIT BREAKER: {_consecutiveFailures} failures, wait {CIRCUIT_BREAKER_RESET_SECONDS - (int)elapsed}s");
+                        return null;
+                    }
+                    SyncLogger.Log("🔄 Circuit breaker reset - retrying Tally connection");
+                    _consecutiveFailures = 0;
+                }
+
+                var timeSinceLastRequest = (DateTime.Now - _lastRequestTime).TotalMilliseconds;
+                if (timeSinceLastRequest < REQUEST_COOLDOWN_MS)
+                {
+                    await Task.Delay(REQUEST_COOLDOWN_MS - (int)timeSinceLastRequest).ConfigureAwait(false);
+                }
+                _lastRequestTime = DateTime.Now;
+
+                SyncLogger.Log($">>> Tally Request [{companyName ?? "Global"}]: XML Length {xmlRequest.Length}");
+                SyncLogger.SaveFile("last_tally_request.xml", xmlRequest);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(customTimeout ?? _timeout));
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, _tallyUrl)
+                {
+                    Content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml")
+                };
+                var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _consecutiveFailures++;
+                    Log($"❌ Tally HTTP {(int)response.StatusCode}: {response.ReasonPhrase}");
+                    if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                        _circuitBreakerTrippedAt = DateTime.Now;
+                    return null;
+                }
+
+                var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                
+                _consecutiveFailures = 0;
+                return new TallyXmlSanitizingReader(responseStream);
+            }
+            catch (TaskCanceledException)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"⚠️ Tally request timed out after {customTimeout ?? _timeout}s (failure #{_consecutiveFailures})");
+                Log($"⚠️ TIMEOUT: Tally did not respond in {customTimeout ?? _timeout}s");
+                return null;
+            }
+            catch (HttpRequestException ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"⚠️ Tally connection error: {ex.Message} (failure #{_consecutiveFailures})");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                    _circuitBreakerTrippedAt = DateTime.Now;
+                SyncLogger.Log($"⚠️ Tally request error: {ex.Message} (failure #{_consecutiveFailures})");
+                Log($"❌ Tally error: {ex.Message}");
                 return null;
             }
         }
@@ -312,7 +486,7 @@ namespace TallySyncApp.Services
                 File.WriteAllText("tally_response.xml", doc.ToString());
 #endif
                 // Using Log method if available, otherwise fallback to Console
-                Log("ðŸ” Tally Response received. Checking for companies...");
+                Log("Ã°Å¸â€Â Tally Response received. Checking for companies...");
 
                 var companies = new List<Company>();
                 
@@ -320,7 +494,7 @@ namespace TallySyncApp.Services
                 // Tally often wraps these in <COMPANY> or <COMPANYCOLLECTION> tags
                 var companyElements = doc.Descendants().Where(x => x.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase)).ToList();
                 
-                Log($"ðŸ” Found {companyElements.Count} potential company elements in XML.");
+                Log($"Ã°Å¸â€Â Found {companyElements.Count} potential company elements in XML.");
 
                 foreach (var comp in companyElements)
                 {
@@ -328,24 +502,24 @@ namespace TallySyncApp.Services
                     
                     if (string.IsNullOrEmpty(name)) 
                     {
-                        Log("   âš ï¸ Skipping empty company name element");
+                        Log("   Ã¢Å¡Â Ã¯Â¸Â Skipping empty company name element");
                         continue;
                     }
 
                     if (name.Length < 2)
                     {
-                         Log($"   âš ï¸ Skipping too short name: '{name}'");
+                         Log($"   Ã¢Å¡Â Ã¯Â¸Â Skipping too short name: '{name}'");
                          continue;
                     }
 
                     if (name.Contains("Report") || name.Contains("Error") || name.Contains("\n")) 
                     {
-                        Log($"   âš ï¸ Skipping reserved keyword/invalid char in: '{name}'");
+                        Log($"   Ã¢Å¡Â Ã¯Â¸Â Skipping reserved keyword/invalid char in: '{name}'");
                         continue;
                     }
 
                     name = name.Trim();
-                    Log($"   âœ… Found Company: '{name}'");
+                    Log($"   Ã¢Å“â€¦ Found Company: '{name}'");
                     // DEBUG: Dump raw XML snippet for company (first 800 chars)
                     try { SyncLogger.Log($"   [RAW XML] {comp.ToString().Substring(0, Math.Min(800, comp.ToString().Length))}"); } catch { }
                     
@@ -406,16 +580,40 @@ namespace TallySyncApp.Services
                             }
                         }
 
+                        if (string.IsNullOrWhiteSpace(compGstin) || string.IsNullOrWhiteSpace(compState) || addressParts.Count == 0)
+                        {
+                            var taxUnitDetails = await TryGetCompanyTaxUnitDetailsAsync(name);
+                            if (string.IsNullOrWhiteSpace(compGstin))
+                            {
+                                compGstin = taxUnitDetails.Gstin;
+                            }
+                            if (string.IsNullOrWhiteSpace(compState))
+                            {
+                                compState = taxUnitDetails.State;
+                            }
+                            if (addressParts.Count == 0 && !string.IsNullOrWhiteSpace(taxUnitDetails.Address))
+                            {
+                                addressParts.AddRange(taxUnitDetails.Address.Split(',').Select(part => part.Trim()).Where(part => !string.IsNullOrWhiteSpace(part)));
+                            }
+                        }
+
                         // Extract phone
                         var compPhone = GetElementValue(comp, "PHONENUMBER") ?? GetElementValue(comp, "LEDGERPHONE") ?? GetElementValue(comp, "LEDGERMOBILE") ?? GetElementValue(comp, "MOBILENO") ?? GetElementValue(comp, "CONTACTNUMBER") ?? GetElementValue(comp, "CONTACT");
 
                         // Extract email
                         var compEmail = GetElementValue(comp, "EMAIL") ?? GetElementValue(comp, "LEDGEREMAIL");
 
-                        // Extract Financial Year
-                        DateTime? fyStart = ParseDate(GetElementValue(comp, "STARTINGFROM"));
-                        DateTime? fyEnd = ParseDate(GetElementValue(comp, "BOOKSFROM"));
-                        string currency = GetElementValue(comp, "CURRENCYSYMBOL") ?? "â‚¹";
+                        // STARTINGFROM/BOOKSFROM reflect books-beginning dates, not the currently loaded
+                        // voucher period in Tally. Keep them separate from FY metadata so diagnostics stay honest,
+                        // but use them to widen import requests when older voucher dates are pushed.
+                        DateTime? booksStart = TryParseDateValue(
+                            GetElementValue(comp, "BOOKSFROM")
+                            ?? GetElementValue(comp, "STARTINGFROM")
+                            ?? GetElementValue(comp, "BOOKBEGINNINGFROM")
+                            ?? GetElementValue(comp, "BOOKSBEGINNINGFROM"));
+                        DateTime? fyStart = null;
+                        DateTime? fyEnd = null;
+                        string currency = GetElementValue(comp, "CURRENCYSYMBOL") ?? "Ã¢â€šÂ¹";
 
                         companies.Add(new Company
                         {
@@ -428,18 +626,19 @@ namespace TallySyncApp.Services
                             Email = compEmail,
                             FinancialYearStart = fyStart,
                             FinancialYearEnd = fyEnd,
+                            BooksStartDate = booksStart,
                             CurrencySymbol = currency
                         });
                         Log($"   Added Company: '{name}' (ID: {sanitizedId})");
-                        Log($"   ðŸ“‹ GSTIN: '{compGstin ?? "EMPTY"}' | Address: '{string.Join(", ", addressParts)}' | Phone: '{compPhone ?? "EMPTY"}' | State: '{compState ?? "EMPTY"}'");
+                        Log($"   Ã°Å¸â€œâ€¹ GSTIN: '{compGstin ?? "EMPTY"}' | Address: '{string.Join(", ", addressParts)}' | Phone: '{compPhone ?? "EMPTY"}' | State: '{compState ?? "EMPTY"}' | BooksFrom: '{(booksStart.HasValue ? booksStart.Value.ToString("dd-MMM-yyyy") : "EMPTY")}'");
                     }
                     else
                     {
-                         Log($"   âš ï¸ Skipping duplicate: '{name}'");
+                         Log($"   Ã¢Å¡Â Ã¯Â¸Â Skipping duplicate: '{name}'");
                     }
                 }
 
-                Log($"ðŸ” Returning {companies.Count} valid companies to SyncManager.");
+                Log($"Ã°Å¸â€Â Returning {companies.Count} valid companies to SyncManager.");
 
                 // If collection query failed, try the old active company method as fallback
                 if (companies.Count == 0)
@@ -489,6 +688,87 @@ namespace TallySyncApp.Services
             catch
             {
                 return null;
+            }
+        }
+
+        private async Task<(string? Gstin, string? State, string? Address)> TryGetCompanyTaxUnitDetailsAsync(string companyName)
+        {
+            if (string.IsNullOrWhiteSpace(companyName))
+            {
+                return (null, null, null);
+            }
+
+            var request = $@"<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>CompanyTaxUnitDetails</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""CompanyTaxUnitDetails"">
+            <TYPE>Company</TYPE>
+            <FETCH>NAME, STATENAME, ADDRESS.LIST, GSTREGISTRATIONNUMBER, GSTIN, COMPANYGSTDETAILS.LIST</FETCH>
+            <COMPUTE>GSTRegNumberCompute:$GSTRegNumber:TaxUnit:($ExciseUnitName:Company:##SVCurrentCompany)</COMPUTE>
+            <COMPUTE>TaxUnitStateCompute:$StateName:TaxUnit:($ExciseUnitName:Company:##SVCurrentCompany)</COMPUTE>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            try
+            {
+                var doc = await SendRequestAsync(request, companyName, 30);
+                var companyElement = doc?.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase));
+                if (companyElement == null)
+                {
+                    return (null, null, null);
+                }
+
+                var gstin = GetElementValue(companyElement, "GSTREGNUMBERCOMPUTE")
+                    ?? GetElementValue(companyElement, "GSTREGISTRATIONNUMBER")
+                    ?? GetElementValue(companyElement, "GSTIN");
+
+                if (string.IsNullOrWhiteSpace(gstin))
+                {
+                    var gstDetails = companyElement.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("COMPANYGSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase));
+                    if (gstDetails != null)
+                    {
+                        gstin = GetElementValue(gstDetails, "GSTREGISTRATIONNUMBER") ?? GetElementValue(gstDetails, "GSTIN");
+                    }
+                }
+
+                var state = GetElementValue(companyElement, "TAXUNITSTATECOMPUTE")
+                    ?? GetElementValue(companyElement, "STATENAME")
+                    ?? GetElementValue(companyElement, "STATE");
+
+                var addressParts = new List<string>();
+                var addressList = companyElement.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase));
+                if (addressList != null)
+                {
+                    addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    if (addressParts.Count == 0 && !string.IsNullOrWhiteSpace(addressList.Value))
+                    {
+                        addressParts.AddRange(addressList.Value.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                    }
+                }
+
+                var address = addressParts.Count > 0 ? string.Join(", ", addressParts) : null;
+                return (gstin, state, address);
+            }
+            catch (Exception ex)
+            {
+                Log($"Company TaxUnit details fetch failed for '{companyName}': {ex.Message}");
+                return (null, null, null);
             }
         }
 
@@ -607,73 +887,10 @@ namespace TallySyncApp.Services
   </BODY>
 </ENVELOPE>";
 
-            var doc = await SendRequestAsync(request, companyName);
-            if (doc == null) return new List<Ledger>();
+            using var reader = await SendRequestReaderAsync(request, companyName);
+            if (reader == null) return new List<Ledger>();
 
-            var ledgers = new List<Ledger>();
-
-            foreach (var ledgerElement in doc.Descendants("LEDGER"))
-            {
-                try
-                {
-                    var addressParts = new List<string>();
-                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
-                    if (addressList != null)
-                    {
-                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-                    if (addressParts.Count == 0)
-                    {
-                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-                    var addressCompute = GetElementValue(ledgerElement, "ADDRESSCOMPUTE");
-                    if (!string.IsNullOrEmpty(addressCompute) && addressParts.Count == 0)
-                    {
-                        addressParts.AddRange(addressCompute.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-
-                    var state = GetElementValue(ledgerElement, "STATECOMPUTE") ?? GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
-                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        addressParts.Add(state);
-                    }
-                    var fullAddress = string.Join(", ", addressParts);
-
-                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
-                             ?? GetElementValue(ledgerElement, "PHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
-                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
-                             ?? GetElementValue(ledgerElement, "EMAIL");
-                    var gstin = GetElementValue(ledgerElement, "GSTINCOMPUTE")
-                             ?? GetElementValue(ledgerElement, "GSTREGNOCOMPUTE")
-                             ?? GetElementValue(ledgerElement, "PARTYGSTIN") 
-                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
-
-                    ledgers.Add(new Ledger
-                    {
-                        Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                        Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
-                        ParentGroup = GetElementValue(ledgerElement, "PARENT"),
-                        LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                        OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                        ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = fullAddress,
-                        Phone = phone,
-                        Email = email,
-                        Gstin = gstin,
-                        Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                        MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                        AlterId = GetElementValue(ledgerElement, "ALTERID")
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error parsing ledger: {ex.Message}");
-                }
-            }
-
-            return ledgers;
+            return ParseLedgersFromXmlStreaming(reader, companyName);
         }
         /// <summary>
         /// INDUSTRY-STANDARD: Two-Phase Batched Incremental Sync
@@ -687,10 +904,17 @@ namespace TallySyncApp.Services
         private const int MIN_BATCH_SIZE = 25;              // Minimum batch on retry
         private const int INTER_BATCH_DELAY_MS = 500;       // 500ms breathing room for Tally
         private const int BATCH_TIMEOUT_SECONDS = 120;      // 2 min per batch (not 5 min for everything)
+
+        private int GetAdaptiveVoucherBatchSize(int defaultBatchSize = 100)
+        {
+            if (_consecutiveFailures >= 3) return MIN_BATCH_SIZE;
+            if (_consecutiveFailures >= 2) return Math.Max(MIN_BATCH_SIZE, VOUCHER_BATCH_SIZE);
+            return Math.Max(MIN_BATCH_SIZE, defaultBatchSize);
+        }
         
         public async Task<List<Voucher>> GetModifiedVouchersAsync(string companyName, long afterAlterId, Dictionary<string, string>? stockItemHsnCache = null)
         {
-            SyncLogger.Log($"ðŸ” Incremental Sync: Checking vouchers with ALTERID > {afterAlterId}");
+            SyncLogger.Log($"Ã°Å¸â€Â Incremental Sync: Checking vouchers with ALTERID > {afterAlterId}");
             
             // ===== PHASE 1: Lightweight Scout Fetch =====
             // Chunking backward in 1-year intervals to prevent Tally Memory Crash
@@ -733,22 +957,9 @@ namespace TallySyncApp.Services
                 
                 currentEnd = currentStart.AddDays(-1);
             }
-            
-            allAlterIds = allAlterIds.Distinct().OrderBy(id => id).ToList();
-            
-            if (allAlterIds.Count == 0)
-            {
-                SyncLogger.Log($"âœ… No modified vouchers found across {chunksRun} chunks - system is up to date");
-                return new List<Voucher>();
-            }
-            
-            SyncLogger.Log($"ðŸ“‹ Phase 1 Complete: {allAlterIds.Count} modified vouchers detected (AlterID range: {minScoutAlterId} â†’ {maxScoutAlterId})");
-            
-            // If count is small (â‰¤ BATCH_SIZE), fast path handled gracefully by the same exact-ID logic
-            
             // ===== PHASE 2: Batched Full Fetch with exact IDs =====
-            int BATCH_SIZE = 100; // Exact same chunk size as historical sync
-            SyncLogger.Log($"ðŸ“¦ Phase 2: Fetching {allAlterIds.Count} vouchers in batches of {BATCH_SIZE}");
+            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(100);
+            SyncLogger.Log($"📦 Phase 2: Fetching {allAlterIds.Count} vouchers in batches of {BATCH_SIZE}");
             
             var allVouchers = new List<Voucher>();
             int batchNumber = 0;
@@ -764,7 +975,7 @@ namespace TallySyncApp.Services
                 long batchMaxAlterId = batchIds.Max();
                 
                 string rangeLabel = $"Batch {batchNumber}/{totalBatches} (AlterID {batchMinAlterId}-{batchMaxAlterId})";
-                SyncLogger.Log($"ðŸ“¦ Fetching {rangeLabel} ({batchIds.Count} vouchers)");
+                SyncLogger.Log($"📦 Fetching {rangeLabel} ({batchIds.Count} vouchers)");
                 
                 // EXACT match on AlterIDs to prevent evaluating > / < formulae on entire database
                 string orConditions = string.Join(" OR ", batchIds.Select(id => $"($ALTERID = {id})"));
@@ -789,7 +1000,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""BatchVouchersInc"">
             <TYPE>Voucher</TYPE>
-            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FETCH>{VoucherCollectionFetchFields}</FETCH>
             <FILTER>BatchFilterInc</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""BatchFilterInc"">{orConditions}</SYSTEM>
@@ -801,22 +1012,22 @@ namespace TallySyncApp.Services
 
                 try
                 {
-                    var doc = await SendRequestAsync(request, companyName, 120);
-                    
-                    if (doc != null)
+                    using var reader = await SendRequestReaderAsync(request, companyName, 120);
+
+                    if (reader != null)
                     {
-                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache));
+                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXmlStreaming(reader, companyName, DateTime.Today, stockItemHsnCache));
                         allVouchers.AddRange(chunkVouchers);
-                        SyncLogger.Log($"   âœ… {chunkVouchers.Count} vouchers fetched (Total: {allVouchers.Count})");
+                        SyncLogger.Log($"   ✅ {chunkVouchers.Count} vouchers fetched (Total: {allVouchers.Count})");
                     }
                     else
                     {
-                        SyncLogger.Log($"   âš ï¸ {rangeLabel} returned NULL");
+                        SyncLogger.Log($"   ⚠️ {rangeLabel} returned NULL");
                     }
                 }
                 catch (Exception ex)
                 {
-                    SyncLogger.Log($"   âŒ {rangeLabel} error: {ex.Message}");
+                    SyncLogger.Log($"   ❌ {rangeLabel} error: {ex.Message}");
                 }
                 
                 // Breathing room for Tally between batches to prevent hang
@@ -826,7 +1037,7 @@ namespace TallySyncApp.Services
                 }
             }
             
-            SyncLogger.Log($"âœ… Phase 2 Complete: {allVouchers.Count} vouchers fetched in {batchNumber} batches");
+            SyncLogger.Log($"Ã¢Å“â€¦ Phase 2 Complete: {allVouchers.Count} vouchers fetched in {batchNumber} batches");
             return allVouchers;
         }
         
@@ -872,7 +1083,7 @@ namespace TallySyncApp.Services
                 
                 if (doc == null) 
                 {
-                    SyncLogger.Log($"âš ï¸ Tally returned null response for Scout request ({fromDate:yyyyMMdd}-{toDate:yyyyMMdd}).");
+                    SyncLogger.Log($"Ã¢Å¡Â Ã¯Â¸Â Tally returned null response for Scout request ({fromDate:yyyyMMdd}-{toDate:yyyyMMdd}).");
                     return new ScoutResult();
                 }
                 
@@ -937,7 +1148,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""BatchVouchers"">
             <TYPE>Voucher</TYPE>
-            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FETCH>{VoucherCollectionFetchFields}</FETCH>
             <FILTER>AlterIdRange</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""AlterIdRange"">($$NumValue:$ALTERID > {fromAlterId}) AND ($$NumValue:$ALTERID <= {toAlterId})</SYSTEM>
@@ -949,18 +1160,18 @@ namespace TallySyncApp.Services
 
             try
             {
-                var doc = await SendRequestAsync(request, companyName, timeoutSeconds);
-                
-                if (doc == null) 
+                using var reader = await SendRequestReaderAsync(request, companyName, timeoutSeconds);
+
+                if (reader == null)
                 {
-                    SyncLogger.Log($"âš ï¸ Tally returned null response for Batch {fromAlterId}-{toAlterId}");
+                    SyncLogger.Log($"⚠️ Tally returned null response for Batch {fromAlterId}-{toAlterId}");
                     return new List<Voucher>();
                 }
                 
                 // Safe execution with try-catch inside Task.Run
                 return await Task.Run(() => {
                     try {
-                        return ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
+                        return ParseVouchersFromXmlStreaming(reader, companyName, DateTime.Today, stockItemHsnCache);
                     } catch (Exception parseEx) {
                         SyncLogger.LogError($"Parsing Error in Batch {fromAlterId}-{toAlterId}: {parseEx.Message}", parseEx);
                         throw; // Rethrow to handle in retry logic
@@ -990,12 +1201,12 @@ namespace TallySyncApp.Services
             }
             catch (Exception ex)
             {
-                SyncLogger.Log($"   âš ï¸ Batch {fromAlterId}-{toAlterId} failed (Attempt 1): {ex.Message}");
+                SyncLogger.Log($"   Ã¢Å¡Â Ã¯Â¸Â Batch {fromAlterId}-{toAlterId} failed (Attempt 1): {ex.Message}");
                 
                 try 
                 {
                     // Attempt 2: If failed, try with longer timeout (Tally might be slow)
-                    SyncLogger.Log($"   âš ï¸ Retrying with extended timeout (240s)...");
+                    SyncLogger.Log($"   Ã¢Å¡Â Ã¯Â¸Â Retrying with extended timeout (240s)...");
                     await Task.Delay(2000); // 2s cool-down
                     return await FetchVoucherBatchAsync(companyName, fromAlterId, toAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS * 2, fromDate, toDate);
                 }
@@ -1005,7 +1216,7 @@ namespace TallySyncApp.Services
                     long range = toAlterId - fromAlterId;
                     if (range <= 1) return new List<Voucher>(); // Can't split further
 
-                    SyncLogger.Log($"   âš ï¸ Retry failed, splitting batch into sub-batches...");
+                    SyncLogger.Log($"   Ã¢Å¡Â Ã¯Â¸Â Retry failed, splitting batch into sub-batches...");
                     await Task.Delay(3000); // 3s cool-down
                     
                     var results = new List<Voucher>();
@@ -1014,12 +1225,12 @@ namespace TallySyncApp.Services
                     try {
                         var firstHalf = await FetchVoucherBatchAsync(companyName, fromAlterId, midAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS, fromDate, toDate);
                         results.AddRange(firstHalf);
-                    } catch (Exception e) { SyncLogger.LogError($"   âŒ Sub-batch 1 failed: {e.Message}", e); }
+                    } catch (Exception e) { SyncLogger.LogError($"   Ã¢ÂÅ’ Sub-batch 1 failed: {e.Message}", e); }
                     
                     try {
                         var secondHalf = await FetchVoucherBatchAsync(companyName, midAlterId, toAlterId, stockItemHsnCache, BATCH_TIMEOUT_SECONDS, fromDate, toDate);
                         results.AddRange(secondHalf);
-                    } catch (Exception e) { SyncLogger.LogError($"   âŒ Sub-batch 2 failed: {e.Message}", e); }
+                    } catch (Exception e) { SyncLogger.LogError($"   Ã¢ÂÅ’ Sub-batch 2 failed: {e.Message}", e); }
                     
                     return results;
                 }
@@ -1051,7 +1262,7 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<Ledger>> GetModifiedLedgersAsync(string companyName, long afterAlterId)
         {
-            SyncLogger.Log($"ðŸ” Fetching ledgers with ALTERID > {afterAlterId}");
+            SyncLogger.Log($"Ã°Å¸â€Â Fetching ledgers with ALTERID > {afterAlterId}");
             
             // SAFETY: Ledgers are master data - even 'modified' filter scans all masters.
             // No date bounding needed as Tally master count is always small vs vouchers.
@@ -1084,71 +1295,11 @@ namespace TallySyncApp.Services
   </BODY>
 </ENVELOPE>";
 
-            var doc = await SendRequestAsync(request, companyName, 120);
-            
-            if (doc == null) return new List<Ledger>();
+            using var reader = await SendRequestReaderAsync(request, companyName, 120);
+            if (reader == null) return new List<Ledger>();
 
-            var ledgers = new List<Ledger>();
-            foreach (var ledgerElement in doc.Descendants("LEDGER"))
-            {
-                try
-                {
-                    var addressParts = new List<string>();
-                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
-                    if (addressList != null)
-                    {
-                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                        if (addressParts.Count == 0 && !string.IsNullOrWhiteSpace(addressList.Value)) 
-                        {
-                            // Tally might return flat text for ADDRESS.LIST when FETCH is used
-                            addressParts.AddRange(addressList.Value.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                        }
-                    }
-                    if (addressParts.Count == 0)
-                    {
-                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
-                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        addressParts.Add(state);
-                    }
-                    var fullAddress = string.Join(", ", addressParts);
-
-                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
-                             ?? GetElementValue(ledgerElement, "PHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
-                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
-                             ?? GetElementValue(ledgerElement, "EMAIL");
-                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
-                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER")
-                             ?? GetElementValue(ledgerElement, "GSTIN");
-
-                    ledgers.Add(new Ledger
-                    {
-                        Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                        Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
-                        ParentGroup = GetElementValue(ledgerElement, "PARENT"),
-                        LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                        OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                        ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = fullAddress,
-                        Phone = phone,
-                        Email = email,
-                        Gstin = gstin,
-                        Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                        MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                        AlterId = GetElementValue(ledgerElement, "ALTERID")
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error parsing modified ledger: {ex.Message}");
-                }
-            }
-
-            SyncLogger.Log($"âœ… Found {ledgers.Count} modified ledgers");
+            var ledgers = ParseLedgersFromXmlStreaming(reader, companyName);
+            SyncLogger.Log($"✅ Found {ledgers.Count} modified ledgers");
             return ledgers;
         }
 
@@ -1170,7 +1321,7 @@ namespace TallySyncApp.Services
         {
             // PHASE 1: VOUCHER COUNT CHUNKING (Scout)
             // Scout everything in the date range just to get AlterIDs
-            Log($"ðŸ“¦ Phase 1: Scouting exactly how many vouchers we have...");
+            Log($"Ã°Å¸â€œÂ¦ Phase 1: Scouting exactly how many vouchers we have...");
             progressCallback?.Invoke("Phase 1: Scanning vouchers by date...");
 
             var scoutRequest = $@"
@@ -1205,7 +1356,7 @@ namespace TallySyncApp.Services
             
             if (scoutDoc == null)
             {
-                Log("âš ï¸ Voucher scout returned NULL. Tally timed out or returned empty.");
+                Log("Ã¢Å¡Â Ã¯Â¸Â Voucher scout returned NULL. Tally timed out or returned empty.");
                 return new List<Voucher>();
             }
 
@@ -1221,18 +1372,18 @@ namespace TallySyncApp.Services
 
             if (allAlterIds.Count == 0)
             {
-                Log("â„¹ï¸ No vouchers found in this date range.");
+                Log("Ã¢â€žÂ¹Ã¯Â¸Â No vouchers found in this date range.");
                 return new List<Voucher>();
             }
 
-            Log($"ðŸ” Scout found {allAlterIds.Count} vouchers.");
+            Log($"Ã°Å¸â€Â Scout found {allAlterIds.Count} vouchers.");
             
             // PHASE 2: EXACT 100-VOUCHER CHUNKS
-            int BATCH_SIZE = 100;
+            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(100);
             var allVouchers = new List<Voucher>();
             int totalBatches = (int)Math.Ceiling((double)allAlterIds.Count / BATCH_SIZE);
 
-            Log($"ðŸ“¦ Phase 2: Fetching full details in {totalBatches} chunks of {BATCH_SIZE} vouchers.");
+            Log($"Ã°Å¸â€œÂ¦ Phase 2: Fetching full details in {totalBatches} chunks of {BATCH_SIZE} vouchers.");
 
             for (int i = 0; i < allAlterIds.Count; i += BATCH_SIZE)
             {
@@ -1242,7 +1393,7 @@ namespace TallySyncApp.Services
                 long batchMax = batchIds.Max();
 
                 string rangeLabel = $"Batch {batchNum}/{totalBatches} (AlterID {batchMin}-{batchMax})";
-                Log($"ðŸ“¦ Fetching {rangeLabel}");
+                Log($"Ã°Å¸â€œÂ¦ Fetching {rangeLabel}");
                 progressCallback?.Invoke($"Fetching {batchNum}/{totalBatches} ({batchIds.Count} vouchers)");
 
                 // We construct an exact OR filter to ensure Tally ONLY returns these 100 vouchers.
@@ -1269,7 +1420,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""BatchVouchers"">
             <TYPE>Voucher</TYPE>
-            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, STATENAME, PLACEOFSUPPLY, AMOUNT, NARRATION, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME</FETCH>
+            <FETCH>{VoucherCollectionFetchFields}</FETCH>
             <FILTER>BatchFilter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""BatchFilter"">{orConditions}</SYSTEM>
@@ -1281,22 +1432,22 @@ namespace TallySyncApp.Services
 
                 try
                 {
-                    var doc = await SendRequestAsync(request, companyName, 120);
-                    
-                    if (doc != null)
+                    using var reader = await SendRequestReaderAsync(request, companyName, 120);
+
+                    if (reader != null)
                     {
-                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXml(doc, companyName, toDate, stockItemHsnCache));
+                        var chunkVouchers = await Task.Run(() => ParseVouchersFromXmlStreaming(reader, companyName, toDate, stockItemHsnCache));
                         allVouchers.AddRange(chunkVouchers);
-                        Log($"   âœ… {chunkVouchers.Count} vouchers (Total: {allVouchers.Count})");
+                        Log($"   ✅ {chunkVouchers.Count} vouchers (Total: {allVouchers.Count})");
                     }
                     else
                     {
-                        Log($"   âš ï¸ {rangeLabel} returned NULL");
+                        Log($"   ⚠️ {rangeLabel} returned NULL");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log($"   âŒ {rangeLabel} error: {ex.Message}");
+                    Log($"   Ã¢ÂÅ’ {rangeLabel} error: {ex.Message}");
                 }
 
                 // 1.5 seconds breathing room for Tally between 100-voucher fetches
@@ -1306,8 +1457,8 @@ namespace TallySyncApp.Services
                 }
             }
 
-            Log($"âœ… Total: {allVouchers.Count} vouchers fetched in {totalBatches} chunks.");
-            progressCallback?.Invoke($"âœ… {allVouchers.Count} vouchers fetched");
+            Log($"Ã¢Å“â€¦ Total: {allVouchers.Count} vouchers fetched in {totalBatches} chunks.");
+            progressCallback?.Invoke($"Ã¢Å“â€¦ {allVouchers.Count} vouchers fetched");
             return allVouchers;
         }
 
@@ -1357,7 +1508,7 @@ namespace TallySyncApp.Services
 <TDLMESSAGE>
   <COLLECTION NAME=""VoucherData"" ISMODIFY=""No"">
     <TYPE>Voucher</TYPE>
-    <FETCH>MASTERID, ALTERID, GUID, DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, AMOUNT, NARRATION, STATENAME, PLACEOFSUPPLY, ISOPTIONAL, BASICBUYERNAME, BASICBUYERGSTIN</FETCH>
+    <FETCH>{VoucherCollectionFetchFields}</FETCH>
     {typeFilter}
   </COLLECTION>
   {typeFilterFormula}
@@ -1370,11 +1521,10 @@ namespace TallySyncApp.Services
 
             // Generous timeout per chunk - TDL Collection is much faster than Report
             int timeout = 90;
-            var doc = await SendRequestAsync(request, companyName, timeout);
-            
-            if (doc == null) return new List<Voucher>();
+            using var reader = await SendRequestReaderAsync(request, companyName, timeout);
+            if (reader == null) return new List<Voucher>();
 
-            return ParseVouchersFromXml(doc, companyName, effectiveFrom, stockItemHsnCache);
+            return ParseVouchersFromXmlStreaming(reader, companyName, effectiveFrom, stockItemHsnCache);
         }
 
 
@@ -1462,11 +1612,12 @@ namespace TallySyncApp.Services
                             e.Name.LocalName.Equals("INVENTORYENTRIES.LIST", StringComparison.OrdinalIgnoreCase) ||
                             e.Name.LocalName.Equals("INVENTORYENTRIESIN.LIST", StringComparison.OrdinalIgnoreCase) ||
                             e.Name.LocalName.Equals("INVENTORYENTRIESOUT.LIST", StringComparison.OrdinalIgnoreCase) ||
+                            e.Name.LocalName.Equals("INVENTORYALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase) ||
+                            e.Name.LocalName.Equals("STOCKALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase) ||
                             (e.Name.LocalName.Contains("DSPVCH") && e.Elements().Any(c => 
                                 c.Name.LocalName.Equals("STOCKITEMNAME", StringComparison.OrdinalIgnoreCase) ||
                                 c.Name.LocalName.Equals("DSPVCHITEMNAME", StringComparison.OrdinalIgnoreCase)))
                         ).ToList();
-
                     foreach (var iNode in invNodes)
                     {
                         // Optimization: Cache descendants once for this inventory node
@@ -1539,6 +1690,17 @@ namespace TallySyncApp.Services
                         });
                     }
 
+                    inventoryEntries = inventoryEntries
+                        .Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.StockItemName) && Math.Abs(entry.Amount) > 0)
+                        .GroupBy(entry => string.Join("|",
+                            entry.StockItemName.Trim().ToUpperInvariant(),
+                            Math.Abs(entry.Quantity).ToString("0.###", CultureInfo.InvariantCulture),
+                            Math.Abs(entry.Rate).ToString("0.###", CultureInfo.InvariantCulture),
+                            Math.Abs(entry.Amount).ToString("0.###", CultureInfo.InvariantCulture),
+                            (entry.HsnCode ?? string.Empty).Trim().ToUpperInvariant(),
+                            entry.TaxRate.HasValue ? Math.Abs(entry.TaxRate.Value).ToString("0.##", CultureInfo.InvariantCulture) : string.Empty))
+                        .Select(group => group.First())
+                        .ToList();
 
                     // Filter report/footer noise rows (common in DSPVCH responses).
                     var hasMasterIdentity = !string.IsNullOrWhiteSpace(GetElementValue(vNode, "MASTERID"))
@@ -1613,6 +1775,27 @@ namespace TallySyncApp.Services
                     {
                         totalAmount = inventoryEntries.Sum(i => i.Amount);
                     }
+                    string persistedView = GetElementValue(vNode, "PERSISTEDVIEW") ?? GetElementValue(vNode, "OBJVIEW") ?? string.Empty;
+                    string invoiceFlagText = GetElementValue(vNode, "ISINVOICE") ?? string.Empty;
+                    bool hasInventoryEntries = inventoryEntries.Count > 0;
+                    bool isInvoice = invoiceFlagText.Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                        || invoiceFlagText.Equals("True", StringComparison.OrdinalIgnoreCase)
+                        || persistedView.Contains("invoice", StringComparison.OrdinalIgnoreCase)
+                        || hasInventoryEntries;
+                    bool isAccountingVoucher = !isInvoice;
+                    var rawVoucherData = new Dictionary<string, object?>
+                    {
+                        ["voucher_type"] = vType,
+                        ["voucher_number"] = vNum,
+                        ["voucher_date"] = vDate.ToString("yyyy-MM-dd"),
+                        ["party_name"] = partyName,
+                        ["total_amount"] = totalAmount,
+                        ["persisted_view"] = persistedView,
+                        ["ledger_entries"] = ledgerEntries,
+                        ["inventory_entries"] = inventoryEntries,
+                        ["is_invoice"] = isInvoice,
+                        ["is_accounting_voucher"] = isAccountingVoucher
+                    };
 
                     var voucher = new Voucher
                     {
@@ -1626,6 +1809,9 @@ namespace TallySyncApp.Services
                         PartyState = partyState,
                         PlaceOfSupply = placeOfSupply,
                         TotalAmount = totalAmount,
+                        IsInvoice = isInvoice,
+                        IsAccountingVoucher = isAccountingVoucher,
+                        RawData = rawVoucherData,
                         Narration = GetElementValue(vNode, "NARRATION"),
                         MasterId = GetElementValue(vNode, "MASTERID") ?? GetElementValue(vNode, "GUID"),
                         AlterId = GetElementValue(vNode, "ALTERID"),
@@ -1643,6 +1829,149 @@ namespace TallySyncApp.Services
             }
 
             return vouchers;
+        }
+
+        private List<Ledger> ParseLedgersFromXmlStreaming(TextReader reader, string? companyName)
+        {
+            var ledgers = new List<Ledger>();
+            var settings = new XmlReaderSettings { CheckCharacters = false, IgnoreComments = true, DtdProcessing = DtdProcessing.Ignore };
+            using var xmlReader = XmlReader.Create(reader, settings);
+
+            while (xmlReader.Read())
+            {
+                if (xmlReader.NodeType != XmlNodeType.Element || !xmlReader.LocalName.Equals("LEDGER", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var element = (XElement)XNode.ReadFrom(xmlReader);
+                    var ledger = ParseLedgerElement(element);
+                    if (ledger != null)
+                    {
+                        ledgers.Add(ledger);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SyncLogger.Log($"Error streaming ledger parse: {ex.Message}");
+                }
+            }
+
+            return ledgers;
+        }
+
+        private List<Ledger> ParseLedgersFromXmlStreaming(string xmlContent, string? companyName)
+        {
+            using var stringReader = new StringReader(xmlContent);
+            return ParseLedgersFromXmlStreaming(stringReader, companyName);
+        }
+
+        private Ledger? ParseLedgerElement(XElement ledgerElement)
+        {
+            try
+            {
+                var addressParts = new List<string>();
+                var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                if (addressList != null)
+                {
+                    addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                }
+                if (addressParts.Count == 0)
+                {
+                    addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                }
+                var addressCompute = GetElementValue(ledgerElement, "ADDRESSCOMPUTE");
+                if (!string.IsNullOrEmpty(addressCompute) && addressParts.Count == 0)
+                {
+                    addressParts.AddRange(addressCompute.Split('\n').Select(a => a.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                }
+
+                var state = GetElementValue(ledgerElement, "STATECOMPUTE") ?? GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
+                {
+                    addressParts.Add(state);
+                }
+                var fullAddress = string.Join(", ", addressParts);
+
+                var phone = GetElementValue(ledgerElement, "LEDGERPHONE")
+                         ?? GetElementValue(ledgerElement, "LEDGERMOBILE")
+                         ?? GetElementValue(ledgerElement, "PHONE")
+                         ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
+                var email = GetElementValue(ledgerElement, "LEDGEREMAIL")
+                         ?? GetElementValue(ledgerElement, "EMAIL");
+                var gstin = GetElementValue(ledgerElement, "GSTINCOMPUTE")
+                         ?? GetElementValue(ledgerElement, "GSTREGNOCOMPUTE")
+                         ?? GetElementValue(ledgerElement, "PARTYGSTIN")
+                         ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+
+                return new Ledger
+                {
+                    Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
+                    Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
+                    ParentGroup = GetElementValue(ledgerElement, "PARENT"),
+                    LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
+                    OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
+                    ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
+                    Address = fullAddress,
+                    Phone = phone,
+                    Email = email,
+                    Gstin = gstin,
+                    Pan = GetElementValue(ledgerElement, "PANNUMBER"),
+                    MasterId = GetElementValue(ledgerElement, "MASTERID"),
+                    AlterId = GetElementValue(ledgerElement, "ALTERID")
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing ledger: {ex.Message}");
+                return null;
+            }
+        }
+
+        private List<Voucher> ParseVouchersFromXmlStreaming(TextReader reader, string? companyName, DateTime defaultDate, Dictionary<string, string>? stockItemHsnCache = null)
+        {
+            var vouchers = new List<Voucher>();
+            var settings = new XmlReaderSettings { CheckCharacters = false, IgnoreComments = true, DtdProcessing = DtdProcessing.Ignore };
+            using var xmlReader = XmlReader.Create(reader, settings);
+
+            while (xmlReader.Read())
+            {
+                if (xmlReader.NodeType != XmlNodeType.Element)
+                {
+                    continue;
+                }
+
+                var localName = xmlReader.LocalName;
+                if (!localName.Equals("VOUCHER", StringComparison.OrdinalIgnoreCase)
+                    && !localName.Equals("DSPVCH", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var element = (XElement)XNode.ReadFrom(xmlReader);
+                    var parsed = ParseVouchersFromXml(new XDocument(element), companyName, defaultDate, stockItemHsnCache);
+                    if (parsed.Count > 0)
+                    {
+                        vouchers.AddRange(parsed);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SyncLogger.Log($"Error streaming voucher parse: {ex.Message}");
+                }
+            }
+
+            return vouchers;
+        }
+
+        private List<Voucher> ParseVouchersFromXmlStreaming(string xmlContent, string? companyName, DateTime defaultDate, Dictionary<string, string>? stockItemHsnCache = null)
+        {
+            using var stringReader = new StringReader(xmlContent);
+            return ParseVouchersFromXmlStreaming(stringReader, companyName, defaultDate, stockItemHsnCache);
         }
 
         /// <summary>
@@ -1858,10 +2187,10 @@ namespace TallySyncApp.Services
 </ENVELOPE>";
 
             SyncLogger.Log("[DEBUG] Sending StockItem request to Tally (safe flat-field fetch)...");
-            var doc = await SendRequestAsync(request, companyName, 30);
+            var doc = await SendRequestAsync(request, companyName, 60);
             if (doc == null) 
             {
-                 SyncLogger.Log("âš ï¸ StockItem request returned NULL");
+                 SyncLogger.Log("Ã¢Å¡Â Ã¯Â¸Â StockItem request returned NULL");
                  return new List<StockItem>();
             }
             
@@ -1895,7 +2224,7 @@ namespace TallySyncApp.Services
                     }
                     
                     // Fallback to name-based parsing if needed (many items have HSN in name)
-                    decimal gstRate = 0;
+                    decimal gstRate = ResolveStockItemGstRate(itemElement);
                     
                     items.Add(new StockItem
                     {
@@ -1922,7 +2251,7 @@ namespace TallySyncApp.Services
                 }
             }
 
-            SyncLogger.Log($"[DEBUG] Parsed {items.Count} stock items. HSN populated: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))}");
+            SyncLogger.Log($"[DEBUG] Parsed {items.Count} stock items. HSN populated: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))} | GST populated: {items.Count(i => i.GstRate > 0)}");
             return items;
         }
 
@@ -1934,7 +2263,7 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<StockItem>> GetModifiedStockItemsAsync(string companyName, long afterAlterId)
         {
-            SyncLogger.Log($"ðŸ” Fetching stock items with ALTERID > {afterAlterId}");
+            SyncLogger.Log($"Ã°Å¸â€Â Fetching stock items with ALTERID > {afterAlterId}");
 
             // NO nested LIST fields - flat fields only to prevent Tally OOM crash
             var request = $@"
@@ -1993,7 +2322,7 @@ namespace TallySyncApp.Services
                         }
                     }
 
-                    decimal gstRate = 0;
+                    decimal gstRate = ResolveStockItemGstRate(itemElement);
 
                     items.Add(new StockItem
                     {
@@ -2020,10 +2349,57 @@ namespace TallySyncApp.Services
                 }
             }
 
-            SyncLogger.Log($"âœ… Found {items.Count} modified stock items (HSN: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))})");
+            SyncLogger.Log($"[DEBUG] Found {items.Count} modified stock items (HSN: {items.Count(i => !string.IsNullOrEmpty(i.HsnCode))}, GST: {items.Count(i => i.GstRate > 0)})");
             return items;
         }
 
+        private static decimal ResolveStockItemGstRate(XElement itemElement)
+        {
+            var descendants = itemElement.Descendants().ToList();
+
+            decimal directRate = descendants
+                .Where(x =>
+                    x.Name.LocalName.Equals("GSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("RATEOFTAXCALCULATION", StringComparison.OrdinalIgnoreCase))
+                .Select(x => Math.Abs(ParseDecimal(x.Value)))
+                .FirstOrDefault(rate => rate > 0);
+
+            if (directRate > 0)
+            {
+                return directRate;
+            }
+
+            decimal igstRate = descendants
+                .Where(x =>
+                    x.Name.LocalName.Equals("IGSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("INTEGRATEDTAXRATE", StringComparison.OrdinalIgnoreCase))
+                .Select(x => Math.Abs(ParseDecimal(x.Value)))
+                .FirstOrDefault(rate => rate > 0);
+
+            if (igstRate > 0)
+            {
+                return igstRate;
+            }
+
+            decimal cgstRate = descendants
+                .Where(x =>
+                    x.Name.LocalName.Equals("CGSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("CENTRALTAXRATE", StringComparison.OrdinalIgnoreCase))
+                .Select(x => Math.Abs(ParseDecimal(x.Value)))
+                .FirstOrDefault(rate => rate > 0);
+
+            decimal sgstRate = descendants
+                .Where(x =>
+                    x.Name.LocalName.Equals("SGSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("STATETAXRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("UTGSTRATE", StringComparison.OrdinalIgnoreCase) ||
+                    x.Name.LocalName.Equals("UNIONTERRITORYTAXRATE", StringComparison.OrdinalIgnoreCase))
+                .Select(x => Math.Abs(ParseDecimal(x.Value)))
+                .FirstOrDefault(rate => rate > 0);
+
+            decimal combinedRate = cgstRate + sgstRate;
+            return combinedRate > 0 ? combinedRate : 0;
+        }
 
         #region Helper Methods
 
@@ -2062,7 +2438,7 @@ namespace TallySyncApp.Services
             }
             
             // Remove currency symbols and commas
-            cleanValue = cleanValue.Replace("â‚¹", "").Replace(",", "").Replace("Rs", "").Replace("Rs.", "").Trim();
+            cleanValue = cleanValue.Replace("Ã¢â€šÂ¹", "").Replace(",", "").Replace("Rs", "").Replace("Rs.", "").Trim();
             
             if (decimal.TryParse(cleanValue, out var result))
             {
@@ -2081,21 +2457,26 @@ namespace TallySyncApp.Services
 
         private static DateTime ParseDate(string? value)
         {
-            if (string.IsNullOrWhiteSpace(value)) return DateTime.Today;
+            return TryParseDateValue(value) ?? DateTime.Today;
+        }
 
-            // Tally date format: YYYYMMDD
-            if (value.Length == 8 && DateTime.TryParseExact(value, "yyyyMMdd", 
-                null, System.Globalization.DateTimeStyles.None, out var result))
+        private static DateTime? TryParseDateValue(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            var trimmed = value.Trim();
+            if (trimmed.Length == 8 && DateTime.TryParseExact(trimmed, "yyyyMMdd",
+                null, System.Globalization.DateTimeStyles.None, out var tallyDate))
             {
-                return result;
+                return tallyDate.Date;
             }
 
-            if (DateTime.TryParse(value, out var parsed))
+            if (DateTime.TryParse(trimmed, out var parsed))
             {
-                return parsed;
+                return parsed.Date;
             }
 
-            return DateTime.Today;
+            return null;
         }
 
         #region HSN Logic
@@ -2116,7 +2497,7 @@ namespace TallySyncApp.Services
             {
                 if (stockItemHsnCache.TryGetValue(itemName, out string? cachedHsn) && IsValidHsn(cachedHsn))
                 {
-                    // SyncLogger.Log($"   ðŸ”§ HSN filled from cache: {itemName} -> {cachedHsn}"); 
+                    // SyncLogger.Log($"   Ã°Å¸â€Â§ HSN filled from cache: {itemName} -> {cachedHsn}"); 
                     return NormalizeHsn(cachedHsn);
                 }
             }
@@ -2154,7 +2535,12 @@ namespace TallySyncApp.Services
             decimal amount,
             string? narration = null,
             List<VoucherLedgerEntry>? ledgerEntries = null,
-            List<VoucherInventoryEntry>? inventoryEntries = null)
+            List<VoucherInventoryEntry>? inventoryEntries = null,
+            string? counterLedgerHint = null,
+            IEnumerable<string>? knownLedgerNames = null,
+            DateTime? companyFyStart = null,
+            DateTime? companyFyEnd = null,
+            DateTime? companyBooksStart = null)
         {
             try
             {
@@ -2173,11 +2559,21 @@ namespace TallySyncApp.Services
                 bool isReceiptLike = voucherTypeLower.StartsWith("receipt");
                 bool isPaymentLike = voucherTypeLower.StartsWith("payment");
                 bool hasInventory = inventoryEntries != null && inventoryEntries.Any();
-                bool useInvoiceView = hasInventory && (isSalesLike || isPurchaseLike);
+                bool isSalesOrPurchaseInventoryType = hasInventory
+                    && (isSalesLike
+                        || isPurchaseLike
+                        || normalizedVoucherType.Equals("Sales", StringComparison.OrdinalIgnoreCase)
+                        || normalizedVoucherType.Equals("Purchase", StringComparison.OrdinalIgnoreCase));
+                var inventoryCount = inventoryEntries?.Count ?? 0;
+                var ledgerCount = ledgerEntries?.Count ?? 0;
+                var inventoryTotal = inventoryEntries?.Sum(entry => Math.Abs(entry.Amount)) ?? 0m;
 
-                SyncLogger.Log($"Pushing {normalizedVoucherType} to Tally: {normalizedPartyLedger} amount={safeAmount:0.##} date={voucherDateValue:yyyy-MM-dd}");
+                SyncLogger.Log($"Pushing {normalizedVoucherType} to Tally: party={normalizedPartyLedger}, amount={safeAmount:0.##}, date={voucherDateValue:yyyy-MM-dd}, inventory={inventoryCount} ({inventoryTotal:0.##}), ledgers={ledgerCount}");
 
-                void AppendLedgerEntryXml(StringBuilder xml, string ledgerName, decimal signedAmount)
+
+                var ledgerListTag = isSalesOrPurchaseInventoryType ? "LEDGERENTRIES.LIST" : "ALLLEDGERENTRIES.LIST";
+                var inventoryListTag = isSalesOrPurchaseInventoryType ? "INVENTORYENTRIES.LIST" : "ALLINVENTORYENTRIES.LIST";
+                void AppendLedgerEntryXml(StringBuilder xml, string ledgerName, decimal signedAmount, bool isPartyLedgerEntry = false, bool includeBillAllocation = false)
                 {
                     if (string.IsNullOrWhiteSpace(ledgerName) || signedAmount == 0)
                     {
@@ -2186,42 +2582,221 @@ namespace TallySyncApp.Services
 
                     var absAmountText = Math.Abs(signedAmount).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
                     var formattedAmount = signedAmount < 0 ? $"-{absAmountText}" : absAmountText;
+                    var billAllocationXml = string.Empty;
+                    if (includeBillAllocation)
+                    {
+                        var billRef = normalizedVoucherType + "-" + voucherDateValue.ToString("yyyyMMdd");
+                        billAllocationXml = "\n                <BILLALLOCATIONS.LIST>\n                    <NAME>" + XmlEscape(billRef) + "</NAME>\n                    <BILLTYPE>New Ref</BILLTYPE>\n                    <AMOUNT>" + formattedAmount + "</AMOUNT>\n                </BILLALLOCATIONS.LIST>";
+                    }
+
                     xml.AppendLine($@"
-            <ALLLEDGERENTRIES.LIST>
+            <{ledgerListTag}>
                 <LEDGERNAME>{XmlEscape(ledgerName)}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>{(signedAmount < 0 ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
-                <AMOUNT>{formattedAmount}</AMOUNT>
-            </ALLLEDGERENTRIES.LIST>");
+                <ISLASTDEEMEDPOSITIVE>{(signedAmount < 0 ? "Yes" : "No")}</ISLASTDEEMEDPOSITIVE>
+                <ISPARTYLEDGER>{(isPartyLedgerEntry ? "Yes" : "No")}</ISPARTYLEDGER>
+                <AMOUNT>{formattedAmount}</AMOUNT>{billAllocationXml}
+            </{ledgerListTag}>");
+                }
+
+                bool IsTaxOrRoundOffLedgerName(string ledgerName)
+                {
+                    if (string.IsNullOrWhiteSpace(ledgerName))
+                    {
+                        return false;
+                    }
+
+                    return ledgerName.Contains("gst", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("cgst", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("sgst", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("igst", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("cess", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("tax", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("round", StringComparison.OrdinalIgnoreCase)
+                        || ledgerName.Contains("duty", StringComparison.OrdinalIgnoreCase);
+                }
+
+                var availableLedgerNames = (knownLedgerNames ?? Enumerable.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                bool LedgerExists(string ledgerName)
+                {
+                    if (string.IsNullOrWhiteSpace(ledgerName))
+                    {
+                        return false;
+                    }
+
+                    return availableLedgerNames.Count == 0 || availableLedgerNames.Contains(ledgerName.Trim());
+                }
+
+                string? FindBusinessLedgerFromKnownNames()
+                {
+                    if (availableLedgerNames.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    var candidates = availableLedgerNames
+                        .Where(name => !string.Equals(name, normalizedPartyLedger, StringComparison.OrdinalIgnoreCase))
+                        .Where(name => !IsTaxOrRoundOffLedgerName(name))
+                        .ToList();
+
+                    if (candidates.Count == 0)
+                    {
+                        return availableLedgerNames.FirstOrDefault();
+                    }
+
+                    if (isSalesLike)
+                    {
+                        var salesLedger = candidates.FirstOrDefault(name =>
+                            name.Contains("sale", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("revenue", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("income", StringComparison.OrdinalIgnoreCase));
+                        if (!string.IsNullOrWhiteSpace(salesLedger))
+                        {
+                            return salesLedger;
+                        }
+                    }
+
+                    if (isPurchaseLike)
+                    {
+                        var purchaseLedger = candidates.FirstOrDefault(name =>
+                            name.Contains("purch", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("expense", StringComparison.OrdinalIgnoreCase)
+                            || name.Contains("consum", StringComparison.OrdinalIgnoreCase));
+                        if (!string.IsNullOrWhiteSpace(purchaseLedger))
+                        {
+                            return purchaseLedger;
+                        }
+                    }
+
+                    var cashOrBank = candidates.FirstOrDefault(name =>
+                        name.Equals("Cash", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("cash", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("bank", StringComparison.OrdinalIgnoreCase));
+
+                    return !string.IsNullOrWhiteSpace(cashOrBank)
+                        ? cashOrBank
+                        : candidates.FirstOrDefault();
+                }
+
+                if (availableLedgerNames.Count > 0 && !LedgerExists(normalizedPartyLedger))
+                {
+                    var partyFallback = availableLedgerNames.FirstOrDefault(name =>
+                        name.Equals("Cash", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("cash", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains("bank", StringComparison.OrdinalIgnoreCase))
+                        ?? availableLedgerNames.FirstOrDefault();
+
+                    if (!string.IsNullOrWhiteSpace(partyFallback))
+                    {
+                        SyncLogger.Log($"Party ledger '{normalizedPartyLedger}' not found in Tally. Falling back to '{partyFallback}'.");
+                        normalizedPartyLedger = partyFallback;
+                    }
+                }
+
+                var validLedgerEntries = (ledgerEntries ?? new List<VoucherLedgerEntry>())
+                    .Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.LedgerName) && entry.Amount != 0)
+                    .ToList();
+
+                if (availableLedgerNames.Count > 0)
+                {
+                    var droppedLedgers = validLedgerEntries
+                        .Where(entry => !LedgerExists(entry.LedgerName))
+                        .Select(entry => entry.LedgerName?.Trim())
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    validLedgerEntries = validLedgerEntries
+                        .Where(entry => LedgerExists(entry.LedgerName))
+                        .ToList();
+
+                    if (droppedLedgers.Count > 0)
+                    {
+                        SyncLogger.Log($"Filtered {droppedLedgers.Count} ledger entries because ledgers do not exist in Tally.");
+                        SyncLogger.Log($"Dropped ledgers: {string.Join(", ", droppedLedgers.Take(5))}{(droppedLedgers.Count > 5 ? " ..." : string.Empty)}");
+                    }
+                }
+
+                string counterLedger = !string.IsNullOrWhiteSpace(counterLedgerHint) && LedgerExists(counterLedgerHint)
+                    ? counterLedgerHint.Trim()
+                    : isSalesLike
+                        ? (LedgerExists("Sales") ? "Sales" : string.Empty)
+                        : isPurchaseLike
+                            ? (LedgerExists("Purchase") ? "Purchase" : string.Empty)
+                            : isReceiptLike || isPaymentLike
+                                ? (LedgerExists("Cash") ? "Cash" : string.Empty)
+                                : string.Empty;
+
+                if (string.IsNullOrWhiteSpace(counterLedger) && validLedgerEntries.Count > 0)
+                {
+                    var businessLedger = validLedgerEntries
+                        .Where(entry => !string.Equals(entry.LedgerName?.Trim(), normalizedPartyLedger, StringComparison.OrdinalIgnoreCase))
+                        .Where(entry => !IsTaxOrRoundOffLedgerName(entry.LedgerName ?? string.Empty))
+                        .Where(entry => !isSalesLike || entry.Amount > 0)
+                        .Where(entry => !isPurchaseLike || entry.Amount < 0)
+                        .OrderByDescending(entry => Math.Abs(entry.Amount))
+                        .Select(entry => entry.LedgerName?.Trim())
+                        .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name) && LedgerExists(name));
+
+                    if (!string.IsNullOrWhiteSpace(businessLedger))
+                    {
+                        counterLedger = businessLedger;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(counterLedger))
+                {
+                    counterLedger = FindBusinessLedgerFromKnownNames()
+                        ?? (isReceiptLike || isPaymentLike ? "Cash" : "Suspense A/c");
+                }
+
+                if (availableLedgerNames.Count > 0 && !LedgerExists(counterLedger))
+                {
+                    var fallbackCounter = FindBusinessLedgerFromKnownNames();
+                    if (!string.IsNullOrWhiteSpace(fallbackCounter))
+                    {
+                        SyncLogger.Log($"Counter ledger '{counterLedger}' not found in Tally. Falling back to '{fallbackCounter}'.");
+                        counterLedger = fallbackCounter;
+                    }
                 }
 
                 var ledgerEntriesXml = new StringBuilder();
-                if (ledgerEntries != null && ledgerEntries.Any(entry => entry != null && !string.IsNullOrWhiteSpace(entry.LedgerName) && entry.Amount != 0))
+                if (validLedgerEntries.Count > 0)
                 {
-                    foreach (var entry in ledgerEntries)
+                    foreach (var entry in validLedgerEntries)
                     {
-                        if (entry == null)
-                        {
-                            continue;
-                        }
-
-                        AppendLedgerEntryXml(ledgerEntriesXml, entry.LedgerName, entry.Amount);
+                        var isPartyLedgerEntry = string.Equals(entry.LedgerName?.Trim(), normalizedPartyLedger, StringComparison.OrdinalIgnoreCase);
+                        AppendLedgerEntryXml(
+                            ledgerEntriesXml,
+                            entry.LedgerName ?? string.Empty,
+                            entry.Amount,
+                            isPartyLedgerEntry,
+                            includeBillAllocation: isPartyLedgerEntry && isSalesOrPurchaseInventoryType);
                     }
                 }
                 else
                 {
-                    string counterLedger = isSalesLike
-                        ? "Sales"
-                        : isPurchaseLike
-                            ? "Purchase"
-                            : isReceiptLike || isPaymentLike
-                                ? "Cash"
-                                : "Suspense A/c";
-
                     decimal partySignedAmount = (isSalesLike || isPaymentLike) ? -safeAmount : safeAmount;
-                    decimal counterSignedAmount = -partySignedAmount;
+                    AppendLedgerEntryXml(
+                        ledgerEntriesXml,
+                        normalizedPartyLedger,
+                        partySignedAmount,
+                        isPartyLedgerEntry: true,
+                        includeBillAllocation: isSalesOrPurchaseInventoryType);
 
-                    AppendLedgerEntryXml(ledgerEntriesXml, normalizedPartyLedger, partySignedAmount);
-                    AppendLedgerEntryXml(ledgerEntriesXml, counterLedger, counterSignedAmount);
+                    // For inventory vouchers, accounting allocations inside ALLINVENTORYENTRIES
+                    // already post to the counter ledger; adding a second summary ledger line
+                    // can make totals inconsistent and Tally may silently reject the import.
+                    if (!hasInventory)
+                    {
+                        decimal counterSignedAmount = -partySignedAmount;
+                        AppendLedgerEntryXml(ledgerEntriesXml, counterLedger, counterSignedAmount);
+                    }
                 }
 
                 var inventoryXml = new StringBuilder();
@@ -2256,10 +2831,11 @@ namespace TallySyncApp.Services
                         var unit = string.IsNullOrWhiteSpace(item.Unit) ? "Nos" : item.Unit!;
                         var quantityText = quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
                         var rateText = rate.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-                        var amountText = lineAmount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
                         var gstXmlBuilder = new StringBuilder();
-                        if (!string.IsNullOrWhiteSpace(item.HsnCode) || item.TaxRate.HasValue)
+                        bool hasPositiveTaxRate = item.TaxRate.HasValue && item.TaxRate.Value > 0m;
+                        string explicitTaxability = string.IsNullOrWhiteSpace(item.Taxability) ? string.Empty : item.Taxability!.Trim();
+                        if (!string.IsNullOrWhiteSpace(item.HsnCode) || hasPositiveTaxRate || !string.IsNullOrWhiteSpace(explicitTaxability))
                         {
                             gstXmlBuilder.AppendLine("                <GSTDETAILS.LIST>");
 
@@ -2268,37 +2844,106 @@ namespace TallySyncApp.Services
                                 gstXmlBuilder.AppendLine($"                    <HSNCODE>{XmlEscape(item.HsnCode)}</HSNCODE>");
                             }
 
-                            if (item.TaxRate.HasValue)
+                            if (hasPositiveTaxRate)
                             {
-                                var taxRateText = item.TaxRate.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                                var taxRateText = item.TaxRate!.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
                                 gstXmlBuilder.AppendLine($"                    <RATEOFTAXCALCULATION>{taxRateText}</RATEOFTAXCALCULATION>");
                                 gstXmlBuilder.AppendLine("                    <GSTOVRDNNATURE>Taxable</GSTOVRDNNATURE>");
                             }
 
-                            string taxability = string.IsNullOrWhiteSpace(item.Taxability)
-                                ? ((item.TaxRate ?? 0) > 0 ? "Taxable" : "Exempt")
-                                : item.Taxability!;
-                            gstXmlBuilder.AppendLine($"                    <TAXABILITY>{XmlEscape(taxability)}</TAXABILITY>");
+                            var taxability = !string.IsNullOrWhiteSpace(explicitTaxability)
+                                ? explicitTaxability
+                                : hasPositiveTaxRate ? "Taxable" : string.Empty;
+                            if (!string.IsNullOrWhiteSpace(taxability))
+                            {
+                                gstXmlBuilder.AppendLine($"                    <TAXABILITY>{XmlEscape(taxability)}</TAXABILITY>");
+                            }
+
                             gstXmlBuilder.AppendLine("                </GSTDETAILS.LIST>");
                         }
+                        var signedLineAmount = isPurchaseLike ? -lineAmount : lineAmount;
+                        var amountText = Math.Abs(signedLineAmount).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                        var formattedAmountText = signedLineAmount < 0 ? $"-{amountText}" : amountText;
 
                         inventoryXml.AppendLine($@"
-            <ALLINVENTORYENTRIES.LIST>
+            <{inventoryListTag}>
                 <STOCKITEMNAME>{XmlEscape(item.StockItemName)}</STOCKITEMNAME>
 {gstXmlBuilder}
                 <ACTUALQTY>{quantityText} {XmlEscape(unit)}</ACTUALQTY>
                 <BILLEDQTY>{quantityText} {XmlEscape(unit)}</BILLEDQTY>
                 <RATE>{rateText}/{XmlEscape(unit)}</RATE>
-                <AMOUNT>{amountText}</AMOUNT>
-            </ALLINVENTORYENTRIES.LIST>");
+                <AMOUNT>{formattedAmountText}</AMOUNT>
+                <ISDEEMEDPOSITIVE>{(signedLineAmount < 0 ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
+                <ISLASTDEEMEDPOSITIVE>{(signedLineAmount < 0 ? "Yes" : "No")}</ISLASTDEEMEDPOSITIVE>
+                <ACCOUNTINGALLOCATIONS.LIST>
+                    <LEDGERNAME>{XmlEscape(counterLedger)}</LEDGERNAME>
+                    <ISDEEMEDPOSITIVE>{(signedLineAmount < 0 ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
+                    <ISLASTDEEMEDPOSITIVE>{(signedLineAmount < 0 ? "Yes" : "No")}</ISLASTDEEMEDPOSITIVE>
+                    <AMOUNT>{formattedAmountText}</AMOUNT>
+                </ACCOUNTINGALLOCATIONS.LIST>
+            </{inventoryListTag}>");
                     }
                 }
 
-                string invoiceModeXml = useInvoiceView
-                    ? "                        <ISINVOICE>Yes</ISINVOICE>\n                        <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>"
-                    : string.Empty;
+                var persistedView = "Accounting Voucher View";
+                if (isSalesOrPurchaseInventoryType)
+                {
+                    persistedView = "Invoice Voucher View";
+                }
+                var isInvoiceValue = isSalesOrPurchaseInventoryType ? "Yes" : "No";
+                var objViewXml = isSalesOrPurchaseInventoryType ? $"\r\n                        <OBJVIEW>{persistedView}</OBJVIEW>" : string.Empty;
 
+                // Keep the import context within a single financial year. Tally can reject voucher imports
+                // with a misleading date-missing error when request-level period variables span multiple FYs.
+                var voucherFyStartYear = voucherDateValue.Month >= 4 ? voucherDateValue.Year : voucherDateValue.Year - 1;
+                var derivedFyStart = new DateTime(voucherFyStartYear, 4, 1);
+                var derivedFyEnd = new DateTime(voucherFyStartYear + 1, 3, 31);
+                var hasCompanyFyForVoucher = companyFyStart.HasValue
+                    && companyFyEnd.HasValue
+                    && companyFyStart.Value.Year >= 1900
+                    && companyFyEnd.Value.Year >= 1900
+                    && voucherDateValue >= companyFyStart.Value.Date
+                    && voucherDateValue <= companyFyEnd.Value.Date;
+
+                var importFrom = hasCompanyFyForVoucher ? companyFyStart!.Value.Date : derivedFyStart;
+                var importTo = hasCompanyFyForVoucher ? companyFyEnd!.Value.Date : derivedFyEnd;
+
+                var booksStart = companyBooksStart?.Date;
+                if (booksStart.HasValue
+                    && booksStart.Value.Year >= 1900
+                    && booksStart.Value <= voucherDateValue
+                    && booksStart.Value > importFrom)
+                {
+                    importFrom = booksStart.Value;
+                }
+
+                if (importTo < voucherDateValue)
+                {
+                    importTo = voucherDateValue;
+                }
+
+                var currentContextDate = voucherDateValue;
+                if (currentContextDate < importFrom)
+                {
+                    currentContextDate = importFrom;
+                }
+                else if (currentContextDate > importTo)
+                {
+                    currentContextDate = importTo;
+                }
+
+                if (companyFyStart.HasValue && companyFyEnd.HasValue
+                    && companyFyStart.Value.Year >= 1900 && companyFyEnd.Value.Year >= 1900
+                    && !hasCompanyFyForVoucher)
+                {
+                    SyncLogger.Log($"INFO: Company period metadata ({companyFyStart.Value:dd-MMM-yyyy} to {companyFyEnd.Value:dd-MMM-yyyy}) does not contain voucher date {voucherDateValue:dd-MMM-yyyy}. Using single-FY import period {importFrom:dd-MMM-yyyy} to {importTo:dd-MMM-yyyy} with current context {currentContextDate:dd-MMM-yyyy}.");
+                }
+                else
+                {
+                    SyncLogger.Log($"INFO: Using single-FY import period {importFrom:dd-MMM-yyyy} to {importTo:dd-MMM-yyyy} with current context {currentContextDate:dd-MMM-yyyy} for voucher date {voucherDateValue:dd-MMM-yyyy}.");
+                }
                 var request = $@"
+<?xml version=""1.0"" encoding=""utf-8""?>
 <ENVELOPE>
     <HEADER>
         <TALLYREQUEST>Import Data</TALLYREQUEST>
@@ -2309,17 +2954,23 @@ namespace TallySyncApp.Services
                 <REPORTNAME>Vouchers</REPORTNAME>
                 <STATICVARIABLES>
                     <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+                    <SVFROMDATE>{importFrom:yyyyMMdd}</SVFROMDATE>
+                    <SVTODATE>{importTo:yyyyMMdd}</SVTODATE>
+                    <SVCURRENTDATE>{currentContextDate:yyyyMMdd}</SVCURRENTDATE>
                 </STATICVARIABLES>
             </REQUESTDESC>
             <REQUESTDATA>
                 <TALLYMESSAGE xmlns:UDF=""TallyUDF"">
                     <VOUCHER VCHTYPE=""{XmlEscape(normalizedVoucherType)}"" ACTION=""Create"">
                         <DATE>{voucherDateValue:yyyyMMdd}</DATE>
+                        <VOUCHERDATE>{voucherDateValue:yyyyMMdd}</VOUCHERDATE>
                         <EFFECTIVEDATE>{voucherDateValue:yyyyMMdd}</EFFECTIVEDATE>
                         <VOUCHERTYPENAME>{XmlEscape(normalizedVoucherType)}</VOUCHERTYPENAME>
+                        <PERSISTEDVIEW>{persistedView}</PERSISTEDVIEW>
+{objViewXml}
+                        <ISINVOICE>{isInvoiceValue}</ISINVOICE>
                         <PARTYLEDGERNAME>{XmlEscape(normalizedPartyLedger)}</PARTYLEDGERNAME>
                         <NARRATION>{XmlEscape(narration ?? "")}</NARRATION>
-{invoiceModeXml}
 {ledgerEntriesXml}
 {inventoryXml}
                     </VOUCHER>
@@ -2329,12 +2980,14 @@ namespace TallySyncApp.Services
     </BODY>
 </ENVELOPE>";
 
-                var doc = await SendRequestAsync(request, companyName, 30);
+                SyncLogger.SaveFile("last_push_voucher_request.xml", request);
+                var doc = await SendRequestAsync(request, companyName, 60);
                 if (doc == null)
                 {
                     return (false, null, "No response from Tally");
                 }
 
+                SyncLogger.SaveFile("last_push_voucher_response.xml", doc.ToString());
                 var created = doc.Descendants("CREATED").FirstOrDefault()?.Value?.Trim();
                 if (created == "1")
                 {
@@ -2344,7 +2997,16 @@ namespace TallySyncApp.Services
                 }
 
                 var errorMsg = ExtractTallyImportError(doc);
+                var failureContext = $"type={normalizedVoucherType}, party={normalizedPartyLedger}, amount={safeAmount:0.##}, date={voucherDateValue:yyyy-MM-dd}, ledgers={validLedgerEntries.Count}, inventory={inventoryCount}";
+
+                if (hasInventory)
+                {
+                    SyncLogger.Log($"Inventory voucher rejected (type={normalizedVoucherType}, salesPurchase={isSalesOrPurchaseInventoryType}): {errorMsg}");
+                }
+
                 SyncLogger.Log($"Tally rejected voucher: {errorMsg}");
+                SyncLogger.Log($"Tally rejection context: {failureContext}");
+                SyncLogger.Log("Diagnostic files: Logs/last_push_voucher_request.xml, Logs/last_push_voucher_response.xml");
                 return (false, null, errorMsg);
             }
             catch (Exception ex)
@@ -2354,6 +3016,84 @@ namespace TallySyncApp.Services
             }
         }
 
+        public async Task<(bool Success, string? Error)> CreateStockItemAsync(string companyName, VoucherInventoryEntry item)
+        {
+            try
+            {
+                if (item == null)
+                {
+                    return (false, "Stock item payload is missing");
+                }
+
+                var stockItemName = item.StockItemName?.Trim();
+                if (string.IsNullOrWhiteSpace(stockItemName))
+                {
+                    return (false, "Stock item name is missing");
+                }
+
+                var baseUnitSource = item.Unit;
+                var baseUnit = string.IsNullOrWhiteSpace(baseUnitSource) ? "Nos" : baseUnitSource.Trim();
+                var stockGroup = "Primary";
+
+                var hsnCode = string.IsNullOrWhiteSpace(item.HsnCode) ? null : item.HsnCode.Trim();
+                var hsnXml = string.IsNullOrWhiteSpace(hsnCode)
+                    ? string.Empty
+                    : $"\r\n                        <HSNCODE>{XmlEscape(hsnCode)}</HSNCODE>";
+
+                var request = $@"
+<ENVELOPE>
+    <HEADER>
+        <TALLYREQUEST>Import Data</TALLYREQUEST>
+    </HEADER>
+    <BODY>
+        <IMPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>All Masters</REPORTNAME>
+                <STATICVARIABLES>
+                    <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
+                </STATICVARIABLES>
+            </REQUESTDESC>
+            <REQUESTDATA>
+                <TALLYMESSAGE xmlns:UDF=""TallyUDF"">
+                    <STOCKITEM NAME=""{XmlEscape(stockItemName)}"" ACTION=""Create"">
+                        <NAME>{XmlEscape(stockItemName)}</NAME>
+                        <PARENT>{XmlEscape(stockGroup)}</PARENT>
+                        <BASEUNITS>{XmlEscape(baseUnit)}</BASEUNITS>{hsnXml}
+                    </STOCKITEM>
+                </TALLYMESSAGE>
+            </REQUESTDATA>
+        </IMPORTDATA>
+    </BODY>
+</ENVELOPE>";
+
+                SyncLogger.SaveFile("last_create_stock_request.xml", request);
+                var doc = await SendRequestAsync(request, companyName, 60);
+                if (doc == null)
+                {
+                    return (false, "No response from Tally while creating stock item");
+                }
+
+                SyncLogger.SaveFile("last_create_stock_response.xml", doc.ToString());
+
+                var created = doc.Descendants("CREATED").FirstOrDefault()?.Value?.Trim() ?? "0";
+                var altered = doc.Descendants("ALTERED").FirstOrDefault()?.Value?.Trim() ?? "0";
+                if (created == "1" || altered == "1")
+                {
+                    SyncLogger.Log($"Stock item ensured in Tally: {stockItemName} (Created={created}, Altered={altered})");
+                    return (true, null);
+                }
+
+                var error = ExtractTallyImportError(doc);
+                SyncLogger.Log($"Stock item create failed for '{stockItemName}': {error}");
+                SyncLogger.Log("Diagnostic files: Logs/last_create_stock_request.xml, Logs/last_create_stock_response.xml");
+                return (false, error);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"CreateStockItemAsync error: {ex.Message}");
+                return (false, ex.Message);
+            }
+        }
         private static string ExtractTallyImportError(XDocument doc)
         {
             var lineErrors = doc.Descendants("LINEERROR")
@@ -2388,8 +3128,68 @@ namespace TallySyncApp.Services
             var altered = doc.Descendants("ALTERED").FirstOrDefault()?.Value?.Trim() ?? "0";
             var ignored = doc.Descendants("IGNORED").FirstOrDefault()?.Value?.Trim() ?? "0";
             var errors = errorsValue ?? "0";
-            return $"Tally import failed (Created={created}, Altered={altered}, Errors={errors}, Ignored={ignored})";
+
+            var importSummary = $"Tally import failed (Created={created}, Altered={altered}, Errors={errors}, Ignored={ignored})";
+            var responseHints = BuildImportResponseSummary(doc);
+            if (!string.IsNullOrWhiteSpace(responseHints))
+            {
+                importSummary += $" [{responseHints}]";
+            }
+
+            var exceptionsValue = doc.Descendants("EXCEPTIONS").FirstOrDefault()?.Value?.Trim() ?? "0";
+
+            if (created == "0" && altered == "0" && errors == "0" && ignored == "0")
+            {
+                if (exceptionsValue != "0")
+                {
+                    importSummary += $". Tally raised {exceptionsValue} exception(s) without LINEERROR. Common causes: period restrictions, missing masters, or voucher type mismatch.";
+                }
+                else
+                {
+                    importSummary += ". No LINEERROR returned by Tally; check voucher balancing, missing masters (party/item/ledger), and voucher type configuration.";
+                }
+            }
+
+            return importSummary;
         }
+
+        private static string BuildImportResponseSummary(XDocument doc)
+        {
+            var hints = new List<string>();
+
+            var status = doc.Descendants("STATUS").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                hints.Add($"Status={status}");
+            }
+
+            var statusCode = doc.Descendants("STATUSCODE").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(statusCode))
+            {
+                hints.Add($"StatusCode={statusCode}");
+            }
+
+            var lastVoucher = doc.Descendants("VOUCHERNUMBER").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(lastVoucher))
+            {
+                hints.Add($"VoucherNo={lastVoucher}");
+            }
+
+            var lastVchId = doc.Descendants("LASTVCHID").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(lastVchId))
+            {
+                hints.Add($"LastVchId={lastVchId}");
+            }
+
+            var exceptions = doc.Descendants("EXCEPTIONS").FirstOrDefault()?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(exceptions))
+            {
+                hints.Add($"Exceptions={exceptions}");
+            }
+
+            return string.Join(", ", hints);
+        }
+
         // =============================================
         // NEW MASTER DATA FETCH METHODS
         // =============================================
@@ -2441,9 +3241,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“‹ Fetched {groups.Count} Ledger Groups from {companyName}");
+                Log($"Ã°Å¸â€œâ€¹ Fetched {groups.Count} Ledger Groups from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetLedgerGroupsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetLedgerGroupsAsync error: {ex.Message}"); }
             return groups;
         }
 
@@ -2481,9 +3281,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ­ Fetched {items.Count} Cost Centres from {companyName}");
+                Log($"Ã°Å¸ÂÂ­ Fetched {items.Count} Cost Centres from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetCostCentresAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetCostCentresAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2523,9 +3323,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“¦ Fetched {items.Count} Godowns from {companyName}");
+                Log($"Ã°Å¸â€œÂ¦ Fetched {items.Count} Godowns from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetGodownsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetGodownsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2563,9 +3363,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“Š Fetched {items.Count} Stock Groups from {companyName}");
+                Log($"Ã°Å¸â€œÅ  Fetched {items.Count} Stock Groups from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetStockGroupsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetStockGroupsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2602,9 +3402,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“‚ Fetched {items.Count} Stock Categories from {companyName}");
+                Log($"Ã°Å¸â€œâ€š Fetched {items.Count} Stock Categories from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetStockCategoriesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetStockCategoriesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2645,9 +3445,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ’± Fetched {items.Count} Currencies from {companyName}");
+                Log($"Ã°Å¸â€™Â± Fetched {items.Count} Currencies from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetCurrenciesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetCurrenciesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2689,9 +3489,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“ Fetched {items.Count} Voucher Types from {companyName}");
+                Log($"Ã°Å¸â€œÂ Fetched {items.Count} Voucher Types from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetVoucherTypesAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetVoucherTypesAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2734,9 +3534,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ“ Fetched {items.Count} Units from {companyName}");
+                Log($"Ã°Å¸â€œÂ Fetched {items.Count} Units from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetUnitsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetUnitsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2785,9 +3585,9 @@ namespace TallySyncApp.Services
                         AlterId = GetElementValue(el, "ALTERID")
                     });
                 }
-                Log($"ðŸ’° Fetched {items.Count} Budgets from {companyName}");
+                Log($"Ã°Å¸â€™Â° Fetched {items.Count} Budgets from {companyName}");
             }
-            catch (Exception ex) { Log($"âŒ GetBudgetsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetBudgetsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2847,15 +3647,14 @@ namespace TallySyncApp.Services
                  // We will verify if Tally returns items.
                  
                  // Log("Price List sync requires custom TDL for item-level details. Syncing Levels only for now.");
-                 int idx = 0;
                  foreach (var el in doc.Descendants("PRICELEVEL"))
-                 {
-                     // This is just the level name (e.g. "Retail", "Wholesale")
-                     string levelName = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME");
-                     // We can't get the items without a specific TDL report request.
-                 }
+                {
+                    // This is just the level name (e.g. "Retail", "Wholesale").
+                    _ = GetAttribute(el, "NAME") ?? GetElementValue(el, "NAME");
+                    // We can't get the items without a specific TDL report request.
+                }
             }
-            catch (Exception ex) { Log($"âŒ GetPriceListsAsync error: {ex.Message}"); }
+            catch (Exception ex) { Log($"Ã¢ÂÅ’ GetPriceListsAsync error: {ex.Message}"); }
             return items;
         }
 
@@ -2953,5 +3752,128 @@ namespace TallySyncApp.Services
             _httpClient?.Dispose();
         }
     }
-}
 
+    public class TallyXmlSanitizingReader : TextReader
+    {
+        private readonly StreamReader _reader;
+        private readonly Queue<char> _buffer = new Queue<char>();
+
+        public TallyXmlSanitizingReader(Stream stream)
+        {
+            _reader = new StreamReader(stream, Encoding.UTF8);
+        }
+
+        public override int Read()
+        {
+            if (_buffer.Count > 0)
+            {
+                return _buffer.Dequeue();
+            }
+
+            int nextChar = _reader.Read();
+            if (nextChar == -1)
+            {
+                return -1;
+            }
+
+            char c = (char)nextChar;
+
+            // Handle UDF: replacement to UDF_
+            // Look ahead for "UDF:" when we see c == '<' or ' '
+            if (c == '<' || c == ' ')
+            {
+                // Peek up to 5 characters to check for "UDF:" or "/UDF:"
+                List<char> peeked = new List<char>();
+                for (int i = 0; i < 5; i++)
+                {
+                    int next = _reader.Read();
+                    if (next == -1) break;
+                    peeked.Add((char)next);
+                }
+
+                string peekStr = new string(peeked.ToArray());
+                if (c == '<' && peekStr.StartsWith("UDF:"))
+                {
+                    _buffer.Enqueue('<');
+                    _buffer.Enqueue('U');
+                    _buffer.Enqueue('D');
+                    _buffer.Enqueue('F');
+                    _buffer.Enqueue('_');
+                    for (int i = 4; i < peeked.Count; i++)
+                    {
+                        _buffer.Enqueue(peeked[i]);
+                    }
+                }
+                else if (c == '<' && peekStr.StartsWith("/UDF:"))
+                {
+                    _buffer.Enqueue('<');
+                    _buffer.Enqueue('/');
+                    _buffer.Enqueue('U');
+                    _buffer.Enqueue('D');
+                    _buffer.Enqueue('F');
+                    _buffer.Enqueue('_');
+                    for (int i = 5; i < peeked.Count; i++)
+                    {
+                        _buffer.Enqueue(peeked[i]);
+                    }
+                }
+                else if (c == ' ' && peekStr.StartsWith("UDF:"))
+                {
+                    _buffer.Enqueue(' ');
+                    _buffer.Enqueue('U');
+                    _buffer.Enqueue('D');
+                    _buffer.Enqueue('F');
+                    _buffer.Enqueue('_');
+                    for (int i = 4; i < peeked.Count; i++)
+                    {
+                        _buffer.Enqueue(peeked[i]);
+                    }
+                }
+                else
+                {
+                    _buffer.Enqueue(c);
+                    foreach (var pc in peeked)
+                    {
+                        _buffer.Enqueue(pc);
+                    }
+                }
+                return _buffer.Dequeue();
+            }
+
+            // Sanitization: Allow tab, LF, CR, and typical printable XML chars
+            if (c == '\t' || c == '\n' || c == '\r' || (c >= ' ' && c <= 0xD7FF) || (c >= 0xE000 && c <= 0xFFFD))
+            {
+                return c;
+            }
+
+            // Skip invalid character by reading the next one
+            return Read();
+        }
+
+        public override int Peek()
+        {
+            if (_buffer.Count > 0)
+            {
+                return _buffer.Peek();
+            }
+
+            int next = Read();
+            if (next == -1)
+            {
+                return -1;
+            }
+
+            _buffer.Enqueue((char)next);
+            return next;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _reader.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+    }
+}

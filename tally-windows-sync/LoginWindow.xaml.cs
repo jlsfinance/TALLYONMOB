@@ -35,9 +35,9 @@ namespace TallySyncApp
         private async void LoginButton_Click(object sender, RoutedEventArgs e)
         {
             // Validate inputs
-            var email = EmailBox.Text.Trim();
-            var password = PasswordBox.Password;
-            var fullName = FullNameBox.Text.Trim();
+            var email = EmailBox?.Text?.Trim() ?? string.Empty;
+            var password = PasswordBox?.Password ?? string.Empty;
+            var fullName = FullNameBox?.Text?.Trim() ?? string.Empty;
 
             if (string.IsNullOrEmpty(email))
             {
@@ -65,6 +65,12 @@ namespace TallySyncApp
             {
                 if (_isLoginMode)
                 {
+                    if (_authService == null)
+                    {
+                        ShowError("Login service is not initialized. Please restart TallyLink.");
+                        return;
+                    }
+
                     // Login
                     var (success, error) = await _authService.SignInAsync(email, password);
 
@@ -80,6 +86,12 @@ namespace TallySyncApp
                 }
                 else
                 {
+                    if (_authService == null)
+                    {
+                        ShowError("Signup service is not initialized. Please restart TallyLink.");
+                        return;
+                    }
+
                     // Signup
                     var (success, error) = await _authService.SignUpAsync(email, password, fullName);
 
@@ -94,7 +106,7 @@ namespace TallySyncApp
 
                         // Switch to login mode
                         ToggleMode();
-                        PasswordBox.Password = "";
+                        if (PasswordBox != null) PasswordBox.Password = "";
                     }
                     else
                     {
@@ -123,21 +135,21 @@ namespace TallySyncApp
 
             if (_isLoginMode)
             {
-                HeaderText.Text = "Welcome Back";
-                SubHeaderText.Text = "Sign in to your account";
-                ButtonText.Text = "Sign In";
-                TogglePrompt.Text = "Don't have an account? ";
-                ToggleLink.Text = "Sign Up";
-                FullNamePanel.Visibility = Visibility.Collapsed;
+                if (HeaderText != null) HeaderText.Text = "Welcome Back";
+                if (SubHeaderText != null) SubHeaderText.Text = "Sign in to your account";
+                if (ButtonText != null) ButtonText.Text = "Sign In";
+                if (TogglePrompt != null) TogglePrompt.Text = "Don't have an account? ";
+                if (ToggleLink != null) ToggleLink.Text = "Sign Up";
+                if (FullNamePanel != null) FullNamePanel.Visibility = Visibility.Collapsed;
             }
             else
             {
-                HeaderText.Text = "Create Account";
-                SubHeaderText.Text = "Sign up to get started";
-                ButtonText.Text = "Create Account";
-                TogglePrompt.Text = "Already have an account? ";
-                ToggleLink.Text = "Sign In";
-                FullNamePanel.Visibility = Visibility.Visible;
+                if (HeaderText != null) HeaderText.Text = "Create Account";
+                if (SubHeaderText != null) SubHeaderText.Text = "Sign up to get started";
+                if (ButtonText != null) ButtonText.Text = "Create Account";
+                if (TogglePrompt != null) TogglePrompt.Text = "Already have an account? ";
+                if (ToggleLink != null) ToggleLink.Text = "Sign In";
+                if (FullNamePanel != null) FullNamePanel.Visibility = Visibility.Visible;
             }
 
             HideError();
@@ -145,20 +157,29 @@ namespace TallySyncApp
 
         private void ShowError(string message)
         {
+            if (ErrorText == null)
+            {
+                MessageBox.Show(message, "TallyLink", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             ErrorText.Text = message;
             ErrorText.Visibility = Visibility.Visible;
         }
 
         private void HideError()
         {
-            ErrorText.Visibility = Visibility.Collapsed;
+            if (ErrorText != null)
+            {
+                ErrorText.Visibility = Visibility.Collapsed;
+            }
         }
 
         private void SetLoading(bool isLoading)
         {
-            LoginButton.IsEnabled = !isLoading;
-            LoadingPanel.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
-            LoadingText.Text = _isLoginMode ? "Signing in..." : "Creating account...";
+            if (LoginButton != null) LoginButton.IsEnabled = !isLoading;
+            if (LoadingPanel != null) LoadingPanel.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            if (LoadingText != null) LoadingText.Text = _isLoginMode ? "Signing in..." : "Creating account...";
         }
     }
 }

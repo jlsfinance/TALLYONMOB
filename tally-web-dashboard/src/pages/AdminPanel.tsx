@@ -23,6 +23,11 @@ export default function AdminPanel() {
                 alert('Please login first');
                 return;
             }
+            const authToken = session.accessToken || session.access_token;
+            if (!authToken) {
+                alert('Session token not available');
+                return;
+            }
 
             // Call admin Edge Function
             const response = await fetch(
@@ -30,7 +35,7 @@ export default function AdminPanel() {
                 {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${session.access_token}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ action: 'list_all' }),
@@ -77,12 +82,18 @@ export default function AdminPanel() {
             const body: any = { action, target_email: targetEmail };
             if (days) body.days = days;
 
+            const authToken = session.accessToken || session.access_token;
+            if (!authToken) {
+                alert('Session token not available');
+                return;
+            }
+
             const response = await fetch(
                 `${import.meta.env.VITE_BACKEND_URL || ''}/api/v1/admin/license`,
                 {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${session.access_token}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify(body),
@@ -383,5 +394,7 @@ const actionBtnStyle = (color: string) => ({
     cursor: 'pointer' as const,
     whiteSpace: 'nowrap' as const,
 });
+
+
 
 

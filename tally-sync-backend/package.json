@@ -15,8 +15,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@insforge/sdk": "^1.1.6-dev.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "@supabase/supabase-js": "^2.108.1",
     "axios": "^1.13.4",
     "compression": "^1.8.1",
     "cors": "^2.8.6",

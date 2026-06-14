@@ -1,14 +1,6 @@
 import { useRef, useMemo } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import {
-    Float,
-    MeshDistortMaterial,
-    PerspectiveCamera,
-    Environment,
-    PresentationControls,
-    Html,
-    Stars
-} from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Float, PresentationControls, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 
 const FloatingCard = () => {
@@ -38,7 +30,6 @@ const FloatingCard = () => {
                     envMapIntensity={1}
                 />
 
-                {/* Visual Dashboard Mockup - Abstracted */}
                 {/* Header bar */}
                 <mesh position={[0, 1.1, 0.051]}>
                     <planeGeometry args={[4, 0.15]} />
@@ -132,7 +123,7 @@ function Particles({ count = 100 }) {
 export default function ThreeDHeroScene() {
     return (
         <div className="absolute inset-0 z-0 bg-[#020617]">
-            <Canvas shadows gl={{ antialias: true, alpha: true }} camera={{ position: [0, 0, 8], fov: 45 }}>
+            <Canvas dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }} camera={{ position: [0, 0, 8], fov: 45 }}>
                 <fog attach="fog" args={['#020617', 5, 15]} />
 
                 <ambientLight intensity={0.4} />
@@ -158,9 +149,8 @@ export default function ThreeDHeroScene() {
                 <TechShape position={[2, 3, -4]} rotation={[Math.PI / 2, Math.PI / 4, 0]} color="#3b82f6" />
                 <TechShape position={[-3, -3, -2]} rotation={[Math.PI / 3, 0, Math.PI / 6]} color="#06b6d4" />
 
-                <Particles count={300} />
-                <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-                <Environment preset="city" />
+                <Particles count={96} />
+                <Stars radius={60} depth={25} count={1200} factor={2} saturation={0} fade speed={0.4} />
             </Canvas>
         </div>
     );

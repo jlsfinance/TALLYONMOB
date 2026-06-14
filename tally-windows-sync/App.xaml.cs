@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.IO;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using TallySyncApp.Services;
 using TallySyncApp.Models;
@@ -26,8 +27,16 @@ namespace TallySyncApp
         public static AuthService AuthService => _authService!;
         public static AppSettings Settings => _settings!;
 
+        static App()
+        {
+            // Some Windows 11 tablet/stylus drivers can crash WPF's input pipeline
+            // before the app receives any usable event. TallyLink does not need pen input.
+            AppContext.SetSwitch("Switch.System.Windows.Input.Stylus.EnablePointerSupport", false);
+        }
+
         protected override void OnStartup(StartupEventArgs e)
         {
+            DisableWpfTabletSupport();
             base.OnStartup(e);
 
             // Load settings first
@@ -221,6 +230,7 @@ namespace TallySyncApp
         {
             var exception = e.ExceptionObject as Exception;
             _logger?.LogError(exception, "Unhandled exception occurred");
+            WriteCrashLog(exception);
             
             MessageBox.Show(
                 $"An unexpected error occurred:\n\n{exception?.Message}\n\nThe application will now close.",
@@ -233,14 +243,83 @@ namespace TallySyncApp
             System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
         {
             _logger?.LogError(e.Exception, "Dispatcher unhandled exception");
+            WriteCrashLog(e.Exception);
+
+            if (IsWpfInputPipelineException(e.Exception))
+            {
+                e.Handled = true;
+                return;
+            }
             
             MessageBox.Show(
-                $"An error occurred:\n\n{e.Exception.Message}",
+                $"An error occurred:\n\n{e.Exception.Message}\n\nDetails saved to logs\\crash.log",
                 "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
 
             e.Handled = true;
+        }
+
+        private static bool IsWpfInputPipelineException(Exception exception)
+        {
+            var stack = exception.ToString();
+
+            if (exception is ArgumentNullException argumentNull
+                && string.Equals(argumentNull.ParamName, "composition", StringComparison.Ordinal)
+                && stack.Contains("System.Windows.Input.TextCompositionManager", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (exception is not NullReferenceException)
+            {
+                return false;
+            }
+
+            return stack.Contains("System.Windows.Input.KeyboardDevice.ExtractRawKeyboardInputReport", StringComparison.Ordinal)
+                || stack.Contains("System.Windows.Input.StylusWisp.WispLogic", StringComparison.Ordinal)
+                || stack.Contains("System.Windows.Interop.HwndKeyboardInputProvider", StringComparison.Ordinal)
+                || stack.Contains("System.Windows.Interop.HwndMouseInputProvider", StringComparison.Ordinal);
+        }
+
+        private static void DisableWpfTabletSupport()
+        {
+            try
+            {
+                var devices = System.Windows.Input.Tablet.TabletDevices;
+                var devicesType = devices.GetType();
+                var removeMethod = devicesType.GetMethod("HandleTabletRemoved", BindingFlags.Instance | BindingFlags.NonPublic);
+
+                if (removeMethod == null)
+                {
+                    return;
+                }
+
+                while (devices.Count > 0)
+                {
+                    removeMethod.Invoke(devices, new object[] { 0u });
+                }
+            }
+            catch
+            {
+                // Best-effort workaround for WPF input-driver crashes.
+            }
+        }
+
+        private static void WriteCrashLog(Exception? exception)
+        {
+            try
+            {
+                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                Directory.CreateDirectory(logPath);
+                File.AppendAllText(
+                    Path.Combine(logPath, "crash.log"),
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]\n{exception}\n\n");
+            }
+            catch
+            {
+                // Last-resort crash logging should never throw.
+            }
         }
 
         public static SyncManager GetSyncManager()

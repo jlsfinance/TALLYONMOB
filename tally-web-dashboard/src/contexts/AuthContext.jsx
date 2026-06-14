@@ -1,9 +1,13 @@
-﻿import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, companyApi, clearLocalSession } from '../lib/insforge';
 
 const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
+
+const sanitizeAppMode = (value) => {
+    return value === 'tally' || value === 'billing' ? value : null;
+};
 
 const isAuthSessionError = (error) => {
     const message = String(error?.message || '').toLowerCase();
@@ -19,13 +23,54 @@ const isAuthSessionError = (error) => {
         || String(error?.statusCode || '') === '403'
     );
 };
+const withTimeout = (promise, ms, message) => {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(message)), ms);
+        })
+    ]);
+};
+
+const COMPANY_LOAD_TIMEOUT_MS = 12000;
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [companies, setCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
+    const [userRole, setUserRole] = useState('viewer');
     const [loading, setLoading] = useState(true);
-    const [appMode, setAppMode] = useState(localStorage.getItem('appMode') || null);
+
+    useEffect(() => {
+        const fetchRole = async () => {
+            if (user && selectedCompany) {
+                try {
+                    const { data, error } = await db.from('company_users')
+                        .select('role')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('user_id', user.id)
+                        .maybeSingle();
+                    if (!error && data) {
+                        setUserRole(data.role);
+                    } else {
+                        setUserRole(selectedCompany.owner_id === user.id ? 'owner' : 'viewer');
+                    }
+                } catch (e) {
+                    setUserRole('viewer');
+                }
+            } else {
+                setUserRole('viewer');
+            }
+        };
+        fetchRole();
+    }, [user, selectedCompany]);
+    const [appMode, setAppMode] = useState(() => {
+        const storedMode = sanitizeAppMode(localStorage.getItem('appMode'));
+        if (!storedMode) {
+            localStorage.removeItem('appMode');
+        }
+        return storedMode;
+    });
 
     const resetAuthState = () => {
         setUser(null);
@@ -77,9 +122,13 @@ export const AuthProvider = ({ children }) => {
 
     const checkSession = async () => {
         try {
-            const result = typeof auth.getCurrentUser === 'function'
-                ? await auth.getCurrentUser()
-                : await auth.getCurrentSession();
+            const result = await withTimeout(
+                typeof auth.getCurrentUser === 'function'
+                    ? auth.getCurrentUser()
+                    : auth.getCurrentSession(),
+                10000,
+                'Session check timed out'
+            );
 
             const { data, error } = result || {};
             if (error) throw error;
@@ -106,7 +155,22 @@ export const AuthProvider = ({ children }) => {
     };
 
     const loadCompanies = async () => {
-        const { data, error } = await companyApi.list();
+        let result;
+
+        try {
+            result = await withTimeout(
+                companyApi.list(),
+                COMPANY_LOAD_TIMEOUT_MS,
+                'Company load timed out'
+            );
+        } catch (error) {
+            console.error('Failed to load companies:', error);
+            setCompanies([]);
+            setSelectedCompany(null);
+            return { data: [], error };
+        }
+
+        const { data, error } = result || {};
 
         if (error) {
             if (isAuthSessionError(error)) {
@@ -116,7 +180,7 @@ export const AuthProvider = ({ children }) => {
             } else {
                 console.error('Failed to load companies:', error);
             }
-            return;
+            return { data: [], error };
         }
 
         if (data) {
@@ -125,6 +189,8 @@ export const AuthProvider = ({ children }) => {
             const found = data.find(c => c.id === saved);
             setSelectedCompany(found || null);
         }
+
+        return { data: data || [], error: null };
     };
 
     const signIn = async (email, password) => {
@@ -185,8 +251,9 @@ export const AuthProvider = ({ children }) => {
     };
 
     const updateAppMode = (mode) => {
-        setAppMode(mode);
-        if (mode) localStorage.setItem('appMode', mode);
+        const safeMode = sanitizeAppMode(mode);
+        setAppMode(safeMode);
+        if (safeMode) localStorage.setItem('appMode', safeMode);
         else localStorage.removeItem('appMode');
     };
 
@@ -210,6 +277,7 @@ export const AuthProvider = ({ children }) => {
         user,
         companies,
         selectedCompany,
+        userRole,
         loading,
         appMode,
         setAppMode: updateAppMode,
@@ -221,7 +289,12 @@ export const AuthProvider = ({ children }) => {
         signInWithGoogle,
         selectCompany,
         deleteCompany,
-        refreshCompanies: loadCompanies
+        refreshCompanies: loadCompanies,
+        verify2FALogin: auth.verify2FALogin,
+        setup2FA: auth.setup2FA,
+        enable2FA: auth.enable2FA,
+        disable2FA: auth.disable2FA,
+        get2FAStatus: auth.get2FAStatus
     };
 
     return (
@@ -230,5 +303,12 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
+
+
+
+
+
+
+
 
 

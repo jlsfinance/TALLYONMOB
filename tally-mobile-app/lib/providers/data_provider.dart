@@ -214,8 +214,10 @@ class DataProvider extends ChangeNotifier {
           .limit(100);
 
       _sales = (response as List).map((json) => Sale.fromJson(json)).toList();
+      await _cacheBox.put('sales_$companyId', response);
     } catch (e) {
       _error = 'Failed to load sales: $e';
+      _loadSalesFromCache(companyId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -238,8 +240,10 @@ class DataProvider extends ChangeNotifier {
 
       _purchases =
           (response as List).map((json) => Purchase.fromJson(json)).toList();
+      await _cacheBox.put('purchases_$companyId', response);
     } catch (e) {
       _error = 'Failed to load purchases: $e';
+      _loadPurchasesFromCache(companyId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -261,8 +265,10 @@ class DataProvider extends ChangeNotifier {
 
       _stockItems =
           (response as List).map((json) => Stock.fromJson(json)).toList();
+      await _cacheBox.put('stock_$companyId', response);
     } catch (e) {
       _error = 'Failed to load stock: $e';
+      _loadStockFromCache(companyId);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -316,6 +322,27 @@ class DataProvider extends ChangeNotifier {
     final cached = _cacheBox.get('vouchers_$companyId');
     if (cached != null && cached is List) {
       _vouchers = cached.map((json) => Voucher.fromJson(json)).toList();
+    }
+  }
+
+  void _loadSalesFromCache(String companyId) {
+    final cached = _cacheBox.get('sales_$companyId');
+    if (cached != null && cached is List) {
+      _sales = cached.map((json) => Sale.fromJson(json)).toList();
+    }
+  }
+
+  void _loadPurchasesFromCache(String companyId) {
+    final cached = _cacheBox.get('purchases_$companyId');
+    if (cached != null && cached is List) {
+      _purchases = cached.map((json) => Purchase.fromJson(json)).toList();
+    }
+  }
+
+  void _loadStockFromCache(String companyId) {
+    final cached = _cacheBox.get('stock_$companyId');
+    if (cached != null && cached is List) {
+      _stockItems = cached.map((json) => Stock.fromJson(json)).toList();
     }
   }
 

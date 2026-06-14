@@ -18,7 +18,8 @@ interface Backup {
 }
 
 export default function BackupRestorePage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, userRole } = useAuth() as any;
+    const canManageBackup = userRole === 'owner' || userRole === 'admin';
     const [backups, setBackups] = useState<Backup[]>([]);
     const [loading, setLoading] = useState(false);
     const [backing, setBacking] = useState(false);
@@ -169,16 +170,23 @@ export default function BackupRestorePage() {
                 <p className="text-sm text-[var(--text-muted)] mt-1">Export and import your business data</p>
             </div>
 
+            {!canManageBackup && (
+                <div className="mb-6 p-4 border border-rose-500/20 bg-rose-500/5 text-rose-400 text-xs rounded-xl flex items-center gap-2">
+                    <Shield className="w-4 h-4 shrink-0" />
+                    <span>Access Restricted: Only company Owners and Admins can create backups or restore data.</span>
+                </div>
+            )}
+
             {/* Quick Actions */}
             <div className="grid grid-cols-2 gap-3 mb-6">
-                <button onClick={createBackup} disabled={backing}
-                    className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4 hover:border-cyan-500/30 transition-all text-left">
+                <button onClick={createBackup} disabled={backing || !canManageBackup}
+                    className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4 hover:border-cyan-500/30 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed">
                     <Download className="w-8 h-8 text-cyan-400 mb-2" />
                     <h3 className="font-semibold text-[var(--on-surface)]">Create Backup</h3>
                     <p className="text-xs text-[var(--text-muted)] mt-1">Export data to file</p>
                 </button>
-                <button onClick={handleRestore} disabled={restoring}
-                    className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4 hover:border-emerald-500/30 transition-all text-left">
+                <button onClick={handleRestore} disabled={restoring || !canManageBackup}
+                    className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4 hover:border-emerald-500/30 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed">
                     <Upload className="w-8 h-8 text-emerald-400 mb-2" />
                     <h3 className="font-semibold text-[var(--on-surface)]">Restore Data</h3>
                     <p className="text-xs text-[var(--text-muted)] mt-1">Import from backup file</p>
@@ -189,13 +197,13 @@ export default function BackupRestorePage() {
             <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4 mb-4">
                 <h3 className="text-sm font-semibold text-[var(--on-surface)] mb-3">Export Format</h3>
                 <div className="flex gap-2 mb-4">
-                    <button onClick={() => setExportFormat('json')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${exportFormat === 'json' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-[var(--background)] text-[var(--text-muted)] border border-[var(--border)]'
+                    <button onClick={() => setExportFormat('json')} disabled={!canManageBackup}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all disabled:opacity-50 ${exportFormat === 'json' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-[var(--background)] text-[var(--text-muted)] border border-[var(--border)]'
                             }`}>
                         <FileJson className="w-4 h-4" /> JSON (Full Backup)
                     </button>
-                    <button onClick={() => setExportFormat('csv')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${exportFormat === 'csv' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-[var(--background)] text-[var(--text-muted)] border border-[var(--border)]'
+                    <button onClick={() => setExportFormat('csv')} disabled={!canManageBackup}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all disabled:opacity-50 ${exportFormat === 'csv' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'bg-[var(--background)] text-[var(--text-muted)] border border-[var(--border)]'
                             }`}>
                         <FileSpreadsheet className="w-4 h-4" /> CSV (Per Table)
                     </button>
@@ -204,10 +212,11 @@ export default function BackupRestorePage() {
                 <h3 className="text-sm font-semibold text-[var(--on-surface)] mb-3">Tables to Export</h3>
                 <div className="space-y-2">
                     {TABLES.map(table => (
-                        <label key={table.key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[var(--background)] cursor-pointer">
+                        <label key={table.key} className={`flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[var(--background)] cursor-pointer ${!canManageBackup ? 'opacity-50 cursor-not-allowed' : ''}`}>
                             <input type="checkbox" checked={selectedTables.has(table.key)}
                                 onChange={() => toggleTable(table.key)}
-                                className="w-4 h-4 rounded accent-cyan-500"
+                                disabled={!canManageBackup}
+                                className="w-4 h-4 rounded accent-cyan-500 disabled:opacity-50"
                             />
                             <span className="text-sm">{table.icon}</span>
                             <span className="text-sm text-[var(--on-surface)]">{table.label}</span>
@@ -217,7 +226,7 @@ export default function BackupRestorePage() {
             </div>
 
             {/* Create Backup Button */}
-            <button onClick={createBackup} disabled={backing || selectedTables.size === 0}
+            <button onClick={createBackup} disabled={backing || selectedTables.size === 0 || !canManageBackup}
                 className="w-full py-3 bg-cyan-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-cyan-600 disabled:opacity-50 transition-all mb-6">
                 {backing ? <><Loader2 className="w-5 h-5 animate-spin" /> Creating Backup...</> : <><Download className="w-5 h-5" /> Download Backup</>}
             </button>

@@ -4,7 +4,9 @@ const mailService = require('./mailService');
 
 class TelegramService {
     constructor() {
-        this.token = process.env.TELEGRAM_BOT_TOKEN;
+        let token = process.env.TELEGRAM_BOT_TOKEN || '';
+        token = token.replace(/^["']|["']$/g, '').trim();
+        this.token = token;
         this.apiUrl = `https://api.telegram.org/bot${this.token}`;
         // In-memory store for user's selected company
         this.userCompanySelection = new Map();

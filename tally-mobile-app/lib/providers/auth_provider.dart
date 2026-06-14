@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../services/biometric_service.dart';
 
 /// Authentication provider using Supabase Auth
 class AuthProvider extends ChangeNotifier {
@@ -9,6 +10,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isLoading = true;
   bool _isAuthenticated = false;
+  bool _isLocalLocked = false;
   User? _user;
   String? _selectedCompanyId;
   String? _selectedCompanyName;
@@ -16,6 +18,7 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
+  bool get isLocalLocked => _isLocalLocked;
   User? get user => _user;
   String? get selectedCompanyId => _selectedCompanyId;
   String? get selectedCompanyName => _selectedCompanyName;
@@ -36,6 +39,11 @@ class AuthProvider extends ChangeNotifier {
         // Restore selected company
         _selectedCompanyId = _settingsBox.get('selectedCompanyId');
         _selectedCompanyName = _settingsBox.get('selectedCompanyName');
+
+        // Check if biometric lock is enabled
+        if (_settingsBox.get('biometricLockEnabled') == true) {
+          _isLocalLocked = true;
+        }
       }
 
       // Listen to auth changes
@@ -163,6 +171,30 @@ class AuthProvider extends ChangeNotifier {
     await _settingsBox.delete('selectedCompanyName');
 
     notifyListeners();
+  }
+
+  /// Toggle biometric lock setting
+  Future<void> setBiometricLock(bool enabled) async {
+    await _settingsBox.put('biometricLockEnabled', enabled);
+    notifyListeners();
+  }
+
+  /// Check if biometric lock is enabled in settings
+  bool get isBiometricLockEnabled => _settingsBox.get('biometricLockEnabled') == true;
+
+  /// Attempt to unlock using biometrics
+  Future<bool> unlockWithBiometrics() async {
+    try {
+      final success = await BiometricService.authenticate();
+      if (success) {
+        _isLocalLocked = false;
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Clear error

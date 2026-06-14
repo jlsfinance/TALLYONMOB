@@ -1,128 +1,100 @@
-import { motion } from 'framer-motion';
-import { Shield, Lock, Eye, Mail, Server, Smartphone, ExternalLink } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import SEO from '../components/common/SEO';
+﻿import { Database, Eye, Lock, ShieldCheck, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import PublicPageLayout from '../components/common/PublicPageLayout';
+import { APP_INFO } from '../config/appInfo';
+
+const privacyCards = [
+    {
+        title: 'What we collect',
+        icon: Database,
+        points: [
+            'Account details such as business name, contact email, and phone number used for login, support, and billing communication.',
+            'Operational business data such as invoices, ledgers, stock details, tax fields, and synced company metadata needed to run billing workflows.',
+            'Device and session signals required for security review, crash diagnosis, and abuse prevention.',
+        ],
+    },
+    {
+        title: 'How the data is used',
+        icon: Eye,
+        points: [
+            'To authenticate users, open the correct company workspace, and generate billing outputs like GST invoices, ledgers, and reports.',
+            'To protect accounts against misuse, investigate suspicious behavior, and improve stability of sync and billing features.',
+            'To provide customer support, handle refund and deletion requests, and meet legal bookkeeping obligations.',
+        ],
+    },
+    {
+        title: 'Security and retention',
+        icon: Lock,
+        points: [
+            'Transport is encrypted in transit and access is restricted to authorized application flows and support operations.',
+            'We keep data only as long as needed for service delivery, recovery, compliance, and dispute resolution.',
+            'Residual records may be retained where required by tax, accounting, fraud-review, or legal obligations.',
+        ],
+    },
+    {
+        title: 'Deletion controls',
+        icon: Trash2,
+        points: [
+            'Users can request account deletion and data removal through the account deletion page or support email.',
+            'Deletion requests are verified before action so one user cannot remove another company workspace without authorization.',
+            'Where complete deletion is not legally possible, data is minimized and retained only for the mandatory purpose.',
+        ],
+    },
+];
 
 export default function PrivacyPolicyPage() {
-    const navigate = useNavigate();
-
     return (
-        <div className="min-h-screen bg-[#020202] text-white selection:bg-emerald-500/30 font-sans">
-            <SEO
-                title="Privacy Policy | TallyLink"
-                description="Our commitment to your data privacy. Learn how TallyLink protects your business-sensitive Tally ERP 9 and TallyPrime data."
-                canonical="https://tallyonmob.vercel.app/privacy"
-            />
-            {/* Header */}
-            <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/50 backdrop-blur-xl">
-                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/landing')}>
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-blue-600 flex items-center justify-center">
-                            <Shield size={22} className="text-white" />
-                        </div>
-                        <span className="font-black text-xl tracking-tighter uppercase italic">TallyLink</span>
-                    </div>
-                </div>
-            </nav>
-
-            <main className="pt-40 pb-20 px-6 max-w-4xl mx-auto">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-12"
-                >
-                    <header>
-                        <h1 className="text-5xl font-black tracking-tighter mb-4">PRIVACY POLICY</h1>
-                        <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Last Updated: February 08, 2026</p>
-                    </header>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4 text-emerald-400">
-                            <Eye size={24} />
-                            <h2 className="text-2xl font-black tracking-tight uppercase">1. INTRODUCTION</h2>
-                        </div>
-                        <p className="text-gray-400 leading-relaxed text-lg font-medium">
-                            At TallyLink (TallySync), we take your data privacy with extreme seriousness. This policy explains how we collect, use, and protect your financial data when you use the TallyLink Sync application and our mobile/web dashboard.
-                        </p>
-                    </section>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4 text-blue-400">
-                            <Smartphone size={24} />
-                            <h2 className="text-2xl font-black tracking-tight uppercase">2. DATA COLLECTION</h2>
-                        </div>
-                        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 space-y-4">
-                            <h3 className="text-white font-bold text-lg">Tally ERP Data</h3>
-                            <p className="text-gray-400 leading-relaxed">
-                                Our Desktop Sync app reads financial vouchers, ledgers, and stock items from your local Tally ERP instance. This data is extracted only when you initiate or schedule a sync.
-                            </p>
-                            <h3 className="text-white font-bold text-lg mt-6">Personal Identification</h3>
-                            <p className="text-gray-400 leading-relaxed">
-                                We collect your name, email address ({import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com'}), and phone number ({import.meta.env.VITE_SUPPORT_PHONE || '+91 9413821007'}) for account management and security verification.
-                            </p>
-                        </div>
-                    </section>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4 text-purple-400">
-                            <Lock size={24} />
-                            <h2 className="text-2xl font-black tracking-tight uppercase">3. DATA SECURITY & ENCRYPTION</h2>
-                        </div>
-                        <p className="text-gray-400 leading-relaxed text-lg font-medium">
-                            Security is our #1 priority. Your data is protected by multiple layers of defense:
-                        </p>
-                        <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {[
-                                "AES-256 Bit Encryption at Rest",
-                                "SSL/TLS 1.3 Encryption in Transit",
-                                "Deterministic UUID Generation",
-                                "Multi-Factor Authentication (MFA)",
-                                "Encrypted Cloud Backups",
-                                "Zero-Knowledge Architecture"
-                            ].map((item, i) => (
-                                <li key={i} className="flex items-center gap-3 bg-white/[0.03] p-4 rounded-xl border border-white/5 font-bold text-sm text-gray-300">
-                                    <div className="w-2 h-2 rounded-full bg-purple-500" />
-                                    {item}
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4 text-indigo-400">
-                            <Server size={24} />
-                            <h2 className="text-2xl font-black tracking-tight uppercase">4. THIRD-PARTY SERVICES</h2>
-                        </div>
-                        <p className="text-gray-400 leading-relaxed text-lg font-medium">
-                            We use Supabase (BaaS) for secure database storage and authentication. Your data is stored in ISO 27001 certified data centers. We never sell or share your individual financial data with advertisers or third parties.
-                        </p>
-                    </section>
-
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4 text-emerald-400">
-                            <Mail size={24} />
-                            <h2 className="text-2xl font-black tracking-tight uppercase">5. CONTACT INFORMATION</h2>
-                        </div>
-                        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-3xl p-8">
-                            <p className="text-gray-300 font-bold mb-4">For any privacy-related queries, contact our Data Protection Officer:</p>
-                            <div className="space-y-2 text-emerald-400 font-black">
-                                <p>NAME: {import.meta.env.VITE_DPO_NAME || 'LAVNEET RATHI'}</p>
-                                <p>EMAIL: {import.meta.env.VITE_SUPPORT_EMAIL?.toUpperCase() || 'LOVNEETRATHI@GMAIL.COM'}</p>
-                                <p>PHONE: {import.meta.env.VITE_SUPPORT_PHONE || '+91 9413821007'}</p>
+        <PublicPageLayout
+            badge="Privacy Policy"
+            title="How JLS Bill handles business and user data"
+            description="This page explains what data JLS Bill processes, why it is needed, how it is protected, and how users can request deletion or support."
+            canonicalPath={APP_INFO.privacyPath}
+            icon={ShieldCheck}
+            actions={
+                <>
+                    <Link to={APP_INFO.accountDeletionPath} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
+                        Account deletion steps
+                    </Link>
+                    <Link to={APP_INFO.trustCenterPath} className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
+                        Open trust center
+                    </Link>
+                </>
+            }
+        >
+            <div className="grid gap-6 lg:grid-cols-2">
+                {privacyCards.map((card) => {
+                    const Icon = card.icon;
+                    return (
+                        <section key={card.title} className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
+                            <div className="inline-flex rounded-2xl bg-[var(--primary)]/10 p-3 text-[var(--primary)]">
+                                <Icon size={18} />
                             </div>
-                        </div>
-                    </section>
+                            <h2 className="mt-4 text-2xl font-black tracking-tight text-[var(--on-surface)]">{card.title}</h2>
+                            <div className="mt-4 space-y-3 text-sm leading-7 text-[var(--on-surface-variant)]">
+                                {card.points.map((point) => (
+                                    <p key={point}>{point}</p>
+                                ))}
+                            </div>
+                        </section>
+                    );
+                })}
+            </div>
 
-                    <footer className="pt-20 border-t border-white/5 text-center">
-                        <button
-                            onClick={() => navigate('/landing')}
-                            className="inline-flex items-center gap-2 text-gray-500 hover:text-white font-bold uppercase tracking-widest text-xs transition-colors"
-                        >
-                            Back to Home <ExternalLink size={14} />
-                        </button>
-                    </footer>
-                </motion.div>
-            </main>
-        </div>
+            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
+                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Privacy contact</p>
+                <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--on-surface)]">Need a privacy or deletion response?</h2>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--on-surface-variant)]">
+                    Send your request from the registered email or include enough business details for verification. This helps us avoid unauthorized deletion or disclosure.
+                </p>
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <a href={`mailto:${APP_INFO.supportEmail}`} className="rounded-[24px] border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
+                        Email: {APP_INFO.supportEmail}
+                    </a>
+                    <a href={`tel:${APP_INFO.supportPhone.replace(/\s+/g, '')}`} className="rounded-[24px] border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
+                        Phone: {APP_INFO.supportPhone}
+                    </a>
+                </div>
+            </section>
+        </PublicPageLayout>
     );
 }

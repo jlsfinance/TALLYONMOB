@@ -19,6 +19,17 @@ export default function Dashboard3DPage() {
     const [pendingCount, setPendingCount] = useState(0);
     const [todaySales, setTodaySales] = useState(0);
 
+    const openVoucher = (voucher) => {
+        const targetId = voucher?.id || voucher?.voucher_id;
+        if (!targetId) return;
+
+        const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
+        const encodedId = encodeURIComponent(targetId);
+        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+            state: { voucher, from: '/dashboard' }
+        });
+    };
+
     useEffect(() => {
         if (selectedCompany?.id) {
             loadDashboardData();
@@ -316,7 +327,7 @@ export default function Dashboard3DPage() {
                                     <div
                                         key={voucher.id || idx}
                                         className="dashboard-3d__voucher-item"
-                                        onClick={() => navigate(`/vouchers/${encodeURIComponent(voucher.id)}`)}
+                                        onClick={() => openVoucher(voucher)}
                                     >
                                         <div className="dashboard-3d__voucher-info">
                                             <span className="dashboard-3d__voucher-number">{voucher.voucher_number}</span>

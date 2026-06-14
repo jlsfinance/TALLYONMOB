@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
 import '../providers/data_provider.dart';
 import '../providers/auth_provider.dart';
@@ -86,85 +87,125 @@ class _LedgerListScreenState extends State<LedgerListScreen> {
       body: Consumer<DataProvider>(
         builder: (context, dataProvider, child) {
           if (dataProvider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return ListView.builder(
+              itemCount: 8,
+              padding: const EdgeInsets.all(8),
+              itemBuilder: (context, index) {
+                return Shimmer.fromColors(
+                  baseColor: Colors.grey[850]!,
+                  highlightColor: Colors.grey[700]!,
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Colors.white,
+                      ),
+                      title: Container(
+                        height: 16,
+                        color: Colors.white,
+                      ),
+                      subtitle: Container(
+                        height: 12,
+                        color: Colors.white,
+                        margin: const EdgeInsets.only(top: 8),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
           }
 
           if (dataProvider.ledgers.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.person_search, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No ledgers found',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
+            return RefreshIndicator(
+              onRefresh: _fetchLedgers,
+              child: ListView(
+                children: const [
+                  SizedBox(height: 150),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_search, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'No ledgers found',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             );
           }
 
-          return ListView.builder(
-            itemCount: dataProvider.ledgers.length,
-            padding: const EdgeInsets.all(8),
-            itemBuilder: (context, index) {
-              final Ledger ledger = dataProvider.ledgers[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).primaryColor.withOpacity(0.1),
-                    child: Text(
-                      ledger.name.isNotEmpty
-                          ? ledger.name[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.bold,
+          return RefreshIndicator(
+            onRefresh: _fetchLedgers,
+            child: ListView.builder(
+              itemCount: dataProvider.ledgers.length,
+              padding: const EdgeInsets.all(8),
+              itemBuilder: (context, index) {
+                final Ledger ledger = dataProvider.ledgers[index];
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                          Theme.of(context).primaryColor.withOpacity(0.1),
+                      child: Text(
+                        ledger.name.isNotEmpty
+                            ? ledger.name[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  title: Text(
-                    ledger.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(ledger.ledgerGroup ?? 'Uncategorized'),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '₹${ledger.currentBalance?.abs().toStringAsFixed(2) ?? "0.00"}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: (ledger.currentBalance ?? 0) >= 0
-                              ? Colors.green
-                              : Colors.red,
+                    title: Text(
+                      ledger.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(ledger.ledgerGroup ?? 'Uncategorized'),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '₹${ledger.currentBalance?.abs().toStringAsFixed(2) ?? "0.00"}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: (ledger.currentBalance ?? 0) >= 0
+                                ? Colors.green
+                                : Colors.red,
+                          ),
                         ),
-                      ),
-                      Text(
-                        (ledger.currentBalance ?? 0) >= 0 ? 'Dr' : 'Cr',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: (ledger.currentBalance ?? 0) >= 0
-                              ? Colors.green
-                              : Colors.red,
+                        Text(
+                          (ledger.currentBalance ?? 0) >= 0 ? 'Dr' : 'Cr',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: (ledger.currentBalance ?? 0) >= 0
+                                ? Colors.green
+                                : Colors.red,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    onTap: () {
+                      // TODO: Navigate to ledger detail
+                    },
                   ),
-                  onTap: () {
-                    // TODO: Navigate to ledger detail
-                  },
-                ),
-              );
-            },
+                );
+              },
+            ),
           );
         },
       ),

@@ -85,3 +85,18 @@ publish/
 # Local Tally dump files
 tally_response.xml
 **/tally_response.xml
+
+# InsForge & AI agent skills
+.insforge
+.agent
+.agents
+.augment
+.claude
+.cline
+.github/copilot*
+.kilocode
+.qoder
+.qwen
+.roo
+.trae
+.windsurf

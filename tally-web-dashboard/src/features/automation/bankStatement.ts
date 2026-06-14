@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { normalizeDocumentDateInput } from "./dateParsing";
 import { normalizeNarration } from "./normalize";
 import type { BankTransactionRow } from "./types";
 
@@ -32,23 +33,7 @@ function formatDateValue(value: unknown): string {
     const raw = String(value || "").trim();
     if (!raw) return "";
 
-    const ddMmYyyy = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-    if (ddMmYyyy) {
-        const d = Number(ddMmYyyy[1]);
-        const m = Number(ddMmYyyy[2]);
-        let y = Number(ddMmYyyy[3]);
-        if (y < 100) y += 2000;
-        if (d >= 1 && d <= 31 && m >= 1 && m <= 12) {
-            return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        }
-    }
-
-    const date = new Date(raw);
-    if (!Number.isNaN(date.getTime())) {
-        return date.toISOString().slice(0, 10);
-    }
-
-    return raw;
+    return normalizeDocumentDateInput(raw) || raw;
 }
 
 function pickValue(row: Record<string, unknown>, aliases: string[]): unknown {
@@ -151,4 +136,3 @@ export function parseBankStatementWorkbook(buffer: ArrayBuffer): BankTransaction
 
     return normalizeBankStatementRows(rawRows);
 }
-

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'services/fcm_service.dart';
 
 import 'config/theme.dart';
 import 'config/supabase_config.dart';
@@ -13,6 +15,7 @@ import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/company_selection_screen.dart';
+import 'screens/lock_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +45,10 @@ void main() async {
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
+
+  // Initialize Firebase & FCM
+  await Firebase.initializeApp();
+  await FcmService.initialize();
 
   runApp(const TallyMobileApp());
 }
@@ -85,6 +92,10 @@ class AppRouter extends StatelessWidget {
 
         if (!authProvider.isAuthenticated) {
           return const LoginScreen();
+        }
+
+        if (authProvider.isLocalLocked) {
+          return const LockScreen();
         }
 
         if (authProvider.selectedCompanyId == null) {

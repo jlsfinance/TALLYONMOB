@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
 import { callGemini } from '@/lib/GeminiService';
@@ -49,29 +49,262 @@ function fileToBase64(buffer: ArrayBuffer): string {
     return btoa(binary);
 }
 
-function recalcItem(item: ExtractedItem): ExtractedItem {
-    const amount = item.qty * item.rate;
-    const discountedAmount = amount - (amount * item.discount_percent / 100);
-    const gstAmount = discountedAmount * item.gst_percent / 100;
-    const halfGst = gstAmount / 2;
+async function optimizeImageForOcr(file: File, maxSide = 1800, quality = 0.85): Promise<File> {
+    if (!file.type.startsWith('image/')) {
+        return file;
+    }
+
+    try {
+        const bitmap = await createImageBitmap(file);
+        const largestSide = Math.max(bitmap.width, bitmap.height);
+        const scale = largestSide > maxSide ? maxSide / largestSide : 1;
+
+        if (scale >= 1 && file.size <= 1500000) {
+            bitmap.close();
+            return file;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            bitmap.close();
+            return file;
+        }
+
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+
+        const blob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, 'image/jpeg', quality);
+        });
+
+        if (!blob || blob.size >= file.size) {
+            return file;
+        }
+
+        const optimizedName = file.name.replace(/\.[^.]+$/, '') || 'invoice-scan';
+        return new File([blob], `${optimizedName}.jpg`, { type: 'image/jpeg' });
+    } catch {
+        return file;
+    }
+}
+
+async function prepareGeminiAttachment(file: File): Promise<{ mimeType: string; dataBase64: string }> {
+    const optimizedFile = await optimizeImageForOcr(file);
+    const buffer = await optimizedFile.arrayBuffer();
+    return {
+        mimeType: optimizedFile.type || file.type || 'image/jpeg',
+        dataBase64: fileToBase64(buffer)
+    };
+}
+
+function round2(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    const cleaned = String(value ?? '')
+        .replace(/,/g, '')
+        .replace(/\u20B9/g, '')
+        .replace(/rs\.?/gi, '')
+        .replace(/%/g, '')
+        .trim();
+
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeGstin(value: unknown): string {
+    return String(value || '').trim().toUpperCase();
+}
+
+function getStateCodeFromGstin(gstin?: string): string {
+    const normalized = normalizeGstin(gstin);
+    return /^[0-9]{2}/.test(normalized) ? normalized.slice(0, 2) : '';
+}
+
+function isInterStateSupply(companyGstin?: string, partyGstin?: string): boolean {
+    const companyState = getStateCodeFromGstin(companyGstin);
+    const partyState = getStateCodeFromGstin(partyGstin);
+    return Boolean(companyState && partyState && companyState !== partyState);
+}
+
+function recalcItem(item: ExtractedItem, isInterState = false): ExtractedItem {
+    const grossAmount = item.qty * item.rate;
+    const discountedAmount = round2(grossAmount - ((grossAmount * item.discount_percent) / 100));
+    const gstAmount = round2((discountedAmount * item.gst_percent) / 100);
+
+    if (isInterState) {
+        return {
+            ...item,
+            amount: discountedAmount,
+            cgst: 0,
+            sgst: 0,
+            igst: gstAmount
+        };
+    }
+
+    const halfGst = round2(gstAmount / 2);
     return {
         ...item,
         amount: discountedAmount,
-        cgst: Math.round(halfGst * 100) / 100,
-        sgst: Math.round(halfGst * 100) / 100,
+        cgst: halfGst,
+        sgst: round2(gstAmount - halfGst),
         igst: 0
     };
 }
 
 function recalcTotals(items: ExtractedItem[]): Pick<ExtractedData, 'total' | 'cgst_total' | 'sgst_total' | 'igst_total' | 'gst_total' | 'grand_total'> {
-    const total = items.reduce((s, i) => s + i.amount, 0);
-    const cgst_total = items.reduce((s, i) => s + i.cgst, 0);
-    const sgst_total = items.reduce((s, i) => s + i.sgst, 0);
-    const igst_total = items.reduce((s, i) => s + i.igst, 0);
-    const gst_total = cgst_total + sgst_total + igst_total;
-    return { total, cgst_total, sgst_total, igst_total, gst_total, grand_total: total + gst_total };
+    const total = round2(items.reduce((sum, item) => sum + item.amount, 0));
+    const cgst_total = round2(items.reduce((sum, item) => sum + item.cgst, 0));
+    const sgst_total = round2(items.reduce((sum, item) => sum + item.sgst, 0));
+    const igst_total = round2(items.reduce((sum, item) => sum + item.igst, 0));
+    const gst_total = round2(cgst_total + sgst_total + igst_total);
+    return { total, cgst_total, sgst_total, igst_total, gst_total, grand_total: round2(total + gst_total) };
 }
 
+function extractRawTotals(raw: any) {
+    return {
+        total: round2(toNumber(raw?.total ?? raw?.taxable_amount ?? raw?.taxableValue ?? raw?.taxable_value, 0)),
+        cgst_total: round2(toNumber(raw?.cgst_total ?? raw?.cgst_amount ?? raw?.cgst, 0)),
+        sgst_total: round2(toNumber(raw?.sgst_total ?? raw?.sgst_amount ?? raw?.sgst, 0)),
+        igst_total: round2(toNumber(raw?.igst_total ?? raw?.igst_amount ?? raw?.igst, 0)),
+        gst_total: round2(toNumber(raw?.gst_total ?? raw?.gst_amount ?? raw?.total_gst, 0)),
+        grand_total: round2(toNumber(raw?.grand_total ?? raw?.total_amount ?? raw?.invoice_total ?? raw?.net_amount, 0))
+    };
+}
+
+function mergeTotals(
+    itemTotals: Pick<ExtractedData, 'total' | 'cgst_total' | 'sgst_total' | 'igst_total' | 'gst_total' | 'grand_total'>,
+    rawTotals: ReturnType<typeof extractRawTotals>
+): Pick<ExtractedData, 'total' | 'cgst_total' | 'sgst_total' | 'igst_total' | 'gst_total' | 'grand_total'> {
+    let total = itemTotals.total > 0 ? itemTotals.total : rawTotals.total;
+    const cgst_total = itemTotals.cgst_total > 0 ? itemTotals.cgst_total : rawTotals.cgst_total;
+    const sgst_total = itemTotals.sgst_total > 0 ? itemTotals.sgst_total : rawTotals.sgst_total;
+    const igst_total = itemTotals.igst_total > 0 ? itemTotals.igst_total : rawTotals.igst_total;
+    let gst_total = round2(cgst_total + sgst_total + igst_total);
+
+    if (gst_total <= 0 && rawTotals.gst_total > 0) {
+        gst_total = rawTotals.gst_total;
+    }
+
+    if (total <= 0 && rawTotals.grand_total > gst_total) {
+        total = round2(rawTotals.grand_total - gst_total);
+    }
+
+    const grand_total = rawTotals.grand_total > 0 ? rawTotals.grand_total : round2(total + gst_total);
+    return { total, cgst_total, sgst_total, igst_total, gst_total, grand_total };
+}
+
+function backfillItemTaxes(
+    items: ExtractedItem[],
+    totals: Pick<ExtractedData, 'cgst_total' | 'sgst_total' | 'igst_total' | 'gst_total'>
+): ExtractedItem[] {
+    if (items.length === 0 || totals.gst_total <= 0) {
+        return items;
+    }
+
+    const hasExplicitTax = items.some((item) => item.gst_percent > 0 || item.cgst > 0 || item.sgst > 0 || item.igst > 0);
+    if (hasExplicitTax) {
+        return items;
+    }
+
+    const taxableBase = items.reduce((sum, item) => sum + item.amount, 0);
+    if (taxableBase <= 0) {
+        return items;
+    }
+
+    let remainingCgst = totals.cgst_total;
+    let remainingSgst = totals.sgst_total;
+    let remainingIgst = totals.igst_total;
+
+    return items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        const share = taxableBase > 0 ? item.amount / taxableBase : 0;
+        const cgst = isLast ? round2(remainingCgst) : round2(totals.cgst_total * share);
+        const sgst = isLast ? round2(remainingSgst) : round2(totals.sgst_total * share);
+        const igst = isLast ? round2(remainingIgst) : round2(totals.igst_total * share);
+
+        remainingCgst = round2(remainingCgst - cgst);
+        remainingSgst = round2(remainingSgst - sgst);
+        remainingIgst = round2(remainingIgst - igst);
+
+        const itemTax = round2(cgst + sgst + igst);
+        return {
+            ...item,
+            gst_percent: item.amount > 0 ? round2((itemTax / item.amount) * 100) : 0,
+            cgst,
+            sgst,
+            igst
+        };
+    });
+}
+
+function normalizeExtractedItem(rawItem: any, isInterState: boolean): ExtractedItem {
+    const qty = toNumber(rawItem?.qty ?? rawItem?.quantity, 0);
+    const rate = toNumber(rawItem?.rate ?? rawItem?.price, 0);
+    const discount_percent = toNumber(rawItem?.discount_percent ?? rawItem?.discount, 0);
+    const computedAmount = round2((qty * rate) - (((qty * rate) * discount_percent) / 100));
+    const amount = round2(toNumber(rawItem?.amount ?? rawItem?.total ?? rawItem?.taxable_amount ?? rawItem?.taxableValue, computedAmount) || computedAmount);
+
+    let gst_percent = round2(toNumber(rawItem?.gst_percent ?? rawItem?.gst ?? rawItem?.gst_rate ?? rawItem?.tax_rate, 0));
+    let cgst = round2(toNumber(rawItem?.cgst ?? rawItem?.cgst_amount, 0));
+    let sgst = round2(toNumber(rawItem?.sgst ?? rawItem?.sgst_amount, 0));
+    let igst = round2(toNumber(rawItem?.igst ?? rawItem?.igst_amount, 0));
+    const totalTax = round2(cgst + sgst + igst);
+
+    if (gst_percent <= 0 && amount > 0 && totalTax > 0) {
+        gst_percent = round2((totalTax / amount) * 100);
+    }
+
+    const normalized: ExtractedItem = {
+        name: String(rawItem?.name || rawItem?.item_name || rawItem?.description || ''),
+        qty,
+        rate,
+        amount,
+        gst_percent,
+        cgst,
+        sgst,
+        igst,
+        hsn_code: String(rawItem?.hsn_code || rawItem?.hsn || ''),
+        discount_percent,
+        unit: String(rawItem?.unit || rawItem?.uom || 'Nos')
+    };
+
+    if (totalTax > 0) {
+        if (isInterState) {
+            return {
+                ...normalized,
+                cgst: 0,
+                sgst: 0,
+                igst: totalTax,
+                gst_percent: gst_percent > 0 ? gst_percent : (amount > 0 ? round2((totalTax / amount) * 100) : 0)
+            };
+        }
+
+        if (igst > 0 && cgst <= 0 && sgst <= 0) {
+            const half = round2(totalTax / 2);
+            return {
+                ...normalized,
+                cgst: half,
+                sgst: round2(totalTax - half),
+                igst: 0,
+                gst_percent: gst_percent > 0 ? gst_percent : (amount > 0 ? round2((totalTax / amount) * 100) : 0)
+            };
+        }
+
+        return normalized;
+    }
+
+    return gst_percent > 0 ? recalcItem(normalized, isInterState) : normalized;
+}
 const formatCurrency = (n: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(n);
 
@@ -109,13 +342,15 @@ export default function InvoiceScannerPage() {
         setStep('processing');
 
         try {
-            const buffer = await file.arrayBuffer();
-            const base64 = fileToBase64(buffer);
-            const mimeType = file.type || 'image/jpeg';
+            const attachment = await prepareGeminiAttachment(file);
 
             const result = await callGemini({
                 expectJson: true,
                 temperature: 0,
+                model: 'gemini-2.5-flash',
+                fallbackModels: ['gemini-3-flash-preview'],
+                maxRetries: 2,
+                timeoutMs: 45000,
                 systemPrompt: [
                     'You are an expert invoice OCR system for Indian businesses.',
                     'Extract all data from the invoice image and return structured JSON.',
@@ -140,7 +375,7 @@ export default function InvoiceScannerPage() {
                     '- Return valid JSON only. No markdown, no explanation.'
                 ].join(' '),
                 userPrompt: 'Extract all invoice data from this image. Return JSON only.',
-                attachments: [{ mimeType, dataBase64: base64 }]
+                attachments: [attachment]
             });
 
             const data = result.json as any;
@@ -148,33 +383,30 @@ export default function InvoiceScannerPage() {
                 throw new Error('Could not extract invoice data from this image');
             }
 
-            const items: ExtractedItem[] = (data.items || []).map((item: any) => ({
-                name: String(item.name || ''),
-                qty: Number(item.qty || item.quantity || 0),
-                rate: Number(item.rate || item.price || 0),
-                amount: Number(item.amount || item.total || 0),
-                gst_percent: Number(item.gst_percent || item.gst || item.gst_rate || 0),
-                cgst: Number(item.cgst || 0),
-                sgst: Number(item.sgst || 0),
-                igst: Number(item.igst || 0),
-                hsn_code: String(item.hsn_code || item.hsn || ''),
-                discount_percent: Number(item.discount_percent || item.discount || 0),
-                unit: String(item.unit || 'Nos')
-            }));
+            const invoiceGstin = normalizeGstin(data.gstin || data.GSTIN || '');
+            const isInterState = isInterStateSupply(selectedCompany?.gstin, invoiceGstin);
 
-            const totals = recalcTotals(items);
+            let items: ExtractedItem[] = (data.items || [])
+                .map((item: any) => normalizeExtractedItem(item, isInterState))
+                .filter((item: ExtractedItem) => item.name || item.amount > 0);
+
+            const rawTotals = extractRawTotals(data);
+            let totals = mergeTotals(recalcTotals(items), rawTotals);
+            items = backfillItemTaxes(items, totals);
+            totals = mergeTotals(recalcTotals(items), rawTotals);
+
             const extracted: ExtractedData = {
                 party_name: String(data.party_name || data.partyName || data.seller_name || ''),
                 invoice_number: String(data.invoice_number || data.invoiceNumber || ''),
                 date: String(data.date || new Date().toISOString().split('T')[0]),
-                gstin: String(data.gstin || data.GSTIN || ''),
+                gstin: invoiceGstin,
                 items,
                 ...totals
             };
 
             setExtractedData(extracted);
             setStep('review');
-            toast.success('ðŸ“„ Invoice data extracted by AI!');
+            toast.success('Invoice data extracted by AI!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to extract invoice data');
             setStep('capture');
@@ -185,39 +417,49 @@ export default function InvoiceScannerPage() {
 
     const updateField = (field: keyof ExtractedData, value: any) => {
         if (!extractedData) return;
+
+        if (field === 'gstin') {
+            const nextGstin = normalizeGstin(value);
+            const isInterState = isInterStateSupply(selectedCompany?.gstin, nextGstin);
+            const items = extractedData.items.map((item) => item.gst_percent > 0 ? recalcItem({ ...item }, isInterState) : item);
+            const totals = mergeTotals(recalcTotals(items), extractRawTotals(extractedData));
+            setExtractedData({ ...extractedData, gstin: nextGstin, items, ...totals });
+            return;
+        }
+
         setExtractedData({ ...extractedData, [field]: value });
     };
 
     const updateItem = (index: number, field: string, value: any) => {
         if (!extractedData) return;
+        const isInterState = isInterStateSupply(selectedCompany?.gstin, extractedData.gstin);
         const items = [...extractedData.items];
         items[index] = { ...items[index], [field]: value };
 
-        // Recalculate if quantity, rate, discount, or GST changes
         if (['qty', 'rate', 'discount_percent', 'gst_percent'].includes(field)) {
-            items[index] = recalcItem(items[index]);
+            items[index] = recalcItem(items[index], isInterState);
         }
 
-        const totals = recalcTotals(items);
+        const totals = mergeTotals(recalcTotals(items), extractRawTotals(extractedData));
         setExtractedData({ ...extractedData, items, ...totals });
     };
 
     const addItem = () => {
         if (!extractedData) return;
-        const newItem: ExtractedItem = {
+        const isInterState = isInterStateSupply(selectedCompany?.gstin, extractedData.gstin);
+        const newItem: ExtractedItem = recalcItem({
             name: '', qty: 1, rate: 0, amount: 0, gst_percent: 18,
             cgst: 0, sgst: 0, igst: 0, hsn_code: '', discount_percent: 0, unit: 'Nos'
-        };
+        }, isInterState);
         setExtractedData({ ...extractedData, items: [...extractedData.items, newItem] });
     };
 
     const removeItem = (index: number) => {
         if (!extractedData || extractedData.items.length <= 1) return;
         const items = extractedData.items.filter((_, i) => i !== index);
-        const totals = recalcTotals(items);
+        const totals = mergeTotals(recalcTotals(items), extractRawTotals(extractedData));
         setExtractedData({ ...extractedData, items, ...totals });
     };
-
     const handleSave = async () => {
         if (!extractedData || !selectedCompany?.id) return;
         if (!extractedData.invoice_number) {
@@ -233,12 +475,12 @@ export default function InvoiceScannerPage() {
         try {
             const voucherId = crypto.randomUUID();
             const now = new Date().toISOString();
+            const isInterState = isInterStateSupply(selectedCompany?.gstin, extractedData.gstin);
 
             // 1. Create voucher in vouchers collection
             const voucherDoc = {
                 id: voucherId,
                 company_id: selectedCompany.id,
-                voucher_id: voucherId,
                 voucher_type: 'Purchase',
                 voucher_number: extractedData.invoice_number,
                 voucher_date: extractedData.date || now.split('T')[0],
@@ -247,7 +489,6 @@ export default function InvoiceScannerPage() {
                 amount: extractedData.grand_total,
                 narration: `Scanned invoice ${extractedData.invoice_number} from ${extractedData.party_name}`,
                 is_deleted: false,
-                status: 'scanned',
                 owner_id: user?.id || ''
             };
 
@@ -274,12 +515,6 @@ export default function InvoiceScannerPage() {
                     discount_percent: item.discount_percent || 0,
                     tax_rate: item.gst_percent || 0,
                     is_inward: true,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 };
 
@@ -294,30 +529,18 @@ export default function InvoiceScannerPage() {
                     id: crypto.randomUUID(),
                     company_id: selectedCompany.id,
                     voucher_id: voucherId,
-                    name: extractedData.party_name,
+                    ledger_name: extractedData.party_name,
                     amount: extractedData.grand_total,
                     is_debit: false,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 },
                 {
                     id: crypto.randomUUID(),
                     company_id: selectedCompany.id,
                     voucher_id: voucherId,
-                    name: 'Purchase Account',
+                    ledger_name: 'Purchase Account',
                     amount: extractedData.total,
                     is_debit: true,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 }
             ];
@@ -327,15 +550,9 @@ export default function InvoiceScannerPage() {
                     id: crypto.randomUUID(),
                     company_id: selectedCompany.id,
                     voucher_id: voucherId,
-                    name: 'Input CGST',
+                    ledger_name: 'Input CGST',
                     amount: extractedData.cgst_total,
                     is_debit: true,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 });
             }
@@ -345,15 +562,9 @@ export default function InvoiceScannerPage() {
                     id: crypto.randomUUID(),
                     company_id: selectedCompany.id,
                     voucher_id: voucherId,
-                    name: 'Input SGST',
+                    ledger_name: 'Input SGST',
                     amount: extractedData.sgst_total,
                     is_debit: true,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 });
             }
@@ -363,15 +574,9 @@ export default function InvoiceScannerPage() {
                     id: crypto.randomUUID(),
                     company_id: selectedCompany.id,
                     voucher_id: voucherId,
-                    name: 'Input IGST',
+                    ledger_name: 'Input IGST',
                     amount: extractedData.igst_total,
                     is_debit: true,
-                    voucher_type: 'Purchase',
-                    voucher_date: extractedData.date || now.split('T')[0],
-                    vch_date: extractedData.date || now.split('T')[0],
-                    voucher_number: extractedData.invoice_number,
-                    party_ledger_name: extractedData.party_name,
-                    is_deleted: false,
                     owner_id: user?.id || ''
                 });
             }
@@ -390,21 +595,42 @@ export default function InvoiceScannerPage() {
                 transaction_type: 'Purchase',
                 voucher_data: {
                     voucher_type: 'Purchase',
+                    voucher_type_name: 'Purchase',
+                    voucher_number: extractedData.invoice_number,
+                    invoice_number: extractedData.invoice_number,
                     voucher_date: extractedData.date || now.split('T')[0],
                     party_name: extractedData.party_name,
+                    party_ledger_name: extractedData.party_name,
+                    party_gstin: extractedData.gstin || '',
+                    taxable_amount: extractedData.total,
                     total_amount: extractedData.total,
+                    gst_amount: extractedData.gst_total,
                     cgst_amount: extractedData.cgst_total,
                     sgst_amount: extractedData.sgst_total,
                     igst_amount: extractedData.igst_total,
                     grand_total: extractedData.grand_total,
+                    is_inter_state: isInterState,
+                    allow_accounting_fallback: false,
+                    purchase_ledger_name: 'Purchase Account',
                     purchase_ledger: 'Purchase Account',
                     narration: `Scanned invoice ${extractedData.invoice_number} from ${extractedData.party_name}`,
                     items: extractedData.items.map(item => ({
                         stock_item_name: item.name,
+                        name: item.name,
                         qty: item.qty,
+                        quantity: item.qty,
                         rate: item.rate,
                         amount: item.amount,
-                        unit: item.unit || 'Nos'
+                        unit: item.unit || 'Nos',
+                        hsn_code: item.hsn_code || '',
+                        tax_rate: item.gst_percent || 0,
+                        gst_rate: item.gst_percent || 0,
+                        gst_percent: item.gst_percent || 0,
+                        discount_percent: item.discount_percent || 0,
+                        cgst_amount: item.cgst || 0,
+                        sgst_amount: item.sgst || 0,
+                        igst_amount: item.igst || 0,
+                        taxability: item.gst_percent > 0 ? 'Taxable' : undefined
                     }))
                 },
                 created_by: user?.id || ''
@@ -417,7 +643,7 @@ export default function InvoiceScannerPage() {
             if (pendingError) throw new Error(pendingError.message || 'Failed to queue transaction for Tally sync');
 
             setStep('saved');
-            toast.success('âœ… Invoice saved to vouchers!');
+            toast.success('Invoice saved to vouchers!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to save');
         } finally {
@@ -670,5 +896,18 @@ export default function InvoiceScannerPage() {
         </div>
     );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

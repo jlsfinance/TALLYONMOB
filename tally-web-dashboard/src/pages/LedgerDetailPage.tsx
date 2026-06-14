@@ -121,6 +121,17 @@ export default function LedgerDetailPage() {
         count: 0
     });
 
+    const openVoucher = (voucher: any) => {
+        const targetId = voucher?.id || voucher?.voucher_id;
+        if (!targetId) return;
+
+        const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
+        const encodedId = encodeURIComponent(targetId);
+        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+            state: { voucher, from: `/ledgers/${id}` }
+        });
+    };
+
     useEffect(() => {
         if (id && selectedCompany) loadLedgerDetails();
     }, [id, selectedCompany, fromDate, toDate]);
@@ -595,7 +606,7 @@ export default function LedgerDetailPage() {
                                     {transactions.map((v, idx) => (
                                         <button
                                             key={v.id || idx}
-                                            onClick={() => navigate(`/vouchers/${v.id || v.voucher_id}`)}
+                                            onClick={() => openVoucher(v)}
                                             className="w-full flex items-center justify-between px-4 py-4 hover:bg-[var(--surface-hover)] active:bg-[var(--surface-active)] transition-colors text-left"
                                         >
                                             <div>
@@ -762,7 +773,7 @@ export default function LedgerDetailPage() {
                                         {itemHistory.map((entry, idx) => (
                                             <button
                                                 key={idx}
-                                                onClick={() => navigate(`/vouchers/${entry.vouchers?.id}`)}
+                                                onClick={() => openVoucher(entry.vouchers)}
                                                 className="w-full text-left p-4 bg-[var(--surface)] rounded-2xl border border-[var(--border)] shadow-sm hover:bg-[var(--surface-hover)] transition-all active:scale-[0.99] group"
                                             >
                                                 <div className="flex justify-between items-start mb-3">

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Newtonsoft.Json;
 
 namespace TallySyncApp.Models
@@ -113,6 +113,14 @@ namespace TallySyncApp.Models
         [JsonProperty("total_amount")]
         public decimal TotalAmount { get; set; }
 
+        [JsonProperty("is_invoice")]
+        public bool IsInvoice { get; set; }
+
+        [JsonProperty("is_accounting_voucher")]
+        public bool IsAccountingVoucher { get; set; }
+
+        [JsonProperty("raw_data")]
+        public object? RawData { get; set; }
         // Legacy compatibility
         [JsonIgnore]
         public decimal Amount { get => TotalAmount; set => TotalAmount = value; }
@@ -135,7 +143,7 @@ namespace TallySyncApp.Models
         [JsonProperty("updated_at")]
         public DateTime? UpdatedAt { get; set; }
 
-        public override string ToString() => $"{VoucherType} #{VoucherNumber} - â‚¹{TotalAmount:N2}";
+        public override string ToString() => $"{VoucherType} #{VoucherNumber} - ₹{TotalAmount:N2}";
 
         /// <summary>
         /// Generates a deterministic ID for UPSERT: company_id*type*number_date
@@ -297,7 +305,7 @@ namespace TallySyncApp.Models
         [JsonProperty("items")]
         public List<SaleItem>? Items { get; set; }
 
-        public override string ToString() => $"Sale #{InvoiceNumber} - â‚¹{NetAmount:N2}";
+        public override string ToString() => $"Sale #{InvoiceNumber} - ₹{NetAmount:N2}";
     }
 
     /// <summary>
@@ -413,7 +421,7 @@ namespace TallySyncApp.Models
         [JsonProperty("items")]
         public List<PurchaseItem>? Items { get; set; }
 
-        public override string ToString() => $"Purchase #{InvoiceNumber} - â‚¹{NetAmount:N2}";
+        public override string ToString() => $"Purchase #{InvoiceNumber} - ₹{NetAmount:N2}";
     }
 
     /// <summary>
@@ -558,8 +566,11 @@ namespace TallySyncApp.Models
         [JsonProperty("financial_year_end")]
         public DateTime? FinancialYearEnd { get; set; }
 
+        [JsonIgnore]
+        public DateTime? BooksStartDate { get; set; }
+
         [JsonProperty("currency_symbol")]
-        public string CurrencySymbol { get; set; } = "â‚¹";
+        public string CurrencySymbol { get; set; } = "₹";
 
         [JsonProperty("owner_id")]
         public string? OwnerId { get; set; }
@@ -1135,6 +1146,8 @@ namespace TallySyncApp.Models
         public string? AlterId { get; set; }
     }
 }
+
+
 
 
 

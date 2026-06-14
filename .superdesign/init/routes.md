@@ -1,0 +1,52 @@
+# Routes
+
+Mapping of route paths to page components.
+
+| Path | Component | Layout |
+|------|-----------|--------|
+| `/dashboard` | `src/pages/DashboardPage.tsx` | `AppLayout` |
+| `/dashboard-3d` | `src/pages/Dashboard3DPage.tsx` | `AppLayout` |
+| `/ledgers` | `src/pages/LedgersPage.tsx` | `AppLayout` |
+| `/ledgers/:id` | `src/pages/LedgerDetailPage.tsx` | `AppLayout` |
+| `/vouchers` | `src/pages/VouchersPage.tsx` | `AppLayout` |
+| `/vouchers/:voucherId` | `src/pages/VoucherDetailPage.tsx` | `AppLayout` |
+| `/sales` | `src/pages/SalesPage.tsx` | `AppLayout` |
+| `/create-invoice` | `src/pages/CreateInvoicePage.tsx` | `AppLayout` |
+| `/edit-invoice/:id` | `src/pages/EditVoucherPage.tsx` | `AppLayout` |
+| `/sales/:id` | `src/pages/InvoiceDetailPage.tsx` | `AppLayout` |
+| `/purchases` | `src/pages/PurchasesPage.tsx` | `AppLayout` |
+| `/purchases/:id` | `src/pages/PurchaseDetailPage.tsx` | `AppLayout` |
+| `/stock` | `src/pages/StockPage.tsx` | `AppLayout` |
+| `/stock/:id` | `src/pages/StockItemDetailPage.tsx` | `AppLayout` |
+| `/sync-history` | `src/pages/SyncHistoryPage.tsx` | `AppLayout` |
+| `/gst-reports` | `src/pages/GSTReportsPage.tsx` | `AppLayout` |
+| `/ledger-statement/:id` | `src/pages/LedgerStatementPage.tsx` | `AppLayout` |
+| `/aging-report` | `src/pages/AgingReportPage.tsx` | `AppLayout` |
+| `/sales-dashboard` | `src/pages/SalesDashboardPage.tsx` | `AppLayout` |
+| `/invoice/:id` | `src/pages/InvoicePDFPage.tsx` | `AppLayout` |
+| `/profit-loss` | `src/pages/ProfitLossPage.tsx` | `AppLayout` |
+| `/balance-sheet` | `src/pages/BalanceSheetPage.tsx` | `AppLayout` |
+| `/sales-analytics` | `src/pages/SalesAnalyticsPage.tsx` | `AppLayout` |
+| `/bank-reconciliation` | `src/pages/BankReconciliationPage.tsx` | `AppLayout` |
+| `/ai-entry` | `src/pages/AIEntryPage.tsx` | `AppLayout` |
+| `/payment-reminders` | `src/pages/PaymentRemindersPage.tsx` | `AppLayout` |
+| `/inactive-customers" | `src/pages/InactiveCustomersPage.tsx` | `AppLayout` |
+| `/ai-assistant` | `src/pages/AIAssistantPage.tsx` | `AppLayout` |
+| `/create-voucher` | `src/pages/CreateVoucherPage.tsx` | `AppLayout` |
+| `/eway-bill` | `src/pages/EWayBillPage.tsx` | `AppLayout` |
+| `/sales-team` | `src/pages/SalesTeamPage.tsx` | `AppLayout` |
+| `/invoice-templates` | `src/pages/InvoiceTemplatePage.tsx` | `AppLayout` |
+| `/team-management` | `src/pages/TeamManagementPage.tsx` | `AppLayout` |
+| `/backup-restore` | `src/pages/BackupRestorePage.tsx" | `AppLayout` |
+| `/invoice-scanner` | `src/pages/InvoiceScannerPage.tsx` | `AppLayout` |
+| `/payment-links` | `src/pages/PaymentLinksPage.tsx` | `AppLayout` |
+| `/recurring-invoices` | `src/pages/RecurringInvoicesPage.tsx` | `AppLayout` |
+| `/portal-links` | `src/pages/PortalLinksPage.tsx` | `AppLayout` |
+| `/report-builder` | `src/pages/ReportBuilderPage.tsx` | `AppLayout` |
+| `/settings` | `src/pages/SettingsPage.tsx` | `AppLayout` |
+| `/mapping-master` | `src/pages/MappingMasterPage.tsx` | `AppLayout` |
+| `/login` | `src/pages/LoginPage.tsx` | Root |
+| `/select-mode` | `src/pages/ModuleSelectionPage.tsx` | Root |
+| `/select-company` | `src/pages/SelectCompanyPage.tsx` | Root |
+| `/onboarding` | `src/pages/OnboardingPage.tsx` | Root |
+| `/` | `HomeRedirect` | Root |

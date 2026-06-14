@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { FixedSizeList as List } from 'react-window';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { stockApi, supabase } from '../lib/insforge';
-import { Package, Search, AlertTriangle, Grid, List, TrendingUp, Filter, Activity, Share2, Download } from 'lucide-react';
+import { Package, Search, AlertTriangle, Grid, List as ListIcon, TrendingUp, Filter, Activity, Share2, Download, FileSpreadsheet } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Card, Badge, Spinner, EmptyState, MetricCard, ListItem } from '../components/ui/GlassUI';
+import { SkeletonTable } from '../components/ui/Skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subDays, format } from 'date-fns';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
@@ -13,153 +16,61 @@ import { HeaderPortal } from '../components/layout/HeaderPortal';
 export default function StockPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
-    const [stockItems, setStockItems] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState('all');
-    const [groups, setGroups] = useState<string[]>([]);
-    const [stats, setStats] = useState({ totalItems: 0, totalValue: 0, lowStock: 0 });
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [activeTab, setActiveTab] = useState<'inventory' | 'analysis'>('inventory');
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [profitability, setProfitability] = useState<any[]>([]);
     const [deadStock, setDeadStock] = useState<any[]>([]);
 
-    useEffect(() => {
-        if (selectedCompany) {
-            loadStock();
-            loadGroups();
-            if (activeTab === 'analysis') loadAnalysis();
-        }
-    }, [selectedCompany, selectedGroup, activeTab]);
-
-    const loadStock = async () => {
-        setLoading(true);
-        try {
-            const { data } = await stockApi.list(
+    const { data: stockItemsData, isLoading: stockItemsLoading } = useQuery(
+        ['stockItems', selectedCompany?.id, selectedGroup],
+        async () => {
+            if (!selectedCompany?.id) return [];
+            const { data, error } = await stockApi.list(
                 selectedCompany.id,
                 selectedGroup !== 'all' ? selectedGroup : null
             );
-            setStockItems(data || []);
-
-            const all = data || [];
-            setStats({
-                totalItems: all.length,
-                totalValue: all.reduce((s: number, item: any) => s + (item.closing_value || 0), 0),
-                lowStock: all.filter((item: any) => (item.current_stock || 0) < 10).length
-            });
-        } catch (error) {
-            console.error('Error loading stock:', error);
+            if (error) throw error;
+            return data || [];
+        },
+        {
+            enabled: !!selectedCompany?.id,
         }
-        setLoading(false);
-    };
+    );
 
-    const loadGroups = async () => {
-        try {
-            const { data } = await stockApi.getGroups(selectedCompany.id);
-            setGroups(data || []);
-        } catch (error) {
-            console.error('Error loading groups:', error);
+    const stockItems = stockItemsData || [];
+    const loading = stockItemsLoading;
+
+    const stats = useMemo(() => {
+        return {
+            totalItems: stockItems.length,
+            totalValue: stockItems.reduce((s: number, item: any) => s + (item.closing_value || 0), 0),
+            lowStock: stockItems.filter((item: any) => (item.current_stock || 0) < 10).length
+        };
+    }, [stockItems]);
+
+    const { data: groupsData } = useQuery(
+        ['stockGroups', selectedCompany?.id],
+        async () => {
+            if (!selectedCompany?.id) return [];
+            const { data, error } = await stockApi.getGroups(selectedCompany.id);
+            if (error) throw error;
+            return data || [];
+        },
+        {
+            enabled: !!selectedCompany?.id,
         }
-    };
+    );
 
-    const loadAnalysis = async () => {
-        setAnalysisLoading(true);
-        try {
-            const { data: rawEntries, error: entriesError } = await (supabase
-                .from('voucher_stock_entries')
-                .select('stock_item_name, voucher_id, amount, quantity')
-                .eq('company_id', selectedCompany.id)
-                .limit(50000) as any);
+    const groups = groupsData || [];
 
-            if (entriesError) throw entriesError;
-
-            const voucherIds = Array.from(new Set((rawEntries || []).map((e: any) => e.voucher_id).filter(Boolean)));
-            let voucherMap: Record<string, any> = {};
-            if (voucherIds.length > 0) {
-                const chunkSize = 40;
-                const vouchers: any[] = [];
-
-                for (let i = 0; i < voucherIds.length; i += chunkSize) {
-                    const chunk = voucherIds.slice(i, i + chunkSize);
-                    const { data: batch, error: voucherError } = await (supabase
-                        .from('vouchers')
-                        .select('id, voucher_type, voucher_date')
-                        .eq('company_id', selectedCompany.id)
-                        .in('id', chunk) as any);
-
-                    if (voucherError) throw voucherError;
-                    vouchers.push(...(batch || []));
-                }
-
-                (vouchers || []).forEach((v: any) => {
-                    voucherMap[v.id] = v;
-                });
-            }
-
-            const entries = (rawEntries || []).map((entry: any) => ({
-                ...entry,
-                voucher: voucherMap[entry.voucher_id] || null
-            }));
-            if (entries) {
-                const itemStats: Record<string, any> = {};
-                const now = new Date();
-                const ninetyDaysAgo = subDays(now, 90);
-
-                entries.forEach((entry: any) => {
-                    const name = entry.stock_item_name;
-                    if (!entry.voucher) return; // safeguard against orphaned entries
-                    const type = entry.voucher.voucher_type;
-                    const date = new Date(entry.voucher.voucher_date);
-                    const amt = Math.abs(Number(entry.amount) || 0);
-
-                    if (!itemStats[name]) {
-                        itemStats[name] = {
-                            name,
-                            sales: 0,
-                            purchases: 0,
-                            lastSale: null,
-                            totalQtySold: 0
-                        };
-                    }
-
-                    if (type === 'Sales' || type === 'Sales Invoice') {
-                        itemStats[name].sales += amt;
-                        itemStats[name].totalQtySold += Math.abs(entry.quantity || 0);
-                        if (!itemStats[name].lastSale || date > itemStats[name].lastSale) {
-                            itemStats[name].lastSale = date;
-                        }
-                    } else if (type === 'Purchase') {
-                        itemStats[name].purchases += amt;
-                    }
-                });
-
-                const profitData = Object.values(itemStats)
-                    .map((item: any) => ({
-                        ...item,
-                        margin: item.sales > 0 ? ((item.sales - item.purchases) / item.sales) * 100 : 0
-                    }))
-                    .filter(item => item.sales > 0)
-                    .sort((a, b) => b.margin - a.margin);
-
-                const deadData = stockItems.filter(stock => {
-                    const stats = itemStats[stock.name];
-                    if (!stats) return true;
-                    if (!stats.lastSale) return true;
-                    return stats.lastSale < ninetyDaysAgo;
-                }).map(stock => ({
-                    ...stock,
-                    lastSale: itemStats[stock.name]?.lastSale
-                }));
-
-                setProfitability(profitData);
-                setDeadStock(deadData);
-            }
-        } catch (error) {
-            console.error('Error loading analysis:', error);
+    useEffect(() => {
+        if (selectedCompany && activeTab === 'analysis') {
+            loadAnalysis();
         }
-        setAnalysisLoading(false);
-    };
+    }, [selectedCompany, activeTab, stockItems]);
 
     const openStockItem = (item: any) => {
         const directId = item?.id || item?.stock_item_id || null;
@@ -220,6 +131,26 @@ export default function StockPage() {
     const handleDownloadPDF = () => {
         const doc = generatePDF();
         doc.save(`Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
+    };
+
+    const handleExportCSV = () => {
+        const headers = [
+            { key: 'name', label: 'Item Name' },
+            { key: 'stock_group', label: 'Group' },
+            { key: 'opening_stock', label: 'Opening Stock' },
+            { key: 'current_stock', label: 'Current Stock' },
+            { key: 'standard_rate', label: 'Rate' },
+            { key: 'closing_value', label: 'Stock Value' }
+        ];
+        import('../lib/exportToCSV').then(({ exportToCSV }) => {
+            exportToCSV(
+                filteredStock,
+                headers,
+                `Stock_${selectedCompany.name}_${format(new Date(), 'dd-MM-yyyy')}.csv`
+            );
+        }).catch(err => {
+            alert('Failed to export: ' + err.message);
+        });
     };
 
     const handleSharePDF = async () => {
@@ -312,6 +243,13 @@ export default function StockPage() {
                                 <Download size={14} />
                             </button>
                             <button
+                                onClick={handleExportCSV}
+                                className="p-1.5 rounded-xl bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-500/10 transition-all border border-[var(--border)]"
+                                title="Export CSV"
+                            >
+                                <FileSpreadsheet size={14} />
+                            </button>
+                            <button
                                 onClick={handleSharePDF}
                                 className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-xl bg-[var(--primary)] text-white font-bold text-[10px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
                             >
@@ -332,13 +270,12 @@ export default function StockPage() {
                             onClick={() => setViewMode('list')}
                             className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
                         >
-                            <List size={12} />
+                            <ListIcon size={12} />
                         </button>
                     </div>
                 </div>
             </HeaderPortal>
 
-            {/* Performance Indicators */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
                 <MetricCard
                     title="Net SKU Count"
@@ -360,7 +297,6 @@ export default function StockPage() {
                 />
             </div>
 
-            {/* View Tabs */}
             <div className="flex items-center gap-1 p-1 bg-[var(--surface-container)] rounded-xl w-full sm:w-fit border border-[var(--border)]">
                 <button
                     onClick={() => setActiveTab('inventory')}
@@ -378,18 +314,9 @@ export default function StockPage() {
 
             {activeTab === 'inventory' ? (
                 <>
-
                     <AnimatePresence mode="wait">
                         {loading ? (
-                            <motion.div
-                                key="loading"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="flex flex-col items-center justify-center py-32"
-                            >
-                                <Spinner size="lg" />
-                                <p className="text-[10px] font-black uppercase tracking-[4px] text-[var(--text-muted)] mt-6">Extracting Inventory Data...</p>
-                            </motion.div>
+                            <SkeletonTable rows={8} cols={4} />
                         ) : filteredStock.length === 0 ? (
                             <motion.div
                                 key="empty"
@@ -409,7 +336,7 @@ export default function StockPage() {
                                 animate={{ opacity: 1, y: 0 }}
                                 className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5"
                             >
-                                {filteredStock.map((item: any, idx) => {
+                                {filteredStock.map((item: any) => {
                                     const isLowStock = (item.current_stock || 0) < 10;
                                     return (
                                         <Card key={item.id} hover onClick={() => openStockItem(item)} className="h-full flex flex-col p-5 border-[var(--border)] group animate-fadeIn shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
@@ -447,44 +374,53 @@ export default function StockPage() {
                             </motion.div>
                         ) : (
                             <Card className="overflow-hidden border-[var(--border)] bg-transparent p-0">
-                                <div className="divide-y divide-[var(--border)]">
-                                    {filteredStock.map((item: any) => {
-                                        const isLowStock = (item.current_stock || 0) < 10;
-                                        return (
-                                            <ListItem
-                                                key={item.id}
-                                                onClick={() => openStockItem(item)} className="px-4 md:px-6 py-4 hover:bg-[var(--surface-variant)] transition-all"
-                                                title={<span className="font-black text-sm uppercase tracking-tight text-[var(--on-surface)]">{item.name}</span>}
-                                                subtitle={<span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[2px]">{item.stock_group || 'General'}</span>}
-                                                leading={
-                                                    <div className={`p-3 rounded-xl ${isLowStock ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'} border border-white/5`}>
-                                                        <Package size={20} />
-                                                    </div>
-                                                }
-                                                trailing={
-                                                    <div className="flex items-center gap-4 md:gap-12 text-right">
-                                                        <div>
-                                                            <p className={`text-sm font-black ${isLowStock ? 'text-red-500' : 'text-[var(--on-surface)]'}`}>
-                                                                {formatQuantity(item.current_stock, item.unit)}
-                                                            </p>
-                                                            <p className="text-[8px] uppercase font-black tracking-widest text-[var(--text-muted)] mt-1">Status</p>
-                                                        </div>
-                                                        <div className="min-w-[120px]">
-                                                            <p className="text-sm font-black text-emerald-500">{formatCurrency(item.closing_value)}</p>
-                                                            <p className="text-[8px] uppercase font-black tracking-widest text-[var(--text-muted)] mt-1">Valuation</p>
-                                                        </div>
-                                                        <div className="w-20 flex justify-end">
-                                                            {isLowStock ? (
-                                                                <Badge variant="error" className="text-[8px] font-black uppercase tracking-widest">LOW</Badge>
-                                                            ) : (
-                                                                <Badge variant="success" className="text-[8px] font-black uppercase tracking-widest">OPTIMAL</Badge>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                }
-                                            />
-                                        );
-                                    })}
+                                <div className="h-[650px] overflow-hidden">
+                                    <List
+                                        height={650}
+                                        itemCount={filteredStock.length}
+                                        itemSize={82}
+                                        width="100%"
+                                    >
+                                        {({ index, style }) => {
+                                            const item = filteredStock[index];
+                                            const isLowStock = (item.current_stock || 0) < 10;
+                                            return (
+                                                <div style={style} className="border-b border-[var(--border)]">
+                                                    <ListItem
+                                                        onClick={() => openStockItem(item)} className="px-4 md:px-6 py-4 hover:bg-[var(--surface-variant)] transition-all"
+                                                        title={<span className="font-black text-sm uppercase tracking-tight text-[var(--on-surface)]">{item.name}</span>}
+                                                        subtitle={<span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[2px]">{item.stock_group || 'General'}</span>}
+                                                        leading={
+                                                            <div className={`p-3 rounded-xl ${isLowStock ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'} border border-white/5`}>
+                                                                <Package size={20} />
+                                                            </div>
+                                                        }
+                                                        trailing={
+                                                            <div className="flex items-center gap-4 md:gap-12 text-right">
+                                                                <div>
+                                                                    <p className={`text-sm font-black ${isLowStock ? 'text-red-500' : 'text-[var(--on-surface)]'}`}>
+                                                                        {formatQuantity(item.current_stock, item.unit)}
+                                                                    </p>
+                                                                    <p className="text-[8px] uppercase font-black tracking-widest text-[var(--text-muted)] mt-1">Status</p>
+                                                                </div>
+                                                                <div className="min-w-[120px]">
+                                                                    <p className="text-sm font-black text-emerald-500">{formatCurrency(item.closing_value)}</p>
+                                                                    <p className="text-[8px] uppercase font-black tracking-widest text-[var(--text-muted)] mt-1">Valuation</p>
+                                                                </div>
+                                                                <div className="w-20 flex justify-end">
+                                                                    {isLowStock ? (
+                                                                        <Badge variant="error" className="text-[8px] font-black uppercase tracking-widest">LOW</Badge>
+                                                                    ) : (
+                                                                        <Badge variant="success" className="text-[8px] font-black uppercase tracking-widest">OPTIMAL</Badge>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    />
+                                                </div>
+                                            );
+                                        }}
+                                    </List>
                                 </div>
                             </Card>
                         )}
@@ -492,7 +428,6 @@ export default function StockPage() {
                 </>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 stagger-children">
-                    {/* Dead Stock Analysis */}
                     <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden">
                         <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
                             <div>
@@ -525,7 +460,6 @@ export default function StockPage() {
                         </div>
                     </div>
 
-                    {/* Profitability Analysis */}
                     <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden">
                         <div className="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
                             <div>
@@ -566,5 +500,3 @@ export default function StockPage() {
         </div>
     );
 }
-
-

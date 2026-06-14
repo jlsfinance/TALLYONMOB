@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
 import '../providers/data_provider.dart';
 import '../providers/auth_provider.dart';
@@ -84,7 +85,36 @@ class _StockListScreenState extends State<StockListScreen> {
       body: Consumer<DataProvider>(
         builder: (context, dataProvider, child) {
           if (dataProvider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
+            return ListView.builder(
+              itemCount: 8,
+              padding: const EdgeInsets.all(8),
+              itemBuilder: (context, index) {
+                return Shimmer.fromColors(
+                  baseColor: Colors.grey[850]!,
+                  highlightColor: Colors.grey[700]!,
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: Colors.white,
+                      ),
+                      title: Container(
+                        height: 16,
+                        color: Colors.white,
+                      ),
+                      subtitle: Container(
+                        height: 12,
+                        color: Colors.white,
+                        margin: const EdgeInsets.only(top: 8),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
           }
 
           // Initial load
@@ -95,16 +125,24 @@ class _StockListScreenState extends State<StockListScreen> {
           }
 
           if (dataProvider.stockItems.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.inventory_2_outlined,
-                      size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No stock items found',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
+            return RefreshIndicator(
+              onRefresh: _fetchStock,
+              child: ListView(
+                children: const [
+                  SizedBox(height: 150),
+                  Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inventory_2_outlined,
+                            size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'No stock items found',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -112,8 +150,16 @@ class _StockListScreenState extends State<StockListScreen> {
           }
 
           if (_filteredStock.isEmpty && _searchController.text.isNotEmpty) {
-            return const Center(
-              child: Text('No items match your search'),
+            return RefreshIndicator(
+              onRefresh: _fetchStock,
+              child: ListView(
+                children: const [
+                  SizedBox(height: 150),
+                  Center(
+                    child: Text('No items match your search'),
+                  ),
+                ],
+              ),
             );
           }
 
@@ -121,55 +167,58 @@ class _StockListScreenState extends State<StockListScreen> {
               ? dataProvider.stockItems
               : _filteredStock;
 
-          return ListView.builder(
-            itemCount: displayList.length,
-            padding: const EdgeInsets.all(8),
-            itemBuilder: (context, index) {
-              final Stock item = displayList[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.orange.withOpacity(0.1),
-                    child: Text(
-                      item.itemName.isNotEmpty
-                          ? item.itemName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+          return RefreshIndicator(
+            onRefresh: _fetchStock,
+            child: ListView.builder(
+              itemCount: displayList.length,
+              padding: const EdgeInsets.all(8),
+              itemBuilder: (context, index) {
+                final Stock item = displayList[index];
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: Text(
-                    item.itemName,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text('Unit: ${item.baseUnit ?? "N/A"}'),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        'Qty: ${item.closingStock?.toStringAsFixed(2) ?? "0"}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        'Val: ₹${item.closingValue?.toStringAsFixed(2) ?? "0.00"}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.orange.withOpacity(0.1),
+                      child: Text(
+                        item.itemName.isNotEmpty
+                            ? item.itemName[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
+                    ),
+                    title: Text(
+                      item.itemName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text('Unit: ${item.baseUnit ?? "N/A"}'),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Qty: ${item.closingStock?.toStringAsFixed(2) ?? "0"}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Val: ₹${item.closingValue?.toStringAsFixed(2) ?? "0.00"}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           );
         },
       ),

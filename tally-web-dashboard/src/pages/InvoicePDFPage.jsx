@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+﻿import { useState, useEffect, useRef, useMemo } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
 import { jsPDF } from 'jspdf';
@@ -10,16 +10,123 @@ import {
 } from 'lucide-react';
 import '../styles/Material3.css';
 
+const toNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const absNumber = (value) => Math.abs(toNumber(value));
+
+const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const parseStateCodeFromGstin = (gstin) => {
+    const text = String(gstin || '').trim().toUpperCase();
+    const match = text.match(/^(\d{2})/);
+    return match ? match[1] : '';
+};
+
+const normalizeStateKey = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const isTrueish = (value) => (
+    value === true
+    || value === 1
+    || value === '1'
+    || String(value || '').trim().toLowerCase() === 'true'
+);
+
+const areDifferentStates = (companyState, partyState, companyGstin, partyGstin) => {
+    const companyStateCode = parseStateCodeFromGstin(companyGstin);
+    const partyStateCode = parseStateCodeFromGstin(partyGstin);
+
+    if (companyStateCode && partyStateCode) {
+        return companyStateCode !== partyStateCode;
+    }
+
+    const normalizedCompanyState = normalizeStateKey(companyState);
+    const normalizedPartyState = normalizeStateKey(partyState);
+
+    if (normalizedCompanyState && normalizedPartyState) {
+        return normalizedCompanyState !== normalizedPartyState;
+    }
+
+    return false;
+};
+
+const queryErrorText = (error) => `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+
+const isMissingColumnError = (error, table, column) => {
+    const text = queryErrorText(error);
+    return (
+        String(error?.code || '') === '42703'
+        || text.includes(`column ${table}.${column}`)
+        || text.includes(`'${column}' column`)
+    );
+};
+
+const withOptionalLedgerState = async (buildQuery, ...fieldAttempts) => {
+    const attempts = ['*', ...fieldAttempts.filter(Boolean)];
+    let lastResult = null;
+
+    for (const fields of attempts) {
+        const result = await buildQuery(fields);
+        lastResult = result;
+
+        if (!result?.error) {
+            if (result?.data) {
+                if (Array.isArray(result.data)) {
+                    result.data = result.data.map((row) => ({ ...row, state: row?.state || '' }));
+                } else if (typeof result.data === 'object') {
+                    result.data = { ...result.data, state: result.data?.state || '' };
+                }
+            }
+            return result;
+        }
+
+        const missingAnyOptionalLedgerField = ['state', 'gstin', 'address', 'email', 'phone']
+            .some((column) => isMissingColumnError(result.error, 'ledgers', column));
+
+        if (!missingAnyOptionalLedgerField) {
+            return result;
+        }
+    }
+
+    return lastResult;
+};
+
+const buildInvoiceSeed = (voucherData) => {
+    if (!voucherData) return null;
+
+    const netAmount = absNumber(voucherData.net_amount ?? voucherData.grand_total ?? voucherData.total_amount);
+
+    return {
+        ...voucherData,
+        invoice_number: voucherData.invoice_number || voucherData.voucher_number || '---',
+        invoice_date: voucherData.invoice_date || voucherData.voucher_date || voucherData.date,
+        party_ledger_name: voucherData.party_ledger_name || voucherData.party_name || voucherData.customerName || 'Unknown party',
+        net_amount: netAmount,
+        taxable_amount: absNumber(voucherData.taxable_amount ?? voucherData.total_amount ?? voucherData.grand_total),
+        voucher_type: voucherData.voucher_type || voucherData.transaction_type || 'Sales'
+    };
+};
+
+const isSalesVoucherType = (value) => {
+    const type = String(value || '').trim().toLowerCase();
+    return type === 'sales' || type === 'sales invoice';
+};
+
 export default function InvoicePDFPage() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { selectedCompany } = useAuth();
     const printRef = useRef();
+    const navigationVoucher = location.state?.voucher || null;
+    const backTarget = location.state?.from || (isSalesVoucherType(navigationVoucher?.voucher_type || navigationVoucher?.transaction_type) ? '/sales' : '/vouchers');
 
-    const [invoice, setInvoice] = useState(null);
-    const [companyInfo, setCompanyInfo] = useState(null);
+    const [invoice, setInvoice] = useState(() => buildInvoiceSeed(navigationVoucher));
+    const [companyInfo, setCompanyInfo] = useState(() => selectedCompany || null);
     const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!navigationVoucher);
     const [template, setTemplate] = useState('professional');
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
@@ -52,108 +159,134 @@ export default function InvoicePDFPage() {
         }
     }, [id, selectedCompany?.id]);
 
+    useEffect(() => {
+        const seededInvoice = buildInvoiceSeed(navigationVoucher);
+        if (seededInvoice) {
+            setInvoice((current) => current || seededInvoice);
+        }
+    }, [id, navigationVoucher]);
+
     const loadInvoice = async () => {
-        setLoading(true);
+        setLoading((current) => current || !invoice);
         try {
-            let { data: voucherData } = await supabase
+            const decodedId = decodeURIComponent(id || '');
+            const navigationIds = [navigationVoucher?.id, navigationVoucher?.voucher_id].filter(Boolean).map(String);
+            let voucherData = navigationIds.includes(decodedId) ? navigationVoucher : null;
+
+            const { data: primaryVoucher } = await supabase
                 .from('vouchers')
                 .select('*')
-                .eq('id', id)
-                .single();
+                .eq('id', decodedId)
+                .maybeSingle();
+
+            if (primaryVoucher) {
+                voucherData = { ...(voucherData || {}), ...primaryVoucher };
+            }
 
             if (!voucherData) {
                 const { data: fallback } = await supabase
                     .from('vouchers')
                     .select('*')
-                    .eq('voucher_id', id)
-                    .single();
+                    .eq('voucher_id', decodedId)
+                    .maybeSingle();
                 voucherData = fallback;
             }
 
             if (voucherData) {
-                // Fetch full company details to get address/gstin (Moved up to be available for calculations)
-                const { data: companyData } = await supabase
-                    .from('companies')
-                    .select('*')
-                    .eq('id', voucherData.company_id)
-                    .single();
+                setInvoice((current) => current || buildInvoiceSeed(voucherData));
 
-                if (companyData) {
-                    // Critical Fix: Remove null values so they don't overwrite valid context data
-                    const cleanCompanyData = Object.fromEntries(
-                        Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
-                    );
-                    setCompanyInfo({ ...(selectedCompany || {}), ...cleanCompanyData });
-                } else {
-                    console.warn('DEBUG: No company data found in DB, using context fallback as last resort.');
-                    setCompanyInfo(selectedCompany);
-                }
+                const baseCompanyInfo = { ...(selectedCompany || {}) };
+                const companyName = baseCompanyInfo?.name || voucherData.company_name || '';
+                const partyQuery = voucherData.party_ledger_id
+                    ? withOptionalLedgerState(
+                        (fields) => supabase
+                            .from('ledgers')
+                            .select(fields)
+                            .eq('id', voucherData.party_ledger_id)
+                            .maybeSingle(),
+                        'id, address, gstin, state, email, phone',
+                        'id, address, gstin, email, phone'
+                    )
+                    : voucherData.party_name
+                        ? withOptionalLedgerState(
+                            (fields) => supabase
+                                .from('ledgers')
+                                .select(fields)
+                                .eq('company_id', voucherData.company_id)
+                                .ilike('name', voucherData.party_name.trim())
+                                .maybeSingle(),
+                            'id, address, gstin, state, email, phone',
+                            'id, address, gstin, email, phone'
+                        )
+                        : Promise.resolve({ data: null });
 
-                // Fetch Party Details (Address, GSTIN)
-                let partyDetails = {};
-                if (voucherData.party_ledger_id) {
-                    const { data: pData, error: pErr } = await supabase
-                        .from('ledgers')
-                        .select('id, address, gstin, email, phone')
-                        .eq('id', voucherData.party_ledger_id)
-                        .single();
-                    if (pErr) console.error('DEBUG: Party Ledger Fetch Error:', pErr);
-                    if (pData) partyDetails = pData;
-                } else if (voucherData.party_name) {
-                    const { data: pData, error: pErr } = await supabase
-                        .from('ledgers')
-                        .select('id, address, gstin, email, phone')
-                        .eq('company_id', voucherData.company_id)
-                        .ilike('name', voucherData.party_name.trim())
-                        .maybeSingle();
-                    if (pErr) console.error('DEBUG: Party Name Fetch Error:', pErr);
-                    if (pData) partyDetails = pData;
-                }
-
-                // Fallback for Company GSTIN: Check if a ledger exists with Company Name
-                const currentGstin = companyData?.gstin || selectedCompany?.gstin;
-                const currentAddress = companyData?.address || selectedCompany?.address;
-
-                if (!currentGstin || currentGstin === 'N/A' || !currentAddress) {
-                    const { data: cLedger } = await supabase
-                        .from('ledgers')
-                        .select('gstin, address, email, phone')
-                        .eq('company_id', voucherData.company_id)
-                        .ilike('name', companyData?.name || selectedCompany?.name || '')
-                        .maybeSingle();
-
-                    if (cLedger) {
-                        setCompanyInfo(prev => ({
-                            ...prev,
-                            gstin: prev?.gstin || cLedger.gstin,
-                            address: prev?.address || cLedger.address,
-                            email: prev?.email || cLedger.email,
-                            phone: prev?.phone || cLedger.phone
-                        }));
-                    }
-                }
-
-                // Bank Details Fallback: Search for any ledger in 'Bank Accounts' group
-                if (!companyData?.bank_name && !selectedCompany?.bank_name) {
-                    const { data: bLedger } = await supabase
+                const [
+                    companyResult,
+                    partyResult,
+                    companyLedgerResult,
+                    bankResult
+                ] = await Promise.all([
+                    supabase
+                        .from('companies')
+                        .select('*')
+                        .eq('id', voucherData.company_id)
+                        .maybeSingle(),
+                    partyQuery,
+                    withOptionalLedgerState(
+                        (fields) => supabase
+                            .from('ledgers')
+                            .select(fields)
+                            .eq('company_id', voucherData.company_id)
+                            .ilike('name', companyName)
+                            .maybeSingle(),
+                        'gstin, address, email, phone, state',
+                        'gstin, address, email, phone'
+                    ),
+                    supabase
                         .from('ledgers')
                         .select('name, address')
                         .eq('company_id', voucherData.company_id)
                         .or('parent.eq.Bank Accounts,parent_group.eq.Bank Accounts')
                         .limit(1)
-                        .maybeSingle();
+                        .maybeSingle()
+                ]);
 
-                    if (bLedger) {
-                        setCompanyInfo(prev => ({
-                            ...prev,
-                            bank_name: prev?.bank_name || bLedger.name,
-                            bank_account: prev?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '')
-                        }));
+                const companyData = companyResult.data;
+                const partyDetails = partyResult.data || {};
+                const cLedger = companyLedgerResult.data;
+                const bLedger = bankResult.data;
+                let resolvedCompanyInfo = companyData
+                    ? {
+                        ...baseCompanyInfo,
+                        ...Object.fromEntries(
+                            Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
+                        )
                     }
+                    : baseCompanyInfo;
+
+                if (cLedger) {
+                    resolvedCompanyInfo = {
+                        ...resolvedCompanyInfo,
+                        gstin: resolvedCompanyInfo?.gstin || cLedger.gstin,
+                        address: resolvedCompanyInfo?.address || cLedger.address,
+                        email: resolvedCompanyInfo?.email || cLedger.email,
+                        phone: resolvedCompanyInfo?.phone || cLedger.phone,
+                        state: resolvedCompanyInfo?.state || cLedger.state
+                    };
                 }
 
+                if (bLedger) {
+                    resolvedCompanyInfo = {
+                        ...resolvedCompanyInfo,
+                        bank_name: resolvedCompanyInfo?.bank_name || bLedger.name,
+                        bank_account: resolvedCompanyInfo?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '')
+                    };
+                }
+
+                setCompanyInfo(resolvedCompanyInfo);
+
                 // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
-                const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, id].filter(Boolean)));
+                const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, decodedId].filter(Boolean)));
 
                 // Fetch stock entries, ledger entries, and stock items in PARALLEL
                 const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
@@ -247,23 +380,6 @@ export default function InvoicePDFPage() {
                         }
                     });
                 }
-
-                console.log('DEBUG: === INVOICE DATA DUMP ===');
-                console.log('DEBUG: Ledger entries:', ledgerEntries?.map(e => ({
-                    name: e.ledger_name || e.name, amount: e.amount, is_debit: e.is_debit
-                })));
-                console.log('DEBUG: Stock entries RAW:', inventoryItems?.map(e => ({
-                    item: e.stock_item_name || e.item_name || e.name,
-                    tax_rate: e.tax_rate, discount_percent: e.discount_percent,
-                    discount: e.discount, amount: e.amount, rate: e.rate, qty: e.quantity,
-                    ALL_KEYS: Object.keys(e).join(', ')
-                })));
-                console.log('DEBUG: Analysis:', {
-                    hasIntraStateLedgers, hasInterStateLedgers,
-                    invoiceDiscountFromLedger,
-                    ledgerCount: ledgerEntries?.length,
-                    stockEntryCount: inventoryItems.length,
-                });
 
                 // Enrich items with GST info and handle various field name conventions
                 const enrichedItems = inventoryItems.map((item, itemIdx) => {
@@ -392,13 +508,6 @@ export default function InvoicePDFPage() {
                     }
 
                     if (itemIdx === 0) {
-                        console.log('DEBUG: First item enrichment:', {
-                            itemName, rawTaxRate, gstRate,
-                            'raw discount_percent': item.discount_percent,
-                            'raw discount': item.discount,
-                            discountVal,
-                            quantity, rate, amount
-                        });
                     }
 
                     // Tally's amount is already post-discount, so taxable = amount
@@ -424,77 +533,116 @@ export default function InvoicePDFPage() {
 
 
 
-                // Calculate GST from items if not in voucher data
-                let cgstAmount = Number(voucherData.cgst_amount) || 0;
-                let sgstAmount = Number(voucherData.sgst_amount) || 0;
-                let igstAmount = Number(voucherData.igst_amount) || 0;
-
+                const voucherTax = {
+                    cgst: absNumber(voucherData.cgst_amount),
+                    sgst: absNumber(voucherData.sgst_amount),
+                    igst: absNumber(voucherData.igst_amount)
+                };
+                const ledgerTax = { cgst: 0, sgst: 0, igst: 0 };
                 let discountLedgerAmount = 0;
+                let roundOffLedgerAmount = 0;
 
-                // Extract GST and Discount from ledger entries
+                // Extract GST and Discount from ledger entries without double-counting voucher totals.
                 if (ledgerEntries) {
                     ledgerEntries.forEach(entry => {
                         const ledgerName = (entry.ledger_name || '').toUpperCase();
-                        const amount = Math.abs(Number(entry.amount) || 0);
+                        const amount = absNumber(entry.amount);
 
                         if (ledgerName.includes('CGST') || ledgerName.includes('CENTRAL GST')) {
-                            cgstAmount += amount;
+                            ledgerTax.cgst += amount;
                         } else if (ledgerName.includes('SGST') || ledgerName.includes('STATE GST') || ledgerName.includes('UTGST')) {
-                            sgstAmount += amount;
+                            ledgerTax.sgst += amount;
                         } else if (ledgerName.includes('IGST') || ledgerName.includes('INTEGRATED GST')) {
-                            igstAmount += amount;
+                            ledgerTax.igst += amount;
                         } else if (ledgerName.includes('DISCOUNT')) {
                             discountLedgerAmount += amount;
+                        } else if (ledgerName.includes('ROUND')) {
+                            roundOffLedgerAmount += round2(Number(entry.amount) || 0);
                         }
                     });
                 }
 
-                // If still no GST from ledgers, try calculating from items
-                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0) {
-                    const companyState = companyData?.state || selectedCompany?.state || '';
-                    const partyState = voucherData.party_state || voucherData.place_of_supply || '';
-                    const isIGST = companyState && partyState && companyState !== partyState;
+                const voucherTaxTotal = voucherTax.cgst + voucherTax.sgst + voucherTax.igst;
+                const ledgerTaxTotal = ledgerTax.cgst + ledgerTax.sgst + ledgerTax.igst;
+                const companyState = resolvedCompanyInfo?.state || '';
+                const partyState = voucherData.party_state || voucherData.place_of_supply || partyDetails.state || '';
+                const companyGstin = resolvedCompanyInfo?.gstin || '';
+                const partyGstin = voucherData.party_gstin || partyDetails.gstin || '';
+                const explicitVoucherInterState =
+                    isTrueish(voucherData.is_inter_state)
+                    || isTrueish(voucherData.is_interstate)
+                    || (voucherTax.igst > 0 && (voucherTax.cgst + voucherTax.sgst) === 0);
 
-                    let totalGST = 0;
+                const resolvedIsInterState =
+                    hasInterStateLedgers
+                    || (!hasIntraStateLedgers && (
+                        ledgerTax.igst > 0
+                        || explicitVoucherInterState
+                        || areDifferentStates(companyState, partyState, companyGstin, partyGstin)
+                    ));
+
+                const preferredTax = ledgerTaxTotal > 0 ? ledgerTax : voucherTax;
+                let cgstAmount = 0;
+                let sgstAmount = 0;
+                let igstAmount = 0;
+                let totalGST = preferredTax.cgst + preferredTax.sgst + preferredTax.igst;
+
+                if (totalGST <= 0) {
+                    totalGST = voucherTaxTotal > 0 ? voucherTaxTotal : ledgerTaxTotal;
+                }
+
+                if (totalGST > 0) {
+                    if (resolvedIsInterState) {
+                        igstAmount = round2(preferredTax.igst > 0 ? preferredTax.igst : totalGST);
+                    } else {
+                        const explicitIntraTotal = preferredTax.cgst + preferredTax.sgst;
+                        if (explicitIntraTotal > 0) {
+                            cgstAmount = round2(preferredTax.cgst);
+                            sgstAmount = round2(preferredTax.sgst);
+                        } else {
+                            cgstAmount = round2(totalGST / 2);
+                            sgstAmount = round2(totalGST - cgstAmount);
+                        }
+                    }
+                }
+
+                // If GST totals are absent, calculate them from item values or voucher totals.
+                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0) {
+                    totalGST = 0;
                     let hasGSTRates = false;
 
                     enrichedItems.forEach(item => {
-                        const itemAmount = Number(item.amount) || 0;
-                        const gstRate = Number(item.gst_rate) || 0;
-                        if (gstRate > 0) {
+                        const itemAmount = absNumber(item.amount);
+                        const gstRate = toNumber(item.gst_rate);
+                        if (gstRate > 0 && itemAmount > 0) {
                             hasGSTRates = true;
-                            const gstAmount = (itemAmount * gstRate) / (100 + gstRate);
-                            totalGST += gstAmount;
+                            totalGST += (itemAmount * gstRate) / 100;
                         }
                     });
 
-
-
-                    // If no GST from items, check voucher totals
                     if (!hasGSTRates || totalGST === 0) {
-                        const grandTotal = Math.abs(Number(voucherData.grand_total) || 0);
-                        const taxableValue = Math.abs(Number(voucherData.taxable_value) || 0);
-                        const totalAmount = Math.abs(Number(voucherData.total_amount) || 0);
+                        const grandTotal = absNumber(voucherData.grand_total);
+                        const taxableValue = absNumber(voucherData.taxable_value || voucherData.taxable_amount);
+                        const totalAmount = absNumber(voucherData.total_amount);
 
                         if (grandTotal > taxableValue && taxableValue > 0) {
                             totalGST = grandTotal - taxableValue;
                         } else if (grandTotal > totalAmount && totalAmount > 0) {
                             totalGST = grandTotal - totalAmount;
                         }
-
                     }
 
+                    totalGST = round2(totalGST);
+
                     if (totalGST > 0) {
-                        if (isIGST) {
-                            igstAmount = Math.round(totalGST * 100) / 100;
+                        if (resolvedIsInterState) {
+                            igstAmount = totalGST;
                         } else {
-                            cgstAmount = Math.round((totalGST / 2) * 100) / 100;
-                            sgstAmount = Math.round((totalGST / 2) * 100) / 100;
+                            cgstAmount = round2(totalGST / 2);
+                            sgstAmount = round2(totalGST - cgstAmount);
                         }
                     }
                 }
-
-
 
                 // Calculate taxable amount (excluding GST)
                 const totalGSTAmount = cgstAmount + sgstAmount + igstAmount;
@@ -519,7 +667,7 @@ export default function InvoicePDFPage() {
                     sgst_amount: sgstAmount,
                     igst_amount: igstAmount,
                     discount_amount: discountLedgerAmount,
-                    round_off: Number(voucherData.round_off) || 0,
+                    round_off: round2(Number(voucherData.round_off) || roundOffLedgerAmount),
                     voucher_type: voucherData.voucher_type || 'Sales'
                 };
                 setInvoice(sale);
@@ -545,7 +693,7 @@ export default function InvoicePDFPage() {
         const isIGST = Number(invoice?.igst_amount) > 0;
         const hasCGST = Number(invoice?.cgst_amount) > 0;
         const hasSGST = Number(invoice?.sgst_amount) > 0;
-        const hasRoundOff = Number(invoice?.round_off) > 0 && Math.abs(Number(invoice?.round_off)) > 0.001;
+        const hasRoundOff = Math.abs(Number(invoice?.round_off)) > 0.001;
 
         // Critical Fix: Use companyInfo instead of invoice.selectedCompany
         const hasBankDetails = !!(companyInfo?.bank_name || companyInfo?.bank_account);
@@ -1120,7 +1268,7 @@ export default function InvoicePDFPage() {
         return <div className="page-m3 flex justify-center items-center"><p>Please select a company first</p></div>;
     }
 
-    if (loading) {
+    if (loading && !invoice) {
         return (
             <div className="page-m3">
                 <div className="page-m3__loading">
@@ -1171,7 +1319,7 @@ export default function InvoicePDFPage() {
 
             {/* Sticky Local Header */}
             <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-3 mb-6 flex items-center justify-between">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+                <button onClick={() => navigate(backTarget)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
                     <ArrowLeft size={20} className="text-gray-600" />
                 </button>
                 <div className="flex-1 px-4">
@@ -1406,6 +1554,12 @@ export default function InvoicePDFPage() {
                                                 <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
                                             </div>
                                         )}
+                                        {columnVisibility.hasRoundOff && (
+                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-2">Round Off</span>
+                                                <span className="font-semibold px-2">{formatNumber(invoice.round_off)}</span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
                                             <span>Total (INR)</span>
                                             <span>INR {formatNumber(invoice.net_amount)}</span>
@@ -1537,3 +1691,4 @@ export default function InvoicePDFPage() {
         </div>
     );
 }
+

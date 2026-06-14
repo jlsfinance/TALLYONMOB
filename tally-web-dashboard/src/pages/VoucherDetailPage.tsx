@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase as insforgeClient, voucherApi } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -116,7 +116,9 @@ export default function VoucherDetailPage() {
 
             setVoucher({
                 ...mainVoucher,
-                context: ctxRes.data?.context || null
+                context: ctxRes.data?.context || null,
+                inventory_entries: Array.isArray(mainVoucher.inventory_entries) ? mainVoucher.inventory_entries : [],
+                ledger_entries: Array.isArray(mainVoucher.ledger_entries) ? mainVoucher.ledger_entries : []
             });
 
             // Fetch stock entries, ledger entries, and stock items in PARALLEL
@@ -170,27 +172,57 @@ export default function VoucherDetailPage() {
             const loadItemsFromRelatedTable = async (parentTable: string, childTable: string, childForeignKey: string) => {
                 const parentIds = new Set<string>();
 
-                const { data: byVoucherId } = await supabase
-                    .from(parentTable)
-                    .select('id')
-                    .eq('company_id', selectedCompany.id)
-                    .in('voucher_id', voucherLookupIds);
-                (byVoucherId || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+                const addParentIds = (rows: any[] | null | undefined) => {
+                    (rows || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+                };
+
+                const matchCompany = supabase.from(parentTable).select('id').eq('company_id', selectedCompany.id);
+
+                const { data: byVoucherId } = await matchCompany.in('voucher_id', voucherLookupIds);
+                addParentIds(byVoucherId);
 
                 const { data: byParentId } = await supabase
                     .from(parentTable)
                     .select('id')
                     .eq('company_id', selectedCompany.id)
                     .in('id', voucherLookupIds);
-                (byParentId || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+                addParentIds(byParentId);
+
+                if (vData.master_id) {
+                    const { data: byMasterId } = await supabase
+                        .from(parentTable)
+                        .select('id')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('master_id', vData.master_id);
+                    addParentIds(byMasterId);
+                }
+
+                if (vData.alter_id) {
+                    const { data: byAlterId } = await supabase
+                        .from(parentTable)
+                        .select('id')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('alter_id', vData.alter_id);
+                    addParentIds(byAlterId);
+                }
 
                 if (vData.voucher_number) {
-                    const { data: byInvoiceNumber } = await supabase
+                    let invoiceQuery = supabase
                         .from(parentTable)
                         .select('id')
                         .eq('company_id', selectedCompany.id)
                         .eq('invoice_number', vData.voucher_number);
-                    (byInvoiceNumber || []).forEach((row: any) => row?.id && parentIds.add(row.id));
+
+                    if (vData.voucher_date) {
+                        invoiceQuery = invoiceQuery.eq('invoice_date', vData.voucher_date);
+                    }
+
+                    if (vData.party_name) {
+                        invoiceQuery = invoiceQuery.ilike('party_ledger_name', String(vData.party_name).trim());
+                    }
+
+                    const { data: byInvoiceIdentity } = await invoiceQuery;
+                    addParentIds(byInvoiceIdentity);
                 }
 
                 const parentIdList = Array.from(parentIds);
@@ -204,11 +236,11 @@ export default function VoucherDetailPage() {
                 return childRows || [];
             };
 
-            if (inventoryItems.length === 0 && vData.voucher_type === 'Sales') {
+            if (inventoryItems.length === 0 && String(vData.voucher_type || '').toLowerCase().includes('sale')) {
                 inventoryItems = await loadItemsFromRelatedTable('sales', 'sales_items', 'sale_id');
             }
 
-            if (inventoryItems.length === 0 && vData.voucher_type === 'Purchase') {
+            if (inventoryItems.length === 0 && String(vData.voucher_type || '').toLowerCase().includes('purchase')) {
                 inventoryItems = await loadItemsFromRelatedTable('purchases', 'purchase_items', 'purchase_id');
             }
             // Enrich items with HSN and unit
@@ -230,6 +262,12 @@ export default function VoucherDetailPage() {
                 };
             });
 
+            setVoucher((current: any) => current ? ({
+                ...current,
+                inventory_entries: enrichedItems,
+                ledger_entries: ledgerEntries || current.ledger_entries || []
+            }) : current);
+
             // Create sale/purchase data based on voucher type
             const baseData = {
                 id: vData.id,
@@ -240,9 +278,10 @@ export default function VoucherDetailPage() {
                 voucher_date: vData.voucher_date
             };
 
-            if (vData.voucher_type === 'Sales') {
+            const normalizedVoucherType = String(vData.voucher_type || '').toLowerCase();
+            if (normalizedVoucherType.includes('sale')) {
                 setSaleData({ ...baseData, sales_items: enrichedItems });
-            } else if (vData.voucher_type === 'Purchase') {
+            } else if (normalizedVoucherType.includes('purchase')) {
                 setPurchaseData({ ...baseData, purchase_items: enrichedItems });
             }
 
@@ -297,6 +336,7 @@ export default function VoucherDetailPage() {
     );
 
     const items = saleData?.sales_items || purchaseData?.purchase_items || voucher.inventory_entries || [];
+    const accountingVoucherWithoutItems = Boolean(voucher?.is_accounting_voucher) && items.length === 0;
     const status = (voucher.sync_status || 'Synced') === 'Synced' ? 'SYNCED' : 'PENDING';
     const voucherAmount = Math.abs(Number(voucher.total_amount || voucher.grand_total || 0));
     const fallbackIsDebit = DR_TYPES.has(voucher.voucher_type);
@@ -431,7 +471,7 @@ export default function VoucherDetailPage() {
                             <div className="pt-4 border-t border-[var(--border)]/50">
                                 <p className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-1">Pay To</p>
                                 <p className="text-xs font-bold text-[var(--on-surface)]">{selectedCompany.bank_name}</p>
-                                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">A/C: {selectedCompany.account_number} • IFSC: {selectedCompany.ifsc_code}</p>
+                                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wide">A/C: {selectedCompany.account_number} â€¢ IFSC: {selectedCompany.ifsc_code}</p>
                             </div>
                         )}
                     </div>
@@ -445,9 +485,14 @@ export default function VoucherDetailPage() {
 
                     <div className="space-y-3">
                         {items.length === 0 ? (
-                            <div className="py-12 text-center border-2 border-dashed border-[var(--border)] rounded-[24px]">
+                            <div className="py-12 text-center border-2 border-dashed border-[var(--border)] rounded-[24px] px-5">
                                 <Package size={32} className="mx-auto text-[var(--text-muted)] opacity-20 mb-3" />
                                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">No Items Found</p>
+                                {accountingVoucherWithoutItems && (
+                                    <p className="mt-3 text-[11px] leading-5 text-[var(--text-muted)] max-w-xs mx-auto">
+                                        This voucher is currently synced as an accounting voucher. Item lines were not available in the saved source payload.
+                                    </p>
+                                )}
                             </div>
                         ) : (
                             items.map((item: any, idx: number) => (
@@ -514,6 +559,9 @@ export default function VoucherDetailPage() {
         </div>
     );
 }
+
+
+
 
 
 

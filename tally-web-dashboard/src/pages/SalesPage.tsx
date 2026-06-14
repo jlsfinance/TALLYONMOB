@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { FixedSizeList as List } from 'react-window';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -6,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Search, Plus, IndianRupee, Receipt, Filter } from 'lucide-react';
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import TransactionCard from '@/components/shared/TransactionCard';
 import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
@@ -13,8 +16,6 @@ import { HeaderPortal } from '@/components/layout/HeaderPortal';
 export default function SalesPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
-    const [sales, setSales] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
     // Calculate current FY dynamically (FY starts in April)
@@ -27,7 +28,6 @@ export default function SalesPage() {
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
-    const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -65,7 +65,6 @@ export default function SalesPage() {
                 end: monthObj.end
             };
         }
-        // Fallback to full year
         const startYear = parseInt(selectedFy.split(' ')[1].split('-')[0]);
         return {
             start: `${startYear}-04-01`,
@@ -73,15 +72,12 @@ export default function SalesPage() {
         };
     }, [selectedMonth, monthsInFy, selectedFy]);
 
-    useEffect(() => {
-        if (selectedCompany) loadSales();
-    }, [selectedCompany, dateRange]);
-
-    const loadSales = async () => {
-        setLoading(true);
-        try {
-            // Fetch synced vouchers
-            const { data: syncedData } = await supabase.from('vouchers')
+    const { data: salesData, isLoading: salesLoading } = useQuery(
+        ['sales', selectedCompany?.id, dateRange.start, dateRange.end],
+        async () => {
+            if (!selectedCompany?.id) return [];
+            
+            const { data: syncedData, error: syncedError } = await supabase.from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
@@ -89,13 +85,16 @@ export default function SalesPage() {
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
                 .limit(50000);
+            
+            if (syncedError) throw syncedError;
 
-            // Fetch pending and failed transactions
-            const { data: pendingData } = await supabase.from('pending_transactions')
+            const { data: pendingData, error: pendingError } = await supabase.from('pending_transactions')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('transaction_type', 'Sales')
                 .in('status', ['pending', 'failed']);
+
+            if (pendingError) throw pendingError;
 
             const pendingSales = (pendingData || []).map(p => {
                 const { id, ...rest } = p.voucher_data || {};
@@ -109,20 +108,24 @@ export default function SalesPage() {
                 };
             });
 
-            const salesData = [...pendingSales, ...(syncedData || [])];
-            setSales(salesData);
-
-            const total = salesData.reduce((s, v) => s + Math.abs(v.grand_total || v.total_amount || 0), 0);
-            setStats({
-                total,
-                count: salesData.length,
-                avgValue: salesData.length > 0 ? total / salesData.length : 0
-            });
-        } catch (error) {
-            console.error('Error loading sales:', error);
+            return [...pendingSales, ...(syncedData || [])];
+        },
+        {
+            enabled: !!selectedCompany?.id,
         }
-        setLoading(false);
-    };
+    );
+
+    const sales = salesData || [];
+    const loading = salesLoading;
+
+    const stats = useMemo(() => {
+        const total = sales.reduce((s, v) => s + Math.abs(v.grand_total || v.total_amount || 0), 0);
+        return {
+            total,
+            count: sales.length,
+            avgValue: sales.length > 0 ? total / sales.length : 0
+        };
+    }, [sales]);
 
     const formatCurrency = (amount: number) => {
         const absAmount = Math.abs(amount || 0);
@@ -212,14 +215,10 @@ export default function SalesPage() {
                 </div>
             </div>
 
-
-
             {/* Transaction Logic */}
             <AnimatePresence mode="wait">
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24">
-                        <Spinner size="md" />
-                    </div>
+                    <SkeletonTable rows={8} cols={4} />
                 ) : filteredSales.length === 0 ? (
                     <EmptyState
                         icon={<TrendingUp size={48} />}
@@ -227,22 +226,34 @@ export default function SalesPage() {
                         description="Try another Finance Year or search term."
                     />
                 ) : (
-                    <div className="space-y-1.5">
-                        {filteredSales.map((sale, idx) => (
-                            <TransactionCard
-                                key={sale.id || idx}
-                                type={sale.voucher_type || 'Sales'} // default to Sales for pending
-                                partyName={sale.party_name}
-                                voucherNumber={sale.voucher_number}
-                                date={sale.voucher_date}
-                                amount={sale.grand_total || sale.total_amount || 0}
-                                status={sale.status === 'pending' ? 'Pending' : (sale.sync_status === 'failed' ? 'Failed' : 'Synced')}
-                                highlighted={sale.status === 'pending'}
-                                onClick={() => {
-                                    navigate(`/vouchers/${encodeURIComponent(sale.id)}`);
-                                }}
-                            />
-                        ))}
+                    <div className="space-y-1.5 h-[650px] overflow-hidden">
+                        <List
+                            height={650}
+                            itemCount={filteredSales.length}
+                            itemSize={74}
+                            width="100%"
+                        >
+                            {({ index, style }) => {
+                                const sale = filteredSales[index];
+                                return (
+                                    <div style={style} className="pr-2 pb-1.5">
+                                        <TransactionCard
+                                            key={sale.id || index}
+                                            type={sale.voucher_type || 'Sales'} // default to Sales for pending
+                                            partyName={sale.party_name}
+                                            voucherNumber={sale.voucher_number}
+                                            date={sale.voucher_date}
+                                            amount={sale.grand_total || sale.total_amount || 0}
+                                            status={sale.status === 'pending' ? 'Pending' : (sale.sync_status === 'failed' ? 'Failed' : 'Synced')}
+                                            highlighted={sale.status === 'pending'}
+                                            onClick={() => {
+                                                navigate(`/vouchers/${encodeURIComponent(sale.id)}`);
+                                            }}
+                                        />
+                                    </div>
+                                );
+                            }}
+                        </List>
                     </div>
                 )}
             </AnimatePresence>

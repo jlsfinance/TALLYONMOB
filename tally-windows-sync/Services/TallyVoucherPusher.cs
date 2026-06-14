@@ -189,9 +189,9 @@ namespace TallySyncApp.Services
                                    voucherData["voucher_type"]?.ToString() ??
                                    voucherData["type"]?.ToString();
                 
-                if (!string.IsNullOrEmpty(typeFromData))
+                if (!string.IsNullOrWhiteSpace(typeFromData))
                 {
-                    rawType = typeFromData.Trim().ToUpper();
+                    rawType = typeFromData!.Trim().ToUpperInvariant();
                 }
                 
                 // ROBUST DATE PARSING: Try multiple date fields and formats

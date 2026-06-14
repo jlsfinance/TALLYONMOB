@@ -17,6 +17,7 @@ export interface AuthContextType {
     user: User | null;
     companies: Company[];
     selectedCompany: Company | null;
+    userRole: string;
     loading: boolean;
     appMode: 'tally' | 'billing' | null;
     setAppMode: (mode: 'tally' | 'billing' | null) => void;
@@ -29,4 +30,9 @@ export interface AuthContextType {
     selectCompany: (company: Company) => void;
     deleteCompany: (companyId: string) => Promise<{ success: boolean; error?: any }>;
     refreshCompanies: () => Promise<void>;
+    verify2FALogin: (tempToken: string, userId: string, email: string, code: string) => Promise<{ data: any; error: any }>;
+    setup2FA: () => Promise<{ data: any; error: any }>;
+    enable2FA: (secret: string, code: string) => Promise<{ data: any; error: any }>;
+    disable2FA: (code: string) => Promise<{ data: any; error: any }>;
+    get2FAStatus: () => Promise<{ data: any; error: any }>;
 }

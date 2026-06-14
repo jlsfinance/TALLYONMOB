@@ -75,6 +75,17 @@ export default function StockItemDetailPage() {
         voucherType: 'All'
     });
 
+    const openVoucher = (voucher: any) => {
+        const targetId = voucher?.id || voucher?.voucher_id;
+        if (!targetId) return;
+
+        const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
+        const encodedId = encodeURIComponent(targetId);
+        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+            state: { voucher, from: `/stock/${id}` }
+        });
+    };
+
     useEffect(() => {
         if (id && selectedCompany) {
             loadItemDetails();
@@ -478,7 +489,7 @@ export default function StockItemDetailPage() {
                                         {historyRows.map((row: any) => (
                                             <button
                                                 key={row.entry_id || row.id || [row.voucher_id || 'v', row.voucher_date || '', row.party_name || ''].join('-')}
-                                                onClick={() => row.voucher_id && navigate('/vouchers/' + encodeURIComponent(row.voucher_id))}
+                                                onClick={() => openVoucher(row)}
                                                 className="w-full grid grid-cols-12 px-4 py-3 text-left hover:bg-[var(--surface-hover)]"
                                             >
                                                 <div className="col-span-3">

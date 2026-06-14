@@ -19,6 +19,8 @@ import {
     saveLocalLedgers
 } from '@/features/automation/localStore';
 import type { BankPreviewRow, BankTransactionRow, LedgerMappingRecord } from '@/features/automation/types';
+import { getCanonicalMappingSource, getLocalNameMappings, upsertLocalNameMapping } from '@/features/nameMappings/store';
+import type { NameMappingRecord } from '@/features/nameMappings/types';
 
 const MAX_GEMINI_MATCH_CALLS = 120;
 const SUPPORTED_UPLOAD_ACCEPT = '.xlsx,.xls,application/pdf,image/png,image/jpeg,image/jpg,image/webp';
@@ -93,10 +95,10 @@ async function extractRowsFromDocumentWithGemini(file: File): Promise<BankTransa
 
 // Ledger mappings are saved locally first and synced to cloud when available
 
-async function fetchCloudLedgers(clientId: string): Promise<string[]> {
+async function fetchCloudLedgers(clientId: string): Promise<Array<{ id?: string; name: string }>> {
     const { data, error } = await supabase
         .from('ledgers')
-        .select('name')
+        .select('id, name')
         .eq('company_id', clientId)
         .order('name')
         .limit(5000);
@@ -104,8 +106,11 @@ async function fetchCloudLedgers(clientId: string): Promise<string[]> {
     if (error) throw error;
 
     return (data || [])
-        .map((item: any) => String(item.name || '').trim())
-        .filter(Boolean);
+        .map((item: any) => ({
+            id: item?.id,
+            name: String(item?.name || '').trim(),
+        }))
+        .filter((item: any) => item.name);
 }
 
 async function fetchCloudLedgerMappings(clientId: string, userId: string): Promise<LedgerMappingRecord[]> {
@@ -230,7 +235,9 @@ export default function BankAutomationPage() {
         return getAutomationMode();
     });
     const [ledgers, setLedgers] = useState<string[]>([]);
+    const [ledgerMetaByName, setLedgerMetaByName] = useState<Record<string, { id?: string; name: string }>>({});
     const [mappings, setMappings] = useState<LedgerMappingRecord[]>([]);
+    const [smartBankMappings, setSmartBankMappings] = useState<NameMappingRecord[]>([]);
     const [rows, setRows] = useState<BankPreviewRow[]>([]);
     const [loadingMasters, setLoadingMasters] = useState(false);
     const [matching, setMatching] = useState(false);
@@ -238,6 +245,112 @@ export default function BankAutomationPage() {
 
     const isClientLimitExceeded = (companies?.length || 0) > FREE_PLAN_LIMITS.maxClients;
     const cloudAllowed = isCloudAllowed(mode);
+
+    const loadLocalSmartMappings = () => {
+        if (!user?.id || !clientId) return [] as NameMappingRecord[];
+        return getLocalNameMappings(user.id, clientId, 'bank_party');
+    };
+
+    const saveBankPartyMemory = (sourceText: string, ledgerName: string, confidence = 100, reason = 'Bank narration mapping approved') => {
+        if (!user?.id || !clientId || !sourceText || !ledgerName) return null;
+
+        const saved = upsertLocalNameMapping({
+            userId: user.id,
+            clientId,
+            mappingType: 'bank_party',
+            sourceText,
+            normalizedSource: getCanonicalMappingSource(sourceText, 'bank_party'),
+            mappedEntityType: 'ledger',
+            mappedEntityId: ledgerMetaByName[ledgerName.toLowerCase()]?.id,
+            mappedDisplayName: ledgerName,
+            confidence,
+            status: 'approved',
+            reason,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastUsedAt: new Date().toISOString(),
+        });
+
+        setSmartBankMappings((prev) => [
+            saved,
+            ...prev.filter((item) => !(
+                item.userId === saved.userId
+                && item.clientId === saved.clientId
+                && item.mappingType === saved.mappingType
+                && item.normalizedSource === saved.normalizedSource
+            ))
+        ]);
+
+        return saved;
+    };
+
+    const insertWithVariants = async (variants: Record<string, any>[]) => {
+        let lastError: any = null;
+
+        for (const variant of variants) {
+            const payload = Object.fromEntries(
+                Object.entries(variant).filter(([, value]) => value !== undefined && value !== null && value !== '')
+            );
+
+            const { error } = await (supabase as any)
+                .from('ledgers')
+                .insert([payload]);
+
+            if (!error) {
+                return;
+            }
+
+            lastError = error;
+            const message = String(error?.message || '').toLowerCase();
+            if (String(error?.code || '') === '42703' || message.includes('column') || message.includes('schema cache')) {
+                continue;
+            }
+        }
+
+        if (lastError) throw lastError;
+    };
+
+    const createLedgerMaster = async (rawName: string) => {
+        const ledgerName = String(rawName || '').trim();
+        if (!ledgerName || !clientId) return false;
+        if (ledgers.some((item) => item.toLowerCase() === ledgerName.toLowerCase())) {
+            return true;
+        }
+
+        try {
+            await insertWithVariants([
+                { company_id: clientId, owner_id: user?.id, name: ledgerName, parent: 'Sundry Debtors', parent_group: 'Sundry Debtors', status: 'active' },
+                { company_id: clientId, owner_id: user?.id, name: ledgerName, parent: 'Sundry Debtors', status: 'active' },
+                { company_id: clientId, owner_id: user?.id, name: ledgerName, status: 'active' },
+                { company_id: clientId, name: ledgerName, parent: 'Sundry Debtors', status: 'active' },
+                { company_id: clientId, name: ledgerName, status: 'active' },
+                { company_id: clientId, name: ledgerName },
+            ]);
+            setLedgers((prev) => Array.from(new Set([...prev, ledgerName])).sort((a, b) => a.localeCompare(b)));
+            setLedgerMetaByName((prev) => ({ ...prev, [ledgerName.toLowerCase()]: prev[ledgerName.toLowerCase()] || { name: ledgerName } }));
+            toast.success(`Ledger created: ${ledgerName}`);
+            return true;
+        } catch (error) {
+            console.warn('Failed to create ledger in cloud, keeping local mapping only', error);
+            setLedgers((prev) => Array.from(new Set([...prev, ledgerName])).sort((a, b) => a.localeCompare(b)));
+            setLedgerMetaByName((prev) => ({ ...prev, [ledgerName.toLowerCase()]: prev[ledgerName.toLowerCase()] || { name: ledgerName } }));
+            toast('Ledger name saved locally. Tally sync ke liye Tally master bhi ensure karo.');
+            return false;
+        }
+    };
+
+    const rememberHighConfidenceRows = (candidateRows: BankPreviewRow[]) => {
+        candidateRows.forEach((row) => {
+            const ledgerName = String(row.suggestion.ledgerName || '').trim();
+            if (!ledgerName) return;
+            if (row.suggestion.stage === 'saved_mapping' || row.suggestion.stage === 'manual') return;
+            if (Number(row.suggestion.confidence || 0) < 94) return;
+
+            const sourceText = deriveMappingKeyword(row.normalizedNarration || row.narration) || row.normalizedNarration || row.narration;
+            saveBankPartyMemory(sourceText, ledgerName, row.suggestion.confidence, `Auto-learned from ${row.suggestion.stage} match`);
+        });
+    };
+
 
     const unmatchedCount = useMemo(
         () => rows.filter((row) => row.suggestion.stage === 'unmatched').length,
@@ -259,10 +372,20 @@ export default function BankAutomationPage() {
 
         const localLedgers = getLocalLedgers(user.id, clientId);
         const localMappings = getLocalLedgerMappings(user.id, clientId);
+        const localSmartMappings = loadLocalSmartMappings();
+        const localSmartAsLegacy = localSmartMappings.map((mapping) => ({
+            userId: mapping.userId,
+            clientId: mapping.clientId,
+            normalizedKeyword: mapping.normalizedSource,
+            ledgerName: mapping.mappedDisplayName,
+            createdAt: mapping.updatedAt || mapping.createdAt,
+        }));
 
         setLoadingMasters(true);
         setLedgers(localLedgers);
-        setMappings(localMappings);
+        setLedgerMetaByName(Object.fromEntries(localLedgers.map((name) => [name.toLowerCase(), { name }])));
+        setSmartBankMappings(localSmartMappings);
+        setMappings(mergeLedgerMappings(localSmartAsLegacy, localMappings));
 
         if (!isCloudAllowed(activeMode)) {
             setLoadingMasters(false);
@@ -270,15 +393,22 @@ export default function BankAutomationPage() {
         }
 
         try {
-            const [cloudLedgers, cloudMappings] = await Promise.all([
+            const [cloudLedgerRows, cloudMappings] = await Promise.all([
                 fetchCloudLedgers(clientId),
                 fetchCloudLedgerMappings(clientId, user.id)
             ]);
 
+            const cloudLedgers = cloudLedgerRows.map((item) => item.name);
             const mergedLedgers = Array.from(new Set([...localLedgers, ...cloudLedgers]));
-            const mergedMappings = mergeLedgerMappings(cloudMappings, localMappings);
+            const mergedMappings = mergeLedgerMappings(mergeLedgerMappings(cloudMappings, localSmartAsLegacy), localMappings);
+            const nextLedgerMeta = Object.fromEntries([
+                ...localLedgers.map((name) => [name.toLowerCase(), { name }]),
+                ...cloudLedgerRows.map((item) => [item.name.toLowerCase(), item]),
+            ]);
 
             setLedgers(mergedLedgers);
+            setLedgerMetaByName(nextLedgerMeta as Record<string, { id?: string; name: string }>);
+            setSmartBankMappings(localSmartMappings);
             setMappings(mergedMappings);
 
             if (mergedLedgers.length > 0) {
@@ -411,6 +541,7 @@ export default function BankAutomationPage() {
 
         saveLocalLedgerMapping(localMapping);
         setMappings((prev) => mergeLedgerMappings([localMapping], prev));
+        saveBankPartyMemory(targetKeyword || targetRow.normalizedNarration || targetRow.narration, ledgerName, 100, 'Manual bank party mapping');
 
         if (cloudAllowed) {
             try {
@@ -425,6 +556,18 @@ export default function BankAutomationPage() {
 
         const impactedRows = updatedRows.filter((row) => row.suggestion.ledgerName === ledgerName).length;
         toast.success(`Ledger mapping saved (applied to ${impactedRows} rows)`);
+    };
+
+    const onCreateLedgerForRow = async (rowId: string) => {
+        const targetRow = rows.find((row) => row.id === rowId);
+        if (!targetRow) return;
+
+        const defaultName = deriveMappingKeyword(targetRow.normalizedNarration || targetRow.narration) || targetRow.narration;
+        const ledgerName = window.prompt('Enter new party ledger name', defaultName);
+        if (!ledgerName || !ledgerName.trim()) return;
+
+        await createLedgerMaster(ledgerName);
+        await onManualLedgerChange(rowId, ledgerName.trim());
     };
 
     const generateTallyXml = async () => {
@@ -490,6 +633,8 @@ export default function BankAutomationPage() {
         setQueueing(true);
         try {
             const today = new Date().toISOString().slice(0, 10);
+            rememberHighConfidenceRows(usableRows);
+
             const pendingRows = usableRows.map((row) => {
                 const isPayment = row.debit > 0;
                 const amount = Number(isPayment ? row.debit : row.credit) || 0;
@@ -611,7 +756,7 @@ export default function BankAutomationPage() {
                             ? cloudAllowed
                                 ? 'Running local matching with cloud fallback...'
                                 : 'Running local matching...'
-                            : `${rows.length} rows parsed, ${unmatchedCount} need manual review`}
+                            : `${rows.length} rows parsed, ${unmatchedCount} need manual review, ${smartBankMappings.length} saved mappings`}
                 </div>
             </div>
 
@@ -650,18 +795,27 @@ export default function BankAutomationPage() {
                                         </span>
                                     </td>
                                     <td className="px-3 py-2">
-                                        <select
-                                            value={row.suggestion.ledgerName}
-                                            onChange={(event) => onManualLedgerChange(row.id, event.target.value)}
-                                            className="w-[220px] px-2 py-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)]"
-                                        >
-                                            <option value="">Select ledger</option>
-                                            {ledgers.map((ledger) => (
-                                                <option key={`${row.id}-${ledger}`} value={ledger}>
-                                                    {ledger}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <div className="flex flex-col gap-2">
+                                            <select
+                                                value={row.suggestion.ledgerName}
+                                                onChange={(event) => onManualLedgerChange(row.id, event.target.value)}
+                                                className="w-[220px] px-2 py-1.5 rounded-md border border-[var(--border)] bg-[var(--surface)]"
+                                            >
+                                                <option value="">Select ledger</option>
+                                                {ledgers.map((ledger) => (
+                                                    <option key={`${row.id}-${ledger}`} value={ledger}>
+                                                        {ledger}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={() => onCreateLedgerForRow(row.id)}
+                                                className="w-[220px] px-2 py-1.5 rounded-md border border-[var(--border)] text-xs font-semibold text-[var(--on-surface)] hover:bg-[var(--surface-variant)]"
+                                            >
+                                                Create New Ledger
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

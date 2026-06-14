@@ -38,6 +38,7 @@
                 <StackPanel x:Name="FullNamePanel" Visibility="Collapsed" Margin="0,0,0,15">
                     <TextBlock Text="Full Name" Foreground="#374151" FontWeight="SemiBold" Margin="0,0,0,5"/>
                     <TextBox x:Name="FullNameBox" Height="42" Padding="12,10" FontSize="14"
+                             InputMethod.IsInputMethodEnabled="False"
                              BorderBrush="#D1D5DB" BorderThickness="1">
                         <TextBox.Resources>
                             <Style TargetType="Border">
@@ -51,6 +52,7 @@
                 <StackPanel Margin="0,0,0,15">
                     <TextBlock Text="Email" Foreground="#374151" FontWeight="SemiBold" Margin="0,0,0,5"/>
                     <TextBox x:Name="EmailBox" Height="42" Padding="12,10" FontSize="14"
+                             InputMethod.IsInputMethodEnabled="False"
                              BorderBrush="#D1D5DB" BorderThickness="1">
                         <TextBox.Resources>
                             <Style TargetType="Border">
@@ -64,6 +66,7 @@
                 <StackPanel Margin="0,0,0,20">
                     <TextBlock Text="Password" Foreground="#374151" FontWeight="SemiBold" Margin="0,0,0,5"/>
                     <PasswordBox x:Name="PasswordBox" Height="42" Padding="12,10" FontSize="14"
+                                 InputMethod.IsInputMethodEnabled="False"
                                  BorderBrush="#D1D5DB" BorderThickness="1">
                         <PasswordBox.Resources>
                             <Style TargetType="Border">

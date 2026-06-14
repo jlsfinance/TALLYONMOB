@@ -1,19 +1,52 @@
 const CURRENT_USER_ID_KEY = 'currentUserId';
 const GEMINI_KEY_PREFIX = 'gemini_api_key_user_';
 
+function readFromStorage(storage: Storage | null, key: string): string {
+    if (!storage) return '';
+
+    try {
+        return String(storage.getItem(key) || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+function writeToStorage(storage: Storage | null, key: string, value: string) {
+    if (!storage) return;
+
+    try {
+        if (value) {
+            storage.setItem(key, value);
+        } else {
+            storage.removeItem(key);
+        }
+    } catch {
+    }
+}
+
 function safeRead(key: string): string {
     if (typeof window === 'undefined') return '';
-    return String(localStorage.getItem(key) || '').trim();
+
+    const sessionValue = readFromStorage(window.sessionStorage, key);
+    if (sessionValue) {
+        return sessionValue;
+    }
+
+    const legacyValue = readFromStorage(window.localStorage, key);
+    if (legacyValue) {
+        writeToStorage(window.sessionStorage, key, legacyValue);
+        writeToStorage(window.localStorage, key, '');
+    }
+
+    return legacyValue;
 }
 
 function safeWrite(key: string, value: string) {
     if (typeof window === 'undefined') return;
+
     const normalized = String(value || '').trim();
-    if (normalized) {
-        localStorage.setItem(key, normalized);
-    } else {
-        localStorage.removeItem(key);
-    }
+    writeToStorage(window.sessionStorage, key, normalized);
+    writeToStorage(window.localStorage, key, '');
 }
 
 function resolveUserId(userId?: string | null): string {

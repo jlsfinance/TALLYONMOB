@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { VariableSizeList as List } from 'react-window';
 import { useAuth } from '../contexts/AuthContext';
 import { ledgerApi, supabase } from '../lib/insforge';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
@@ -10,6 +12,7 @@ import {
 import {
     Badge, Spinner, EmptyState
 } from '../components/ui/GlassUI';
+import { SkeletonTable } from '../components/ui/Skeleton';
 import TransactionSlider from '../components/shared/TransactionSlider';
 import { CompactYearFilter } from '../components/shared/CompactYearFilter';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
@@ -19,8 +22,6 @@ export default function LedgersPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [ledgers, setLedgers] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState(searchParams.get('group') || 'all');
 
@@ -33,53 +34,62 @@ export default function LedgersPage() {
     };
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [stats, setStats] = useState({ total: 0, debit: 0, credit: 0, count: 0 });
     const [partyTransactions, setPartyTransactions] = useState<Record<string, any[]>>({});
 
-    const groupFilters = [
-        { key: 'all', label: 'All', icon: <Users size={12} /> },
-        { key: 'Sundry Debtors', label: 'Customers', icon: <Wallet size={12} /> },
-        { key: 'Sundry Creditors', label: 'Suppliers', icon: <CreditCard size={12} /> },
-        { key: 'Bank Accounts', label: 'Banks', icon: <Building2 size={12} /> },
-    ];
+    const handleExportCSV = () => {
+        const headers = [
+            { key: 'name', label: 'Ledger Name' },
+            { key: 'parent_group', label: 'Group' },
+            { key: 'opening_balance', label: 'Opening Balance' },
+            { key: 'current_balance', label: 'Current Balance' },
+            { key: 'gstin', label: 'GSTIN' },
+            { key: 'email', label: 'Email' },
+            { key: 'phone', label: 'Phone' }
+        ];
+        import('../lib/exportToCSV').then(({ exportToCSV }) => {
+            exportToCSV(
+                filteredLedgers,
+                headers,
+                `Ledgers_${selectedCompany.name}_${selectedFy}.csv`
+            );
+        }).catch(err => {
+            toast.error('Failed to export: ' + err.message);
+        });
+    };
 
-    useEffect(() => {
-        if (selectedCompany) loadLedgers();
-    }, [selectedCompany, selectedGroup]);
-
-    const loadLedgers = async () => {
-        setLoading(true);
-        try {
+    const { data: ledgersData, isLoading: ledgersLoading } = useQuery(
+        ['ledgers', selectedCompany?.id, selectedGroup],
+        async () => {
             const { data, error } = await ledgerApi.list(
                 selectedCompany.id,
                 (selectedGroup !== 'all' && selectedGroup !== 'recent') ? selectedGroup : null
             );
-
-            if (error) console.error('Ledger load error:', error);
-
-            let sortedData = data || [];
-
-            const debitTotal = sortedData.filter((l: any) => (l.current_balance || 0) > 0).reduce((s: number, l: any) => s + (l.current_balance || 0), 0);
-            const creditTotal = sortedData.filter((l: any) => (l.current_balance || 0) < 0).reduce((s: number, l: any) => s + Math.abs(l.current_balance || 0), 0);
-
-            setStats({
-                total: debitTotal - creditTotal,
-                debit: debitTotal,
-                credit: creditTotal,
-                count: sortedData.length
-            });
-
-            setLedgers(sortedData);
-
-            if (sortedData.length > 0) {
-                // Increased limit from 15 to 100 based on user feedback
-                fetchRecentTransactions(sortedData.slice(0, 100));
+            if (error) throw error;
+            return data || [];
+        },
+        {
+            enabled: !!selectedCompany?.id,
+            onSuccess: (data) => {
+                if (data.length > 0) {
+                    fetchRecentTransactions(data.slice(0, 100));
+                }
             }
-        } catch (error) {
-            console.error('Error in loadLedgers:', error);
         }
-        setLoading(false);
-    };
+    );
+
+    const ledgers = ledgersData || [];
+    const loading = ledgersLoading;
+
+    const stats = useMemo(() => {
+        const debitTotal = ledgers.filter((l: any) => (l.current_balance || 0) > 0).reduce((s: number, l: any) => s + (l.current_balance || 0), 0);
+        const creditTotal = ledgers.filter((l: any) => (l.current_balance || 0) < 0).reduce((s: number, l: any) => s + Math.abs(l.current_balance || 0), 0);
+        return {
+            total: debitTotal - creditTotal,
+            debit: debitTotal,
+            credit: creditTotal,
+            count: ledgers.length
+        };
+    }, [ledgers]);
 
     const fetchRecentTransactions = async (visibleLedgers: any[]) => {
         const ledgerNames = visibleLedgers.map(l => l.name);
@@ -133,6 +143,19 @@ export default function LedgersPage() {
         );
     }, [ledgers, searchTerm]);
 
+    const getItemSize = (index: number) => {
+        const ledger = filteredLedgers[index];
+        const transactions = partyTransactions[ledger.name] || [];
+        return transactions.length > 0 ? 132 : 68;
+    };
+
+    // Reset VariableSizeList sizes cache when data or transaction load changes
+    useEffect(() => {
+        if (listRef.current) {
+            listRef.current.resetAfterIndex(0);
+        }
+    }, [filteredLedgers, partyTransactions]);
+
     const [showSearch, setShowSearch] = useState(false);
 
     if (!selectedCompany) return null;
@@ -179,9 +202,16 @@ export default function LedgersPage() {
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+                <div className="flex items-center gap-2">
+                    <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
+                    <button
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] border border-[var(--border)] rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-wider transition-all"
+                    >
+                        Export CSV
+                    </button>
+                </div>
             </HeaderPortal>
-
 
             {/* High-Density Filters */}
             <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
@@ -211,56 +241,62 @@ export default function LedgersPage() {
             {/* Parties List */}
             {
                 loading ? (
-                    <div className="flex flex-col items-center justify-center py-24">
-                        <Spinner size="md" />
-                        <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)] mt-4">Crunching Balances...</p>
-                    </div>
+                    <SkeletonTable rows={8} cols={4} />
                 ) : filteredLedgers.length === 0 ? (
                     <EmptyState icon={<Users size={48} />} title="No Parties Found" description="Try clarifying your search" />
                 ) : (
-                    <div className="grid grid-cols-1 gap-1.5">
-                        {filteredLedgers.map((ledger: any, idx) => {
-                            const bal = formatCurrency(ledger.current_balance);
-                            const transactions = partyTransactions[ledger.name] || [];
+                    <div className="h-[650px] overflow-hidden">
+                        <List
+                            ref={listRef}
+                            height={650}
+                            itemCount={filteredLedgers.length}
+                            itemSize={getItemSize}
+                            width="100%"
+                        >
+                            {({ index, style }) => {
+                                const ledger = filteredLedgers[index];
+                                const bal = formatCurrency(ledger.current_balance);
+                                const transactions = partyTransactions[ledger.name] || [];
 
-                            return (
-                                <motion.div
-                                    key={ledger.id || idx}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: (idx % 20) * 0.02 }}
-                                    className="group bg-[var(--surface-variant)]/40 border border-[var(--border)] rounded-2xl overflow-hidden hover:border-[var(--primary)]/40 transition-all"
-                                >
-                                    <div className="p-2.5" onClick={() => navigate(`/ledgers/${ledger.id}`)}>
-                                        <div className="flex justify-between items-center gap-3">
-                                            <div className="min-w-0 flex-1">
-                                                <h3 className="text-[10px] md:text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-0.5">{ledger.name || `Ledger (${ledger.parent || 'Unknown Group'})`}</h3>
-                                                {/* Prominent Balance Below Name */}
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className={`text-[12px] md:text-base font-black ${bal.color}`}>
-                                                        {bal.formatted}
-                                                    </span>
-                                                    <Badge variant={ledger.current_balance >= 0 ? 'info' : 'error'} className="text-[7px] md:text-[8px] font-black px-1 md:px-1.5 py-0 h-3 md:h-4 border-none">
-                                                        {bal.suffix}
-                                                    </Badge>
+                                return (
+                                    <div style={style} className="pr-2 pb-1.5">
+                                        <motion.div
+                                            key={ledger.id || index}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="group bg-[var(--surface-variant)]/40 border border-[var(--border)] rounded-2xl overflow-hidden hover:border-[var(--primary)]/40 transition-all"
+                                        >
+                                            <div className="p-2.5" onClick={() => navigate(`/ledgers/${ledger.id}`)}>
+                                                <div className="flex justify-between items-center gap-3">
+                                                    <div className="min-w-0 flex-1">
+                                                        <h3 className="text-[10px] md:text-sm font-black text-[var(--on-surface)] uppercase truncate tracking-tight mb-0.5">{ledger.name || `Ledger (${ledger.parent || 'Unknown Group'})`}</h3>
+                                                        {/* Prominent Balance Below Name */}
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`text-[12px] md:text-base font-black ${bal.color}`}>
+                                                                {bal.formatted}
+                                                            </span>
+                                                            <Badge variant={ledger.current_balance >= 0 ? 'info' : 'error'} className="text-[7px] md:text-[8px] font-black px-1 md:px-1.5 py-0 h-3 md:h-4 border-none">
+                                                                {bal.suffix}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                    <button className="p-1 md:p-2 rounded-lg md:rounded-xl bg-[var(--surface-active)] text-[var(--on-surface-variant)] border border-[var(--border)]">
+                                                        <ChevronRight size={10} className="md:w-[14px] md:h-[14px]" />
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <button className="p-1 md:p-2 rounded-lg md:rounded-xl bg-[var(--surface-active)] text-[var(--on-surface-variant)] border border-[var(--border)]">
-                                                <ChevronRight size={10} className="md:w-[14px] md:h-[14px]" />
-                                            </button>
-                                        </div>
 
+                                            {/* Compact Transaction Slider Integrated */}
+                                            {transactions.length > 0 && (
+                                                <div className="-mt-1">
+                                                    <TransactionSlider transactions={transactions} compact={true} />
+                                                </div>
+                                            )}
+                                        </motion.div>
                                     </div>
-
-                                    {/* Compact Transaction Slider Integrated */}
-                                    {transactions.length > 0 && (
-                                        <div className="-mt-1">
-                                            <TransactionSlider transactions={transactions} compact={true} />
-                                        </div>
-                                    )}
-                                </motion.div>
-                            );
-                        })}
+                                );
+                            }}
+                        </List>
                     </div>
                 )
             }

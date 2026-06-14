@@ -1,26 +1,27 @@
 require('dotenv').config();
-const { createClient } = require('@insforge/sdk');
+const { createClient } = require('@supabase/supabase-js');
 
-// We use the admin API key for the backend to bypass RLS and perform syncs successfully.
-const API_URL = 'https://3uq8fv8r.ap-southeast.insforge.app';
-const API_KEY = 'ik_9bef5476d1f848d9f06212a645525293';
+// Use environment variables for Supabase connection
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!API_URL || !API_KEY) {
-    console.error('❌ InsForge Environment variables missing.');
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('❌ Supabase environment variables missing (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).');
     process.exit(1);
 }
 
-// createClient expects object with baseUrl and anonKey
-// But InsForge admin key can also be passed as anonKey to get admin privileges
-const supabase = createClient({
-    baseUrl: API_URL,
-    anonKey: API_KEY, // Using admin key
+// Service role key bypasses RLS — use only on the backend for sync operations
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
 });
 
-// Appwrite polyfills to avoid crashing legacy requires
+// Legacy polyfills (unused, kept for backwards compat with any require references)
 const databases = {};
 const users = {};
 const client = {};
-const databaseId = 'insforge_postgres';
+const databaseId = 'supabase_postgres';
 
 module.exports = { supabase, databases, users, client, databaseId };

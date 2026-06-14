@@ -165,6 +165,7 @@ namespace TallySyncApp.Models
         public int MaxRetries { get; set; } = 3;
         public int RetryDelaySeconds { get; set; } = 30;
         public bool EnableVoucherSync { get; set; } = true;
+        public bool AllowAccountingFallbackForInventoryFailure { get; set; } = false;
         public string TelegramBotToken { get; set; } = string.Empty;
     }
 
@@ -236,3 +237,5 @@ namespace TallySyncApp.Models
         public string? LastAlterId { get; set; }
     }
 }
+
+

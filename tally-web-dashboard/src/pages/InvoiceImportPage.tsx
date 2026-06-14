@@ -12,6 +12,7 @@ import { getAutomationMode, isCloudAllowed, setAutomationMode as persistAutomati
 import { getLocalInvoices, mergeInvoices, saveLocalInvoice, type LocalInvoiceRecord } from '@/features/automation/localStore';
 import { getUserGeminiApiKey } from '@/lib/userGeminiKey';
 import { callGemini } from '@/lib/GeminiService';
+import { normalizeDocumentDateInput } from '@/features/automation/dateParsing';
 
 const EMPTY_INVOICE: InvoiceDraft = {
     gstin: '',
@@ -74,22 +75,6 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
     };
 }
 
-function normalizeDateInput(value: string): string {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-        return raw;
-    }
-
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) {
-        return '';
-    }
-
-    return parsed.toISOString().slice(0, 10);
-}
-
 async function fetchImportedInvoicesFromCloud(clientId: string, userId: string): Promise<LocalInvoiceRecord[]> {
     const { data, error } = await supabase
         .from('imported_invoices')
@@ -117,7 +102,7 @@ async function fetchImportedInvoicesFromCloud(clientId: string, userId: string):
 }
 
 async function upsertImportedInvoiceToCloud(clientId: string, userId: string, record: LocalInvoiceRecord) {
-    const invoiceDate = normalizeDateInput(record.date) || new Date().toISOString().slice(0, 10);
+    const invoiceDate = normalizeDocumentDateInput(record.date) || new Date().toISOString().slice(0, 10);
 
     const { data: existing, error: existingError } = await supabase
         .from('imported_invoices')
@@ -625,13 +610,3 @@ export default function InvoiceImportPage() {
         </div>
     );
 }
-
-
-
-
-
-
-
-
-
-

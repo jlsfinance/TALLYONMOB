@@ -1,19 +1,15 @@
-import { useNavigate } from 'react-router-dom';
+﻿import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { Smartphone, Receipt, ArrowRight, LogOut } from 'lucide-react';
 
 export default function ModuleSelectionPage() {
     const { setAppMode, signOut } = useAuth() as any;
-    const navigate = useNavigate();
+    const { navigate } = useSafeNavigate();
 
     const handleSelect = (mode: 'tally' | 'billing') => {
         setAppMode(mode);
-        if (mode === 'tally') {
-            navigate('/select-company');
-        } else {
-            navigate('/dashboard');
-        }
+        navigate('/select-company');
     };
 
     const modules = [
@@ -44,7 +40,6 @@ export default function ModuleSelectionPage() {
     return (
         <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-6 transition-colors duration-300">
 
-            {/* Header */}
             <motion.div
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -58,7 +53,6 @@ export default function ModuleSelectionPage() {
                 </p>
             </motion.div>
 
-            {/* Module Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-3xl">
                 {modules.map((mod, i) => (
                     <motion.div
@@ -70,21 +64,17 @@ export default function ModuleSelectionPage() {
                         className="cursor-pointer group"
                     >
                         <div className={`bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-7 transition-all duration-200 ${mod.hoverBorder} hover:shadow-[var(--shadow-lg)] relative`}>
-                            {/* Tag */}
                             <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold mb-5 ${mod.tagColor}`}>
                                 {mod.tag}
                             </span>
 
-                            {/* Icon */}
                             <div className={`w-14 h-14 rounded-[var(--radius-md)] ${mod.iconBg} ${mod.iconColor} flex items-center justify-center mb-5 group-hover:scale-105 transition-transform`}>
                                 {mod.icon}
                             </div>
 
-                            {/* Content */}
                             <h2 className="text-lg font-bold text-[var(--on-surface)] mb-2">{mod.title}</h2>
                             <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">{mod.desc}</p>
 
-                            {/* CTA */}
                             <div className="flex items-center gap-1.5 text-[var(--primary)] text-sm font-semibold group-hover:gap-3 transition-all">
                                 Get Started <ArrowRight size={15} />
                             </div>
@@ -93,7 +83,6 @@ export default function ModuleSelectionPage() {
                 ))}
             </div>
 
-            {/* Back to Login */}
             <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -107,3 +96,4 @@ export default function ModuleSelectionPage() {
         </div>
     );
 }
+

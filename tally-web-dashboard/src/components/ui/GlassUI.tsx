@@ -91,10 +91,10 @@ export const Card: React.FC<CardProps> = ({
 }) => {
     const paddingStyles = {
         none: '',
-        sm: 'p-4',
-        md: 'p-6',
-        lg: 'p-8',
-        xl: 'p-10',
+        sm: 'p-3 md:p-4',
+        md: 'p-4 md:p-6',
+        lg: 'p-6 md:p-8',
+        xl: 'p-8 md:p-10',
     };
 
     return (
@@ -167,7 +167,8 @@ export const StatCard: React.FC<StatCardProps> = ({
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
             onClick={onClick}
             className={`
-                relative overflow-hidden rounded-[var(--radius-xl)] p-6
+                relative overflow-hidden rounded-[var(--radius-xl)] p-4 md:p-6
+                min-w-0 w-full
                 ${isSolid
                     ? `${solidBgStyles[color]} shadow-lg`
                     : `bg-[var(--surface)] border border-[var(--border)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] hover:border-[var(--primary-light)]`

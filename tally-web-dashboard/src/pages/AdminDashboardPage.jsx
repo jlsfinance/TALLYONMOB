@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import React, { useState, useEffect } from 'react';
+import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '../contexts/AuthContext';
 import {
     Users,
@@ -24,15 +24,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/insforge';
 import toast from 'react-hot-toast';
-
-const ADMIN_EMAILS = [
-    'lovneetrathi@gmail.com',
-    import.meta.env.VITE_SUPPORT_EMAIL?.toLowerCase()
-].filter(Boolean); // Super admins
+import { getAdminAccessMessage, hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 
 const AdminDashboardPage = () => {
-    const { user, signOut } = useAuth();
-    const navigate = useNavigate();
+    const { user, signOut, selectCompany, setAppMode } = useAuth();
+    const { navigate } = useSafeNavigate();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -68,17 +64,17 @@ const AdminDashboardPage = () => {
             return;
         }
 
-        const checkAdmin = ADMIN_EMAILS.includes(user.email?.toLowerCase());
-        setIsAdmin(checkAdmin);
+        const allowed = isAdminConsoleEnabled() && hasAdminAccess(user);
+        setIsAdmin(allowed);
 
-        if (!checkAdmin) {
-            toast.error('Access denied. Admin only.');
+        if (!allowed) {
+            toast.error(getAdminAccessMessage(user));
             navigate('/');
             return;
         }
 
         loadData();
-    }, [user]);
+    }, [navigate, user]);
 
     const loadData = async () => {
         setLoading(true);
@@ -178,10 +174,9 @@ const AdminDashboardPage = () => {
 
     // Switch admin to browse a specific company's data in the main app
     const switchToCompany = (company) => {
-        // Store the company in localStorage so AuthContext picks it up
-        localStorage.setItem('selectedCompanyId', company.id);
-        localStorage.setItem('appMode', 'tally');
-        window.location.href = '/dashboard';
+        selectCompany(company);
+        setAppMode('tally');
+        navigate('/dashboard');
     };
 
     // Load full company data with FULL access (no 100 limit)
@@ -286,13 +281,25 @@ const AdminDashboardPage = () => {
         }).format(amount || 0);
     };
 
+    if (loading) {
+        return (
+            <div className="admin-page">
+                <div className="access-denied">
+                    <RefreshCw size={48} className="spinning" />
+                    <h2>Loading admin console</h2>
+                    <p>Checking access and loading data...</p>
+                </div>
+            </div>
+        );
+    }
+
     if (!isAdmin) {
         return (
             <div className="admin-page">
                 <div className="access-denied">
                     <Shield size={64} />
                     <h2>Access Denied</h2>
-                    <p>This area is for administrators only.</p>
+                    <p>{getAdminAccessMessage(user)}</p>
                 </div>
             </div>
         );
@@ -319,7 +326,7 @@ const AdminDashboardPage = () => {
                         <div>
                             <h2>{selectedCompany.name}</h2>
                             <p>GSTIN: {selectedCompany.gstin || 'N/A'} | Phone: {selectedCompany.phone || 'N/A'} | Email: {selectedCompany.email || 'N/A'}</p>
-                            {selectedCompany.address && <p style={{ fontSize: '12px', opacity: 0.7, marginTop: 4 }}>📍 {selectedCompany.address}</p>}
+                            {selectedCompany.address && <p style={{ fontSize: '12px', opacity: 0.7, marginTop: 4 }}>ðŸ“ {selectedCompany.address}</p>}
                         </div>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             <button className="action-btn view" style={{ padding: '8px 16px' }} onClick={() => switchToCompany(selectedCompany)}>
@@ -720,7 +727,7 @@ const AdminDashboardPage = () => {
                                         <td className="user-id">
                                             <div>
                                                 <strong>{u.fullName || u.id.substring(0, 12) + '...'}</strong>
-                                                {u.phone && <small style={{ display: 'block', opacity: 0.6 }}>📱 {u.phone}</small>}
+                                                {u.phone && <small style={{ display: 'block', opacity: 0.6 }}>ðŸ“± {u.phone}</small>}
                                             </div>
                                         </td>
                                         <td>{u.email || 'N/A'}</td>
@@ -796,14 +803,17 @@ const AdminDashboardPage = () => {
                         </div>
 
                         <div className="settings-card large">
-                            <h3><Shield size={20} /> Admin Users</h3>
+                            <h3><Shield size={20} /> Admin Access Policy</h3>
                             <div className="admin-list">
-                                {ADMIN_EMAILS.map(email => (
-                                    <div key={email} className="admin-item">
-                                        <span className="email">{email}</span>
-                                        <span className="role-badge">Super Admin</span>
+                                <div className="admin-item" style={{ alignItems: 'flex-start', gap: 12 }}>
+                                    <div>
+                                        <div className="email" style={{ fontWeight: 600 }}>Console access is deny-by-default</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: 6, lineHeight: 1.5 }}>
+                                            Enable the admin console with VITE_ENABLE_ADMIN_CONSOLE=true and then allow access via VITE_ADMIN_EMAILS or user metadata role set to admin or super_admin.
+                                        </div>
                                     </div>
-                                ))}
+                                    <span className="role-badge">Protected</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1216,4 +1226,5 @@ const AdminDashboardPage = () => {
 };
 
 export default AdminDashboardPage;
+
 

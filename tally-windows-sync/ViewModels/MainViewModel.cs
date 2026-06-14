@@ -1,6 +1,7 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -68,7 +69,7 @@ namespace TallySyncApp.ViewModels
             set { _licenseStatus = value; OnPropertyChanged(); }
         }
 
-        private string _licensePlan = "—";
+        private string _licensePlan = "�";
         public string LicensePlan
         {
             get => _licensePlan;
@@ -136,6 +137,19 @@ namespace TallySyncApp.ViewModels
             
             // Initial functionality check
             Task.Run(async () => await LoadLogs());
+            try
+            {
+                var exePath = Environment.ProcessPath;
+                var buildStamp = !string.IsNullOrWhiteSpace(exePath) && File.Exists(exePath)
+                    ? File.GetLastWriteTime(exePath).ToString("yyyy-MM-dd HH:mm:ss")
+                    : "unknown";
+
+                Log($"Build stamp: {buildStamp} | Exe: {exePath}");
+            }
+            catch
+            {
+                // Ignore build stamp logging errors.
+            }
         }
 
         private async Task StartSync()
@@ -143,7 +157,7 @@ namespace TallySyncApp.ViewModels
             // Check license first
             if (!IsLicenseValid)
             {
-                Log("âš ï¸ License not validated. Please login first.");
+                Log("License not validated. Please login first.");
                 MessageBox.Show(
                     "Please validate your license before syncing.\nGo to Settings tab and click 'Validate License'.",
                     "License Required",
@@ -156,6 +170,21 @@ namespace TallySyncApp.ViewModels
 
             try
             {
+                Log("Running preflight connection check...");
+                var (tallyOk, serverOk, error) = await _syncManager.TestConnectionsAsync();
+                if (!tallyOk || !serverOk)
+                {
+                    var message = "Auto-sync cannot start until both Tally and Cloud are connected.";
+                    if (!string.IsNullOrWhiteSpace(error))
+                    {
+                        message += "\n\n" + error;
+                    }
+
+                    Log(message);
+                    MessageBox.Show(message, "Connection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
                 _syncManager.StartSync();
                 IsSyncing = true;
                 Log("Background sync started.");
@@ -183,14 +212,7 @@ namespace TallySyncApp.ViewModels
             await LoadLogs();
             IsSyncing = false;
 
-            string summaryMsg = string.IsNullOrWhiteSpace(_syncManager.LastSyncSummary) 
-                                ? "Sync completed successfully with no new records." 
-                                : "Sync Completed Successfully!\n\n" + _syncManager.LastSyncSummary;
-            
-            Application.Current.Dispatcher.Invoke(() => 
-            {
-                MessageBox.Show(summaryMsg, "Sync Summary", MessageBoxButton.OK, MessageBoxImage.Information);
-            });
+            ShowSyncResult("Sync", "Sync completed successfully with no new records.");
         }
 
         private async Task ForceResync()
@@ -198,7 +220,7 @@ namespace TallySyncApp.ViewModels
             if (!await CheckSerialAndConfirmAsync()) return;
 
             var res = MessageBox.Show(
-                "âš ï¸ FORCE FULL RESYNC WARNING âš ï¸\n\n" +
+                "⚠️ FORCE FULL RESYNC WARNING ⚠️\n\n" +
                 "This will restart the sync process from scratch.\n" +
                 "It will re-fetch ALL Master Data and ALL Vouchers from Tally.\n" +
                 "This process may take several minutes depending on data volume.\n\n" +
@@ -210,18 +232,32 @@ namespace TallySyncApp.ViewModels
             if (res != MessageBoxResult.Yes) return;
 
             IsSyncing = true;
-            Log("ðŸ”„ Starting FORCE FULL RESYNC...");
+            Log("Starting FORCE FULL RESYNC...");
             await _syncManager.RunManualSyncAsync(forceResync: true);
             await LoadLogs();
             IsSyncing = false;
 
-            string summaryMsg = string.IsNullOrWhiteSpace(_syncManager.LastSyncSummary) 
-                                ? "Resync completed successfully with no records processed." 
-                                : "Force Resync Completed Successfully!\n\n" + _syncManager.LastSyncSummary;
-            
-            Application.Current.Dispatcher.Invoke(() => 
+            ShowSyncResult("Resync", "Resync completed successfully with no records processed.");
+        }
+
+
+        private void ShowSyncResult(string titlePrefix, string emptySuccessMessage)
+        {
+            var status = _syncManager.Status;
+            var failed = status.State == SyncState.Error;
+            var summaryMsg = failed
+                ? $"{titlePrefix} failed.\n\n{status.Error ?? status.Message}"
+                : string.IsNullOrWhiteSpace(_syncManager.LastSyncSummary)
+                    ? emptySuccessMessage
+                    : $"{titlePrefix} completed successfully!\n\n{_syncManager.LastSyncSummary}";
+
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                MessageBox.Show(summaryMsg, "Resync Summary", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(
+                    summaryMsg,
+                    failed ? $"{titlePrefix} Failed" : $"{titlePrefix} Summary",
+                    MessageBoxButton.OK,
+                    failed ? MessageBoxImage.Warning : MessageBoxImage.Information);
             });
         }
 
@@ -230,12 +266,12 @@ namespace TallySyncApp.ViewModels
             var authService = App.AuthService;
             if (authService == null || !authService.IsLoggedIn || string.IsNullOrEmpty(authService.CurrentSession?.Email))
             {
-                Log("âš ï¸ Please login first before validating license.");
+                Log("⚠️ Please login first before validating license.");
                 MessageBox.Show("Please login first in the Settings tab.", "Login Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            Log("ðŸ”‘ Validating license...");
+            Log("🔑 Validating license...");
             LicenseStatus = "Validating...";
 
             // Get Tally serial
@@ -256,7 +292,7 @@ namespace TallySyncApp.ViewModels
             {
                 // The user is already logged in via AuthService, which means tokens are valid
                 // We can skip password-based license validation and just check via auth token
-                Log("âš ï¸ Using existing auth session for license check.");
+                Log("⚠️ Using existing auth session for license check.");
             }
 
             // If we don't have a password, we'll use the existing session tokens
@@ -264,10 +300,10 @@ namespace TallySyncApp.ViewModels
             {
                 // Validate directly via token-based check
                 IsLicenseValid = true;
-                LicenseStatus = "âœ… Active (Session)";
-                LicensePlan = "ðŸ†“ Trial";
+                LicenseStatus = "✅ Active (Session)";
+                LicensePlan = "🆓 Trial";
                 LicenseDaysRemaining = 7;
-                Log("âœ… License validated via existing auth session.");
+                Log("✅ License validated via existing auth session.");
                 return;
             }
             
@@ -276,14 +312,14 @@ namespace TallySyncApp.ViewModels
             if (result.IsValid)
             {
                 IsLicenseValid = true;
-                LicenseStatus = "âœ… Active";
-                LicensePlan = result.IsPro ? "â­ Pro" : "ðŸ†“ Trial";
+                LicenseStatus = "✅ Active";
+                LicensePlan = result.IsPro ? "⭐ Pro" : "🆓 Trial";
                 LicenseDaysRemaining = result.DaysRemaining;
-                Log($"âœ… License valid! Plan: {result.Plan}, Days remaining: {result.DaysRemaining}");
+                Log($"✅ License valid! Plan: {result.Plan}, Days remaining: {result.DaysRemaining}");
 
                 if (result.ShouldShowUpgradePrompt)
                 {
-                    Log($"âš ï¸ Trial expiring soon! Only {result.DaysRemaining} day(s) left.");
+                    Log($"⚠️ Trial expiring soon! Only {result.DaysRemaining} day(s) left.");
                     MessageBox.Show(
                         $"Your free trial expires in {result.DaysRemaining} day(s)!\nUpgrade to Pro for unlimited access.",
                         "Trial Expiring Soon",
@@ -294,12 +330,12 @@ namespace TallySyncApp.ViewModels
             else
             {
                 IsLicenseValid = false;
-                LicenseStatus = $"âŒ {result.Error}";
-                LicensePlan = "â€”";
+                LicenseStatus = $"❌ {result.Error}";
+                LicensePlan = "—";
                 LicenseDaysRemaining = 0;
                 
                 string userMsg = LicenseService.GetUserMessage(result);
-                Log($"âŒ License validation failed: {result.Error}");
+                Log($"❌ License validation failed: {result.Error}");
                 MessageBox.Show(userMsg, "License Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -311,23 +347,23 @@ namespace TallySyncApp.ViewModels
                 if (!string.IsNullOrEmpty(ConsoleOutput))
                 {
                     Clipboard.SetText(ConsoleOutput);
-                    Log("ðŸ“‹ Logs copied to clipboard!");
+                    Log("📋 Logs copied to clipboard!");
                 }
                 else
                 {
-                    Log("âš ï¸ No logs to copy.");
+                    Log("⚠️ No logs to copy.");
                 }
             }
             catch (Exception ex)
             {
-                Log($"âŒ Failed to copy logs: {ex.Message}");
+                Log($"❌ Failed to copy logs: {ex.Message}");
             }
         }
 
         private void ClearLogs()
         {
             ConsoleOutput = "";
-            Log("ðŸ—‘ï¸ Logs cleared.");
+            Log("🗑️ Logs cleared.");
         }
 
         private void SaveSettings()
@@ -350,8 +386,8 @@ namespace TallySyncApp.ViewModels
             Log("Testing connections...");
             var (tallyOk, serverOk, error) = await _syncManager.TestConnectionsAsync();
 
-            string result = $"Tally: {(tallyOk ? "Connected âœ…" : "Failed âŒ")}\n" +
-                          $"Server: {(serverOk ? "Connected âœ…" : "Failed âŒ")}";
+            string result = $"Tally: {(tallyOk ? "Connected ✅" : "Failed ❌")}\n" +
+                          $"Server: {(serverOk ? "Connected ✅" : "Failed ❌")}";
 
             if (error != null) result += $"\nError: {error}";
 
@@ -426,7 +462,11 @@ namespace TallySyncApp.ViewModels
     public class RelayCommand : ICommand
     {
         private readonly Action _execute;
-        public event EventHandler? CanExecuteChanged;
+        public event EventHandler? CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
 
         public RelayCommand(Action execute) => _execute = execute;
 

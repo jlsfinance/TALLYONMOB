@@ -16,7 +16,12 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [otpSent, setOtpSent] = useState(false);
     const [otpCode, setOtpCode] = useState('');
-    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any };
+    const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+    const [twoFactorCode, setTwoFactorCode] = useState('');
+    const [tempToken, setTempToken] = useState('');
+    const [tempUserId, setTempUserId] = useState('');
+    const [tempEmail, setTempEmail] = useState('');
+    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, verify2FALogin } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any };
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
 
@@ -24,13 +29,31 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
         try {
+            if (twoFactorRequired) {
+                const { error } = await verify2FALogin(tempToken, tempUserId, tempEmail, twoFactorCode);
+                if (error) throw error;
+                toast.success('Welcome back!');
+                navigate('/dashboard');
+                return;
+            }
+
             if (otpSent) {
                 const { error } = await verifyOtp(email, otpCode, 'signup');
                 if (error) throw error;
                 toast.success('Account verified!');
                 navigate('/dashboard');
             } else if (isLogin) {
-                const { error } = await signIn(email, password);
+                const result = await signIn(email, password);
+                if (result.data?.two_factor_required) {
+                    setTwoFactorRequired(true);
+                    setTempToken(result.data.temp_token);
+                    setTempUserId(result.data.user_id);
+                    setTempEmail(result.data.email);
+                    toast.success('Two-factor authentication code required.');
+                    setLoading(false);
+                    return;
+                }
+                const { error } = result;
                 if (error) {
                     if (error.message?.toLowerCase().includes('not verified') || error.message?.toLowerCase().includes('verify')) {
                         const { error: sendError } = await sendVerificationEmail(email);
@@ -193,7 +216,7 @@ export default function LoginPage() {
                             )}
                         </AnimatePresence>
 
-                        {!otpSent && (
+                        {!otpSent && !twoFactorRequired && (
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
@@ -251,6 +274,31 @@ export default function LoginPage() {
                             </motion.div>
                         )}
 
+                        {twoFactorRequired && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="overflow-hidden"
+                            >
+                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5 font-bold">2FA Security Code</label>
+                                <div className="text-sm text-[var(--text-muted)] mb-3">
+                                    Enter the 6-digit code from your Google Authenticator or other 2FA app.
+                                </div>
+                                <div className="relative">
+                                    <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <input
+                                        type="text"
+                                        maxLength={6}
+                                        value={twoFactorCode}
+                                        onChange={(e) => setTwoFactorCode(e.target.value)}
+                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm font-mono tracking-widest text-center"
+                                        placeholder="000000"
+                                        required
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={loading}
@@ -260,7 +308,7 @@ export default function LoginPage() {
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    {isLogin ? 'Sign In' : (otpSent ? 'Verify Account' : 'Create Account')}
+                                    {isLogin ? (twoFactorRequired ? 'Verify 2FA' : 'Sign In') : (otpSent ? 'Verify Account' : 'Create Account')}
                                     <ArrowRight size={16} />
                                 </>
                             )}

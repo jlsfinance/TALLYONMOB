@@ -1,12 +1,14 @@
-﻿import { useState, useEffect, memo, useMemo } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef, memo, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
 import AIFloatingButton from '../AIFloatingButton';
+import { CommandPalette } from '../ui/CommandPalette';
+import { Breadcrumbs } from '../ui/Breadcrumbs';
 import {
-    LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
+    Activity, LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
     ChevronLeft, ChevronRight, Sun, Moon, Menu, X, Plus,
     Box, RefreshCw, Bell, ChevronDown, BarChart3, Scale, Lock,
     LineChart, Building2, Sparkles, LogOut, ArrowLeftRight,
@@ -15,26 +17,29 @@ import {
     Repeat, Globe, FileSpreadsheet, Settings
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import SafeLink from '../common/SafeLink';
+import { useSafeNavigate } from '@/hooks/useSafeNavigate';
+import { hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 
-// Navigation Item
 const NavItem = memo(({
     to, icon, label, collapsed, active
 }: { to: string; icon: React.ReactNode; label: string; collapsed: boolean; active: boolean }) => {
     return (
-        <Link to={to}>
+        <SafeLink to={to}>
             <div className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl mb-1
-                transition-all duration-200 group text-[13px]
+                flex items-center gap-3 px-3 py-3 rounded-[14px] mb-1.5
+                transition-all duration-300 group text-[13px]
                 ${active
-                    ? 'bg-[var(--primary)] text-white font-semibold shadow-lg shadow-[var(--primary-glow)]'
-                    : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] hover:text-[var(--primary)] font-medium active:scale-95'
+                    ? 'bg-gradient-to-r from-sky-500/10 to-blue-600/10 text-sky-500 font-bold border border-sky-400/20 shadow-[0_0_15px_rgba(14,165,233,0.15)] relative overflow-hidden'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-variant)] hover:text-[var(--on-surface)] font-medium active:scale-95 border border-transparent'
                 }
-                ${collapsed ? 'justify-center px-0 w-10 h-10 mx-auto' : ''}
+                ${collapsed ? 'justify-center px-0 w-11 h-11 mx-auto' : ''}
             `}>
-                <span className="flex-shrink-0">{icon}</span>
-                {!collapsed && <span className="truncate">{label}</span>}
+                {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1/2 bg-sky-400 rounded-r-full shadow-[0_0_10px_rgba(56,189,248,1)]" />}
+                <span className={`flex-shrink-0 transition-colors ${active ? 'text-sky-400' : 'group-hover:text-[var(--primary)]'}`}>{icon}</span>
+                {!collapsed && <span className="truncate tracking-wide">{label}</span>}
             </div>
-        </Link>
+        </SafeLink>
     );
 });
 
@@ -43,8 +48,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { isDark, toggleTheme } = useTheme();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
-    const navigate = useNavigate();
+    const { navigate: safeNavigate } = useSafeNavigate();
     const location = useLocation();
+    const lastRefreshRef = useRef(0);
 
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -54,6 +60,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     };
 
     const handleGlobalRefresh = () => {
+        const now = Date.now();
+        if (now - lastRefreshRef.current < 900) return;
+        lastRefreshRef.current = now;
         window.dispatchEvent(new CustomEvent('app-refresh-trigger'));
     };
 
@@ -62,9 +71,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setShowMobileMenu(false);
     }, [location.pathname]);
 
-    const isAdmin = user?.email === 'lovneetrathi@gmail.com';
+    const isAdmin = isAdminConsoleEnabled() && hasAdminAccess(user);
 
     const { t } = useLanguage();
+    const homePath = appMode === 'billing' ? '/billing' : '/dashboard';
     const automationBasePath = selectedCompany?.id ? `/clients/${selectedCompany.id}` : '/select-company';
     // ... (rest of code)
 
@@ -73,7 +83,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {
                 label: t('nav.dashboard'), // Main
                 items: [
-                    { to: '/', icon: <LayoutDashboard size={18} />, label: t('nav.dashboard') },
+                    { to: homePath, icon: <LayoutDashboard size={18} />, label: t('nav.dashboard') },
                     { to: '/sync-history', icon: <RefreshCw size={18} />, label: 'Sync Status' },
                     { to: '/vouchers', icon: <FileText size={18} />, label: t('nav.vouchers') },
                     { to: '/ledgers', icon: <Users size={18} />, label: t('nav.parties') },
@@ -86,6 +96,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     { to: '/purchases', icon: <Package size={18} />, label: t('nav.purchases') },
                     { to: '/profit-loss', icon: <BarChart3 size={18} />, label: t('reports.profit_loss') },
                     { to: '/balance-sheet', icon: <Scale size={18} />, label: t('reports.balance_sheet') },
+                    { to: '/business-health', icon: <Activity size={18} />, label: 'Business Health' },
+                    { to: '/business-insights', icon: <TrendingUp size={18} />, label: 'AI Business Insights' },
                     { to: '/gst-reports', icon: <Shield size={18} />, label: t('nav.gst_reports') },
                 ]
             },
@@ -96,7 +108,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     { to: '/eway-bill', icon: <Truck size={18} />, label: 'E-Way Bill' },
                 ]
             },
-                        {
+            {
                 label: t('ai.title'), // Intelligence
                 items: [
                     { to: '/ai-assistant', icon: <Bot size={18} />, label: t('nav.ai_assistant') },
@@ -122,55 +134,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             });
         }
         return groups;
-    }, [isAdmin, t, selectedCompany?.id]);
+    }, [homePath, isAdmin, t, selectedCompany?.id]);
 
-    const billingNavGroups = useMemo(() => {
-        const groups = [
-            {
-                label: t('nav.dashboard'),
-                items: [
-                    { to: '/', icon: <LayoutDashboard size={18} />, label: t('nav.dashboard') },
-                    { to: '/sync-history', icon: <RefreshCw size={18} />, label: 'Sync Status' },
-                    { to: '/create-invoice', icon: <Plus size={18} />, label: t('sales.create_invoice') },
-                    { to: '/ledgers', icon: <Users size={18} />, label: t('nav.parties') },
-                ]
-            },
-            {
-                label: t('nav.sales'),
-                items: [
-                    { to: '/sales', icon: <TrendingUp size={18} />, label: t('nav.sales') },
-                    { to: '/stock', icon: <Box size={18} />, label: t('nav.stock') },
-                ]
-            },
-            {
-                label: t('nav.settings'),
-                items: [
-                    { to: '/settings', icon: <Settings size={18} />, label: t('nav.settings') },
-                ]
-            }
-        ];
-        if (isAdmin) {
-            groups.push({
-                label: 'Admin',
-                items: [{ to: '/admin', icon: <Lock size={18} />, label: 'Super Admin' }]
-            });
-        }
-        return groups;
-    }, [isAdmin, t, selectedCompany?.id]);
+    const navGroups = tallyNavGroups;
 
-    const navGroups = appMode === 'tally' ? tallyNavGroups : billingNavGroups;
-
-    const bottomNavItems = useMemo(() => appMode === 'tally' ? [
-        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
+    const bottomNavItems = useMemo(() => [
+        { to: homePath, icon: <LayoutDashboard size={20} />, label: 'Home' },
         { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
         { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
         { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
-    ] : [
-        { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
-        { to: '/create-invoice', icon: <Plus size={20} />, label: 'Bill' },
-        { to: '/sales', icon: <FileText size={20} />, label: 'Sales' },
-        { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
-    ], [appMode]);
+    ], [homePath]);
 
     return (
         <div className="flex min-h-screen relative overflow-x-hidden bg-[var(--background)]">
@@ -238,7 +211,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                         </div>
                                         <div className="grid grid-cols-1 gap-1">
                                             {group.items.map((item) => (
-                                                <Link
+                                                <SafeLink
                                                     key={item.to}
                                                     to={item.to}
                                                     onClick={() => setShowMobileMenu(false)}
@@ -251,7 +224,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                                         {item.icon}
                                                     </span>
                                                     <span className="text-sm">{item.label}</span>
-                                                </Link>
+                                                </SafeLink>
                                             ))}
                                         </div>
                                     </div>
@@ -281,7 +254,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 </div>
 
                                 <button
-                                    onClick={() => navigate('/select-mode')}
+                                    onClick={() => safeNavigate('/select-mode')}
                                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--on-surface-variant)] text-sm font-medium hover:bg-[var(--surface-hover)] transition-colors"
                                 >
                                     <ArrowLeftRight size={14} />
@@ -314,7 +287,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             <div>
                                 <h1 className="font-bold text-sm text-[var(--on-surface)] leading-none">TallyLink</h1>
                                 <p className="text-[9px] font-semibold uppercase tracking-wider text-[var(--primary)] mt-0.5">
-                                    {appMode === 'tally' ? 'Cloud' : 'Billing'}
+                                    Cloud
                                 </p>
                             </div>
                         )}
@@ -402,7 +375,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                         </button>
                                         <span className="text-[var(--border)]">?</span>
                                         <button
-                                            onClick={() => navigate('/select-mode')}
+                                            onClick={() => safeNavigate('/select-mode')}
                                             className="text-[10px] font-medium text-[var(--primary)] hover:underline"
                                         >
                                             Switch
@@ -417,23 +390,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
             {/* ===== MAIN CONTENT ===== */}
             <main className={`
-                flex-1 min-h-screen
+                flex-1 min-h-screen w-full max-w-full overflow-x-hidden
                 transition-all duration-200
                 ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
-                {/* Mobile Header */}
-                <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-3 px-4 bg-[var(--surface)] border-b border-[var(--border)]">
-                    <button onClick={() => setShowMobileMenu(true)} className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors">
-                        <Menu size={20} />
+                {/* Mobile Header - Ultra Premium Glass */}
+                <header className="md:hidden sticky top-0 z-50 h-[68px] flex items-center gap-3 px-4 bg-[var(--surface)]/80 backdrop-blur-2xl border-b border-white/[0.05] shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+                    <button onClick={() => setShowMobileMenu(true)} className="p-2.5 rounded-[12px] hover:bg-white/5 active:bg-white/10 text-[var(--on-surface)] transition-all">
+                        <Menu size={22} />
                     </button>
 
                     <div className="flex-1 min-w-0" onClick={() => setShowMobileMenu(true)}>
                         <div id="header-title-mobile" className="flex items-center" />
                         <div className="default-header-content contents">
-                            <p className="text-[10px] font-semibold text-[var(--primary)] uppercase tracking-wider leading-none mb-0.5">
+                            <p className="text-[9px] font-black text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-500 uppercase tracking-widest leading-none mb-1">
                                 {getGreeting()}
                             </p>
-                            <h2 className="text-sm font-bold text-[var(--on-surface)] truncate leading-tight">
+                            <h2 className="text-[15px] font-bold text-[var(--on-surface)] truncate leading-tight tracking-tight">
                                 {selectedCompany?.name || 'Select Company'}
                             </h2>
                         </div>
@@ -443,15 +416,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <div id="header-search-mobile" className="flex items-center" />
                         <div id="header-filters-mobile" className="flex items-center" />
                         <div id="header-actions-mobile" className="flex items-center gap-1.5" />
-                        <div className="default-header-actions flex items-center gap-1.5">
-                            <Link to="/create-invoice" className="p-2 rounded-[var(--radius-sm)] bg-[var(--primary)] text-white shadow-[var(--shadow-sm)]">
-                                <Plus size={16} />
-                            </Link>
+                        <div className="default-header-actions flex items-center gap-2">
+                            <SafeLink to="/create-invoice" className="p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-sky-400 text-white shadow-[0_0_15px_rgba(56,189,248,0.3)] active:scale-95 transition-all">
+                                <Plus size={18} strokeWidth={2.5} />
+                            </SafeLink>
                             <button
                                 onClick={handleGlobalRefresh}
-                                className="p-2 rounded-[var(--radius-sm)] hover:bg-[var(--surface-variant)] text-[var(--on-surface-variant)] transition-colors"
+                                className="p-2.5 rounded-xl hover:bg-white/5 active:bg-white/10 text-[var(--text-muted)] transition-all"
                             >
-                                <RefreshCw size={16} />
+                                <RefreshCw size={18} />
                             </button>
                         </div>
                     </div>
@@ -489,6 +462,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                 {/* Page Content */}
                 <div className="p-4 md:p-6 pb-24 md:pb-6">
+                    <Breadcrumbs />
                     <AnimatePresence mode="wait">
                         <motion.div
                             key={location.pathname}
@@ -503,34 +477,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
             </main>
 
-            {/* ===== MOBILE BOTTOM NAV ===== */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--surface)] border-t border-[var(--border)] safe-area-pb">
-                <div className="flex items-center justify-around h-16 px-2">
+            {/* ===== PREMIUM MOBILE BOTTOM NAV ===== */}
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--surface)]/90 backdrop-blur-3xl border-t border-white/[0.05] shadow-[0_-10px_40px_rgba(0,0,0,0.1)] safe-area-pb pb-1">
+                <div className="flex items-center justify-around h-[68px] px-2 relative">
                     {bottomNavItems.map((item) => {
                         const isActive = location.pathname === item.to;
                         return (
-                            <Link key={item.to} to={item.to} className="flex-1">
+                            <SafeLink key={item.to} to={item.to} className="flex-1 relative group">
                                 <div className={`
-                                    flex flex-col items-center justify-center gap-1 py-1.5 transition-all duration-150
-                                    ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
+                                    flex flex-col items-center justify-center gap-1 py-1 transition-all duration-300
+                                    ${isActive ? 'text-sky-400' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}
                                 `}>
-                                    <div className={`p-1.5 rounded-[var(--radius-sm)] ${isActive ? 'bg-[var(--primary-container)]' : ''}`}>
+                                    <div className={`p-2 rounded-2xl transition-all relative ${isActive ? 'bg-sky-500/10 scale-110 shadow-[inset_0_1px_rgba(255,255,255,0.1)]' : 'group-active:scale-90'}`}>
+                                        {isActive && <div className="absolute inset-0 bg-sky-400/20 blur-md rounded-full -z-10" />}
                                         {item.icon}
                                     </div>
-                                    <span className={`text-[10px] font-semibold ${isActive ? '' : 'opacity-70'}`}>{item.label}</span>
+                                    <span className={`text-[10.5px] tracking-wide transition-all ${isActive ? 'font-black' : 'font-medium'}`}>{item.label}</span>
                                 </div>
-                            </Link>
+                            </SafeLink>
                         );
                     })}
                 </div>
             </nav>
 
             <AIFloatingButton />
+            <CommandPalette />
         </div>
     );
+
+
 }
-
-
-
-
-
