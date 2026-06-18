@@ -60,14 +60,18 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Build Windows App
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+        run: dotnet publish -c Release -r win-x64 --self-contained true -o ./publish
         working-directory: tally-windows-sync
 
-      - name: Upload EXE artifact
+      - name: Create ZIP
+        run: Compress-Archive -Path ./publish/* -DestinationPath ./TallyLink.zip
+        working-directory: tally-windows-sync
+
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TallyLink.exe
-          path: tally-windows-sync/publish/TallySyncApp.exe
+          name: TallyLink.zip
+          path: tally-windows-sync/TallyLink.zip
 
   release:
     name: Create Release
@@ -83,13 +87,12 @@ jobs:
       - name: Download EXE
         uses: actions/download-artifact@v4
         with:
-          name: TallyLink.exe
+          name: TallyLink.zip
           path: ./artifacts
 
       - name: Rename artifacts
         run: |
           mv ./artifacts/app-debug.apk ./artifacts/TallyLink.apk
-          mv ./artifacts/TallySyncApp.exe ./artifacts/TallyLink.exe
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -99,4 +102,4 @@ jobs:
           generate_release_notes: true
           files: |
             ./artifacts/TallyLink.apk
-            ./artifacts/TallyLink.exe
+            ./artifacts/TallyLink.zip
