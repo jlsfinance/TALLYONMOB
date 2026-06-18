@@ -21,32 +21,44 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          node-version: '20'
+          flutter-version: 'stable'
+          channel: 'stable'
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: tally-web-dashboard
+      - name: Flutter doctor
+        run: flutter doctor -v
+        working-directory: tally-mobile-app
 
-      - name: Build web assets
-        run: npx vite build
-        working-directory: tally-web-dashboard
-
-      - name: Sync Capacitor
-        run: npx cap sync android
-        working-directory: tally-web-dashboard
+      - name: Flutter pub get
+        run: flutter pub get
+        working-directory: tally-mobile-app
 
       - name: Build APK
-        run: ./gradlew assembleDebug
-        working-directory: tally-web-dashboard/android
+        run: flutter build apk --release --verbose
+        working-directory: tally-mobile-app
+
+      - name: Find APK
+        run: |
+          echo "=== Looking for APK ==="
+          find . -name "*.apk" -type f
+          echo "=== Build outputs ==="
+          ls -la tally-mobile-app/build/app/outputs/flutter-apk/ 2>/dev/null || echo "flutter-apk dir not found"
+          ls -la tally-mobile-app/build/app/outputs/apk/ 2>/dev/null || echo "apk dir not found"
+
+      - name: Copy APK to artifacts
+        run: |
+          mkdir -p artifacts
+          cp tally-mobile-app/build/app/outputs/flutter-apk/app-release.apk artifacts/TallyLink.apk 2>/dev/null || \
+          cp tally-mobile-app/build/app/outputs/flutter-apk/app-release.apk artifacts/TallyLink.apk 2>/dev/null || \
+          find tally-mobile-app -name "*.apk" -exec cp {} artifacts/TallyLink.apk \;
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: TallyLink.apk
-          path: tally-web-dashboard/android/app/build/outputs/apk/debug/app-debug.apk
+          path: artifacts/TallyLink.apk
 
   build-windows:
     name: Build Windows App
@@ -92,7 +104,7 @@ jobs:
 
       - name: Rename artifacts
         run: |
-          mv ./artifacts/app-debug.apk ./artifacts/TallyLink.apk
+          ls -la ./artifacts/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
