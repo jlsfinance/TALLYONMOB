@@ -113,17 +113,17 @@ CREATE INDEX IF NOT EXISTS idx_tds_tcs_company ON tds_tcs_entries(company_id);
 CREATE INDEX IF NOT EXISTS idx_tds_tcs_type ON tds_tcs_entries(entry_type);
 
 -- RLS
-ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE approval_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payment_links ENABLE ROW LEVEL SECURITY;
-ALTER TABLE email_queue ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reminder_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE tds_tcs_entries ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN EXECUTE 'ALTER TABLE approval_rules ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE approval_items ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE payment_links ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE email_queue ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE reminder_logs ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE tds_tcs_entries ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- Policies (allow authenticated users to read/write)
-CREATE POLICY "Allow all for authenticated" ON approval_rules FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow all for authenticated" ON approval_items FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow all for authenticated" ON payment_links FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow all for authenticated" ON email_queue FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow all for authenticated" ON reminder_logs FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow all for authenticated" ON tds_tcs_entries FOR ALL USING (auth.role() = 'authenticated');
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON approval_rules FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON approval_items FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON payment_links FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON email_queue FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON reminder_logs FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Allow all for authenticated" ON tds_tcs_entries FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;

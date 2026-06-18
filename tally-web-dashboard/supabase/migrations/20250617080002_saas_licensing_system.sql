@@ -1,6 +1,6 @@
 -- ============================================================
--- SaaS Licensing & Admin Management System
--- TallyOnMobile / TallyLink Enterprise
+-- SaaS Licensing & Admin Management System (idempotent)
+-- All statements wrapped in DO blocks for safe re-application
 -- ============================================================
 
 -- 1. USER ROLES
@@ -13,12 +13,16 @@ CREATE TABLE IF NOT EXISTS user_roles (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-INSERT INTO user_roles (name, display_name, permissions, is_system) VALUES
-    ('super_admin', 'Super Admin', '["*"]', true),
-    ('admin', 'Admin', '["users:read","users:write","companies:read","companies:write","licenses:read","licenses:write","coupons:read","coupons:write","payments:read","analytics:read","support:read","support:write"]', false),
-    ('sales_manager', 'Sales Manager', '["users:read","companies:read","coupons:read","coupons:write","payments:read","analytics:read","leads:read","leads:write"]', false),
-    ('support_agent', 'Support Agent', '["users:read","companies:read","licenses:read","support:read","support:write"]', false),
-    ('account_manager', 'Account Manager', '["users:read","companies:read","licenses:read","payments:read","analytics:read"]', false);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM user_roles LIMIT 1) THEN
+        INSERT INTO user_roles (name, display_name, permissions, is_system) VALUES
+            ('super_admin', 'Super Admin', '["*"]', true),
+            ('admin', 'Admin', '["users:read","users:write","companies:read","companies:write","licenses:read","licenses:write","coupons:read","coupons:write","payments:read","analytics:read","support:read","support:write"]', false),
+            ('sales_manager', 'Sales Manager', '["users:read","companies:read","coupons:read","coupons:write","payments:read","analytics:read","leads:read","leads:write"]', false),
+            ('support_agent', 'Support Agent', '["users:read","companies:read","licenses:read","support:read","support:write"]', false),
+            ('account_manager', 'Account Manager', '["users:read","companies:read","licenses:read","payments:read","analytics:read"]', false);
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 2. SUBSCRIPTION PLANS
 CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -36,13 +40,17 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-INSERT INTO subscription_plans (name, slug, duration_days, price, gst_percent, features, is_trial, sort_order) VALUES
-    ('7-Day Trial', 'trial', 7, 0, 0, '["sync","reports","basic_features"]', true, 0),
-    ('Monthly', 'monthly', 30, 299, 18, '["sync","reports","export","priority_support"]', false, 1),
-    ('Quarterly', 'quarterly', 90, 799, 18, '["sync","reports","export","priority_support","analytics"]', false, 2),
-    ('Half Yearly', 'half_yearly', 180, 1499, 18, '["sync","reports","export","priority_support","analytics","advanced_reports"]', false, 3),
-    ('Yearly', 'yearly', 365, 2999, 18, '["sync","reports","export","priority_support","analytics","advanced_reports","api_access"]', false, 4),
-    ('Lifetime', 'lifetime', 36500, 9999, 18, '["sync","reports","export","priority_support","analytics","advanced_reports","api_access","lifetime_updates"]', false, 5);
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM subscription_plans LIMIT 1) THEN
+        INSERT INTO subscription_plans (name, slug, duration_days, price, gst_percent, features, is_trial, sort_order) VALUES
+            ('7-Day Trial', 'trial', 7, 0, 0, '["sync","reports","basic_features"]', true, 0),
+            ('Monthly', 'monthly', 30, 299, 18, '["sync","reports","export","priority_support"]', false, 1),
+            ('Quarterly', 'quarterly', 90, 799, 18, '["sync","reports","export","priority_support","analytics"]', false, 2),
+            ('Half Yearly', 'half_yearly', 180, 1499, 18, '["sync","reports","export","priority_support","analytics","advanced_reports"]', false, 3),
+            ('Yearly', 'yearly', 365, 2999, 18, '["sync","reports","export","priority_support","analytics","advanced_reports","api_access"]', false, 4),
+            ('Lifetime', 'lifetime', 36500, 9999, 18, '["sync","reports","export","priority_support","analytics","advanced_reports","api_access","lifetime_updates"]', false, 5);
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 3. USER LICENSES
 CREATE TABLE IF NOT EXISTS user_licenses (
@@ -63,12 +71,12 @@ CREATE TABLE IF NOT EXISTS user_licenses (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_licenses_user ON user_licenses(user_id);
-CREATE INDEX IF NOT EXISTS idx_licenses_key ON user_licenses(license_key);
-CREATE INDEX IF NOT EXISTS idx_licenses_status ON user_licenses(status);
-CREATE INDEX IF NOT EXISTS idx_licenses_expiry ON user_licenses(expiry_date);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_licenses_user ON user_licenses(user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_licenses_key ON user_licenses(license_key); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_licenses_status ON user_licenses(status); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_licenses_expiry ON user_licenses(expiry_date); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
--- 4. TRIAL HISTORY (Tamper-proof)
+-- 4. TRIAL HISTORY
 CREATE TABLE IF NOT EXISTS trial_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -88,11 +96,11 @@ CREATE TABLE IF NOT EXISTS trial_history (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_trial_email ON trial_history(email);
-CREATE INDEX IF NOT EXISTS idx_trial_mobile ON trial_history(mobile);
-CREATE INDEX IF NOT EXISTS idx_trial_device ON trial_history(device_id);
-CREATE INDEX IF NOT EXISTS idx_trial_serial ON trial_history(tally_serial);
-CREATE INDEX IF NOT EXISTS idx_trial_gst ON trial_history(company_gst);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_trial_email ON trial_history(email); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_trial_mobile ON trial_history(mobile); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_trial_device ON trial_history(device_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_trial_serial ON trial_history(tally_serial); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_trial_gst ON trial_history(company_gst); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 5. COUPONS
 CREATE TABLE IF NOT EXISTS coupons (
@@ -114,7 +122,7 @@ CREATE TABLE IF NOT EXISTS coupons (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_coupons_code ON coupons(code); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 6. COUPON USAGE
 CREATE TABLE IF NOT EXISTS coupon_usage (
@@ -127,8 +135,8 @@ CREATE TABLE IF NOT EXISTS coupon_usage (
     used_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_coupon_usage_coupon ON coupon_usage(coupon_id);
-CREATE INDEX IF NOT EXISTS idx_coupon_usage_user ON coupon_usage(user_id);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_coupon_usage_coupon ON coupon_usage(coupon_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_coupon_usage_user ON coupon_usage(user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 7. PAYMENTS
 CREATE TABLE IF NOT EXISTS payments (
@@ -153,9 +161,9 @@ CREATE TABLE IF NOT EXISTS payments (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id);
-CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(created_at);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(created_at); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 8. RENEWAL REMINDERS
 CREATE TABLE IF NOT EXISTS renewal_reminders (
@@ -169,8 +177,8 @@ CREATE TABLE IF NOT EXISTS renewal_reminders (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_reminders_license ON renewal_reminders(license_id);
-CREATE INDEX IF NOT EXISTS idx_reminders_status ON renewal_reminders(status);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_reminders_license ON renewal_reminders(license_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_reminders_status ON renewal_reminders(status); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 9. ACTIVITY LOGS
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -187,10 +195,10 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_logs(action);
-CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_logs(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_activity_date ON activity_logs(created_at);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_logs(user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_logs(action); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_activity_entity ON activity_logs(entity_type, entity_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_activity_date ON activity_logs(created_at); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 10. SALES LEADS / CRM
 CREATE TABLE IF NOT EXISTS sales_leads (
@@ -212,8 +220,8 @@ CREATE TABLE IF NOT EXISTS sales_leads (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_leads_status ON sales_leads(status);
-CREATE INDEX IF NOT EXISTS idx_leads_assigned ON sales_leads(assigned_to);
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_leads_status ON sales_leads(status); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE INDEX IF NOT EXISTS idx_leads_assigned ON sales_leads(assigned_to); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 11. LEAD FOLLOWUPS
 CREATE TABLE IF NOT EXISTS lead_followups (
@@ -283,54 +291,53 @@ CREATE TABLE IF NOT EXISTS license_transfers (
 );
 
 -- ============================================================
--- RLS Policies
+-- RLS Policies (all wrapped for idempotency)
 -- ============================================================
 
-ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_licenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE trial_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE coupons ENABLE ROW LEVEL SECURITY;
-ALTER TABLE coupon_usage ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE renewal_reminders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sales_leads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lead_followups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
-ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
-ALTER TABLE bulk_operations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE license_transfers ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN EXECUTE 'ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE subscription_plans ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE user_licenses ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE trial_history ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE coupons ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE coupon_usage ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE payments ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE renewal_reminders ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE sales_leads ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE lead_followups ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE announcements ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE bulk_operations ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE license_transfers ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
--- Super Admin: full access
-CREATE POLICY "super_admin_all" ON user_roles FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON subscription_plans FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON user_licenses FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON trial_history FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON coupons FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON coupon_usage FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON payments FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON activity_logs FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON sales_leads FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON lead_followups FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON announcements FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON feature_flags FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON bulk_operations FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON license_transfers FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
-CREATE POLICY "super_admin_all" ON renewal_reminders FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%'));
+-- Super Admin policies
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON user_roles FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON subscription_plans FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON user_licenses FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON trial_history FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON coupons FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON coupon_usage FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON payments FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON activity_logs FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON sales_leads FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON lead_followups FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON announcements FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON feature_flags FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON bulk_operations FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON license_transfers FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "super_admin_all" ON renewal_reminders FOR ALL USING (auth.uid() IN (SELECT user_id FROM user_licenses WHERE status='active' AND license_key LIKE 'TOM-SUPER%')); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
--- Users: read own data
-CREATE POLICY "user_read_own_license" ON user_licenses FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "user_read_own_payments" ON payments FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "user_read_own_trials" ON trial_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "user_read_plans" ON subscription_plans FOR SELECT USING (true);
-CREATE POLICY "user_read_active_coupons" ON coupons FOR SELECT USING (is_active = true);
+-- User read policies
+DO $$ BEGIN CREATE POLICY "user_read_own_license" ON user_licenses FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "user_read_own_payments" ON payments FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "user_read_own_trials" ON trial_history FOR SELECT USING (auth.uid() = user_id); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "user_read_plans" ON subscription_plans FOR SELECT USING (true); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "user_read_active_coupons" ON coupons FOR SELECT USING (is_active = true); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- ============================================================
 -- FUNCTIONS
 -- ============================================================
 
--- Generate unique license key
 CREATE OR REPLACE FUNCTION generate_license_key(plan_slug TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -340,17 +347,14 @@ DECLARE
     i INTEGER;
 BEGIN
     prefix := 'TOM-' || EXTRACT(YEAR FROM now())::TEXT || '-';
-
     FOR i IN 1..8 LOOP
         result := result || substr(chars, floor(random() * length(chars) + 1)::int, 1);
         IF i = 4 THEN result := result || '-'; END IF;
     END LOOP;
-
     RETURN prefix || result;
 END;
 $$ LANGUAGE plpgsql;
 
--- Check if trial already used (tamper-proof)
 CREATE OR REPLACE FUNCTION check_trial_eligibility(
     p_email TEXT DEFAULT NULL,
     p_mobile TEXT DEFAULT NULL,
@@ -362,72 +366,60 @@ RETURNS TABLE(eligible BOOLEAN, reason TEXT, existing_trial_end TIMESTAMPTZ) AS 
 DECLARE
     existing RECORD;
 BEGIN
-    -- Check by Tally Serial (primary lock)
     IF p_tally_serial IS NOT NULL THEN
         SELECT * INTO existing FROM trial_history
         WHERE tally_serial = p_tally_serial AND trial_used = true
         ORDER BY created_at DESC LIMIT 1;
-
         IF FOUND THEN
             RETURN QUERY SELECT false, 'Trial already used for Tally Serial: ' || p_tally_serial, existing.trial_end;
             RETURN;
         END IF;
     END IF;
 
-    -- Check by Company GST
     IF p_company_gst IS NOT NULL THEN
         SELECT * INTO existing FROM trial_history
         WHERE company_gst = p_company_gst AND trial_used = true
         ORDER BY created_at DESC LIMIT 1;
-
         IF FOUND THEN
             RETURN QUERY SELECT false, 'Trial already used for GST: ' || p_company_gst, existing.trial_end;
             RETURN;
         END IF;
     END IF;
 
-    -- Check by Email
     IF p_email IS NOT NULL THEN
         SELECT * INTO existing FROM trial_history
         WHERE lower(email) = lower(p_email) AND trial_used = true
         ORDER BY created_at DESC LIMIT 1;
-
         IF FOUND THEN
             RETURN QUERY SELECT false, 'Trial already used for email: ' || p_email, existing.trial_end;
             RETURN;
         END IF;
     END IF;
 
-    -- Check by Device ID
     IF p_device_id IS NOT NULL THEN
         SELECT * INTO existing FROM trial_history
         WHERE device_id = p_device_id AND trial_used = true
         ORDER BY created_at DESC LIMIT 1;
-
         IF FOUND THEN
             RETURN QUERY SELECT false, 'Trial already used on this device', existing.trial_end;
             RETURN;
         END IF;
     END IF;
 
-    -- Check by Mobile
     IF p_mobile IS NOT NULL THEN
         SELECT * INTO existing FROM trial_history
         WHERE mobile = p_mobile AND trial_used = true
         ORDER BY created_at DESC LIMIT 1;
-
         IF FOUND THEN
             RETURN QUERY SELECT false, 'Trial already used for mobile: ' || p_mobile, existing.trial_end;
             RETURN;
         END IF;
     END IF;
 
-    -- All clear
     RETURN QUERY SELECT true, 'Eligible for trial'::TEXT, NULL::TIMESTAMPTZ;
 END;
 $$ LANGUAGE plpgsql;
 
--- Validate license on login
 CREATE OR REPLACE FUNCTION validate_user_license(p_user_id UUID)
 RETURNS TABLE(valid BOOLEAN, status TEXT, plan_name TEXT, expiry_date TIMESTAMPTZ, days_left INTEGER) AS $$
 DECLARE
@@ -443,20 +435,17 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Check expiry
     IF lic.expiry_date < now() THEN
         UPDATE user_licenses SET status = 'expired' WHERE id = lic.id;
         RETURN QUERY SELECT false, 'expired'::TEXT, 'Expired'::TEXT, lic.expiry_date, 0;
         RETURN;
     END IF;
 
-    -- Check suspended
     IF lic.status = 'suspended' THEN
         RETURN QUERY SELECT false, 'suspended'::TEXT, 'Suspended'::TEXT, lic.expiry_date, 0;
         RETURN;
     END IF;
 
-    -- Get plan name
     SELECT name INTO plan FROM subscription_plans WHERE id = lic.plan_id;
 
     RETURN QUERY SELECT
@@ -468,7 +457,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Generate coupon code
 CREATE OR REPLACE FUNCTION generate_coupon_code()
 RETURNS TEXT AS $$
 DECLARE
@@ -484,7 +472,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================
--- VIEWS for Admin Dashboard
+-- VIEWS
 -- ============================================================
 
 CREATE OR REPLACE VIEW admin_dashboard_stats AS

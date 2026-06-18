@@ -64,13 +64,13 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_session ON user_sessions(session_id
 CREATE INDEX IF NOT EXISTS idx_user_sessions_started ON user_sessions(started_at DESC);
 
 -- 5. RLS
-ALTER TABLE user_activity_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_activity_stats ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN EXECUTE 'ALTER TABLE user_activity_logs ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE user_activity_stats ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN EXECUTE 'ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
-CREATE POLICY "auth_all_activity_logs" ON user_activity_logs FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "auth_all_activity_stats" ON user_activity_stats FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "auth_all_user_sessions" ON user_sessions FOR ALL USING (auth.role() = 'authenticated');
+DO $$ BEGIN CREATE POLICY "auth_all_activity_logs" ON user_activity_logs FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "auth_all_activity_stats" ON user_activity_stats FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "auth_all_user_sessions" ON user_sessions FOR ALL USING (auth.role() = 'authenticated'); EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 -- 6. UPSERT STAT FUNCTION
 CREATE OR REPLACE FUNCTION upsert_activity_stat(
