@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { auth, companyApi, clearLocalSession } from '../lib/insforge';
+import { auth, companyApi, clearLocalSession, supabase } from '../lib/insforge';
 
 const AuthContext = createContext({});
 
@@ -45,7 +45,7 @@ export const AuthProvider = ({ children }) => {
         const fetchRole = async () => {
             if (user && selectedCompany) {
                 try {
-                    const { data, error } = await db.from('company_users')
+                    const { data, error } = await supabase.from('company_users')
                         .select('role')
                         .eq('company_id', selectedCompany.id)
                         .eq('user_id', user.id)

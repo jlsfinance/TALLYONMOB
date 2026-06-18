@@ -46,7 +46,7 @@ function WebGLBackground() {
         observer.observe(canvas);
         handleResize();
 
-        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        const gl = (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
         if (!gl) return;
 
         const vs = `
@@ -385,7 +385,7 @@ export default function MobileLandingPage() {
                     </p>
                     <div className="grid gap-3 pt-2">
                         <div className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-3">
-                            <FileShield className="text-cyan-400" size={16} />
+                            <ShieldCheck className="text-cyan-400" size={16} />
                             <span className="text-xs font-bold text-slate-300">AES-256 Encryption</span>
                         </div>
                         <div className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-3">

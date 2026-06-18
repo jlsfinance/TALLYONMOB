@@ -187,7 +187,6 @@ async function fetchCloudSyncedTallyData(companyId: string, fromDate: string, to
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', companyId)
-                .or('is_deleted.is.null,is_deleted.eq.false')
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
                 .order('voucher_date', { ascending: false })

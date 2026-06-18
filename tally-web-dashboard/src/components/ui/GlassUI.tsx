@@ -31,9 +31,9 @@ export const Button: React.FC<ButtonProps> = ({
 }) => {
     const baseStyles = `
         inline-flex items-center justify-center gap-2 font-semibold 
-        rounded-[var(--radius-full)] transition-all duration-300
+        rounded-[var(--radius-md)] transition-all duration-200
         disabled:opacity-50 disabled:cursor-not-allowed
-        active:scale-[0.97]
+        active:scale-[0.98]
     `;
 
     const variants = {
@@ -103,13 +103,13 @@ export const Card: React.FC<CardProps> = ({
             className={`
                 relative
                 ${glass
-                    ? 'bg-[var(--glass-bg)] backdrop-blur-xl border-[var(--glass-border)]'
-                    : 'bg-[var(--surface)] border border-[var(--border)]'
+                    ? 'bg-[var(--surface)] border border-[var(--border-light)]'
+                    : 'bg-[var(--surface)] border border-[var(--border-light)]'
                 }
-                rounded-[var(--radius-xl)] 
+                rounded-[var(--radius-lg)] 
                 shadow-[var(--shadow-sm)]
                 ${paddingStyles[padding]}
-                ${hover ? 'hover:shadow-[var(--shadow-lg)] hover:-translate-y-1 transition-all duration-300' : ''}
+                ${hover ? 'hover:shadow-[var(--shadow-md)] transition-all duration-200' : ''}
                 ${onClick ? 'cursor-pointer' : ''}
                 ${className}
             `}
@@ -162,43 +162,31 @@ export const StatCard: React.FC<StatCardProps> = ({
     };
 
     return (
-        <motion.div
-            whileHover={{ y: -5 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        <div
             onClick={onClick}
             className={`
-                relative overflow-hidden rounded-[var(--radius-xl)] p-4 md:p-6
-                min-w-0 w-full
+                relative overflow-hidden rounded-[var(--radius-lg)] p-4 md:p-5
+                min-w-0 w-full transition-all duration-200
                 ${isSolid
-                    ? `${solidBgStyles[color]} shadow-lg`
-                    : `bg-[var(--surface)] border border-[var(--border)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] hover:border-[var(--primary-light)]`
+                    ? `${solidBgStyles[color]} shadow-md`
+                    : `bg-[var(--surface)] border border-[var(--border-light)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]`
                 }
-                cursor-pointer group
+                ${onClick ? 'cursor-pointer' : ''}
             `}
         >
-            {/* Background Decor for Solid Cards */}
-            {isSolid && (
-                <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl transition-transform group-hover:scale-150" />
-            )}
-
-            {/* Standard Background Glow for Default Cards */}
-            {!isSolid && (
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--primary)]/5 rounded-full blur-[40px] -translate-y-1/2 translate-x-1/3 group-hover:bg-[var(--primary)]/10 transition-colors" />
-            )}
-
             <div className="flex items-start justify-between relative z-10">
                 <div>
-                    <p className={`text-sm font-semibold uppercase tracking-wider mb-2 ${isSolid ? 'text-white/80' : 'text-[var(--on-surface-variant)]'}`}>{title}</p>
-                    <h3 className={`text-3xl font-bold tracking-tight ${isSolid ? 'text-white' : 'text-[var(--on-background)]'}`}>{value}</h3>
+                    <p className={`text-[11px] font-bold uppercase tracking-wider mb-2 ${isSolid ? 'text-white/80' : 'text-[var(--text-muted)]'}`}>{title}</p>
+                    <h3 className={`text-2xl font-bold tracking-tight ${isSolid ? 'text-white' : 'text-[var(--on-background)]'}`}>{value}</h3>
 
                     {(subtitle || trend) && (
-                        <div className="flex items-center gap-2 mt-3">
+                        <div className="flex items-center gap-2 mt-2">
                             {trend && (
                                 <span className={`
-                                    inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold
+                                    inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold
                                     ${isSolid
                                         ? 'bg-white/20 text-white backdrop-blur-sm'
-                                        : (trend.up ? 'bg-[var(--success-bg)] text-[var(--success)]' : 'bg-[var(--error-bg)] text-[var(--error)]')
+                                        : (trend.up ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600')
                                     }
                                 `}>
                                     {trend.up ? '↑' : '↓'} {trend.value}
@@ -213,17 +201,17 @@ export const StatCard: React.FC<StatCardProps> = ({
 
                 {icon && (
                     <div className={`
-                        w-12 h-12 rounded-[var(--radius-lg)] flex items-center justify-center text-xl
+                        w-10 h-10 rounded-[var(--radius-md)] flex items-center justify-center
                         ${isSolid
-                            ? 'bg-white/20 text-white backdrop-blur-md' // Glassy icon container for solid cards
-                            : `${colorStyles[color]} transition-transform group-hover:scale-110 group-hover:rotate-3`
+                            ? 'bg-white/20 text-white backdrop-blur-md'
+                            : `${colorStyles[color]} transition-transform group-hover:scale-110`
                         }
                     `}>
                         {icon}
                     </div>
                 )}
             </div>
-        </motion.div>
+        </div>
     );
 };
 
@@ -330,16 +318,15 @@ interface FabProps {
 export const Fab: React.FC<FabProps> = ({ icon, onClick, className = '' }) => {
     return (
         <motion.button
-            whileHover={{ scale: 1.1, rotate: 90 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={onClick}
             className={`
-                w-14 h-14 rounded-full
-                bg-gradient-to-tr from-[var(--primary)] to-[var(--primary-light)] text-[var(--on-primary)]
-                shadow-[0_10px_20px_rgba(79,70,229,0.3)] 
-                hover:shadow-[0_15px_30px_rgba(79,70,229,0.5)]
+                w-12 h-12 rounded-[var(--radius-lg)]
+                bg-[var(--primary)] text-white
+                shadow-[var(--shadow-lg)]
                 flex items-center justify-center
-                transition-all duration-300
+                transition-all duration-200
                 ${className}
             `}
         >
@@ -367,7 +354,7 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = 'default', cla
     };
 
     return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${variants[variant]} ${className}`}>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${variants[variant]} ${className}`}>
             {children}
         </span>
     );
@@ -389,12 +376,12 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 }) => {
     return (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="text-[var(--text-muted)] mb-4 opacity-50 bg-[var(--surface-hover)] p-6 rounded-full">
+            <div className="text-[var(--text-muted)] mb-4 bg-[var(--surface-container)] p-6 rounded-[var(--radius-lg)]">
                 {icon}
             </div>
-            <h3 className="text-lg font-semibold text-[var(--on-surface)] mb-2">{title}</h3>
+            <h3 className="text-lg font-bold text-[var(--on-surface)] mb-2">{title}</h3>
             {description && (
-                <p className="text-[var(--on-surface-variant)] text-sm mb-6 max-w-sm mx-auto">{description}</p>
+                <p className="text-[var(--text-muted)] text-sm mb-6 max-w-sm mx-auto">{description}</p>
             )}
             {action}
         </div>
@@ -428,11 +415,11 @@ export const Input: React.FC<InputProps> = ({
                 )}
                 <input
                     className={`
-                        w-full px-5 py-3 rounded-[var(--radius-lg)]
-                        bg-[var(--surface)] border border-[var(--border)]
+                        w-full px-4 py-3 rounded-[var(--radius-md)]
+                        bg-[var(--surface-container)] border border-[var(--border-light)]
                         text-[var(--on-surface)] placeholder:text-[var(--text-muted)]
-                        focus:outline-none focus:border-[var(--primary)] focus:ring-4 focus:ring-[var(--primary)]/10
-                        transition-all duration-200
+                        focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/10
+                        transition-all duration-200 text-sm
                         ${icon ? 'pl-11' : ''}
                         ${error ? 'border-[var(--error)] focus:ring-[var(--error)]/10' : ''}
                         ${className}
@@ -450,10 +437,10 @@ export const ListItem: React.FC<any> = ({ title, subtitle, leading, trailing, on
     <div
         onClick={onClick}
         className={`
-            flex items-center gap-4 p-4 rounded-[var(--radius-lg)]
+            flex items-center gap-4 p-3 rounded-[var(--radius-md)]
             bg-[var(--surface)] border border-transparent
-            ${onClick ? 'cursor-pointer hover:bg-[var(--surface-hover)] hover:border-[var(--border)] hover:shadow-[var(--shadow-sm)]' : ''}
-            transition-all duration-200
+            ${onClick ? 'cursor-pointer hover:bg-[var(--surface-container)] hover:border-[var(--border-light)]' : ''}
+            transition-all duration-150
         `}
     >
         {leading}
@@ -468,7 +455,7 @@ export const ListItem: React.FC<any> = ({ title, subtitle, leading, trailing, on
 // ==================== SPINNER ====================
 export const Spinner: React.FC<{ size?: 'sm' | 'md' | 'lg' }> = ({ size = 'md' }) => {
     const sizeMap = { sm: 'w-4 h-4', md: 'w-8 h-8', lg: 'w-12 h-12' };
-    return <div className={`${sizeMap[size]} border-2 border-[var(--border)] border-t-[var(--primary)] rounded-full animate-spin`} />;
+    return <div className={`${sizeMap[size]} border-2 border-[var(--border-light)] border-t-[var(--primary)] rounded-full animate-spin`} />;
 };
 
 // ==================== ALIASES ====================

@@ -48,7 +48,7 @@ export default function SalesTeamPage() {
             .eq('company_id', selectedCompany.id)
             .in('parent', ['Sundry Debtors', 'sundry debtors', 'SUNDRY DEBTORS'])
             .order('name')
-            .limit(1000);
+            .range(0, 99999);
         setParties(data || []);
     };
 

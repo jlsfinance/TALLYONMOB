@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import toast from 'react-hot-toast';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+
 import {
     AlertCircle,
     AlertTriangle,
@@ -29,6 +27,7 @@ import {
     Users,
     Wallet,
     X,
+    Brain,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
@@ -46,8 +45,9 @@ import {
     FinancialInsightSummary,
     generateFinancialInsights,
 } from '@/lib/GeminiService';
+import VectorSearchPanel from '@/components/VectorSearchPanel';
 
-type ViewerTab = 'dashboard' | 'ledgers' | 'invoices' | 'vouchers' | 'reports';
+type ViewerTab = 'dashboard' | 'ledgers' | 'invoices' | 'vouchers' | 'reports' | 'ai-search';
 type ReportTab = 'trial' | 'pl' | 'balance';
 
 const tabs: Array<{ key: ViewerTab; label: string; icon: React.ReactNode }> = [
@@ -56,6 +56,7 @@ const tabs: Array<{ key: ViewerTab; label: string; icon: React.ReactNode }> = [
     { key: 'invoices', label: 'Invoices', icon: <Receipt size={15} /> },
     { key: 'vouchers', label: 'Vouchers', icon: <FileText size={15} /> },
     { key: 'reports', label: 'Reports', icon: <FileSpreadsheet size={15} /> },
+    { key: 'ai-search', label: 'AI Search', icon: <Brain size={15} /> },
 ];
 
 const voucherTypes = ['All', 'Sales', 'Purchase', 'Payment', 'Receipt'];
@@ -385,6 +386,14 @@ export default function TallyDataViewerPage() {
                             onReportTabChange={setReportTab}
                             onExportPdf={() => exportReportPdf(data, reportTab, selectedCompany.name)}
                             onExportExcel={() => exportReportExcel(data, reportTab, selectedCompany.name)}
+                        />
+                    )}
+
+                    {activeTab === 'ai-search' && (
+                        <VectorSearchPanel
+                            companyId={selectedCompany.id}
+                            companyName={selectedCompany.name}
+                            userId={selectedCompany.ownerId || null}
                         />
                     )}
                 </>
@@ -997,7 +1006,11 @@ function buildMonthlyTrend(vouchers: TallyVoucher[]) {
     return [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-6).map(([, value]) => value);
 }
 
-function exportReportPdf(data: TallyDataPayload, reportTab: ReportTab, companyName: string) {
+async function exportReportPdf(data: TallyDataPayload, reportTab: ReportTab, companyName: string) {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable')
+    ]);
     const doc = new jsPDF();
     const { title, columns, rows } = getReportRows(data, reportTab);
     doc.text(`${companyName} - ${title}`, 14, 14);
@@ -1005,7 +1018,8 @@ function exportReportPdf(data: TallyDataPayload, reportTab: ReportTab, companyNa
     doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
 }
 
-function exportReportExcel(data: TallyDataPayload, reportTab: ReportTab, companyName: string) {
+async function exportReportExcel(data: TallyDataPayload, reportTab: ReportTab, companyName: string) {
+    const XLSX = await import('xlsx');
     const { title, columns, rows } = getReportRows(data, reportTab);
     const sheet = XLSX.utils.aoa_to_sheet([[`${companyName} - ${title}`], [], columns, ...rows]);
     const book = XLSX.utils.book_new();
@@ -1061,4 +1075,101 @@ function formatDate(value: string, pattern = 'dd MMM yyyy') {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return format(date, pattern);
+}
+
+function getTopLedgerBalances(ledgers: TallyLedger[], type: string, limit: number) {
+    return ledgers
+        .filter((l) => l.ledger_type === type)
+        .sort((a, b) => Math.abs(b.current_balance || 0) - Math.abs(a.current_balance || 0))
+        .slice(0, limit);
+}
+
+function buildCommandCenter(data: TallyDataPayload) {
+    const sales = data.dashboard.totalSales || 0;
+    const purchases = data.dashboard.totalPurchase || 0;
+    const receivables = data.dashboard.receivables || 0;
+    const payables = data.dashboard.payables || 0;
+    const cash = data.dashboard.cashBankBalance || 0;
+
+    let score = 75;
+    if (purchases > sales) score -= 15;
+    if (payables > cash) score -= 10;
+    if (receivables > sales * 0.5) score -= 5;
+    score = Math.max(10, Math.min(100, score));
+
+    let label = 'Good';
+    let summary = 'Your business health is stable. Keep an eye on outstanding receivables.';
+    if (score < 50) {
+        label = 'Critical';
+        summary = 'High payables relative to cash reserves. Immediate action recommended.';
+    } else if (score < 75) {
+        label = 'Fair';
+        summary = 'Moderate cash reserves. Optimize collections to improve cash flow.';
+    }
+
+    const actions = [
+        { title: 'Collect outstanding payments', detail: 'Contact top debtors with overdue bills to optimize cashflow.', type: 'warning' as const },
+        { title: 'Verify GST filing input credit', detail: 'Cross-reference ledger tax entries before the next filing cycle.', type: 'info' as const },
+    ];
+
+    const risks = [];
+    if (payables > cash) {
+        risks.push({ title: 'Liquidity Pressure', detail: 'Payables exceed current cash/bank balance by ' + formatCurrency(payables - cash) });
+    }
+    if (purchases > sales) {
+        risks.push({ title: 'Negative Margin Trade', detail: 'Purchases exceed sales in this period.' });
+    }
+
+    return {
+        score,
+        label,
+        summary,
+        actions,
+        risks,
+    };
+}
+
+function InsightRow({ title, detail, type = 'info' }: { title: string; detail: string; type?: 'info' | 'success' | 'warning' | 'error' }) {
+    return (
+        <div className="flex items-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-variant)] p-3">
+            <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                type === 'success' ? 'bg-emerald-500' :
+                type === 'warning' ? 'bg-amber-500' :
+                type === 'error' ? 'bg-rose-500' : 'bg-blue-500'
+            }`} />
+            <div>
+                <p className="text-xs font-black text-[var(--on-surface)]">{title}</p>
+                <p className="mt-1 text-[10px] font-semibold leading-4 text-[var(--text-muted)]">{detail}</p>
+            </div>
+        </div>
+    );
+}
+
+function ExposureList({ title, icon, rows, empty, tone }: {
+    title: string;
+    icon: React.ReactNode;
+    rows: TallyLedger[];
+    empty: string;
+    tone: string;
+}) {
+    return (
+        <div className="p-4 border-b border-[var(--border)] last:border-b-0">
+            <div className="mb-3 flex items-center gap-2">
+                <span className={tone}>{icon}</span>
+                <h3 className="text-xs font-black uppercase tracking-wide text-[var(--on-surface)]">{title}</h3>
+            </div>
+            <div className="space-y-2">
+                {rows.length === 0 ? (
+                    <p className="text-[10px] font-bold text-[var(--text-muted)]">{empty}</p>
+                ) : (
+                    rows.map((row) => (
+                        <div key={row.id || row.name} className="flex items-center justify-between text-xs">
+                            <span className="truncate font-semibold text-[var(--on-surface-variant)]">{row.name}</span>
+                            <span className={`font-black ${tone}`}>{formatCurrency(Math.abs(row.current_balance))}</span>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
 }

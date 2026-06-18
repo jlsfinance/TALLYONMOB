@@ -42,6 +42,7 @@ export default function DashboardPage() {
     const [salesTrend, setSalesTrend] = useState({ value: 0, direction: 'neutral' });
     const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
+    const [dataFyStart, setDataFyStart] = useState<string | null>(null);
 
     const periodFilters = [
         { key: 'today', label: 'Today', icon: <Clock size={12} /> },
@@ -56,14 +57,50 @@ export default function DashboardPage() {
 
         const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
         const encodedId = encodeURIComponent(targetId);
-        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+        navigate(`/invoice/${encodedId}`, {
             state: { voucher, from: '/dashboard' }
         });
     };
 
     useEffect(() => {
+        if (selectedCompany) detectDataFy();
+    }, [selectedCompany]);
+
+    useEffect(() => {
         if (selectedCompany) loadDashboardData();
-    }, [selectedCompany, period]);
+    }, [selectedCompany, period, dataFyStart]);
+
+    const detectDataFy = async () => {
+        if (!selectedCompany) return;
+        try {
+            const { data } = await supabase
+                .from('vouchers')
+                .select('voucher_date')
+                .eq('company_id', selectedCompany.id)
+                .eq('is_deleted', false)
+                .order('voucher_date', { ascending: false })
+                .limit(1);
+            if (data && data.length > 0 && data[0].voucher_date) {
+                const latestDate = new Date(data[0].voucher_date);
+                const month = latestDate.getMonth();
+                const year = latestDate.getFullYear();
+                const fyStartYear = month >= 3 ? year : year - 1;
+                const fyStart = `${fyStartYear}-04-01`;
+                const currentFyStart = (() => {
+                    const now = new Date();
+                    const cm = now.getMonth();
+                    const cy = now.getFullYear();
+                    const sy = cm < 3 ? cy - 1 : cy;
+                    return `${sy}-04-01`;
+                })();
+                if (fyStart !== currentFyStart) {
+                    setDataFyStart(fyStart);
+                }
+            }
+        } catch (e) {
+            console.error('FY detection failed', e);
+        }
+    };
 
     useEffect(() => {
         const handleGlobalRefresh = () => { handleRefresh(); };
@@ -78,6 +115,11 @@ export default function DashboardPage() {
             case 'month': return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') };
             case '30days': return { from: format(subDays(now, 30), 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
             case 'year': {
+                if (dataFyStart) {
+                    const fyEnd = `${parseInt(dataFyStart.substring(0, 4)) + 1}-03-31`;
+                    const to = fyEnd < format(now, 'yyyy-MM-dd') ? fyEnd : format(now, 'yyyy-MM-dd');
+                    return { from: dataFyStart, to };
+                }
                 const currentMonth = now.getMonth();
                 const currentYear = now.getFullYear();
                 const startYear = currentMonth < 3 ? currentYear - 1 : currentYear;

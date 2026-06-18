@@ -127,6 +127,35 @@ auth.getCurrentSession = async () => {
   return { data: { session }, error };
 };
 
+const originalSignUp = supabase.auth.signUp.bind(supabase.auth);
+auth.signUp = async ({ email, password, name }) => {
+  const { data, error } = await originalSignUp({
+    email,
+    password,
+    options: {
+      data: { name }
+    }
+  });
+  return { data, error };
+};
+
+auth.sendVerificationEmail = async ({ email }) => {
+  const { data, error } = await supabase.auth.resend({
+    type: 'signup',
+    email
+  });
+  return { error };
+};
+
+auth.verifyEmail = async ({ email, otp }) => {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token: otp,
+    type: 'signup'
+  });
+  return { data, error };
+};
+
 const clearLocalSession = async () => {
   try { await auth.signOut(); } catch (_) {}
 };
@@ -247,8 +276,9 @@ const ledgerApi = {
   getItemHistory: async (companyId, ledgerName, itemName, { fromDate, toDate, voucherTypes, sort = "desc", limit = 1e3 } = {}) => {
     try {
       if (!companyId || !ledgerName || !itemName) return { data: [], error: null };
-      const rpcRes = await db.rpc("insforge_ledger_item_history", { p_company_id: companyId, p_ledger_name: ledgerName, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_limit: limit, p_offset: 0 });
-      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+      let rpcRes = { data: null, error: new Error('skip') };
+      try { rpcRes = await db.rpc("insforge_ledger_item_history", { p_company_id: companyId, p_ledger_name: ledgerName, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_limit: limit, p_offset: 0 }); } catch (_) {}
+      if (!rpcRes.error && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
         return { data: sort === "asc" ? [...rpcRes.data].reverse() : rpcRes.data, error: null };
       }
       let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
@@ -386,9 +416,11 @@ const stockApi = {
         if (item?.name) itemName = item.name;
       }
       const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      const rpcRowsRes = await db.rpc("insforge_stock_item_history", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam, p_limit: limit, p_offset: 0 });
-      if (!rpcRowsRes.error && Array.isArray(rpcRowsRes.data)) {
-        const rpcSummaryRes = await db.rpc("insforge_stock_item_history_summary", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam });
+      let rpcRowsRes = { data: null, error: new Error('skip') };
+      try { rpcRowsRes = await db.rpc("insforge_stock_item_history", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam, p_limit: limit, p_offset: 0 }); } catch (_) {}
+      if (!rpcRowsRes.error && Array.isArray(rpcRowsRes.data) && rpcRowsRes.data.length > 0) {
+        let rpcSummaryRes = { data: null, error: new Error('skip') };
+        try { rpcSummaryRes = await db.rpc("insforge_stock_item_history_summary", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam }); } catch (_) {}
         const rows = sort === "asc" ? [...rpcRowsRes.data].reverse() : rpcRowsRes.data;
         const summary2 = rpcSummaryRes?.data?.[0] || { opening_qty: Number(item?.opening_stock || item?.opening_balance || 0), total_in_qty: 0, total_out_qty: 0, total_in_amount: 0, total_out_amount: 0, closing_qty: Number(item?.opening_stock || item?.opening_balance || 0) };
         return { data: { item, rows, summary: summary2 }, error: null };

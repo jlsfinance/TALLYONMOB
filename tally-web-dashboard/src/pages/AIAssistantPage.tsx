@@ -408,14 +408,14 @@ export default function AIAssistantPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] md:h-[calc(100vh-80px)] bg-[var(--background)]">
+        <div className="flex flex-col h-[calc(100vh-52px)] md:h-[calc(100vh-80px)] bg-[var(--background)]">
             <HeaderPortal type="title">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 md:gap-3">
                     <div className="hidden md:flex w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 items-center justify-center">
                         <Bot className="w-4 h-4 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-sm md:text-base font-bold text-[var(--on-surface)]">AI Assistant</h1>
+                        <h1 className="text-xs md:text-base font-bold text-[var(--on-surface)]">AI Assistant</h1>
                         <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
                             Sense your business
                         </p>
@@ -426,7 +426,7 @@ export default function AIAssistantPage() {
             <HeaderPortal type="actions">
                 <button
                     onClick={clearChat}
-                    className="p-2 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                    className="p-1.5 md:p-2 text-[var(--text-muted)] hover:text-red-400 transition-colors"
                     title="Clear Chat"
                 >
                     <Trash2 className="w-4 h-4" />
@@ -435,13 +435,13 @@ export default function AIAssistantPage() {
 
             {/* Quick Prompts */}
             {messages.length <= 1 && (
-                <div className="px-4 py-3 border-b border-[var(--border)]">
-                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="px-2 md:px-4 py-2 md:py-3 border-b border-[var(--border)]">
+                    <div className="grid grid-cols-2 md:flex md:flex-row gap-1.5 md:gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         {QUICK_PROMPTS.map((prompt, i) => (
                             <button
                                 key={i}
                                 onClick={() => { setInput(prompt.text); }}
-                                className="flex items-center gap-1.5 px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-full text-xs text-[var(--on-surface)] whitespace-nowrap hover:border-blue-500/50 transition-all shrink-0"
+                                className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 md:py-2 bg-[var(--surface)] border border-[var(--border)] rounded-full text-[10px] md:text-xs text-[var(--on-surface)] whitespace-nowrap hover:border-blue-500/50 transition-all shrink-0"
                             >
                                 <span>{prompt.icon}</span> {prompt.label}
                             </button>
@@ -451,14 +451,14 @@ export default function AIAssistantPage() {
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto px-2 md:px-4 py-2 md:py-4 space-y-2 md:space-y-4 pb-20 md:pb-4">
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === 'user'
+                        <div className={`max-w-[90%] md:max-w-[85%] rounded-xl md:rounded-2xl px-2.5 md:px-4 py-2 md:py-3 ${msg.role === 'user'
                             ? 'bg-blue-500 text-white rounded-tr-sm'
                             : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] rounded-tl-sm'
                             }`}>
-                            <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                            <div className="text-[11px] md:text-sm whitespace-pre-wrap leading-relaxed">
                                 {msg.content.split('\n').map((line, i) => {
                                     // Bold text
                                     const boldParts = line.split(/\*\*(.*?)\*\*/g);
@@ -473,7 +473,7 @@ export default function AIAssistantPage() {
                                 })}
                             </div>
                             {msg.role === 'assistant' && msg.id !== 'welcome' && (
-                                <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[var(--border)]">
+                                <div className="hidden md:flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[var(--border)]">
                                     <button
                                         onClick={() => copyMessage(msg.content, msg.id)}
                                         className="text-xs text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
@@ -488,10 +488,10 @@ export default function AIAssistantPage() {
 
                 {loading && (
                     <div className="flex justify-start">
-                        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl md:rounded-2xl rounded-tl-sm px-2.5 md:px-4 py-2 md:py-3">
                             <div className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                                <span className="text-sm text-[var(--text-muted)]">Analyzing your data...</span>
+                                <Loader2 className="w-3.5 h-3.5 md:w-4 md:h-4 animate-spin text-blue-400" />
+                                <span className="text-[11px] md:text-sm text-[var(--text-muted)]">Analyzing...</span>
                             </div>
                         </div>
                     </div>
@@ -501,16 +501,16 @@ export default function AIAssistantPage() {
             </div>
 
             {/* Input */}
-            <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--surface)]">
-                <div className="flex items-center gap-2">
+            <div className="fixed bottom-0 left-0 right-0 md:static px-2 md:px-4 py-2 md:py-3 border-t border-[var(--border)] bg-[var(--surface)] z-50">
+                <div className="flex items-center gap-1.5 md:gap-2">
                     <button
                         onClick={toggleVoice}
-                        className={`p-2.5 rounded-xl transition-all ${isListening
+                        className={`p-2 md:p-2.5 rounded-xl transition-all ${isListening
                             ? 'bg-red-500 text-white animate-pulse'
                             : 'bg-[var(--background)] text-[var(--text-muted)] hover:text-[var(--on-surface)]'
                             }`}
                     >
-                        {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        {isListening ? <MicOff className="w-4 h-4 md:w-5 md:h-5" /> : <Mic className="w-4 h-4 md:w-5 md:h-5" />}
                     </button>
                     <input
                         ref={inputRef}
@@ -519,14 +519,14 @@ export default function AIAssistantPage() {
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                         placeholder={isListening ? 'Listening...' : 'Pucho kuch bhi... Hindi ya English'}
-                        className="flex-1 px-4 py-2.5 bg-[var(--background)] border border-[var(--border)] rounded-xl text-sm text-[var(--on-surface)] placeholder-[var(--text-muted)] focus:border-blue-500/50 focus:outline-none"
+                        className="flex-1 px-3 md:px-4 py-2 md:py-2.5 bg-[var(--background)] border border-[var(--border)] rounded-xl text-xs md:text-sm text-[var(--on-surface)] placeholder-[var(--text-muted)] focus:border-blue-500/50 focus:outline-none"
                     />
                     <button
                         onClick={handleSend}
                         disabled={!input.trim() || loading}
-                        className="p-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-2 md:p-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <Send className="w-5 h-5" />
+                        <Send className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
                 </div>
             </div>

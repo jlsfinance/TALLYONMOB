@@ -4,10 +4,11 @@ import { supabase, pendingTransactionApi } from '../lib/insforge';
 import {
     FileText, Plus, Search, Save, X, ChevronDown, Calendar,
     IndianRupee, Users, Package, Loader2, CheckCircle, ArrowLeft,
-    Receipt, CreditCard, ArrowUpRight, ArrowDownRight, RefreshCcw
+    Receipt, CreditCard, ArrowUpRight, ArrowDownRight, RefreshCcw, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { generateTallyVoucherXml, sendToTally } from '../services/tallyExportService';
 
 type VoucherType = 'Sales' | 'Purchase' | 'Receipt' | 'Payment' | 'Contra' | 'Journal' | 'Debit Note' | 'Credit Note';
 
@@ -166,7 +167,21 @@ export default function CreateVoucherPage() {
 
             if (error) throw error;
 
-            toast.success(`${voucherType} voucher created! Will sync to Tally on next sync.`);
+            // Try to sync to Tally immediately
+            try {
+                const xml = generateTallyVoucherXml({
+                    ...voucherData,
+                    company_name: selectedCompany?.name || ''
+                });
+                const result = await sendToTally(xml);
+                if (result.success) {
+                    toast.success(`${voucherType} created & synced to Tally!`);
+                } else {
+                    toast.success(`${voucherType} created! Will sync to Tally on next sync.`);
+                }
+            } catch {
+                toast.success(`${voucherType} created! Will sync to Tally on next sync.`);
+            }
             navigate(-1);
         } catch (err: any) {
             toast.error(err.message || 'Failed to save voucher');

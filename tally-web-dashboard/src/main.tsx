@@ -5,6 +5,12 @@ import App from './App'
 import AppErrorBoundary from './components/common/AppErrorBoundary'
 import './index.css'
 
+if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {})
+    })
+}
+
 const logRuntimeIssue = (type: 'error' | 'rejection', payload: unknown) => {
     console.error(`[runtime:${type}]`, payload)
 }

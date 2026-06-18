@@ -28,6 +28,35 @@ export default function SalesDashboardPage() {
     const [topProducts, setTopProducts] = useState<any[]>([]);
     const [dailySales, setDailySales] = useState<any[]>([]);
 
+    useEffect(() => {
+        if (!selectedCompany?.id) return;
+        const detectFy = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('vouchers')
+                    .select('voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .eq('is_deleted', false)
+                    .order('voucher_date', { ascending: false })
+                    .limit(1);
+                if (error) return;
+                if (data && data.length > 0 && data[0].voucher_date) {
+                    const latestDate = new Date(data[0].voucher_date);
+                    const month = latestDate.getMonth();
+                    const year = latestDate.getFullYear();
+                    const fyStartYear = month >= 3 ? year : year - 1;
+                    const endYr = (fyStartYear + 1).toString().slice(2);
+                    const detectedFy = `FY ${fyStartYear}-${endYr}`;
+                    setSelectedFy(detectedFy);
+                }
+            } catch (e) {
+                console.error('FY detection failed', e);
+            }
+        };
+        detectFy();
+    }, [selectedCompany?.id]);
+
     const periods = [
         { key: 'today', label: 'Today' },
         { key: 'thisWeek', label: 'Week' },

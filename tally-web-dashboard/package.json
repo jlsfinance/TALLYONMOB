@@ -49,6 +49,14 @@
         "react-window": "^1.8.10",
         "recharts": "^2.10.0",
         "three": "^0.182.0",
+        "vite-plugin-pwa": "^1.3.0",
+        "workbox-background-sync": "^7.4.1",
+        "workbox-cacheable-response": "^7.4.1",
+        "workbox-expiration": "^7.4.1",
+        "workbox-precaching": "^7.4.1",
+        "workbox-routing": "^7.4.1",
+        "workbox-strategies": "^7.4.1",
+        "workbox-window": "^7.4.1",
         "xlsx": "^0.18.5"
     },
     "devDependencies": {

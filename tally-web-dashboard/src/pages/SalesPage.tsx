@@ -29,6 +29,36 @@ export default function SalesPage() {
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
 
+    useEffect(() => {
+        if (!selectedCompany?.id) return;
+        const detectFy = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('vouchers')
+                    .select('voucher_date')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Sales')
+                    .eq('is_deleted', false)
+                    .order('voucher_date', { ascending: false })
+                    .limit(1);
+                if (error) return;
+                if (data && data.length > 0 && data[0].voucher_date) {
+                    const latestDate = new Date(data[0].voucher_date);
+                    const month = latestDate.getMonth();
+                    const year = latestDate.getFullYear();
+                    const fyStartYear = month >= 3 ? year : year - 1;
+                    const endYr = (fyStartYear + 1).toString().slice(2);
+                    const detectedFy = `FY ${fyStartYear}-${endYr}`;
+                    setSelectedFy(detectedFy);
+                    setSelectedMonth('all');
+                }
+            } catch (e) {
+                console.error('FY detection failed', e);
+            }
+        };
+        detectFy();
+    }, [selectedCompany?.id]);
+
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
         const startYearText = selectedFy.split(' ')[1].split('-')[0];
@@ -78,13 +108,13 @@ export default function SalesPage() {
             if (!selectedCompany?.id) return [];
             
             const { data: syncedData, error: syncedError } = await supabase.from('vouchers')
-                .select('*')
+                .select('*', { count: 'exact' })
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .limit(50000);
+                .range(0, 99999);
             
             if (syncedError) throw syncedError;
 
@@ -112,6 +142,8 @@ export default function SalesPage() {
         },
         {
             enabled: !!selectedCompany?.id,
+            staleTime: 3 * 60 * 1000,
+            refetchOnWindowFocus: false,
         }
     );
 
@@ -247,7 +279,7 @@ export default function SalesPage() {
                                             status={sale.status === 'pending' ? 'Pending' : (sale.sync_status === 'failed' ? 'Failed' : 'Synced')}
                                             highlighted={sale.status === 'pending'}
                                             onClick={() => {
-                                                navigate(`/vouchers/${encodeURIComponent(sale.id)}`);
+                                                navigate(`/invoice/${encodeURIComponent(sale.id)}`, { state: { voucher: sale, from: '/sales' } });
                                             }}
                                         />
                                     </div>

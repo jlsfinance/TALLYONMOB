@@ -51,7 +51,7 @@ export function buildCollectionRequest({ collectionName, objectType, fromDate, t
             toDate ? `<SVTODATE>${formatTallyDate(toDate)}</SVTODATE>` : "",
             "</STATICVARIABLES>",
             "<TDL><TDLMESSAGE>",
-            `<COLLECTION NAME="${escapeXml(collectionName)}" ISMODIFY="Yes">`,
+            `<COLLECTION NAME="${escapeXml(collectionName)}" ISMODIFY="No">`,
             `<TYPE>${escapeXml(objectType)}</TYPE>`,
             dateFormula,
             methodTags,

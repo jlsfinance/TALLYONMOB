@@ -130,19 +130,21 @@ export default function InvoicePDFPage() {
     const [template, setTemplate] = useState('professional');
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
-    const [containerHeight, setContainerHeight] = useState('auto');
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
             if (typeof window !== 'undefined') {
-                const sidebarWidth = window.innerWidth >= 768 ? 240 : 0;
-                const availableWidth = window.innerWidth - sidebarWidth - 32; // -32 for padding
-                const s = availableWidth < 794 ? availableWidth / 794 : 1;
-                setScale(s);
-                if (availableWidth < 794) {
-                    setContainerHeight(`${297 * s + 40}mm`); // A4 Height * scale + padding
+                const mobile = window.innerWidth < 768;
+                setIsMobile(mobile);
+                if (mobile) {
+                    setScale(1);
                 } else {
-                    setContainerHeight('auto');
+                    const sidebarWidth = 240;
+                    const padding = 48;
+                    const availableWidth = window.innerWidth - sidebarWidth - padding;
+                    const s = Math.min(availableWidth / (210 * 3.7795), 1.15);
+                    setScale(s);
                 }
             }
         };
@@ -1288,209 +1290,235 @@ export default function InvoicePDFPage() {
     return (
         <div className="bg-[#f8f9fa] min-h-screen pb-10 font-sans">
             {/* Header Actions Portal */}
+            <HeaderPortal type="title">
+                <div className="flex flex-col">
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Invoice #{invoice?.invoice_number}</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{invoice?.voucher_type} - {formatDate(invoice?.invoice_date)}</p>
+                </div>
+            </HeaderPortal>
+
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-1 md:gap-2">
                     <button
                         onClick={handleWhatsAppShare}
-                        className="p-2 md:px-4 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="WhatsApp Share"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="WhatsApp"
                     >
-                        <MessageCircle size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">WhatsApp</span>
+                        <MessageCircle size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">WhatsApp</span>
                     </button>
                     <button
                         onClick={() => generatePDF('share')}
-                        className="p-2 md:px-4 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="Share PDF"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Share"
                     >
-                        <Share size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Share</span>
+                        <Share size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Share</span>
+                    </button>
+                    <button
+                        onClick={() => generatePDF('download')}
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Download"
+                    >
+                        <Download size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
                     </button>
                     <button
                         onClick={() => navigate(`/edit-invoice/${id}`)}
-                        className="p-2 md:px-4 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="Edit Invoice"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Edit"
                     >
-                        <Edit size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Edit</span>
+                        <Edit size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
                     </button>
                 </div>
             </HeaderPortal>
 
-            {/* Sticky Local Header */}
-            <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-3 mb-6 flex items-center justify-between">
-                <button onClick={() => navigate(backTarget)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
-                    <ArrowLeft size={20} className="text-gray-600" />
-                </button>
-                <div className="flex-1 px-4">
-                    <h1 className="text-sm font-black text-gray-800 uppercase tracking-widest">Invoice #{invoice.invoice_number}</h1>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{invoice.voucher_type} - {formatDate(invoice.invoice_date)}</p>
-                </div>
-                <button
-                    onClick={() => generatePDF('download')}
-                    className="p-2 rounded-full hover:bg-gray-100 transition-colors text-blue-500"
-                    title="Download"
-                >
-                    <Download size={20} />
-                </button>
-            </div>
-
             {/* Universal Document Preview (Scales for Mobile) */}
-            <div className="w-full flex justify-center items-start p-0 md:p-8 overflow-hidden" style={{ minHeight: containerHeight }}>
-                <div
-                    className="relative"
-                    style={{
-                        width: `${210 * scale}mm`,
-                        height: containerHeight === 'auto' ? 'auto' : containerHeight,
-                    }}
-                >
+            <div className="w-full flex justify-center items-start overflow-hidden">
+                <div className="relative w-full">
                     <div
-                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900"
+                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900 mx-auto"
                         style={{
-                            width: '210mm',
-                            minHeight: '297mm',
-                            transform: `scale(${scale})`,
-                            transformOrigin: 'top left',
-                            transition: 'transform 0.2s ease-out',
+                            width: isMobile ? '100%' : `${210 * scale}mm`,
+                            transformOrigin: 'top center',
+                            transition: 'width 0.2s ease-out',
                             color: '#0f172a',
                             WebkitTextFillColor: '#0f172a'
                         }}
                     >
-                        <div className="p-8 h-full flex flex-col relative">
+                        <div className={`${isMobile ? 'p-2' : 'p-6 md:p-8'} h-full flex flex-col relative`}>
                             {/* Tally Style Border Container */}
-                            <div className="border-2 border-black h-full flex flex-col">
+                            <div className="border-2 border-black h-full flex flex-col text-[10px] md:text-xs">
 
                                 {/* Header Section - Tally Style: Only show fields that have data */}
-                                <div className="grid grid-cols-2 border-b-2 border-black">
-                                    {/* Company Info - Left */}
-                                    <div className="p-4 border-r-2 border-black flex flex-col justify-center">
-                                        <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
-
-                                        {(companyInfo?.address) && (
-                                            <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
-                                                {companyInfo?.address}
-                                            </p>
-                                        )}
-
-                                        <div className="text-xs space-y-0.5">
-                                            {(companyInfo?.gstin) && (
-                                                <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
-                                            )}
-                                            {(companyInfo?.state) && (
-                                                <p><span className="font-semibold">State Name:</span> {companyInfo.state}</p>
-                                            )}
-                                            {(companyInfo?.email) && (
-                                                <p><span className="font-semibold">E-Mail:</span> {companyInfo.email}</p>
-                                            )}
-                                            {(companyInfo?.phone) && (
-                                                <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
-                                            )}
+                                <div className="border-b-2 border-black">
+                                    {/* Mobile: All-in-one compact row */}
+                                    <div className="md:hidden">
+                                        <div className="flex items-center justify-between p-1 border-b border-black bg-gray-50">
+                                            <span className="text-[8px] font-bold uppercase">Tax Invoice</span>
+                                            <span className="text-[7px] font-bold">#{invoice.invoice_number}</span>
+                                            <span className="text-[7px]">{formatDate(invoice.invoice_date)}</span>
+                                        </div>
+                                        <div className="grid grid-cols-[1fr_auto] gap-x-2 p-1">
+                                            <div className="min-w-0">
+                                                <p className="text-[9px] font-black uppercase truncate">{companyInfo?.name}</p>
+                                                {companyInfo?.gstin && <p className="text-[7px]"><span className="font-semibold">GSTIN:</span> {companyInfo.gstin}</p>}
+                                                {companyInfo?.state && <p className="text-[7px]">{companyInfo.state}</p>}
+                                            </div>
+                                            <div className="text-right text-[7px] space-y-px">
+                                                {companyInfo?.address && <p className="truncate max-w-[120px]">{companyInfo.address}</p>}
+                                                {invoice.payment_mode && <p className="font-semibold">{invoice.payment_mode}</p>}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* Invoice Info - Right (Tally: only show filled fields) */}
-                                    <div className="flex flex-col">
-                                        <div className="p-2 border-b-2 border-black text-center bg-gray-50">
-                                            <h2 className="text-base font-bold uppercase tracking-wider">
-                                                {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
-                                            </h2>
-                                        </div>
-                                        <div className="flex-grow text-xs">
-                                            {/* Invoice No & Date - always shown */}
-                                            <div className="grid grid-cols-2">
-                                                <div className="p-2 border-r border-black border-b border-black">
-                                                    <p className="font-semibold">Invoice No.</p>
-                                                    <p className="font-bold text-sm">{invoice.invoice_number}</p>
-                                                </div>
-                                                <div className="p-2 border-b border-black">
-                                                    <p className="font-semibold">Dated</p>
-                                                    <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
-                                                </div>
+                                    {/* Desktop: Full Tally-style layout */}
+                                    <div className="hidden md:grid md:grid-cols-2">
+                                        {/* Company Info - Left */}
+                                        <div className="p-4 border-r-2 border-black flex flex-col justify-center">
+                                            <h1 className="text-lg font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
+
+                                            {(companyInfo?.address) && (
+                                                <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
+                                                    {companyInfo?.address}
+                                                </p>
+                                            )}
+
+                                            <div className="text-xs space-y-0">
+                                                {(companyInfo?.gstin) && (
+                                                    <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
+                                                )}
+                                                {(companyInfo?.state) && (
+                                                    <p><span className="font-semibold">State:</span> {companyInfo.state}</p>
+                                                )}
+                                                {(companyInfo?.email) && (
+                                                    <p><span className="font-semibold">Email:</span> {companyInfo.email}</p>
+                                                )}
+                                                {(companyInfo?.phone) && (
+                                                    <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
+                                                )}
                                             </div>
-                                            {/* Only show Delivery Note / Mode of Payment if data exists */}
-                                            {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
+                                        </div>
+
+                                        {/* Invoice Info - Right (Tally: only show filled fields) */}
+                                        <div className="flex flex-col">
+                                            <div className="p-2 border-b-2 border-black text-center bg-gray-50">
+                                                <h2 className="text-base font-bold uppercase tracking-wider">
+                                                    {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
+                                                </h2>
+                                            </div>
+                                            <div className="flex-grow text-xs">
+                                                {/* Invoice No & Date - always shown */}
                                                 <div className="grid grid-cols-2">
-                                                    {invoice.delivery_note ? (
-                                                        <div className="p-2 border-r border-black border-b border-black">
-                                                            <p className="font-semibold">Delivery Note</p>
-                                                            <p>{invoice.delivery_note}</p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="p-2 border-r border-black border-b border-black"></div>
-                                                    )}
+                                                    <div className="p-2 border-r border-black border-b border-black">
+                                                        <p className="font-semibold">Invoice No.</p>
+                                                        <p className="font-bold text-sm">{invoice.invoice_number}</p>
+                                                    </div>
                                                     <div className="p-2 border-b border-black">
-                                                        <p className="font-semibold">Mode/Terms</p>
-                                                        <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                        <p className="font-semibold">Dated</p>
+                                                        <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
                                                     </div>
                                                 </div>
-                                            )}
-                                            {/* Buyer's Order - only if exists */}
-                                            {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
-                                                <div className="grid grid-cols-2">
-                                                    <div className="p-2 border-r border-black">
-                                                        {invoice.buyers_order_number && (
-                                                            <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
+                                                {/* Only show Delivery Note / Mode of Payment if data exists */}
+                                                {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
+                                                    <div className="grid grid-cols-2">
+                                                        {invoice.delivery_note ? (
+                                                            <div className="p-2 border-r border-black border-b border-black">
+                                                                <p className="font-semibold">Delivery Note</p>
+                                                                <p>{invoice.delivery_note}</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-2 border-r border-black border-b border-black"></div>
                                                         )}
-                                                        {invoice.dispatch_through && (
-                                                            <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
-                                                        )}
+                                                        <div className="p-2 border-b border-black">
+                                                            <p className="font-semibold">Mode/Terms</p>
+                                                            <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="p-2">
-                                                        {invoice.destination && (
-                                                            <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
-                                                        )}
+                                                )}
+                                                {/* Buyer's Order - only if exists */}
+                                                {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
+                                                    <div className="grid grid-cols-2">
+                                                        <div className="p-2 border-r border-black">
+                                                            {invoice.buyers_order_number && (
+                                                                <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
+                                                            )}
+                                                            {invoice.dispatch_through && (
+                                                                <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
+                                                            )}
+                                                        </div>
+                                                        <div className="p-2">
+                                                            {invoice.destination && (
+                                                                <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Buyer Info */}
                                 <div className="border-b-2 border-black p-0">
-                                    <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
-                                    <div className="p-3 text-xs">
-                                        <p
-                                            className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
-                                            onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
-                                        >
-                                            {invoice.party_ledger_name}
-                                        </p>
-                                        <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
-                                        <div className="flex gap-4 mt-2">
-                                            {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
-                                            {(invoice.party_state || invoice.place_of_supply) && (
-                                                <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
-                                            )}
+                                    {/* Mobile: Compact single-line buyer */}
+                                    <div className="md:hidden flex items-center justify-between p-1 bg-gray-100 border-b border-black">
+                                        <div className="min-w-0 flex-1">
+                                            <span className="text-[7px] font-bold uppercase">Buyer: </span>
+                                            <span className="text-[8px] font-black uppercase truncate">{invoice.party_ledger_name}</span>
+                                            {invoice.party_gstin && <span className="text-[7px] ml-1">GSTIN: {invoice.party_gstin}</span>}
+                                        </div>
+                                        {(invoice.party_state || invoice.place_of_supply) && (
+                                            <span className="text-[7px] shrink-0 ml-1">{invoice.party_state || invoice.place_of_supply}</span>
+                                        )}
+                                    </div>
+                                    {/* Desktop: Full buyer details */}
+                                    <div className="hidden md:block">
+                                        <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold border-b border-black uppercase">Buyer (Bill to)</div>
+                                        <div className="p-2 text-[10px]">
+                                            <p
+                                                className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
+                                                onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
+                                            >
+                                                {invoice.party_ledger_name}
+                                            </p>
+                                            <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
+                                            <div className="flex gap-4 mt-2">
+                                                {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
+                                                {(invoice.party_state || invoice.place_of_supply) && (
+                                                    <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
                                 {/* Items Table - Tally Style: only show columns that have data */}
-                                <div className="flex-grow flex flex-col border-b-2 border-black relative">
+                                <div className="flex-grow flex flex-col border-b-2 border-black relative overflow-x-auto">
                                     {/* Table Header */}
-                                    <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
-                                        <div className="w-10 p-2 border-r border-black">SI No.</div>
-                                        <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
-                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
-                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
-                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black">Quantity</div>}
-                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black">Rate</div>}
-                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black">Per</div>}
-                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
-                                        <div className="w-24 p-2 text-right">Amount</div>
+                                    <div className={`flex text-[7px] md:text-[10px] font-bold border-b border-black text-center bg-gray-50 ${isMobile ? 'overflow-x-auto' : 'min-w-[400px]'}`}>
+                                        <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black">#</div>
+                                        <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black text-left">Description</div>
+                                        {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden sm:block">HSN</div>}
+                                        {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black hidden md:block">GST</div>}
+                                        {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black">Qty</div>}
+                                        {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black">Rate</div>}
+                                        {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black hidden md:block">Per</div>}
+                                        {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden lg:block">Disc</div>}
+                                        <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right">Amount</div>
                                     </div>
 
                                     {/* Table Body - Rows */}
-                                    <div className="flex-grow text-xs relative">
+                                    <div className={`flex-grow text-[8px] md:text-[10px] relative ${isMobile ? '' : 'min-w-[400px]'}`}>
                                         {items.map((item, idx) => {
                                             const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
                                             const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
 
                                             return (
                                                 <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
-                                                    <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
-                                                    <div className="flex-1 p-2 border-r border-black font-semibold text-left">
+                                                    <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center">{idx + 1}</div>
+                                                    <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black font-semibold text-left">
                                                         <span
                                                             className="cursor-pointer hover:text-blue-600 transition-colors"
                                                             onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
@@ -1498,69 +1526,69 @@ export default function InvoicePDFPage() {
                                                             {item.stock_item_name}
                                                         </span>
                                                     </div>
-                                                    {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
-                                                    {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
-                                                    {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
-                                                    {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>}
-                                                    {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>}
-                                                    {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
+                                                    {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black text-center hidden sm:block">{item.hsn_code || ''}</div>}
+                                                    {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black text-center hidden md:block">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
+                                                    {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black text-center font-bold">{item.quantity}</div>}
+                                                    {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black text-right">{formatNumber(item.rate)}</div>}
+                                                    {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center hidden md:block">{item.unit}</div>}
+                                                    {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black text-right hidden lg:block">
                                                         {(Number(item.discount) > 0 || Number(item.discount_percent) > 0) ? (item.discount || item.discount_percent) + '%' : ''}
                                                     </div>}
-                                                    <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
+                                                    <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right font-bold">{formatNumber(item.amount)}</div>
                                                 </div>
                                             );
                                         })}
                                     </div>
 
                                     {/* Totals Row */}
-                                    <div className="flex border-t-2 border-black font-bold text-xs bg-gray-50">
-                                        <div className="w-10 p-2 border-r border-black text-center"></div>
-                                        <div className="flex-1 p-2 border-r border-black text-right font-bold">Total</div>
-                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{totalQty}</div>}
-                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
-                                        <div className="w-24 p-2 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
+                                    <div className="flex border-t-2 border-black font-bold text-[8px] md:text-[10px] bg-gray-50">
+                                        <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center"></div>
+                                        <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black text-right font-bold">Total</div>
+                                        {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden sm:block"></div>}
+                                        {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black hidden md:block"></div>}
+                                        {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black text-center font-bold">{totalQty}</div>}
+                                        {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black"></div>}
+                                        {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black hidden md:block"></div>}
+                                        {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden lg:block"></div>}
+                                        <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
                                     </div>
                                 </div>
 
                                 {/* Bottom Section: Words & Tax Breakdown */}
-                                <div className="grid grid-cols-2 border-b-2 border-black text-xs">
+                                <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-black text-[8px] md:text-[10px]">
                                     {/* Left: Amount in Words */}
-                                    <div className="p-2 border-r-2 border-black">
-                                        <p className="text-[10px] text-gray-500 mb-1">Amount Chargeable (in words)</p>
-                                        <p className="font-bold italic text-sm">{numberToWords(invoice.net_amount)}</p>
+                                    <div className="p-1 md:p-2 border-r-0 md:border-r-2 border-black">
+                                        <p className="text-[7px] md:text-[10px] text-gray-500 mb-0.5">Amount Chargeable (in words)</p>
+                                        <p className="font-bold italic text-[9px] md:text-sm">{numberToWords(invoice.net_amount)}</p>
                                     </div>
 
                                     {/* Right: Tax Amounts */}
                                     <div className="text-right">
                                         {invoice.cgst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">CGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.cgst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">CGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.cgst_amount)}</span>
                                             </div>
                                         )}
                                         {invoice.sgst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">SGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.sgst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">SGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.sgst_amount)}</span>
                                             </div>
                                         )}
                                         {invoice.igst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">IGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">IGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.igst_amount)}</span>
                                             </div>
                                         )}
                                         {columnVisibility.hasRoundOff && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">Round Off</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.round_off)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">Round Off</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.round_off)}</span>
                                             </div>
                                         )}
-                                        <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
+                                        <div className="flex justify-between p-1 md:p-2 bg-gray-100 font-bold text-[9px] md:text-sm border-t border-black">
                                             <span>Total (INR)</span>
                                             <span>INR {formatNumber(invoice.net_amount)}</span>
                                         </div>
@@ -1568,9 +1596,10 @@ export default function InvoicePDFPage() {
                                 </div>
                                 {/* HSN/SAC Summary (If GST) */}
                                 {columnVisibility.hasGST && (
-                                    <div className="border-b-2 border-black p-2">
-                                        <p className="text-[10px] font-bold underline mb-1">Tax Analysis:</p>
-                                        <table className="w-full text-[10px] border border-black text-center">
+                                    <div className="border-b-2 border-black p-1 md:p-2">
+                                        <p className="text-[7px] md:text-[10px] font-bold underline mb-1">Tax Analysis:</p>
+                                        <div className="overflow-x-auto">
+                                        <table className="w-full text-[7px] md:text-[9px] border border-black text-center min-w-[300px]">
                                             <thead>
                                                 <tr className="bg-gray-100 border-b border-black">
                                                     <th className="border-r border-black">HSN/SAC</th>
@@ -1632,13 +1661,45 @@ export default function InvoicePDFPage() {
                                                 ))}
                                             </tbody>
                                         </table>
+                                        </div>
                                     </div>
                                 )}
 
                                 {/* Footer Section - Tally: only show bank if filled */}
-                                <div className="grid grid-cols-5 flex-grow h-32">
+                                {/* Mobile: Compact footer */}
+                                <div className="md:hidden min-h-[3rem]">
+                                    <div className="grid grid-cols-2 gap-0 text-[7px]">
+                                        {/* Left: Bank + Declaration */}
+                                        <div className="p-1 border-r border-b border-black">
+                                            {(companyInfo?.bank_name || companyInfo?.bank_account) && (
+                                                <div className="mb-0.5">
+                                                    <p className="font-bold underline">Bank Details:</p>
+                                                    {companyInfo?.bank_name && <p>{companyInfo.bank_name}</p>}
+                                                    {companyInfo?.bank_account && <p>A/C: {companyInfo.bank_account}</p>}
+                                                    {companyInfo?.bank_ifsc && <p>IFSC: {companyInfo.bank_ifsc}</p>}
+                                                </div>
+                                            )}
+                                            <p className="text-[6px] opacity-70">We declare that this invoice shows the actual price of the goods described.</p>
+                                        </div>
+                                        {/* Right: QR + Signatory */}
+                                        <div className="p-1 flex flex-col items-center justify-between">
+                                            {upiId && (
+                                                <img
+                                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
+                                                    alt="UPI QR"
+                                                    className="w-8 h-8 mix-blend-multiply"
+                                                    crossOrigin="anonymous"
+                                                />
+                                            )}
+                                            <p className="text-right w-full text-[6px] mt-0.5">for <span className="font-bold">{companyInfo?.name}</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Desktop: Full footer */}
+                                <div className="hidden md:grid md:grid-cols-5 flex-grow min-h-[8rem]">
                                     {/* Bank & Terms (40%) */}
-                                    <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
+                                    <div className="col-span-2 border-r-2 border-black p-2 text-[10px] flex flex-col justify-between h-full">
                                         {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
                                             <div>
                                                 <p className="font-bold underline mb-1">Company's Bank Details:</p>
@@ -1657,11 +1718,11 @@ export default function InvoicePDFPage() {
                                     <div className="col-span-1 border-r-2 border-black flex flex-col items-center justify-center p-2">
                                         {upiId && (
                                             <>
-                                                <div className="bg-white p-1">
+                                                <div className="bg-white p-0.5">
                                                     <img
                                                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
                                                         alt="UPI QR"
-                                                        className="w-20 h-20 mix-blend-multiply"
+                                                        className="w-16 h-16 mix-blend-multiply"
                                                         crossOrigin="anonymous"
                                                     />
                                                 </div>
@@ -1681,7 +1742,7 @@ export default function InvoicePDFPage() {
                                 </div>
                             </div>
 
-                            <div className="text-center text-[10px] text-gray-400 mt-2">
+                            <div className="text-center text-[7px] md:text-[10px] text-gray-400 mt-1 md:mt-2">
                                 SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
                             </div>
                         </div>

@@ -5,8 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { stockApi, supabase } from '../lib/insforge';
 import { Package, Search, AlertTriangle, Grid, List as ListIcon, TrendingUp, Filter, Activity, Share2, Download, FileSpreadsheet } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+
 import { Card, Badge, Spinner, EmptyState, MetricCard, ListItem } from '../components/ui/GlassUI';
 import { SkeletonTable } from '../components/ui/Skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,6 +36,8 @@ export default function StockPage() {
         },
         {
             enabled: !!selectedCompany?.id,
+            staleTime: 3 * 60 * 1000,
+            refetchOnWindowFocus: false,
         }
     );
 
@@ -61,10 +62,21 @@ export default function StockPage() {
         },
         {
             enabled: !!selectedCompany?.id,
+            staleTime: 5 * 60 * 1000,
+            refetchOnWindowFocus: false,
         }
     );
 
     const groups = groupsData || [];
+
+    const loadAnalysis = async () => {
+        setAnalysisLoading(true);
+        try {
+            // Analysis logic placeholder
+        } catch { /* no-op */ } finally {
+            setAnalysisLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (selectedCompany && activeTab === 'analysis') {
@@ -100,7 +112,11 @@ export default function StockPage() {
         item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const generatePDF = () => {
+    const handleDownloadPDF = async () => {
+        const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+            import('jspdf'),
+            import('jspdf-autotable')
+        ]);
         const doc = new jsPDF();
         const companyName = selectedCompany?.name || 'Company';
         const date = format(new Date(), 'dd MMM yyyy');
@@ -125,11 +141,6 @@ export default function StockPage() {
             headStyles: { fillColor: [41, 128, 185] }
         });
 
-        return doc;
-    };
-
-    const handleDownloadPDF = () => {
-        const doc = generatePDF();
         doc.save(`Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
     };
 
@@ -180,8 +191,8 @@ export default function StockPage() {
     return (
         <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
             <HeaderPortal type="title">
-                <div>
-                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Warehouse Node</h1>
+                <div className="min-w-0">
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none truncate">Warehouse Node</h1>
                     <p className="hidden md:block text-[var(--text-muted)] font-bold text-[9px] uppercase tracking-widest mt-0.5">{stats.totalItems} Active SKU • {selectedCompany.name}</p>
                 </div>
             </HeaderPortal>
@@ -219,14 +230,14 @@ export default function StockPage() {
             </HeaderPortal>
 
             <HeaderPortal type="actions">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                     {activeTab === 'inventory' && (
                         <div className="relative group/select">
-                            <Filter size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                            <Filter size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                             <select
                                 value={selectedGroup}
                                 onChange={(e) => setSelectedGroup(e.target.value)}
-                                className="bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-1.5 pl-8 pr-6 text-[10px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer min-w-[100px] md:min-w-[120px]"
+                                className="bg-[var(--surface-variant)] border border-[var(--border)] rounded-lg py-1 pl-6 pr-4 text-[9px] font-black uppercase tracking-widest text-[var(--on-surface)] appearance-none focus:outline-none focus:border-[var(--primary)] transition-all cursor-pointer md:min-w-[120px]"
                             >
                                 <option value="all">Groups</option>
                                 {groups.map(g => <option key={g} value={g}>{g}</option>)}
@@ -234,43 +245,43 @@ export default function StockPage() {
                         </div>
                     )}
                     {activeTab === 'inventory' && (
-                        <div className="flex gap-2 mr-2">
+                        <>
                             <button
                                 onClick={handleDownloadPDF}
-                                className="p-1.5 rounded-xl bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-500/10 transition-all border border-[var(--border)]"
+                                className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-500/10 transition-all border border-[var(--border)]"
                                 title="Download PDF"
                             >
-                                <Download size={14} />
+                                <Download size={12} />
                             </button>
                             <button
                                 onClick={handleExportCSV}
-                                className="p-1.5 rounded-xl bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-500/10 transition-all border border-[var(--border)]"
+                                className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-500/10 transition-all border border-[var(--border)]"
                                 title="Export CSV"
                             >
-                                <FileSpreadsheet size={14} />
+                                <FileSpreadsheet size={12} />
                             </button>
                             <button
                                 onClick={handleSharePDF}
-                                className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-xl bg-[var(--primary)] text-white font-bold text-[10px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
+                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[var(--primary)] text-white font-bold text-[9px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
                             >
-                                <Share2 size={12} />
+                                <Share2 size={10} />
                                 <span className="hidden sm:inline">Share Stock</span>
                                 <span className="sm:hidden">Share</span>
                             </button>
-                        </div>
+                        </>
                     )}
-                    <div className="flex items-center gap-1 bg-[var(--surface-variant)] p-1 rounded-xl border border-[var(--border)]">
+                    <div className="flex items-center gap-0.5 bg-[var(--surface-variant)] p-0.5 rounded-lg border border-[var(--border)]">
                         <button
                             onClick={() => setViewMode('grid')}
-                            className={`p-1 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                            className={`p-1 rounded-md transition-all ${viewMode === 'grid' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
                         >
-                            <Grid size={12} />
+                            <Grid size={10} />
                         </button>
                         <button
                             onClick={() => setViewMode('list')}
-                            className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                            className={`p-1 rounded-md transition-all ${viewMode === 'list' ? 'bg-[var(--primary)] text-white shadow-md' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
                         >
-                            <ListIcon size={12} />
+                            <ListIcon size={10} />
                         </button>
                     </div>
                 </div>

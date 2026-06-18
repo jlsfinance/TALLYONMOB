@@ -1015,5 +1015,192 @@ export const LEGAL_CONTENT: Record<string, LegalPage> = {
                 ]
             }
         ]
+    },
+    'cancellation-policy': {
+        title: 'Cancellation Policy',
+        lastUpdated: 'June 18, 2026',
+        icon: <LogOut size={24} className="text-red-400" />,
+        executiveSummary: 'We believe in transparency. You can cancel your subscription at any time. This policy explains what happens when you cancel, including data retention, auto-renewal stops, and account closure procedures.',
+        articles: [
+            {
+                title: 'Article 1: How to Cancel',
+                content: 'You can cancel your subscription at any time through multiple channels.',
+                subsections: [
+                    { subtitle: '1.1 Self-Service', body: 'Log in to TallyLink → Settings → Subscription → Cancel Plan. Your cancellation takes effect immediately for non-recurring billing cycles.' },
+                    { subtitle: '1.2 Email Request', body: 'Send a cancellation request to support@tallyonmob.com with your registered email. We process email cancellations within 24 hours.' },
+                    { subtitle: '1.3 WhatsApp', body: 'Message us at +91 9413821007 with "CANCEL" and your registered email. Our team will process within 4 business hours.' }
+                ]
+            },
+            {
+                title: 'Article 2: Auto-Renewal Cancellation',
+                content: 'Monthly and yearly plans auto-renew unless cancelled before the billing cycle ends.',
+                subsections: [
+                    { subtitle: '2.1 Monthly Plans', body: 'Cancel anytime. Access continues until the end of the current paid month. No partial refunds for unused days.' },
+                    { subtitle: '2.2 Yearly Plans', body: 'Cancel anytime. Access continues until the end of the paid year. A pro-rata refund may be issued at our discretion for the remaining months.' },
+                    { subtitle: '2.3 Quarterly Plans', body: 'Cancel anytime. Access continues until the end of the current quarter. No mid-quarter refunds.' }
+                ]
+            },
+            {
+                title: 'Article 3: Account Closure',
+                content: 'When you cancel, your account enters a "Read-Only" grace period.',
+                subsections: [
+                    { subtitle: '3.1 Grace Period', body: 'After cancellation, your data remains accessible in read-only mode for 30 days. During this period, you can export all your data.' },
+                    { subtitle: '3.2 Data Export', body: 'Use Settings → Data Backup to export all vouchers, ledgers, stock items, and reports in CSV/Excel format before the grace period ends.' },
+                    { subtitle: '3.3 Permanent Deletion', body: 'After 30 days, all your cloud data is permanently and irreversibly deleted. This includes all vouchers, reports, settings, and cached data.' }
+                ]
+            },
+            {
+                title: 'Article 4: Data Retention After Cancellation',
+                content: 'We retain minimal data as required by law.',
+                subsections: [
+                    { subtitle: '4.1 Financial Records', body: 'Transaction records (payments, invoices) are retained for 7 years as per Indian Income Tax Act requirements.' },
+                    { subtitle: '4.2 Account Information', body: 'Basic account details (email, name) are retained for 90 days for support purposes, then permanently deleted.' },
+                    { subtitle: '4.3 Analytics Data', body: 'Anonymized usage analytics may be retained for product improvement. No personally identifiable information is kept.' }
+                ]
+            },
+            {
+                title: 'Article 5: Reactivation',
+                content: 'You can reactivate your account within 90 days of cancellation.',
+                subsections: [
+                    { subtitle: '5.1 Within 30 Days', body: 'Log in and resubscribe. All your data will be exactly as you left it.' },
+                    { subtitle: '5.2 Between 30-90 Days', body: 'Data may be partially recoverable. Contact support immediately for assistance.' },
+                    { subtitle: '5.3 After 90 Days', body: 'Data is permanently deleted. You will need to start fresh with a new account.' }
+                ]
+            }
+        ]
+    },
+    'licensing-policy': {
+        title: 'Licensing Policy',
+        lastUpdated: 'June 18, 2026',
+        icon: <Fingerprint size={24} className="text-violet-400" />,
+        executiveSummary: 'TallyLink operates on a per-company, per-device licensing model. This policy details license allocation, Tally serial binding, device restrictions, transfer rules, and anti-abuse mechanisms to ensure fair usage.',
+        articles: [
+            {
+                title: 'Article 1: License Structure',
+                content: 'Each license is bound to a specific Tally company and device configuration.',
+                subsections: [
+                    { subtitle: '1.1 One License Per Company', body: 'Each Tally company (identified by Company ID) requires its own license. A single license cannot be shared across multiple Tally companies.' },
+                    { subtitle: '1.2 Tally Serial Binding', body: 'Your license is cryptographically bound to your Tally Serial Number. Changing your Tally installation requires a license transfer.' },
+                    { subtitle: '1.3 Device Fingerprint', body: 'Licenses are tied to a device fingerprint (MAC + Hardware ID). Maximum 2 active devices per license.' }
+                ]
+            },
+            {
+                title: 'Article 2: Trial Rules',
+                content: 'Free trial is available once per unique combination of identifiers.',
+                subsections: [
+                    { subtitle: '2.1 Trial Duration', body: '7-day free trial with full feature access. No credit card required.' },
+                    { subtitle: '2.2 Trial Limitations', body: 'Limited to 1 company, 1000 vouchers maximum during trial. After trial, data is retained for 30 days.' },
+                    { subtitle: '2.3 Trial Abuse Prevention', body: 'Trial eligibility is checked against: Tally Serial, Company GSTIN, Email, Device ID, and Mobile Number. Reusing any of these blocks a new trial.' }
+                ]
+            },
+            {
+                title: 'Article 3: License Transfer',
+                content: 'Licenses can be transferred under specific conditions.',
+                subsections: [
+                    { subtitle: '3.1 Transfer Process', body: 'Submit a transfer request via Settings → License → Transfer. Requires admin approval and verification of new device.' },
+                    { subtitle: '3.2 Transfer Limits', body: 'Maximum 2 transfers per license per year. Excessive transfers trigger a security review.' },
+                    { subtitle: '3.3 Data During Transfer', body: 'All cloud data moves with the license. No data loss during a legitimate transfer.' }
+                ]
+            },
+            {
+                title: 'Article 4: License Suspension',
+                content: 'Licenses may be suspended for violations.',
+                subsections: [
+                    { subtitle: '4.1 Suspension Triggers', body: 'License sharing, reverse engineering attempts, data scraping, or violation of Acceptable Use Policy.' },
+                    { subtitle: '4.2 Suspension Process', body: 'You receive a 7-day notice before suspension. During suspension, data is preserved in read-only mode.' },
+                    { subtitle: '4.3 Appeal Process', body: 'Contact support@tallyonmob.com within 30 days to appeal a suspension. Appeals are reviewed within 5 business days.' }
+                ]
+            }
+        ]
+    },
+    'data-deletion-policy': {
+        title: 'Data Deletion Policy',
+        lastUpdated: 'June 18, 2026',
+        icon: <Database size={24} className="text-orange-400" />,
+        executiveSummary: 'Complete transparency about how your data is deleted, recovery windows, and our commitment to irreversible data destruction.',
+        articles: [
+            {
+                title: 'Article 1: User Account Deletion',
+                content: 'You can request complete account deletion at any time.',
+                subsections: [
+                    { subtitle: '1.1 Self-Service Deletion', body: 'Settings → Account → Delete Account. Requires password confirmation and 48-hour cooling period.' },
+                    { subtitle: '1.2 Deletion Scope', body: 'Deletes: all vouchers, ledgers, stock items, reports, settings, cached data, API keys, and session tokens.' },
+                    { subtitle: '1.3 What Is NOT Deleted', body: 'Payment records (retained for 7 years per tax law), anonymized analytics, and legal correspondence.' }
+                ]
+            },
+            {
+                title: 'Article 2: Company Data Deletion',
+                content: 'Individual company data can be deleted without affecting the account.',
+                subsections: [
+                    { subtitle: '2.1 Company Removal', body: 'Settings → Company → Remove Company. This deletes all data for that specific company only.' },
+                    { subtitle: '2.2 Backup Retention', body: 'Deleted company data is retained in encrypted backups for 30 days, then permanently purged.' },
+                    { subtitle: '2.3 Recovery Window', body: 'Within 30 days, contact support to recover deleted company data. After 30 days, recovery is impossible.' }
+                ]
+            },
+            {
+                title: 'Article 3: Permanent Deletion Process',
+                content: 'Our multi-stage deletion process ensures no data recovery is possible.',
+                subsections: [
+                    { subtitle: '3.1 Stage 1: Soft Delete', body: 'Data is marked as deleted and hidden from the UI. It remains in the database for 30 days.' },
+                    { subtitle: '3.2 Stage 2: Crypto Shredding', body: 'After 30 days, encryption keys are destroyed, making the data cryptographically irrecoverable even if database copies exist.' },
+                    { subtitle: '3.3 Stage 3: Physical Wipe', body: 'Within 90 days, the underlying storage blocks are overwritten. Certificate of destruction available on request.' }
+                ]
+            },
+            {
+                title: 'Article 4: Backup Retention',
+                content: 'Our backup policies ensure data safety while respecting deletion requests.',
+                subsections: [
+                    { subtitle: '4.1 Active Backups', body: '15-minute incremental backups retained for 7 days. Daily backups retained for 30 days.' },
+                    { subtitle: '4.2 Monthly Archives', body: 'Monthly snapshots retained for 1 year for disaster recovery purposes.' },
+                    { subtitle: '4.3 Deletion from Backups', body: 'When you delete your account, all future backups exclude your data. Existing backups are overwritten within 30 days.' }
+                ]
+            }
+        ]
+    },
+    'support-policy': {
+        title: 'Support Policy',
+        lastUpdated: 'June 18, 2470',
+        icon: <Info size={24} className="text-cyan-400" />,
+        executiveSummary: 'We provide multi-channel support with defined response times. This policy sets expectations for support quality, availability, and escalation procedures.',
+        articles: [
+            {
+                title: 'Article 1: Support Channels',
+                content: 'We offer multiple channels for different types of issues.',
+                subsections: [
+                    { subtitle: '1.1 Email Support', body: 'support@tallyonmob.com — Available 24/7. Best for: detailed issues, feature requests, bug reports with screenshots.' },
+                    { subtitle: '1.2 WhatsApp Support', body: '+91 9413821007 — Available Mon-Sat, 9 AM - 7 PM IST. Best for: quick questions, urgent issues, license problems.' },
+                    { subtitle: '1.3 In-App Support', body: 'Click the "?" icon in the app. Best for: contextual help, reporting specific page issues.' },
+                    { subtitle: '1.4 Sales Inquiries', body: 'sales@tallyonmob.com — Available Mon-Fri, 10 AM - 6 PM IST.' }
+                ]
+            },
+            {
+                title: 'Article 2: Response Times (SLA)',
+                content: 'We commit to the following response times based on issue severity.',
+                subsections: [
+                    { subtitle: '2.1 Critical (App Down)', body: 'Response within 2 hours. Resolution target: 8 hours. Applies to: complete service outage, data loss.' },
+                    { subtitle: '2.2 High (Major Feature Broken)', body: 'Response within 4 hours. Resolution target: 24 hours. Applies to: sync failure, payment issues, login problems.' },
+                    { subtitle: '2.3 Medium (Minor Issue)', body: 'Response within 12 hours. Resolution target: 72 hours. Applies to: UI bugs, report inaccuracies, performance issues.' },
+                    { subtitle: '2.4 Low (Question/Request)', body: 'Response within 24 hours. Resolution target: 5 business days. Applies to: feature requests, general questions.' }
+                ]
+            },
+            {
+                title: 'Article 3: Support Hours',
+                content: 'Standard support hours and holiday schedule.',
+                subsections: [
+                    { subtitle: '3.1 Standard Hours', body: 'Monday to Saturday, 9:00 AM to 7:00 PM IST. Sunday: emergency support only for Critical issues.' },
+                    { subtitle: '3.2 Holidays', body: 'Indian national holidays: limited support. Response times may be extended by 24 hours.' },
+                    { subtitle: '3.3 Escalation', body: 'If your issue is not resolved within SLA, email escalation@tallyonmob.com with your ticket number.' }
+                ]
+            },
+            {
+                title: 'Article 4: What We Support',
+                content: 'Scope of technical support coverage.',
+                subsections: [
+                    { subtitle: '4.1 Covered', body: 'App functionality issues, sync problems, billing questions, data export help, feature guidance, bug reports.' },
+                    { subtitle: '4.2 Not Covered', body: 'Tally ERP configuration, custom development requests, third-party integrations not officially supported, on-site visits.' },
+                    { subtitle: '4.3 Training', body: 'Free onboarding session (30 min) for new users. Advanced training available at ₹2,000/hour.' }
+                ]
+            }
+        ]
     }
 };

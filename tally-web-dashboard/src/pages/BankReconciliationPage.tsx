@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import {
     Building2, Search, Filter, CheckCircle2, XCircle, Clock, RefreshCw,
-    ArrowUpRight, ArrowDownRight, IndianRupee, Calendar, FileText, AlertCircle
+    ArrowUpRight, ArrowDownRight, IndianRupee, Calendar, FileText, AlertCircle,
+    Upload, Download, Link2, Unlink
 } from 'lucide-react';
 import { GlassCard, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -29,6 +30,10 @@ export default function BankReconciliationPage() {
         to: format(new Date(), 'yyyy-MM-dd')
     });
     const [stats, setStats] = useState({ totalReceipts: 0, totalPayments: 0, balance: 0, count: 0 });
+    const [csvData, setCsvData] = useState<any[]>([]);
+    const [csvMatched, setCsvMatched] = useState<{ matched: number; unmatched: number }>({ matched: 0, unmatched: 0 });
+    const [importing, setImporting] = useState(false);
+    const [showImport, setShowImport] = useState(false);
 
     useEffect(() => {
         if (selectedCompany?.id) loadBankLedgers();
@@ -137,6 +142,115 @@ export default function BankReconciliationPage() {
         setLoading(false);
     };
 
+    const parseBankFile = (file: File) => {
+        setImporting(true);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target?.result as string;
+            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+            let parsed: any[] = [];
+
+            if (ext === 'ofx' || ext === 'qfx') {
+                // Parse OFX/QFX format
+                const txns = text.match(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/g) || [];
+                parsed = txns.map(txn => {
+                    const get = (tag: string) => {
+                        const m = txn.match(new RegExp(`<${tag}>([^<]*)`));
+                        return m ? m[1].trim() : '';
+                    };
+                    const date = get('DTPOSTED').replace(/[^0-9]/g, '').slice(0, 8);
+                    const amount = parseFloat(get('TRNAMT')) || 0;
+                    return {
+                        date: date ? `${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}` : '',
+                        description: get('NAME') || get('MEMO') || '',
+                        reference: get('FITID') || '',
+                        debit: amount < 0 ? Math.abs(amount) : 0,
+                        credit: amount > 0 ? amount : 0,
+                        raw: {}
+                    };
+                });
+            } else if (ext === 'qif') {
+                // Parse QIF format
+                const lines = text.split('\n');
+                let current: any = {};
+                parsed = [];
+                for (const line of lines) {
+                    const l = line.trim();
+                    if (l === '^') {
+                        if (current.date) parsed.push(current);
+                        current = {};
+                    } else if (l.startsWith('D')) current.date = l.slice(1);
+                    else if (l.startsWith('T') || l.startsWith('U')) current.amount = parseFloat(l.slice(1)) || 0;
+                    else if (l.startsWith('P')) current.description = l.slice(1);
+                    else if (l.startsWith('N')) current.reference = l.slice(1);
+                    else if (l.startsWith('M')) current.memo = l.slice(1);
+                }
+                if (current.date) parsed.push(current);
+                parsed = parsed.map(r => {
+                    const dateStr = r.date?.replace(/[^0-9/]/g, '') || '';
+                    const parts = dateStr.split('/');
+                    const date = parts.length === 3 ? `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}` : dateStr;
+                    const amount = r.amount || 0;
+                    return {
+                        date,
+                        description: r.description || r.memo || '',
+                        reference: r.reference || '',
+                        debit: amount < 0 ? Math.abs(amount) : 0,
+                        credit: amount > 0 ? amount : 0,
+                        raw: r
+                    };
+                });
+            } else {
+                // Parse CSV format
+                const lines = text.split('\n').filter(l => l.trim());
+                if (lines.length < 2) { setImporting(false); return; }
+                const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+                parsed = lines.slice(1).map(line => {
+                    const values = line.split(',').map(v => v.trim().replace(/['"]/g, ''));
+                    const row: any = {};
+                    headers.forEach((h, i) => { row[h] = values[i] || ''; });
+                    return row;
+                }).filter(r => {
+                    const dateVal = r.date || r.transaction_date || r.txn_date || r.value_date || '';
+                    return dateVal && (r.debit || r.credit || r.amount || r.deposit || r.withdrawal);
+                }).map(r => {
+                    const dateStr = r.date || r.transaction_date || r.txn_date || r.value_date || '';
+                    const debit = parseFloat((r.debit || r.withdrawal || '0').replace(/[,₹]/g, '')) || 0;
+                    const credit = parseFloat((r.credit || r.deposit || '0').replace(/[,₹]/g, '')) || 0;
+                    const amount = parseFloat((r.amount || '0').replace(/[,₹]/g, '')) || 0;
+                    return {
+                        date: dateStr,
+                        description: r.description || r.narration || r.remarks || r.particulars || r.memo || '',
+                        reference: r.reference || r.cheque || r.utr || r.ref_no || '',
+                        debit: debit || (amount < 0 ? Math.abs(amount) : 0),
+                        credit: credit || (amount > 0 ? amount : 0),
+                        raw: r
+                    };
+                });
+            }
+            setCsvData(parsed);
+
+            // Match with existing transactions
+            let matched = 0;
+            const matchedIds = new Set<number>();
+            parsed.forEach(csvRow => {
+                const csvDate = csvRow.date;
+                const csvAmount = csvRow.credit || csvRow.debit;
+                const found = transactions.findIndex((t, idx) => {
+                    if (matchedIds.has(idx)) return false;
+                    const tDate = t.voucher_date?.slice(0, 10) || '';
+                    const tAmount = Math.abs(Number(t.grand_total) || Number(t.total_amount) || 0);
+                    return tDate === csvDate && Math.abs(tAmount - csvAmount) < 1;
+                });
+                if (found >= 0) { matched++; matchedIds.add(found); }
+            });
+            setCsvMatched({ matched, unmatched: parsed.length - matched });
+            setImporting(false);
+            toast.success(`Imported ${parsed.length} bank transactions`);
+        };
+        reader.readAsText(file);
+    };
+
     const filteredTxns = useMemo(() => {
         if (!searchTerm) return transactions;
         return transactions.filter(t =>
@@ -210,6 +324,81 @@ export default function BankReconciliationPage() {
 
             {selectedBank && (
                 <>
+                    {/* CSV Import Section */}
+                    <div className="bg-[var(--surface-variant)] rounded-2xl border border-[var(--border)] p-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <Upload size={16} className="text-blue-500" />
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--on-surface)]">Bank Statement Import</h3>
+                            </div>
+                            <button onClick={() => setShowImport(!showImport)} className="text-xs font-bold text-[var(--primary)]">
+                                {showImport ? 'Hide' : 'Import CSV'}
+                            </button>
+                        </div>
+                        {showImport && (
+                            <div className="space-y-3">
+                                <p className="text-[10px] text-[var(--text-muted)]">Upload a CSV, OFX, or QIF file. Auto-matches with existing vouchers by date and amount.</p>
+                                <div className="flex items-center gap-3">
+                                    <label className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-blue-700 transition-all">
+                                        <Upload size={14} />
+                                        {importing ? 'Importing...' : 'Choose CSV File'}
+                                        <input type="file" accept=".csv,.ofx,.qfx,.qif" className="hidden" onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) parseBankFile(file);
+                                            e.target.value = '';
+                                        }} />
+                                    </label>
+                                    {csvData.length > 0 && (
+                                        <div className="flex items-center gap-3 text-xs">
+                                            <span className="flex items-center gap-1 text-emerald-500 font-bold">
+                                                <CheckCircle2 size={14} /> {csvMatched.matched} matched
+                                            </span>
+                                            {csvMatched.unmatched > 0 && (
+                                                <span className="flex items-center gap-1 text-amber-500 font-bold">
+                                                    <Link2 size={14} /> {csvMatched.unmatched} unmatched
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {csvData.length > 0 && (
+                                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                                        <table className="w-full text-xs">
+                                            <thead><tr className="bg-[var(--surface)]">
+                                                <th className="px-3 py-2 text-left text-[9px] font-black text-[var(--text-muted)] uppercase">Date</th>
+                                                <th className="px-3 py-2 text-left text-[9px] font-black text-[var(--text-muted)] uppercase">Description</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-[var(--text-muted)] uppercase">Debit</th>
+                                                <th className="px-3 py-2 text-right text-[9px] font-black text-[var(--text-muted)] uppercase">Credit</th>
+                                                <th className="px-3 py-2 text-center text-[9px] font-black text-[var(--text-muted)] uppercase">Status</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {csvData.slice(0, 20).map((row, idx) => {
+                                                    const matched = transactions.some(t => {
+                                                        const tDate = t.voucher_date?.slice(0, 10) || '';
+                                                        const tAmount = Math.abs(Number(t.grand_total) || Number(t.total_amount) || 0);
+                                                        const csvAmount = row.credit || row.debit;
+                                                        return tDate === row.date && Math.abs(tAmount - csvAmount) < 1;
+                                                    });
+                                                    return (
+                                                        <tr key={idx} className="border-b border-[var(--border)]/30">
+                                                            <td className="px-3 py-2">{row.date}</td>
+                                                            <td className="px-3 py-2 truncate max-w-[200px]">{row.description}</td>
+                                                            <td className="px-3 py-2 text-right text-red-500 font-bold">{row.debit ? formatCurrency(row.debit) : '-'}</td>
+                                                            <td className="px-3 py-2 text-right text-emerald-500 font-bold">{row.credit ? formatCurrency(row.credit) : '-'}</td>
+                                                            <td className="px-3 py-2 text-center">
+                                                                {matched ? <CheckCircle2 size={14} className="text-emerald-500 mx-auto" /> : <Unlink size={14} className="text-amber-500 mx-auto" />}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Stats Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-[var(--surface-variant)] rounded-2xl p-5 border border-[var(--border)]">

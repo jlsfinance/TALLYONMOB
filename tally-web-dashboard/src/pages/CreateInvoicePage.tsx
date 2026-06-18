@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ledgerApi, masterApi, pendingTransactionApi } from '@/lib/supabase';
+import { checkCreditLimit } from '@/lib/creditLimit';
 import { format } from 'date-fns';
 import {
     Plus, Trash2, Save, Eye, X, Banknote, ArrowLeft,
@@ -210,6 +211,18 @@ export default function CreateInvoicePage() {
         if (!selectedCustomerId) return alert('Please select a customer');
         if (items.length === 0) return alert('Please add at least one item');
         if (items.some(i => !i.productId)) return alert('Some items have no product selected');
+
+        // Credit limit check
+        if (paymentMode === 'Credit') {
+            const customer = ledgers.find(l => l.id === selectedCustomerId);
+            const currentBal = Math.abs(Number(customer?.closing_balance || customer?.current_balance || 0));
+            const creditCheck = checkCreditLimit(selectedCustomerId, currentBal, total);
+            if (!creditCheck.ok) {
+                if (!confirm(creditCheck.message + '\n\nContinue anyway?')) return;
+            } else if (creditCheck.message) {
+                toast(creditCheck.message, { icon: '⚠️' });
+            }
+        }
 
         setSubmitting(true);
         try {

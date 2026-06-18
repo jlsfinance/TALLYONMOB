@@ -29,10 +29,10 @@ export default function SmartInsights() {
         setLoading(true);
         try {
             const [salesRes, purchasesRes, ledgersRes, stockRes] = await Promise.all([
-                supabase.from('sales').select('net_amount').eq('company_id', selectedCompany.id).eq('is_cancelled', false),
-                supabase.from('purchases').select('net_amount').eq('company_id', selectedCompany.id).eq('is_cancelled', false),
-                supabase.from('ledgers').select('name, closing_balance, parent_group').eq('company_id', selectedCompany.id),
-                supabase.from('stock').select('name, closing_balance, outward_quantity').eq('company_id', selectedCompany.id)
+                supabase.from('vouchers').select('grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Sales').eq('is_deleted', false),
+                supabase.from('vouchers').select('grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Purchase').eq('is_deleted', false),
+                supabase.from('ledgers').select('name, current_balance, parent').eq('company_id', selectedCompany.id),
+                supabase.from('stock_items').select('name, id').eq('company_id', selectedCompany.id)
             ]);
 
             const sales = salesRes.data || [];
@@ -40,16 +40,15 @@ export default function SmartInsights() {
             const ledgers = ledgersRes.data || [];
             const stocks = stockRes.data || [];
 
-            const totalSales = sales.reduce((s, v) => s + (parseFloat(v.net_amount) || 0), 0);
-            const totalPurchases = purchases.reduce((s, v) => s + (parseFloat(v.net_amount) || 0), 0);
-            const debtors = ledgers.filter(l => l.parent_group === 'Sundry Debtors');
-            const creditors = ledgers.filter(l => l.parent_group === 'Sundry Creditors');
-            const totalReceivable = debtors.reduce((s, d) => s + (parseFloat(d.closing_balance) || 0), 0);
-            const totalPayable = creditors.reduce((s, c) => s + Math.abs(parseFloat(c.closing_balance) || 0), 0);
+            const totalSales = sales.reduce((s, v) => s + (Math.abs(Number(v.grand_total)) || 0), 0);
+            const totalPurchases = purchases.reduce((s, v) => s + (Math.abs(Number(v.grand_total)) || 0), 0);
+            const debtors = ledgers.filter(l => l.parent === 'Sundry Debtors');
+            const creditors = ledgers.filter(l => l.parent === 'Sundry Creditors');
+            const totalReceivable = debtors.reduce((s, d) => s + (Number(d.current_balance) || 0), 0);
+            const totalPayable = creditors.reduce((s, c) => s + Math.abs(Number(c.current_balance) || 0), 0);
 
             const newInsights: Insight[] = [];
 
-            // High receivables warning
             if (totalReceivable > totalSales * 0.5 && totalSales > 0) {
                 newInsights.push({
                     type: 'warning', icon: '⚠️',
@@ -59,18 +58,16 @@ export default function SmartInsights() {
                 });
             }
 
-            // Top debtor concentration
-            const topDebtor = debtors.sort((a, b) => (b.closing_balance || 0) - (a.closing_balance || 0))[0];
-            if (topDebtor && totalReceivable > 0 && (topDebtor.closing_balance / totalReceivable) > 0.3) {
+            const topDebtor = debtors.sort((a, b) => (Number(b.current_balance) || 0) - (Number(a.current_balance) || 0))[0];
+            if (topDebtor && totalReceivable > 0 && (Number(topDebtor.current_balance) / totalReceivable) > 0.3) {
                 newInsights.push({
                     type: 'risk', icon: '🔴',
                     title: 'Risk: ' + topDebtor.name,
-                    message: `Owes ₹${(topDebtor.closing_balance / 100000).toFixed(1)}L - over 30% of total receivables`,
+                    message: `Owes ₹${(Number(topDebtor.current_balance) / 100000).toFixed(1)}L - over 30% of total receivables`,
                     action: '/aging-report'
                 });
             }
 
-            // Good margins
             if (totalSales > totalPurchases * 1.3 && totalPurchases > 0) {
                 newInsights.push({
                     type: 'positive', icon: '📈',
@@ -80,7 +77,6 @@ export default function SmartInsights() {
                 });
             }
 
-            // Cash flow concern
             if (totalPayable > totalReceivable && totalPayable > 0) {
                 newInsights.push({
                     type: 'warning', icon: '💸',
@@ -90,22 +86,15 @@ export default function SmartInsights() {
                 });
             }
 
-            // Low stock items
-            const lowStockItems = stocks.filter(s => {
-                const closing = parseFloat(s.closing_balance) || 0;
-                const daily = (parseFloat(s.outward_quantity) || 0) / 30;
-                return daily > 0 && (closing / daily) <= 7;
-            });
-            if (lowStockItems.length > 0) {
+            if (stocks.length < 5) {
                 newInsights.push({
-                    type: 'warning', icon: '📦',
-                    title: `${lowStockItems.length} Items Low Stock`,
-                    message: `${lowStockItems.slice(0, 3).map(i => i.name).join(', ')} running low!`,
+                    type: 'info', icon: '📦',
+                    title: 'Stock Items',
+                    message: `${stocks.length} items tracked. Add more stock items for better inventory management.`,
                     action: '/stock'
                 });
             }
 
-            // Business summary
             newInsights.push({
                 type: 'info', icon: '📊',
                 title: 'Summary',
@@ -184,4 +173,3 @@ export default function SmartInsights() {
         </div>
     );
 }
-

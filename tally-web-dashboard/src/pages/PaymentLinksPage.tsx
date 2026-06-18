@@ -51,11 +51,12 @@ export default function PaymentLinksPage() {
 
             // Load existing payment links
             try {
-                const { data: linkData } = await supabase
+                const { data: linkData, error: linkErr } = await supabase
                     .from('payment_links')
                     .select('*')
                     .eq('company_id', selectedCompany.id)
                     .order('created_at', { ascending: false });
+                if (linkErr && linkErr.code !== '42P01') console.warn('payment_links:', linkErr.message);
                 setLinks(linkData || []);
             } catch { /* Table may not exist */ }
         } catch {
@@ -95,7 +96,7 @@ export default function PaymentLinksPage() {
             };
 
             try {
-                await supabase.from('payment_links').insert({
+                const { error: insertErr } = await supabase.from('payment_links').insert({
                     company_id: selectedCompany.id,
                     party_name: newLink.party_name,
                     amount: newLink.amount,
@@ -103,6 +104,7 @@ export default function PaymentLinksPage() {
                     link_url: newLink.link_url,
                     status: 'active'
                 });
+                if (insertErr) console.warn('payment_links insert:', insertErr.message);
             } catch { /* Table may not exist */ }
 
             setLinks(prev => [newLink, ...prev]);

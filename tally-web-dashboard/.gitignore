@@ -13,3 +13,36 @@
 .roo
 .trae
 .windsurf
+
+.vercel
+
+# Build outputs
+dist/
+build/
+android/app/build/
+*.apk
+*.aab
+*.zip
+*.ipa
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Supabase
+.supabase/
+.mcp.json

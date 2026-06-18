@@ -1,0 +1,53 @@
+# Large binary files
+*.apk
+*.aab
+*.zip
+*.tar.gz
+
+# Dependencies & build output
+node_modules/
+dist/
+
+# Android build
+android/
+
+# Dev/debug logs
+*.log
+*.txt
+!README.md
+
+# Capacitor
+.vite/
+
+# SQL scripts
+*.sql
+
+# Dev config
+.env.vercel
+.env.vercel.*
+.env.local
+
+# Build error logs
+build_err*
+dev_err*
+dev_run*
+vite-*.log
+out.txt
+
+# MJS setup scripts
+setup-*.mjs
+check-*.mjs
+test.cjs
+
+# Temp files
+temp.json
+draft.json
+variations.json
+project.json
+
+# Docs (not needed for deploy)
+docs/
+
+# Snapshots
+.snapshots/
+.superdesign/

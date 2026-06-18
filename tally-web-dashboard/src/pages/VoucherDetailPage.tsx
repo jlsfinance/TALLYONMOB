@@ -6,7 +6,7 @@ import {
     ArrowLeft, MessageCircle, Share2, Download,
     Calendar, User, FileText, Edit, RefreshCw, CheckCircle2,
     MoreVertical, Info, Package, Hash, Tag, Trash2, Printer,
-    ArrowUpRight, Share, Box
+    ArrowUpRight, Share, Box, Send
 } from 'lucide-react';
 import { Badge, Button } from '@/components/ui/GlassUI';
 import { pendingTransactionApi } from '@/lib/supabase';
@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
+import { generateTallyVoucherXml, sendToTally } from '@/services/tallyExportService';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -245,8 +246,14 @@ export default function VoucherDetailPage() {
             }
             // Enrich items with HSN and unit
             const enrichedItems = (inventoryItems).map((item: any) => {
-                const itemName = item.item_name || item.stock_item_name || item.StockItemName || 'Unknown';
+                const itemName = item.item_name || item.stock_item_name || item.StockItemName || item.name || 'Unknown';
                 const stockData = stockLookup[itemName] || stockLookup[String(itemName).toLowerCase()] || {};
+
+                const rawGst = item.gst_rate ?? item.tax_rate ?? item.GSTRate ?? item.gst ?? stockData.gst_rate ?? 0;
+                const rawDiscount = item.discount_percent ?? item.DiscountPercent ?? item.discount_amount ?? item.discount ?? item.disc ?? 0;
+                const rawQty = item.quantity ?? item.Quantity ?? item.qty ?? item.billed_qty ?? item.actual_qty ?? 0;
+                const rawRate = item.rate ?? item.Rate ?? item.unit_price ?? 0;
+                const rawAmount = item.amount ?? item.Amount ?? item.line_total ?? (Number(rawQty) * Number(rawRate));
 
                 return {
                     ...item,
@@ -254,11 +261,11 @@ export default function VoucherDetailPage() {
                     stock_item_name: itemName,
                     hsn_code: item.hsn_code || item.hsn || item.HsnCode || stockData.hsn_code || '-',
                     unit: item.unit || item.Unit || stockData.unit || 'pcs',
-                    quantity: Number(item.quantity ?? item.Quantity ?? 0),
-                    rate: Number(item.rate ?? item.Rate ?? 0),
-                    gst_rate: Number(item.gst_rate ?? item.tax_rate ?? item.GSTRate ?? stockData.gst_rate ?? 0),
-                    discount: Number(item.discount_percent ?? item.DiscountPercent ?? item.discount_amount ?? 0),
-                    amount: Number(item.amount ?? item.Amount ?? (Number(item.quantity ?? item.Quantity ?? 0) * Number(item.rate ?? item.Rate ?? 0)))
+                    quantity: Number(rawQty),
+                    rate: Number(rawRate),
+                    gst_rate: Number(rawGst),
+                    discount: Number(rawDiscount),
+                    amount: Number(rawAmount)
                 };
             });
 
@@ -320,6 +327,27 @@ export default function VoucherDetailPage() {
         }
     };
 
+    const handleSyncToTally = async () => {
+        if (!voucher) return;
+        const toastId = toast.loading('Sending to Tally...');
+        try {
+            const xml = generateTallyVoucherXml({
+                ...voucher,
+                company_name: selectedCompany?.name || '',
+                items: saleData?.sales_items || purchaseData?.purchase_items || voucher.inventory_entries || [],
+                ledger_entries: voucher.ledger_entries || []
+            });
+            const result = await sendToTally(xml);
+            if (result.success) {
+                toast.success('Synced to Tally!', { id: toastId });
+            } else {
+                toast.error(`Tally Error: ${result.error}`, { id: toastId });
+            }
+        } catch (err: any) {
+            toast.error('Sync failed: ' + err.message, { id: toastId });
+        }
+    };
+
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center space-y-4 bg-[var(--background)]">
             <RefreshCw className="w-8 h-8 text-[var(--primary)] animate-spin" />
@@ -374,6 +402,13 @@ export default function VoucherDetailPage() {
                         title="Edit Invoice"
                     >
                         <Edit size={18} />
+                    </button>
+                    <button
+                        onClick={handleSyncToTally}
+                        className="p-2 rounded-xl text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] shadow-sm transition-all"
+                        title="Sync to Tally"
+                    >
+                        <Send size={18} />
                     </button>
                 </div>
             </HeaderPortal>
@@ -546,16 +581,14 @@ export default function VoucherDetailPage() {
 
 
             {/* Sync Overlay Logic */}
-            {status !== 'SYNCED' && !syncing && (
-                <motion.button
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    onClick={handleSync}
-                    className="fixed bottom-24 right-6 w-12 h-12 bg-amber-500 text-white rounded-full shadow-xl shadow-amber-500/30 flex items-center justify-center z-30 animate-pulse"
-                >
-                    <RefreshCw size={20} />
-                </motion.button>
-            )}
+            <motion.button
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                onClick={handleSyncToTally}
+                className="fixed bottom-24 right-6 w-12 h-12 bg-[var(--primary)] text-white rounded-full shadow-xl shadow-[var(--primary)]/30 flex items-center justify-center z-30"
+            >
+                <Send size={20} />
+            </motion.button>
         </div>
     );
 }

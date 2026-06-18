@@ -25,7 +25,7 @@ export default function Dashboard3DPage() {
 
         const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
         const encodedId = encodeURIComponent(targetId);
-        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+        navigate(`/invoice/${encodedId}`, {
             state: { voucher, from: '/dashboard' }
         });
     };

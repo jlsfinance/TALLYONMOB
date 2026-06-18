@@ -104,126 +104,105 @@ export default function ProfitLossPage() {
 
             if (ledgersError) throw ledgersError;
 
-            // Offload classification and balancing calculations to a Web Worker
-            const workerCode = `
-                self.onmessage = function(e) {
-                    const { ledgers, stockItems } = e.data;
-                    try {
-                        const plData = {
-                            openingStock: 0,
-                            purchaseAccounts: { total: 0, ledgers: [] },
-                            directExpenses: { total: 0, ledgers: [] },
-                            grossProfitCo: 0,
-                            indirectExpenses: { total: 0, ledgers: [] },
-                            nettProfit: 0,
-                            salesAccounts: { total: 0, ledgers: [] },
-                            directIncomes: { total: 0, ledgers: [] },
-                            closingStock: 0,
-                            grossProfitBf: 0,
-                            indirectIncomes: { total: 0, ledgers: [] },
-                            nettLoss: 0
-                        };
+            // Fetch stock items
+            const { data: stockItems } = await supabase
+                .from('stock_items')
+                .select('*')
+                .eq('company_id', selectedCompany.id);
 
-                        (ledgers || []).forEach(l => {
-                            const balance = Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0;
-                            const absBalance = Math.abs(balance);
-                            if (absBalance === 0) return;
+            // Calculate P&L directly (no Web Worker to avoid CSP issues)
+            const plData = {
+                openingStock: 0,
+                purchaseAccounts: { total: 0, ledgers: [] as any[] },
+                directExpenses: { total: 0, ledgers: [] as any[] },
+                grossProfitCo: 0,
+                indirectExpenses: { total: 0, ledgers: [] as any[] },
+                nettProfit: 0,
+                salesAccounts: { total: 0, ledgers: [] as any[] },
+                directIncomes: { total: 0, ledgers: [] as any[] },
+                closingStock: 0,
+                grossProfitBf: 0,
+                indirectIncomes: { total: 0, ledgers: [] as any[] },
+                nettLoss: 0,
+                tradingDebitTotal: 0,
+                tradingCreditTotal: 0,
+                plDebitTotal: 0,
+                plCreditTotal: 0,
+            };
 
-                            const group = l.parent || l.parent_group || l.ledger_type || l.ledger_group || '';
+            (ledgers || []).forEach(l => {
+                const balance = Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0;
+                const absBalance = Math.abs(balance);
+                if (absBalance === 0) return;
 
-                            if (group.includes('Sales Accounts')) {
-                                plData.salesAccounts.total += absBalance;
-                                plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Purchase Accounts')) {
-                                plData.purchaseAccounts.total += absBalance;
-                                plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Direct Expenses')) {
-                                plData.directExpenses.total += absBalance;
-                                plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Direct Incomes')) {
-                                plData.directIncomes.total += absBalance;
-                                plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Indirect Expenses')) {
-                                plData.indirectExpenses.total += absBalance;
-                                plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Indirect Incomes')) {
-                                plData.indirectIncomes.total += absBalance;
-                                plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
-                            } else if (group.includes('Stock-in-Hand')) {
-                                plData.closingStock += absBalance;
-                            }
-                        });
+                const group = l.parent || l.parent_group || l.ledger_type || l.ledger_group || '';
 
-                        if (stockItems && stockItems.length > 0) {
-                            const openingVal = stockItems.reduce((sum, item) => sum + (Number(item.opening_value) || 0), 0);
-                            const closingVal = stockItems.reduce((sum, item) => sum + (Number(item.closing_value) || 0), 0);
-
-                            if (openingVal > 0 || closingVal > 0) {
-                                plData.openingStock = openingVal;
-                                if (plData.closingStock === 0) plData.closingStock = closingVal;
-                            } else {
-                                plData.openingStock = stockItems.reduce((sum, item) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
-                                const itemsClosingValue = stockItems.reduce((sum, item) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
-                                if (itemsClosingValue > 0 && plData.closingStock === 0) {
-                                    plData.closingStock = itemsClosingValue;
-                                }
-                            }
-                        }
-
-                        const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
-                        const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
-
-                        if (tradingCredit >= tradingDebit) {
-                            plData.grossProfitCo = tradingCredit - tradingDebit;
-                            plData.grossProfitBf = plData.grossProfitCo;
-                        } else {
-                            plData.grossLossCo = tradingDebit - tradingCredit;
-                            plData.grossLossBf = plData.grossLossCo;
-                        }
-
-                        const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
-                        const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
-
-                        if (plCredit >= plDebit) {
-                            plData.nettProfit = plCredit - plDebit;
-                        } else {
-                            plData.nettLoss = plDebit - plCredit;
-                        }
-
-                        plData.tradingDebitTotal = tradingDebit + (plData.grossProfitCo || 0);
-                        plData.tradingCreditTotal = tradingCredit + (plData.grossLossCo || 0);
-                        plData.plDebitTotal = plDebit + (plData.nettProfit || 0);
-                        plData.plCreditTotal = plCredit + (plData.nettLoss || 0);
-
-                        self.postMessage({ success: true, data: plData });
-                    } catch (err) {
-                        self.postMessage({ success: false, error: err.message });
-                    }
-                };
-            `;
-
-            const blob = new Blob([workerCode], { type: 'application/javascript' });
-            const worker = new Worker(URL.createObjectURL(blob));
-
-            worker.postMessage({ ledgers, stockItems });
-
-            worker.onmessage = (e) => {
-                worker.terminate();
-                if (e.data.success) {
-                    setData(e.data.data);
-                } else {
-                    console.error('PL Worker calculation failed:', e.data.error);
-                    fallbackPLCalculation(ledgers, stockItems);
+                if (group.includes('Sales Accounts')) {
+                    plData.salesAccounts.total += absBalance;
+                    plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Purchase Accounts')) {
+                    plData.purchaseAccounts.total += absBalance;
+                    plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Direct Expenses')) {
+                    plData.directExpenses.total += absBalance;
+                    plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Direct Incomes')) {
+                    plData.directIncomes.total += absBalance;
+                    plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Indirect Expenses')) {
+                    plData.indirectExpenses.total += absBalance;
+                    plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Indirect Incomes')) {
+                    plData.indirectIncomes.total += absBalance;
+                    plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+                } else if (group.includes('Stock-in-Hand')) {
+                    plData.closingStock += absBalance;
                 }
-                setLoading(false);
-            };
+            });
 
-            worker.onerror = (err) => {
-                worker.terminate();
-                console.error('PL Worker initialization failed:', err);
-                fallbackPLCalculation(ledgers, stockItems);
-                setLoading(false);
-            };
+            if (stockItems && stockItems.length > 0) {
+                const openingVal = stockItems.reduce((sum: number, item: any) => sum + (Number(item.opening_value) || 0), 0);
+                const closingVal = stockItems.reduce((sum: number, item: any) => sum + (Number(item.closing_value) || 0), 0);
+
+                if (openingVal > 0 || closingVal > 0) {
+                    plData.openingStock = openingVal;
+                    if (plData.closingStock === 0) plData.closingStock = closingVal;
+                } else {
+                    plData.openingStock = stockItems.reduce((sum: number, item: any) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    const itemsClosingValue = stockItems.reduce((sum: number, item: any) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    if (itemsClosingValue > 0 && plData.closingStock === 0) {
+                        plData.closingStock = itemsClosingValue;
+                    }
+                }
+            }
+
+            const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
+            const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
+
+            if (tradingCredit >= tradingDebit) {
+                plData.grossProfitCo = tradingCredit - tradingDebit;
+                plData.grossProfitBf = plData.grossProfitCo;
+            } else {
+                plData.grossLossCo = tradingDebit - tradingCredit;
+                plData.grossLossBf = plData.grossLossCo;
+            }
+
+            const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
+            const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
+
+            if (plCredit >= plDebit) {
+                plData.nettProfit = plCredit - plDebit;
+            } else {
+                plData.nettLoss = plDebit - plCredit;
+            }
+
+            plData.tradingDebitTotal = tradingDebit + (plData.grossProfitCo || 0);
+            plData.tradingCreditTotal = tradingCredit + (plData.grossLossCo || 0);
+            plData.plDebitTotal = plDebit + (plData.nettProfit || 0);
+            plData.plCreditTotal = plCredit + (plData.nettLoss || 0);
+
+            setData(plData);
+            setLoading(false);
         } catch (error) {
             console.error('Error loading P&L data:', error);
             toast.error('Failed to load Profit & Loss');

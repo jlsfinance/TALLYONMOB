@@ -125,9 +125,8 @@ export default function LedgerDetailPage() {
         const targetId = voucher?.id || voucher?.voucher_id;
         if (!targetId) return;
 
-        const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
         const encodedId = encodeURIComponent(targetId);
-        navigate(type === 'sales' || type === 'sales invoice' ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
+        navigate(`/invoice/${encodedId}`, {
             state: { voucher, from: `/ledgers/${id}` }
         });
     };
@@ -592,6 +591,9 @@ export default function LedgerDetailPage() {
                             </div>
                         </div>
 
+                        {/* Credit Limit */}
+                        <CreditLimitSection ledgerId={ledger.id} currentBalance={closingBalance} />
+
                         {/* Transactions List */}
                         <div className="bg-[var(--surface)] rounded-2xl border border-[var(--border)] overflow-hidden">
                             {loading ? (
@@ -905,5 +907,73 @@ export default function LedgerDetailPage() {
 
             {/* Modal removed - fully using Tabs for items view now */}
         </div >
+    );
+}
+
+function CreditLimitSection({ ledgerId, currentBalance }: { ledgerId: string; currentBalance: number }) {
+    const [limit, setLimitState] = useState(() => {
+        try { return (JSON.parse(localStorage.getItem('tallylink_credit_limits') || '{}')[ledgerId]) || 0; } catch { return 0; }
+    });
+    const [editing, setEditing] = useState(false);
+    const [inputVal, setInputVal] = useState(String(limit || ''));
+
+    const save = () => {
+        const val = Number(inputVal) || 0;
+        const all = (() => { try { return JSON.parse(localStorage.getItem('tallylink_credit_limits') || '{}'); } catch { return {}; } })();
+        all[ledgerId] = val;
+        localStorage.setItem('tallylink_credit_limits', JSON.stringify(all));
+        setLimitState(val);
+        setEditing(false);
+        toast.success(val > 0 ? `Credit limit set to ₹${val.toLocaleString('en-IN')}` : 'Credit limit removed');
+    };
+
+    if (limit <= 0 && !editing) {
+        return (
+            <button onClick={() => { setEditing(true); setInputVal(''); }}
+                className="w-full bg-[var(--surface)] rounded-2xl p-3 border border-dashed border-[var(--border)] text-center hover:border-[var(--primary)] transition-all">
+                <p className="text-[10px] font-bold text-[var(--text-muted)]">+ Set Credit Limit</p>
+            </button>
+        );
+    }
+
+    const utilization = limit > 0 ? Math.min((currentBalance / limit) * 100, 100) : 0;
+    const isOver = currentBalance > limit;
+
+    return (
+        <div className={`bg-[var(--surface)] rounded-2xl p-4 border ${isOver ? 'border-red-500/40 bg-red-500/5' : 'border-[var(--border)]'}`}>
+            <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Credit Limit</p>
+                <button onClick={() => { setEditing(!editing); setInputVal(String(limit || '')); }}
+                    className="text-[10px] font-bold text-[var(--primary)] hover:underline">
+                    {editing ? 'Cancel' : 'Edit'}
+                </button>
+            </div>
+            {editing ? (
+                <div className="flex items-center gap-2">
+                    <input type="number" value={inputVal} onChange={e => setInputVal(e.target.value)}
+                        placeholder="Enter limit"
+                        className="flex-1 px-3 py-2 bg-[var(--surface-container)] border border-[var(--border)] rounded-xl text-sm font-bold focus:outline-none focus:border-[var(--primary)]" />
+                    <button onClick={save} className="px-4 py-2 bg-[var(--primary)] text-white rounded-xl text-xs font-bold">Save</button>
+                </div>
+            ) : (
+                <>
+                    <p className={`text-lg font-black ${isOver ? 'text-red-500' : 'text-[var(--on-surface)]'}`}>
+                        ₹{(limit || 0).toLocaleString('en-IN')}
+                    </p>
+                    {limit > 0 && (
+                        <div className="mt-2">
+                            <div className="flex items-center justify-between text-[10px] mb-1">
+                                <span className="text-[var(--text-muted)]">Used: ₹{currentBalance.toLocaleString('en-IN')}</span>
+                                <span className={`font-bold ${isOver ? 'text-red-500' : 'text-emerald-500'}`}>{utilization.toFixed(0)}%</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-[var(--surface-container)] rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : utilization > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                    style={{ width: `${Math.min(utilization, 100)}%` }} />
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
     );
 }

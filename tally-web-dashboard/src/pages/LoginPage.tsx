@@ -68,7 +68,7 @@ export default function LoginPage() {
                 toast.success('Welcome back!');
                 navigate('/dashboard');
             } else {
-                const { error } = await signUp(email, password, fullName);
+                const { data, error } = await signUp(email, password, fullName);
                 if (error) {
                     if (error.message?.toLowerCase().includes('already exists') || error.message?.toLowerCase().includes('already registered')) {
                         toast.error('User already exists! Please sign in instead.');
@@ -77,8 +77,15 @@ export default function LoginPage() {
                     }
                     throw error;
                 }
-                setOtpSent(true);
-                toast.success('Account created! Please check your email for the OTP.');
+                
+                // If autoconfirm is enabled on Supabase, the session is returned directly
+                if (data?.session) {
+                    toast.success('Account created and signed in successfully!');
+                    navigate('/dashboard');
+                } else {
+                    setOtpSent(true);
+                    toast.success('Account created! Please check your email for the OTP.');
+                }
             }
         } catch (error: any) {
             console.error('Login Error:', error);

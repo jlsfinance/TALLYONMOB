@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 interface Party {
     id: string;
     name: string;
-    closing_balance: number;
+    current_balance: number;
     parent: string;
     email?: string;
     phone?: string;
@@ -61,8 +61,8 @@ export default function PaymentRemindersPage() {
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .in('parent', ['Sundry Debtors', 'sundry debtors', 'SUNDRY DEBTORS'])
-                .gt('closing_balance', 0)
-                .order('closing_balance', { ascending: false });
+                .neq('current_balance', 0)
+                .order('current_balance', { ascending: false });
 
             if (error) throw error;
             setParties(data || []);
@@ -95,7 +95,7 @@ export default function PaymentRemindersPage() {
             );
         }
         if (sortBy === 'amount') {
-            result = [...result].sort((a, b) => b.closing_balance - a.closing_balance);
+            result = [...result].sort((a, b) => b.current_balance - a.current_balance);
         } else {
             result = [...result].sort((a, b) => a.name.localeCompare(b.name));
         }
@@ -103,14 +103,14 @@ export default function PaymentRemindersPage() {
     }, [parties, searchQuery, sortBy]);
 
     const totalOutstanding = useMemo(() =>
-        filteredParties.reduce((sum, p) => sum + (p.closing_balance || 0), 0),
+        filteredParties.reduce((sum, p) => sum + (p.current_balance || 0), 0),
         [filteredParties]
     );
 
     const selectedTotal = useMemo(() =>
         filteredParties
             .filter(p => selectedParties.has(p.id))
-            .reduce((sum, p) => sum + (p.closing_balance || 0), 0),
+            .reduce((sum, p) => sum + (p.current_balance || 0), 0),
         [filteredParties, selectedParties]
     );
 
@@ -130,7 +130,7 @@ export default function PaymentRemindersPage() {
 
     const getMessageTemplate = (party: Party) => {
         const companyName = selectedCompany?.name || 'our company';
-        const amount = formatCurrency(party.closing_balance);
+        const amount = formatCurrency(party.current_balance);
 
         const templates: Record<string, string> = {
             default: `Dear ${party.name},\n\nThis is a friendly reminder that you have an outstanding payment of ${amount} with ${companyName}.\n\nPlease arrange the payment at your earliest convenience.\n\nThank you for your business!\n\nRegards,\n${companyName}`,
@@ -159,7 +159,7 @@ export default function PaymentRemindersPage() {
 
     const sendEmailReminder = async (party: Party) => {
         const message = getMessageTemplate(party);
-        const subject = `Payment Reminder - ${formatCurrency(party.closing_balance)} Outstanding`;
+        const subject = `Payment Reminder - ${formatCurrency(party.current_balance)} Outstanding`;
 
         if (party.email) {
             // Use mailto for direct email
@@ -204,7 +204,7 @@ export default function PaymentRemindersPage() {
             await supabase.from('reminder_logs').insert({
                 company_id: selectedCompany.id,
                 party_name: party.name,
-                amount: party.closing_balance,
+                amount: party.current_balance,
                 channel,
                 status: 'sent'
             });
@@ -450,7 +450,7 @@ export default function PaymentRemindersPage() {
                                         {/* Amount */}
                                         <div className="text-right shrink-0">
                                             <p className="text-lg font-bold text-red-400">
-                                                {formatCurrency(party.closing_balance)}
+                                                {formatCurrency(party.current_balance)}
                                             </p>
                                         </div>
                                     </div>

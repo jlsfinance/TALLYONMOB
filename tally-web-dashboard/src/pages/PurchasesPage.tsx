@@ -89,7 +89,7 @@ export default function PurchasesPage() {
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .limit(selectedMonth === 'all' ? 2000 : 1000);
+                .range(0, 99999);
 
             if (error) throw error;
 
@@ -222,7 +222,7 @@ export default function PurchasesPage() {
                                 date={purchase.voucher_date}
                                 amount={purchase.total_amount}
                                 status={purchase.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(purchase.id)}`)}
+                                onClick={() => navigate(`/invoice/${encodeURIComponent(purchase.id)}`, { state: { voucher: purchase, from: '/purchases' } })}
                             />
                         ))}
                     </div>

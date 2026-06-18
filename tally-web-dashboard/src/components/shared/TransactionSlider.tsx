@@ -20,8 +20,8 @@ const TransactionSlider: React.FC<TransactionSliderProps> = ({ transactions, com
         if (!targetId) return;
 
         const encodedId = encodeURIComponent(targetId);
-        navigate(isSalesVoucher(voucher) ? `/invoice/${encodedId}` : `/vouchers/${encodedId}`, {
-            state: { voucher, from: '/dashboard' }
+        navigate(`/invoice/${encodedId}`, {
+            state: { voucher, from: '/ledgers' }
         });
     };
 

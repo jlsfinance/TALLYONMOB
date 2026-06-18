@@ -5,7 +5,7 @@ import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import { GlassCard, Spinner } from '@/components/ui/GlassUI';
 import { 
     Activity, TrendingUp, AlertOctagon, LayoutGrid, RefreshCw, 
-    ChevronUp, ChevronDown, Sliders, Eye, EyeOff, GripVertical, Check, Info 
+    ChevronUp, ChevronDown, Sliders, Eye, EyeOff, GripVertical, Check, Info, Sparkles 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -328,9 +328,247 @@ export default function BusinessInsightsPage() {
             .filter(l => String(l.parent_group || l.parent || '').toLowerCase().includes('creditor'))
             .reduce((sum, l) => sum + Math.abs(toNumber(l.closing_balance || l.current_balance)), 0);
 
+        const expenseLedgers = ledgers
+            .filter(l => String(l.parent_group || l.parent || '').toLowerCase().includes('expense'))
+            .reduce((sum, l) => sum + Math.abs(toNumber(l.closing_balance || l.current_balance)), 0);
+
+        const capitalLedgers = ledgers
+            .filter(l => {
+                const group = String(l.parent_group || l.parent || '').toLowerCase();
+                return group.includes('capital') || group.includes('equity') || group.includes('reserve');
+            })
+            .reduce((sum, l) => sum + Math.abs(toNumber(l.closing_balance || l.current_balance)), 0);
+
+        const cashBankBalance = ledgers
+            .filter(l => {
+                const group = String(l.parent_group || l.parent || '').toLowerCase();
+                return group.includes('cash') || group.includes('bank');
+            })
+            .reduce((sum, l) => sum + Math.abs(toNumber(l.closing_balance || l.current_balance)), 0);
+
+        const stockValue = stockItems.reduce((sum, s) => {
+            const qty = toNumber(s.current_stock);
+            const rate = toNumber(s.purchase_price || s.rate || s.cost_price || 0);
+            return sum + (qty * rate);
+        }, 0);
+
+        const currentAssets = debtorBalance + stockValue + cashBankBalance;
+        const currentLiabilities = creditorBalance || 1;
+        const totalLiabilities = creditorBalance;
+        const shareholderEquity = capitalLedgers || 1;
+        const cogs = totalPurchases;
+        const avgInventory = stockValue;
+
         const list = [];
 
-        // Cash flow health check
+        // 1. Current Ratio
+        const currentRatio = currentLiabilities > 0 ? currentAssets / currentLiabilities : 0;
+        list.push({
+            type: currentRatio >= 1.5 ? 'positive' : currentRatio >= 1 ? 'warning' : 'negative',
+            title: 'Current Ratio',
+            description: `Current Ratio is ${currentRatio.toFixed(2)}x (Current Assets ₹${Math.round(currentAssets).toLocaleString('en-IN')} / Current Liabilities ₹${Math.round(currentLiabilities).toLocaleString('en-IN')}). ${currentRatio >= 1.5 ? 'Strong short-term liquidity position.' : currentRatio >= 1 ? 'Adequate but monitor closely.' : 'Insufficient assets to cover short-term obligations.'}`
+        });
+
+        // 2. Quick Ratio (Acid Test)
+        const quickRatio = currentLiabilities > 0 ? (currentAssets - stockValue) / currentLiabilities : 0;
+        list.push({
+            type: quickRatio >= 1 ? 'positive' : quickRatio >= 0.7 ? 'warning' : 'negative',
+            title: 'Quick Ratio (Acid Test)',
+            description: `Quick Ratio is ${quickRatio.toFixed(2)}x (Liquid Assets ₹${Math.round(currentAssets - stockValue).toLocaleString('en-IN')} / Current Liabilities ₹${Math.round(currentLiabilities).toLocaleString('en-IN')}). ${quickRatio >= 1 ? 'Can meet short-term obligations without selling inventory.' : 'May struggle to cover obligations without inventory liquidation.'}`
+        });
+
+        // 3. Debt-to-Equity Ratio
+        const debtEquityRatio = shareholderEquity > 0 ? totalLiabilities / shareholderEquity : 0;
+        list.push({
+            type: debtEquityRatio <= 1.5 ? 'positive' : debtEquityRatio <= 2.5 ? 'warning' : 'negative',
+            title: 'Debt-to-Equity Ratio',
+            description: `D/E Ratio is ${debtEquityRatio.toFixed(2)}x (Total Liabilities ₹${Math.round(totalLiabilities).toLocaleString('en-IN')} / Equity ₹${Math.round(shareholderEquity).toLocaleString('en-IN')}). ${debtEquityRatio <= 1.5 ? 'Healthy leverage — well within safe thresholds.' : debtEquityRatio <= 2.5 ? 'Elevated debt levels — consider equity infusion.' : 'Critically high leverage. Refinancing recommended.'}`
+        });
+
+        // 4. Gross Profit Margin
+        const grossProfit = totalSales - totalPurchases;
+        const grossProfitMargin = totalSales > 0 ? (grossProfit / totalSales) * 100 : 0;
+        list.push({
+            type: grossProfitMargin >= 30 ? 'positive' : grossProfitMargin >= 15 ? 'warning' : 'negative',
+            title: 'Gross Profit Margin',
+            description: `Gross Margin is ${grossProfitMargin.toFixed(1)}% (Revenue ₹${Math.round(totalSales).toLocaleString('en-IN')} − COGS ₹${Math.round(totalPurchases).toLocaleString('en-IN')} = ₹${Math.round(grossProfit).toLocaleString('en-IN')}). ${grossProfitMargin >= 30 ? 'Excellent margin — strong pricing power.' : grossProfitMargin >= 15 ? 'Moderate margin — room for cost optimization.' : 'Thin margins — review procurement and pricing strategy.'}`
+        });
+
+        // 5. Net Profit Margin
+        const netProfit = totalSales - totalPurchases - expenseLedgers;
+        const netProfitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+        list.push({
+            type: netProfitMargin >= 10 ? 'positive' : netProfitMargin >= 0 ? 'warning' : 'negative',
+            title: 'Net Profit Margin',
+            description: `Net Margin is ${netProfitMargin.toFixed(1)}% (Net Profit ₹${Math.round(netProfit).toLocaleString('en-IN')} on Revenue ₹${Math.round(totalSales).toLocaleString('en-IN')}). ${netProfitMargin >= 10 ? 'Healthy bottom-line conversion.' : netProfitMargin >= 0 ? 'Break-even territory — control overheads.' : 'Operating at a net loss — urgent restructuring needed.'}`
+        });
+
+        // 6. Inventory Turnover
+        const inventoryTurnover = avgInventory > 0 ? cogs / avgInventory : 0;
+        list.push({
+            type: inventoryTurnover >= 6 ? 'positive' : inventoryTurnover >= 3 ? 'warning' : 'negative',
+            title: 'Inventory Turnover',
+            description: `Inventory turns over ${inventoryTurnover.toFixed(1)}x per period (COGS ₹${Math.round(cogs).toLocaleString('en-IN')} / Inventory ₹${Math.round(avgInventory).toLocaleString('en-IN')}). ${inventoryTurnover >= 6 ? 'Efficient stock management — fast-moving inventory.' : inventoryTurnover >= 3 ? 'Moderate turnover — optimize reorder cycles.' : 'Slow-moving stock — risk of obsolescence and carrying costs.'}`
+        });
+
+        // 7. Days Sales Outstanding (DSO)
+        const dso = totalSales > 0 ? (debtorBalance / totalSales) * 365 : 0;
+        list.push({
+            type: dso <= 30 ? 'positive' : dso <= 60 ? 'warning' : 'negative',
+            title: 'Days Sales Outstanding (DSO)',
+            description: `DSO is ${Math.round(dso)} days — customers take ~${Math.round(dso)} days to pay on average. ${dso <= 30 ? 'Excellent collection cycle.' : dso <= 60 ? 'Moderate — tighten credit terms or follow up on overdue accounts.' : 'Critical delay in receivables. Implement stricter collection policy.'}`
+        });
+
+        // 8. Days Payable Outstanding (DPO)
+        const dpo = totalPurchases > 0 ? (creditorBalance / totalPurchases) * 365 : 0;
+        list.push({
+            type: dpo >= 30 && dpo <= 60 ? 'positive' : dpo < 15 ? 'warning' : 'info',
+            title: 'Days Payable Outstanding (DPO)',
+            description: `DPO is ${Math.round(dpo)} days — you take ~${Math.round(dpo)} days to settle supplier payments. ${dpo >= 30 && dpo <= 60 ? 'Healthy payables management.' : dpo < 15 ? 'Paying too fast — optimize cash retention by extending terms.' : 'Review payment terms with suppliers to balance cash flow.'}`
+        });
+
+        // 9. Cash Conversion Cycle (CCC)
+        const dio = inventoryTurnover > 0 ? 365 / inventoryTurnover : 0;
+        const ccc = dso + dio - dpo;
+        list.push({
+            type: ccc <= 45 ? 'positive' : ccc <= 90 ? 'warning' : 'negative',
+            title: 'Cash Conversion Cycle (CCC)',
+            description: `CCC is ${Math.round(ccc)} days (DSO ${Math.round(dso)} + DIO ${Math.round(dio)} − DPO ${Math.round(dpo)}). ${ccc <= 45 ? 'Excellent — cash is recycled quickly through operations.' : ccc <= 90 ? 'Moderate cycle — working capital is tied up for ~3 months.' : 'Long cycle — significant cash lockup in operations.'}`
+        });
+
+        // 10. Revenue Growth Rate (Month-over-Month)
+        const monthlySalesMap: Record<string, number> = {};
+        sales.forEach(v => {
+            const dateStr = v.voucher_date || v.created_at;
+            if (!dateStr) return;
+            const monthKey = dateStr.substring(0, 7);
+            monthlySalesMap[monthKey] = (monthlySalesMap[monthKey] || 0) + toNumber(v.grand_total || v.total_amount);
+        });
+        const sortedMonths = Object.keys(monthlySalesMap).sort();
+        if (sortedMonths.length >= 2) {
+            const currentMonthSales = monthlySalesMap[sortedMonths[sortedMonths.length - 1]];
+            const prevMonthSales = monthlySalesMap[sortedMonths[sortedMonths.length - 2]];
+            const growthRate = prevMonthSales > 0 ? ((currentMonthSales - prevMonthSales) / prevMonthSales) * 100 : 0;
+            list.push({
+                type: growthRate > 5 ? 'positive' : growthRate > -5 ? 'warning' : 'negative',
+                title: 'Revenue Growth Rate (MoM)',
+                description: `Month-over-month growth is ${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(1)}% (Current: ₹${Math.round(currentMonthSales).toLocaleString('en-IN')} vs Previous: ₹${Math.round(prevMonthSales).toLocaleString('en-IN')}). ${growthRate > 5 ? 'Strong revenue acceleration.' : growthRate > -5 ? 'Stable — minor fluctuation.' : 'Revenue contraction detected — investigate.'}`
+            });
+        }
+
+        // 11. Top 5 Customers by Revenue
+        const customerMap: Record<string, number> = {};
+        sales.forEach(v => {
+            if (v.party_name) {
+                customerMap[v.party_name] = (customerMap[v.party_name] || 0) + toNumber(v.grand_total || v.total_amount);
+            }
+        });
+        const topCustomers = Object.entries(customerMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (topCustomers.length > 0) {
+            const topCustomerStr = topCustomers.map(([name, amt]) => `${name} (₹${Math.round(amt).toLocaleString('en-IN')})`).join(', ');
+            list.push({
+                type: 'info',
+                title: 'Top 5 Customers by Revenue',
+                description: `Your largest revenue contributors: ${topCustomerStr}.`
+            });
+        }
+
+        // 12. Top 5 Suppliers by Purchases
+        const supplierMap: Record<string, number> = {};
+        purchases.forEach(v => {
+            if (v.party_name) {
+                supplierMap[v.party_name] = (supplierMap[v.party_name] || 0) + toNumber(v.grand_total || v.total_amount);
+            }
+        });
+        const topSuppliers = Object.entries(supplierMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (topSuppliers.length > 0) {
+            const topSupplierStr = topSuppliers.map(([name, amt]) => `${name} (₹${Math.round(amt).toLocaleString('en-IN')})`).join(', ');
+            list.push({
+                type: 'info',
+                title: 'Top 5 Suppliers by Purchases',
+                description: `Your largest procurement partners: ${topSupplierStr}.`
+            });
+        }
+
+        // 13. Stock Coverage Days
+        const dailyCogs = cogs > 0 ? cogs / 365 : 0;
+        const stockCoverageDays = dailyCogs > 0 ? stockValue / dailyCogs : 0;
+        list.push({
+            type: stockCoverageDays >= 30 && stockCoverageDays <= 90 ? 'positive' : stockCoverageDays < 15 ? 'negative' : 'warning',
+            title: 'Stock Coverage Days',
+            description: `Current inventory covers ~${Math.round(stockCoverageDays)} days of operations at current COGS rate (Stock ₹${Math.round(stockValue).toLocaleString('en-IN')} / Daily COGS ₹${Math.round(dailyCogs).toLocaleString('en-IN')}). ${stockCoverageDays >= 30 && stockCoverageDays <= 90 ? 'Optimal stock levels — balanced availability and cost.' : stockCoverageDays < 15 ? 'Critically low stock — risk of stockouts.' : 'Excess inventory — carrying costs may erode margins.'}`
+        });
+
+        // 14. Receivables Concentration (% of sales outstanding)
+        const overduePercentage = debtorBalance > 0 && totalSales > 0
+            ? Math.min(100, Math.round((debtorBalance / totalSales) * 100))
+            : 0;
+        list.push({
+            type: overduePercentage <= 25 ? 'positive' : overduePercentage <= 50 ? 'warning' : 'negative',
+            title: 'Receivables Concentration',
+            description: `Outstanding receivables represent ${overduePercentage}% of total sales (₹${Math.round(debtorBalance).toLocaleString('en-IN')} of ₹${Math.round(totalSales).toLocaleString('en-IN')}). ${overduePercentage <= 25 ? 'Well-managed receivables.' : overduePercentage <= 50 ? 'Monitor aging closely — follow up on overdue invoices.' : 'High receivables ratio — collections need immediate attention.'}`
+        });
+
+        // 15. Expense Breakdown by Category
+        const expenseBreakdown: Record<string, number> = {};
+        ledgers
+            .filter(l => String(l.parent_group || l.parent || '').toLowerCase().includes('expense'))
+            .forEach(l => {
+                const group = String(l.parent_group || l.parent || 'Other Expenses');
+                expenseBreakdown[group] = (expenseBreakdown[group] || 0) + Math.abs(toNumber(l.closing_balance || l.current_balance));
+            });
+        if (Object.keys(expenseBreakdown).length > 0) {
+            const breakdownStr = Object.entries(expenseBreakdown)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([cat, amt]) => `${cat}: ₹${Math.round(amt).toLocaleString('en-IN')}`)
+                .join(' | ');
+            list.push({
+                type: 'info',
+                title: 'Expense Breakdown by Category',
+                description: `Total expenses: ₹${Math.round(expenseLedgers).toLocaleString('en-IN')}. Top categories — ${breakdownStr}.`
+            });
+        }
+
+        // 16. Monthly Burn Rate
+        const monthlyExpenses: Record<string, number> = {};
+        const expenseVouchers = vouchers.filter(v => {
+            const type = String(v.voucher_type || '').toLowerCase();
+            return type.includes('expense') || type.includes('payment') || type.includes('journal');
+        });
+        expenseVouchers.forEach(v => {
+            const dateStr = v.voucher_date || v.created_at;
+            if (!dateStr) return;
+            const monthKey = dateStr.substring(0, 7);
+            monthlyExpenses[monthKey] = (monthlyExpenses[monthKey] || 0) + toNumber(v.grand_total || v.total_amount);
+        });
+        const expenseMonths = Object.keys(monthlyExpenses);
+        const avgBurnRate = expenseMonths.length > 0
+            ? Object.values(monthlyExpenses).reduce((sum, v) => sum + v, 0) / expenseMonths.length
+            : expenseLedgers / 12;
+        list.push({
+            type: 'info',
+            title: 'Monthly Burn Rate',
+            description: `Average monthly expenditure is ₹${Math.round(avgBurnRate).toLocaleString('en-IN')} (based on ${expenseMonths.length || 1} periods of data). At this rate, estimated annual spend: ₹${Math.round(avgBurnRate * 12).toLocaleString('en-IN')}.`
+        });
+
+        // 17. Working Capital
+        const workingCapital = currentAssets - currentLiabilities;
+        list.push({
+            type: workingCapital > 0 ? 'positive' : 'negative',
+            title: 'Working Capital',
+            description: `Net Working Capital is ₹${Math.round(workingCapital).toLocaleString('en-IN')} (Current Assets ₹${Math.round(currentAssets).toLocaleString('en-IN')} − Current Liabilities ₹${Math.round(currentLiabilities).toLocaleString('en-IN')}). ${workingCapital > 0 ? 'Positive working capital — can fund day-to-day operations.' : 'Negative working capital — liquidity risk. Consider raising short-term finance.'}`
+        });
+
+        // 18. Payables-to-Receivables Ratio
+        const payablesToReceivables = debtorBalance > 0 ? creditorBalance / debtorBalance : 0;
+        list.push({
+            type: payablesToReceivables >= 0.5 && payablesToReceivables <= 1 ? 'positive' : payablesToReceivables > 1.5 ? 'warning' : 'info',
+            title: 'Payables-to-Receivables Ratio',
+            description: `Ratio is ${payablesToReceivables.toFixed(2)}x (Payables ₹${Math.round(creditorBalance).toLocaleString('en-IN')} / Receivables ₹${Math.round(debtorBalance).toLocaleString('en-IN')}). ${payablesToReceivables >= 0.5 && payablesToReceivables <= 1 ? 'Balanced — healthy alignment of payables and receivables.' : payablesToReceivables > 1.5 ? 'Payables significantly exceed receivables — cash flow pressure.' : 'Low ratio — receivables are well-covered by payables buffer.'}`
+        });
+
+        // 19. Cash Flow Health (Sales vs Purchases surplus)
         if (totalSales > totalPurchases) {
             list.push({
                 type: 'positive',
@@ -345,22 +583,7 @@ export default function BusinessInsightsPage() {
             });
         }
 
-        // Debt collection check
-        if (debtorBalance > totalSales * 0.5 && totalSales > 0) {
-            list.push({
-                type: 'warning',
-                title: 'Heavy Receivables Congestion',
-                description: `Outstanding accounts receivable (₹${Math.round(debtorBalance).toLocaleString('en-IN')}) represents ${Math.round(debtorBalance / totalSales * 100)}% of total sales. Collection velocity is lagging.`
-            });
-        } else {
-            list.push({
-                type: 'positive',
-                title: 'Healthy Receivables Cycle',
-                description: `DSO (Days Sales Outstanding) remains stable. Outstanding customer dues are under 30% of sales total.`
-            });
-        }
-
-        // Inventory health check
+        // 20. Inventory Stockout Alert
         const zeroStock = stockItems.filter(s => toNumber(s.current_stock) <= 0);
         if (zeroStock.length > 0) {
             list.push({
@@ -370,12 +593,12 @@ export default function BusinessInsightsPage() {
             });
         }
 
-        // Future revenue trajectory
+        // 21. Future Revenue Trajectory
         if (predictiveAnalytics.forecasted.length > 0) {
             const nextMonth = predictiveAnalytics.forecasted[0];
             const avgHist = predictiveAnalytics.statistics.avgRevenue;
             const diff = nextMonth.revenue - avgHist;
-            
+
             if (diff > 0) {
                 list.push({
                     type: 'positive',
@@ -534,7 +757,8 @@ export default function BusinessInsightsPage() {
                                                         const colorMap = {
                                                             positive: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-500',
                                                             warning: 'border-amber-500/20 bg-amber-500/5 text-amber-500',
-                                                            negative: 'border-red-500/20 bg-red-500/5 text-red-500'
+                                                            negative: 'border-red-500/20 bg-red-500/5 text-red-500',
+                                                            info: 'border-sky-500/20 bg-sky-500/5 text-sky-500'
                                                         }[insight.type];
 
                                                         return (

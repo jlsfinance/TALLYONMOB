@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import tallySyncHandler from './api/tally/sync.js'
@@ -29,11 +30,88 @@ export default defineConfig(({ mode }) => {
 
     return {
         base: './',
-        plugins: [tallyApiDevPlugin(), react()],
+        plugins: [
+            tallyApiDevPlugin(),
+            react(),
+            VitePWA({
+                registerType: 'autoUpdate',
+                includeAssets: ['app_icon.svg', 'favicon.ico'],
+                manifest: false,
+                workbox: {
+                    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff,ttf}'],
+                    runtimeCaching: [
+                        {
+                            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'google-fonts-cache',
+                                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                            }
+                        },
+                        {
+                            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'gstatic-fonts-cache',
+                                expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 }
+                            }
+                        },
+                        {
+                            urlPattern: /^https:\/\/pfqmqpboomwtxgyfqnsn\.supabase\.co\/rest\/.*/i,
+                            handler: 'NetworkFirst',
+                            options: {
+                                cacheName: 'supabase-api-cache',
+                                expiration: { maxEntries: 50, maxAgeSeconds: 5 * 60 },
+                                networkTimeoutSeconds: 3,
+                                cacheableResponse: { statuses: [0, 200] }
+                            }
+                        },
+                        {
+                            urlPattern: /^https:\/\/pfqmqpboomwtxgyfqnsn\.supabase\.co\/auth\/.*/i,
+                            handler: 'NetworkOnly'
+                        },
+                        {
+                            urlPattern: /^https:\/\/api\.qrserver\.com\/.*/i,
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'qr-code-cache',
+                                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 }
+                            }
+                        },
+                        {
+                            urlPattern: /\.(?:png|gif|jpg|jpeg|webp|svg)$/i,
+                            handler: 'CacheFirst',
+                            options: {
+                                cacheName: 'images-cache',
+                                expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 }
+                            }
+                        }
+                    ],
+                    navigateFallback: 'index.html',
+                    navigateFallbackDenylist: [/^\/api\//, /^\/auth\//]
+                },
+                devOptions: { enabled: false }
+            }),
+        ],
         server,
         resolve: {
             alias: {
                 '@': path.resolve(__dirname, './src'),
+            },
+        },
+        build: {
+            chunkSizeWarningLimit: 800,
+            rollupOptions: {
+                output: {
+                    manualChunks: {
+                        'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+                        'vendor-supabase': ['@supabase/supabase-js'],
+                        'vendor-charts': ['recharts'],
+                        'vendor-motion': ['framer-motion'],
+                        'vendor-ui': ['lucide-react', 'react-hot-toast'],
+                        'vendor-utils': ['date-fns', '@tanstack/react-query'],
+                    },
+                },
             },
         },
     }

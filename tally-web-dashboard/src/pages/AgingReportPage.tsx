@@ -45,9 +45,9 @@ export default function AgeingReportPage() {
 
             const { data: ledgers } = await supabase
                 .from('ledgers')
-                .select('id, name, phone, opening_balance, group_name')
+                .select('id, name, phone, opening_balance, parent')
                 .eq('company_id', selectedCompany.id)
-                .eq('group_name', groupName);
+                .in('parent', [groupName, groupName.toLowerCase(), groupName.toUpperCase()]);
 
             // Fetch all vouchers for these parties
             const partyNames = (ledgers || []).map(l => l.name);
