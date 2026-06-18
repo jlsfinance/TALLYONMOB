@@ -91,7 +91,7 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<(bool Success, string? Message)> TestConnectionAsync()
         {
-            string url = $"{_supabaseUrl}/api/database/records/companies?select=count&limit=0";
+            string url = $"{_supabaseUrl}/rest/v1/companies?select=count&limit=0";
             try
             {
                 AddAuthHeader();
@@ -143,7 +143,7 @@ namespace TallySyncApp.Services
                 // SOLUTION: Always fetch the existing company by name first to preserve its database UUID.
                 
                 string encodedName = Uri.EscapeDataString(company.Name);
-                var url = $"{_supabaseUrl}/api/database/records/companies?name=eq.{encodedName}&select=id";
+                var url = $"{_supabaseUrl}/rest/v1/companies?name=eq.{encodedName}&select=id";
                 var responseStr = await _httpClient.GetStringAsync(url);
                 var existingCompanies = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(responseStr);
                 
@@ -846,7 +846,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var url = $"{_supabaseUrl}/api/database/records/app_settings?select=key,value";
+                var url = $"{_supabaseUrl}/rest/v1/app_settings?select=key,value";
                 var response = await _httpClient.GetStringAsync(url);
                 var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(response);
                 
@@ -879,7 +879,7 @@ namespace TallySyncApp.Services
             {
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
-                var url = $"{_supabaseUrl}/api/database/records/sync_metadata?company_id=eq.{companyUuid}&sync_key=eq.{key}&select=sync_value";
+                var url = $"{_supabaseUrl}/rest/v1/sync_metadata?company_id=eq.{companyUuid}&sync_key=eq.{key}&select=sync_value";
                 var response = await _httpClient.GetStringAsync(url);
                 var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(response);
                 return items != null && items.Count > 0 ? items[0]["sync_value"] : null;
@@ -911,7 +911,7 @@ namespace TallySyncApp.Services
             {
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
-                var url = $"{_supabaseUrl}/api/database/records/{tableName}?company_id=eq.{companyUuid}&select=id&limit=1";
+                var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&select=id&limit=1";
                 var response = await _httpClient.GetStringAsync(url);
                 var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
                 return rows != null && rows.Count > 0;
@@ -946,7 +946,7 @@ namespace TallySyncApp.Services
                 while (true)
                 {
                     // Server-side null filter reduces payload; fetch only non-null alter_ids
-                    var url = $"{_supabaseUrl}/api/database/records/{tableName}?company_id=eq.{companyUuid}&select=alter_id&alter_id=not.is.null&limit={PAGE_SIZE}&offset={offset}";
+                    var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&select=alter_id&alter_id=not.is.null&limit={PAGE_SIZE}&offset={offset}";
                     var response = await _httpClient.GetStringAsync(url);
                     
                     var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
@@ -994,7 +994,7 @@ namespace TallySyncApp.Services
                 string companyUuid = ResolveCompanyUuid(companyId);
                 
                 // Fetch from sync_state table
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/api/database/records/sync_state?company_id=eq.{companyUuid}&data_type=eq.{dataType}&select=last_sync_at,last_alter_id,is_initial_sync_complete");
+                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/rest/v1/sync_state?company_id=eq.{companyUuid}&data_type=eq.{dataType}&select=last_sync_at,last_alter_id,is_initial_sync_complete");
                 var response = await _httpClient.SendAsync(request);
                 
                 if (!response.IsSuccessStatusCode) return null;
@@ -1056,6 +1056,8 @@ namespace TallySyncApp.Services
             }
         }
 
+        private const int UPSERT_CHUNK_SIZE = 250;
+
         private async Task<ApiResponse<T>> UpsertViaRawSqlAsync<T>(string table, object normalizedPayload, string onConflict)
         {
             if (!IsSafeSqlIdentifier(table))
@@ -1116,29 +1118,100 @@ namespace TallySyncApp.Services
                 };
             }
 
-            var sql = BuildUpsertSql(table, supportedColumns, conflictColumns, rows, out var parameters);
-            var rawSqlPayload = JsonConvert.SerializeObject(new
-            {
-                query = sql,
-                @params = parameters
-            });
+            // --- Chunked upload: split rows into batches ---
+            int totalRows = rows.Count;
+            int chunkSize = UPSERT_CHUNK_SIZE;
+            int totalChunks = (int)Math.Ceiling((double)totalRows / chunkSize);
+            int syncedRows = 0;
 
-            var content = new StringContent(rawSqlPayload, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync($"{_supabaseUrl}/api/database/advance/rawsql", content);
-            var responseContent = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
+            if (totalChunks > 1)
             {
-                var parsed = ParseDatabaseError(responseContent);
-                SyncLogger.Log($"UPSERT FAILED [{table}] RAWSQL HTTP {(int)response.StatusCode}: {responseContent.Substring(0, Math.Min(responseContent.Length, 300))}");
-                return new ApiResponse<T>
-                {
-                    Success = false,
-                    Error = BuildDatabaseErrorMessage(table, (int)response.StatusCode, parsed, responseContent)
-                };
+                SyncLogger.Log($"[CHUNK] {table}: {totalRows} rows → {totalChunks} chunks of {chunkSize}");
             }
 
-            return new ApiResponse<T> { Success = true, Message = "Sync successful" };
+            for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++)
+            {
+                var chunk = rows.Skip(chunkIndex * chunkSize).Take(chunkSize).ToList();
+                var chunkResult = await SendUpsertChunkAsync<T>(table, chunk, onConflict);
+
+                if (!chunkResult.Success)
+                {
+                    SyncLogger.Log($"[CHUNK] {table}: chunk {chunkIndex + 1}/{totalChunks} FAILED after {syncedRows}/{totalRows} rows — {chunkResult.Error}");
+                    return new ApiResponse<T>
+                    {
+                        Success = false,
+                        Error = $"Chunk {chunkIndex + 1}/{totalChunks} failed ({syncedRows}/{totalRows} synced): {chunkResult.Error}"
+                    };
+                }
+
+                syncedRows += chunk.Count;
+
+                if (totalChunks > 1)
+                {
+                    SyncLogger.Log($"[CHUNK] {table}: chunk {chunkIndex + 1}/{totalChunks} OK ({syncedRows}/{totalRows} rows synced)");
+                }
+            }
+
+            return new ApiResponse<T> { Success = true, Message = $"Synced {syncedRows} rows in {totalChunks} chunk(s)" };
+        }
+
+        /// <summary>
+        /// Send a single chunk of rows to PostgREST with retry logic.
+        /// </summary>
+        private async Task<ApiResponse<T>> SendUpsertChunkAsync<T>(string table, List<JObject> chunk, string onConflict, int maxRetries = 2)
+        {
+            for (int attempt = 0; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    AddAuthHeader();
+                    var jsonArray = new JArray(chunk);
+                    var content = new StringContent(jsonArray.ToString(Formatting.None), Encoding.UTF8, "application/json");
+                    var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/{table}?on_conflict={onConflict}");
+                    request.Headers.Add("Prefer", "resolution=merge-duplicates");
+                    request.Content = content;
+
+                    var response = await _httpClient.SendAsync(request);
+                    var responseContent = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return new ApiResponse<T> { Success = true, Message = "Chunk sync successful" };
+                    }
+
+                    // Retry on 5xx server errors
+                    if ((int)response.StatusCode >= 500 && attempt < maxRetries)
+                    {
+                        SyncLogger.Log($"[CHUNK] {table}: server error {(int)response.StatusCode}, retry {attempt + 1}/{maxRetries}...");
+                        await Task.Delay(1000 * (attempt + 1));
+                        continue;
+                    }
+
+                    var parsed = ParseDatabaseError(responseContent);
+                    SyncLogger.Log($"UPSERT FAILED [{table}] POSTGREST HTTP {(int)response.StatusCode}: {responseContent.Substring(0, Math.Min(responseContent.Length, 300))}");
+                    return new ApiResponse<T>
+                    {
+                        Success = false,
+                        Error = BuildDatabaseErrorMessage(table, (int)response.StatusCode, parsed, responseContent)
+                    };
+                }
+                catch (TaskCanceledException) when (attempt < maxRetries)
+                {
+                    SyncLogger.Log($"[CHUNK] {table}: timeout, retry {attempt + 1}/{maxRetries}...");
+                    await Task.Delay(1000 * (attempt + 1));
+                }
+                catch (HttpRequestException ex) when (attempt < maxRetries)
+                {
+                    SyncLogger.Log($"[CHUNK] {table}: network error '{ex.Message}', retry {attempt + 1}/{maxRetries}...");
+                    await Task.Delay(1000 * (attempt + 1));
+                }
+                catch (Exception ex)
+                {
+                    return new ApiResponse<T> { Success = false, Error = $"Chunk request failed: {ex.Message}" };
+                }
+            }
+
+            return new ApiResponse<T> { Success = false, Error = $"Chunk failed after {maxRetries} retries" };
         }
 
         private static bool IsSafeSqlIdentifier(string value)
@@ -1319,7 +1392,7 @@ namespace TallySyncApp.Services
 
                 var singlePayload = new JArray(row);
                 var content = new StringContent(singlePayload.ToString(Formatting.None), Encoding.UTF8, "application/json");
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/api/database/records/{table}?on_conflict={onConflict}")
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/{table}?on_conflict={onConflict}")
                 {
                     Content = content
                 };
@@ -1430,7 +1503,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var response = await _httpClient.GetAsync($"{_supabaseUrl}/api/database/records/{table}?select=count&limit=0");
+                var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/{table}?select=count&limit=0");
                 if (response.IsSuccessStatusCode)
                 {
                     _tableExistsCache[table] = true;
@@ -1461,7 +1534,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var response = await _httpClient.GetAsync($"{_supabaseUrl}/api/database/records/{table}?select={Uri.EscapeDataString(column)}&limit=1");
+                var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/{table}?select={Uri.EscapeDataString(column)}&limit=1");
                 if (response.IsSuccessStatusCode)
                 {
                     _columnExistsCache[cacheKey] = true;
@@ -1632,7 +1705,7 @@ namespace TallySyncApp.Services
 
         private async Task<List<PendingTransaction>> FetchPendingTransactionsByStatusAsync(string companyUuid, string status)
         {
-            var url = $"{_supabaseUrl}/api/database/records/pending_transactions?company_id=eq.{companyUuid}&status=eq.{Uri.EscapeDataString(status)}&order=created_at.asc";
+            var url = $"{_supabaseUrl}/rest/v1/pending_transactions?company_id=eq.{companyUuid}&status=eq.{Uri.EscapeDataString(status)}&order=created_at.asc";
             var response = await _httpClient.GetStringAsync(url);
             return JsonConvert.DeserializeObject<List<PendingTransaction>>(response) ?? new List<PendingTransaction>();
         }
@@ -1708,7 +1781,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/pending_transactions?id=eq.{transactionId}";
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{transactionId}";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -1744,7 +1817,7 @@ namespace TallySyncApp.Services
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
                 
-                var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&select=voucher_id";
+                var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&select=voucher_id";
                 var response = await _httpClient.GetAsync(url);
                 
                 if (response.IsSuccessStatusCode)
@@ -1780,7 +1853,7 @@ namespace TallySyncApp.Services
                 foreach (var batch in voucherIds.Chunk(100))
                 {
                     var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
-                    var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
                     
                     var updates = new { is_deleted = true, deleted_at = DateTime.UtcNow.ToString("o") };
                     var json = JsonConvert.SerializeObject(updates);
@@ -1822,7 +1895,7 @@ namespace TallySyncApp.Services
                 foreach (var batch in voucherIds.Chunk(100))
                 {
                     var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
-                    var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
                     
                     var request = new HttpRequestMessage(HttpMethod.Delete, url);
                     var response = await _httpClient.SendAsync(request);
@@ -1873,7 +1946,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(record);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/api/database/records/sync_history")
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/sync_history")
                 {
                     Content = content
                 };
@@ -1952,7 +2025,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/sync_history?id=eq.{syncHistoryId}";
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?id=eq.{syncHistoryId}";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -1994,7 +2067,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/sync_history?company_id=eq.{companyUuid}&status=eq.running";
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?company_id=eq.{companyUuid}&status=eq.running";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -2035,7 +2108,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var url = $"{_supabaseUrl}/api/database/records/user_profiles?id=eq.{userId}&select=telegram_chat_id";
+                var url = $"{_supabaseUrl}/rest/v1/user_profiles?id=eq.{userId}&select=telegram_chat_id";
                 var response = await _httpClient.GetAsync(url);
                 
                 if (response.IsSuccessStatusCode)
@@ -2076,7 +2149,7 @@ namespace TallySyncApp.Services
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 // Update the licenses table where user_id matches
-                var url = $"{_supabaseUrl}/api/database/records/licenses?user_id=eq.{userId}";
+                var url = $"{_supabaseUrl}/rest/v1/licenses?user_id=eq.{userId}";
                 
                 // FIX: Use per-request Prefer header instead of polluting DefaultRequestHeaders
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)

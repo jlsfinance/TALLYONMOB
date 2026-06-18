@@ -44,6 +44,10 @@ namespace TallySyncApp.Services
             if (!string.IsNullOrWhiteSpace(_anonKey))
             {
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _anonKey);
+                if (_baseUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase))
+                {
+                    _httpClient.DefaultRequestHeaders.Add("apikey", _anonKey);
+                }
             }
 
             LoadSession();
@@ -65,10 +69,10 @@ namespace TallySyncApp.Services
                     "application/json"
                 );
 
-                var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/sessions",
-                    content
-                );
+                var url = _baseUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase)
+                    ? $"{_baseUrl}/auth/v1/token?grant_type=password"
+                    : $"{_baseUrl}/auth";
+                var response = await _httpClient.PostAsync(url, content);
 
                 var responseBody = await response.Content.ReadAsStringAsync();
 
@@ -114,12 +118,25 @@ namespace TallySyncApp.Services
         {
             try
             {
-                var requestBody = new
+                object requestBody;
+                if (_baseUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase))
                 {
-                    email,
-                    password,
-                    name = fullName
-                };
+                    requestBody = new
+                    {
+                        email,
+                        password,
+                        data = new { name = fullName }
+                    };
+                }
+                else
+                {
+                    requestBody = new
+                    {
+                        email,
+                        password,
+                        name = fullName
+                    };
+                }
 
                 var content = new StringContent(
                     JsonSerializer.Serialize(requestBody),
@@ -127,10 +144,11 @@ namespace TallySyncApp.Services
                     "application/json"
                 );
 
-                var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/users",
-                    content
-                );
+                var url = _baseUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase)
+                    ? $"{_baseUrl}/auth/v1/signup"
+                    : $"{_baseUrl}/auth/signup";
+
+                var response = await _httpClient.PostAsync(url, content);
 
                 var responseBody = await response.Content.ReadAsStringAsync();
 
@@ -234,10 +252,10 @@ namespace TallySyncApp.Services
                     );
                 }
 
-                var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/refresh",
-                    content
-                );
+                var url = _baseUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase)
+                    ? $"{_baseUrl}/auth/v1/token?grant_type=refresh_token"
+                    : $"{_baseUrl}/auth/refresh";
+                var response = await _httpClient.PostAsync(url, content);
 
                 var responseBody = await response.Content.ReadAsStringAsync();
 

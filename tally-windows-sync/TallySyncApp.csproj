@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>app_icon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRun>false</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -17,7 +17,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>2.10.2</Version>
+    <Version>3.0.0</Version>
     <Authors>TallySync</Authors>
     <Company>TallySync</Company>
     <Product>TallySync - Tally Data Sync</Product>

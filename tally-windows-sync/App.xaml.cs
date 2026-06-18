@@ -100,22 +100,8 @@ namespace TallySyncApp
 
         private static bool NormalizeLegacyCloudConfig(AppSettings settings)
         {
-            if (settings.AuthSettings == null)
-            {
-                settings.AuthSettings = new AuthSettings();
-            }
-
-            var currentUrl = settings.AuthSettings.SupabaseUrl ?? string.Empty;
-            bool isDirectSupabase = currentUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase);
-
-            if (!isDirectSupabase)
-            {
-                return false;
-            }
-
-            settings.AuthSettings.SupabaseUrl = BuildMockSupabaseUrl(settings.SyncSettings?.ApiBaseUrl);
-            settings.AuthSettings.SupabaseAnonKey = LegacyLocalMockSupabaseKey;
-            return true;
+            // Do not overwrite Supabase URLs to mock URLs anymore.
+            return false;
         }
 
         private static string BuildMockSupabaseUrl(string? apiBaseUrl)
