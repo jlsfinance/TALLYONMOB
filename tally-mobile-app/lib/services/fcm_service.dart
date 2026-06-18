@@ -30,7 +30,7 @@ class FcmService {
         android: initializationSettingsAndroid,
       );
       await _localNotificationsPlugin.initialize(
-        initializationSettings: initializationSettings,
+        settings: initializationSettings,
       );
 
       // 4. Configure foreground listeners
