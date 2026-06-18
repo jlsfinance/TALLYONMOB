@@ -1,4 +1,5 @@
 const GITHUB_API = 'https://api.github.com/repos/jlsfinance/TALLYONMOB/releases/latest';
+const GITHUB_RELEASES_PAGE = 'https://github.com/jlsfinance/TALLYONMOB/releases/latest';
 const CURRENT_VERSION = '2.10.9';
 
 export interface UpdateInfo {
@@ -30,10 +31,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
         const tagName = data.tag_name || '';
         const latestVersion = tagName.replace(/^v/i, '');
 
-        const pcAsset = data.assets?.find((a: any) => a.name?.endsWith('.exe'));
-        const androidAsset = data.assets?.find((a: any) => a.name?.endsWith('.apk'));
-
-        const downloadUrl = pcAsset?.browser_download_url || androidAsset?.browser_download_url || data.html_url;
+        const downloadUrl = data.html_url || GITHUB_RELEASES_PAGE;
 
         const available = latestVersion !== CURRENT_VERSION && latestVersion !== '';
 

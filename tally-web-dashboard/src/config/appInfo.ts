@@ -16,8 +16,8 @@
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink.exe',
-    androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink.apk',
+    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
+    androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 
 export const getPublicUrl = (path: string) => `${APP_INFO.siteUrl}${path}`;
