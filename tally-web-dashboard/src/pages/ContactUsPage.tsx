@@ -4,14 +4,13 @@ import { motion } from 'framer-motion';
 import SEO from '../components/common/SEO';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { APP_INFO } from '../config/appInfo';
 
 const CONTACT_INFO = [
-  { icon: <Mail size={20} />, label: 'Business Email', value: 'hello@tallyonmob.com', href: 'mailto:hello@tallyonmob.com', color: 'text-blue-400' },
-  { icon: <Mail size={20} />, label: 'Support Email', value: 'support@tallyonmob.com', href: 'mailto:support@tallyonmob.com', color: 'text-emerald-400' },
-  { icon: <Mail size={20} />, label: 'Sales Email', value: 'sales@tallyonmob.com', href: 'mailto:sales@tallyonmob.com', color: 'text-amber-400' },
-  { icon: <Phone size={20} />, label: 'Phone / WhatsApp', value: '+91 9413821007', href: 'https://wa.me/919413821007', color: 'text-violet-400' },
+  { icon: <Mail size={20} />, label: 'Support Email', value: APP_INFO.supportEmail, href: `mailto:${APP_INFO.supportEmail}`, color: 'text-emerald-400' },
+  { icon: <Phone size={20} />, label: 'Phone / WhatsApp', value: APP_INFO.supportPhone, href: `https://wa.me/919413821007`, color: 'text-violet-400' },
   { icon: <MapPin size={20} />, label: 'Office Address', value: 'Rajasthan, India', color: 'text-rose-400' },
-  { icon: <Clock size={20} />, label: 'Working Hours', value: 'Mon - Sat, 9 AM - 7 PM IST', color: 'text-cyan-400' },
+  { icon: <Clock size={20} />, label: 'Working Hours', value: APP_INFO.supportHours, color: 'text-cyan-400' },
 ];
 
 export default function ContactUsPage() {
@@ -29,7 +28,7 @@ export default function ContactUsPage() {
     try {
       const { supabase } = await import('../lib/insforge');
       await supabase.from('email_queue').insert({
-        to_email: 'support@tallyonmob.com',
+        to_email: APP_INFO.supportEmail,
         subject: `[Contact] ${form.subject || 'Website Inquiry'} - ${form.name}`,
         body: `Name: ${form.name}\nEmail: ${form.email}\nSubject: ${form.subject}\n\n${form.message}`,
         status: 'pending',

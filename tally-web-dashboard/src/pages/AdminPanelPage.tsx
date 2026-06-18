@@ -8,7 +8,7 @@ import {
     Users, Building2, CreditCard, Tag, Activity, TrendingUp,
     Search, Plus, Ban, CheckCircle, XCircle, Clock, DollarSign,
     BarChart3, ArrowUpRight, ArrowDownLeft, RefreshCw, Eye,
-    Edit, Trash2, AlertTriangle, Mail, Phone, Key, Shield
+    Edit, Trash2, AlertTriangle, Mail, Phone, Key, Shield, UserPlus
 } from 'lucide-react';
 
 type Tab = 'dashboard' | 'users' | 'companies' | 'plans' | 'coupons' | 'payments' | 'activity' | 'leads';
@@ -197,6 +197,41 @@ export default function AdminPanelPage() {
         },
     });
 
+    // Assign license mutation
+    const assignLicenseMutation = useMutation({
+        mutationFn: async ({ email, planSlug, days }: { email: string; planSlug: string; days: number }) => {
+            const { data, error } = await supabase.rpc('assign_license', {
+                p_email: email,
+                p_plan_slug: planSlug,
+                p_duration_days: days,
+            });
+            if (error) throw error;
+            if (data && !data[0]?.success) throw new Error(data[0]?.message || 'Failed');
+            return data;
+        },
+        onSuccess: (data) => {
+            toast.success(data?.[0]?.message || 'License assigned');
+            queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+            queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+        },
+        onError: (err: any) => toast.error(err.message || 'Failed to assign license'),
+    });
+
+    // Revoke license mutation
+    const revokeMutation = useMutation({
+        mutationFn: async ({ licenseId }: { licenseId: string }) => {
+            const { error } = await supabase.from('user_licenses')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .eq('id', licenseId);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            toast.success('License revoked');
+            queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+        },
+        onError: () => toast.error('Failed'),
+    });
+
     const filteredUsers = useMemo(() => {
         if (!search) return users;
         const q = search.toLowerCase();
@@ -274,6 +309,11 @@ export default function AdminPanelPage() {
             {/* ═══ USERS TAB ═══ */}
             {activeTab === 'users' && (
                 <div className="space-y-2 px-[2px]">
+                    <AssignLicenseForm
+                        plans={plans}
+                        onSubmit={(email, planSlug, days) => assignLicenseMutation.mutate({ email, planSlug, days })}
+                        loading={assignLicenseMutation.isPending}
+                    />
                     <div className="flex items-center gap-2">
                         <div className="flex-1 relative">
                             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -303,7 +343,7 @@ export default function AdminPanelPage() {
                                         {u.plan && <span>Plan: {u.plan.name}</span>}
                                         <span>{daysLeft > 0 ? `${daysLeft}d left` : 'Expired'}</span>
                                     </div>
-                                    <div className="flex gap-1 mt-1.5">
+                                    <div className="flex gap-1 mt-1.5 flex-wrap">
                                         <button onClick={() => extendMutation.mutate({ licenseId: u.id, days: 7 })}
                                             className="text-[9px] font-bold px-2 py-1 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">+7 Days</button>
                                         <button onClick={() => extendMutation.mutate({ licenseId: u.id, days: 30 })}
@@ -315,6 +355,10 @@ export default function AdminPanelPage() {
                                         {u.status !== 'blocked' && (
                                             <button onClick={() => suspendMutation.mutate({ licenseId: u.id, action: 'blocked' })}
                                                 className="text-[9px] font-bold px-2 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20">Block</button>
+                                        )}
+                                        {u.status !== 'cancelled' && (
+                                            <button onClick={() => revokeMutation.mutate({ licenseId: u.id })}
+                                                className="text-[9px] font-bold px-2 py-1 rounded bg-slate-500/10 text-slate-400 hover:bg-slate-500/20">Revoke</button>
                                         )}
                                     </div>
                                 </div>
@@ -500,6 +544,65 @@ function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => void }) {
                     setOpen(false);
                     setCode(''); setValue(''); setLimit('');
                 }} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--primary)] text-white">Create</button>
+                <button onClick={() => setOpen(false)} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">Cancel</button>
+            </div>
+        </div>
+    );
+}
+
+// Assign License Form - email-based or quick assign from list
+function AssignLicenseForm({ plans, onSubmit, loading }: { plans: any[]; onSubmit: (email: string, planSlug: string, days: number) => void; loading: boolean }) {
+    const [open, setOpen] = useState(false);
+    const [email, setEmail] = useState('');
+    const [planSlug, setPlanSlug] = useState('monthly');
+    const [days, setDays] = useState(30);
+
+    const PLAN_DAYS: Record<string, number> = {
+        free: 365, monthly: 30, quarterly: 90, yearly: 365, enterprise: 3650,
+    };
+
+    if (!open) {
+        return (
+            <button onClick={() => setOpen(true)}
+                className="w-full p-2.5 rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/5 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/10 flex items-center justify-center gap-2 transition-all">
+                <UserPlus size={14} /> Assign New License
+            </button>
+        );
+    }
+
+    return (
+        <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 space-y-2">
+            <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Assign License to User</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="user@email.com"
+                    type="email"
+                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
+                <select value={planSlug} onChange={e => {
+                    setPlanSlug(e.target.value);
+                    setDays(PLAN_DAYS[e.target.value] || 30);
+                }}
+                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded">
+                    {(plans.length ? plans : [
+                        { slug: 'free', name: 'Free' },
+                        { slug: 'monthly', name: 'Monthly' },
+                        { slug: 'quarterly', name: 'Quarterly' },
+                        { slug: 'yearly', name: 'Yearly' },
+                        { slug: 'enterprise', name: 'Enterprise' },
+                    ]).map((p: any) => (
+                        <option key={p.slug} value={p.slug}>{p.name}</option>
+                    ))}
+                </select>
+                <input value={days} onChange={e => setDays(Number(e.target.value))}
+                    type="number" min={1} placeholder="Days"
+                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
+            </div>
+            <div className="flex gap-1">
+                <button disabled={loading || !email}
+                    onClick={() => { onSubmit(email, planSlug, days); setEmail(''); }}
+                    className="text-[10px] font-bold px-3 py-1.5 rounded bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
+                    {loading ? <RefreshCw size={10} className="animate-spin" /> : <UserPlus size={10} />}
+                    {loading ? 'Assigning...' : 'Assign License'}
+                </button>
                 <button onClick={() => setOpen(false)} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">Cancel</button>
             </div>
         </div>
