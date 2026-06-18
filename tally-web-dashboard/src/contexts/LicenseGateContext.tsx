@@ -104,14 +104,14 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
             const isSuperAdmin = user.email === 'lovneetrathi@gmail.com';
 
             // Get active license
-            const { data: lic } = await supabase
+            const { data: lic, error: licError } = await supabase
                 .from('user_licenses')
-                .select('*, plan:subscription_plans(*)')
+                .select('*')
                 .eq('user_id', user.id)
                 .in('status', ['active', 'suspended'])
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
 
             if (!lic) {
                 // No license — check for active trial in trial_history
@@ -122,7 +122,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
                     .eq('trial_used', true)
                     .order('created_at', { ascending: false })
                     .limit(1)
-                    .single();
+                    .maybeSingle();
 
                 if (trial && new Date(trial.trial_end) > new Date()) {
                     // Active trial

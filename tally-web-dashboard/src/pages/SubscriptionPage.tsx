@@ -38,7 +38,8 @@ export default function SubscriptionPage() {
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(5)
-                .then(({ data }) => setPayments(data || []));
+                .then(({ data }) => setPayments(data || []))
+                .catch(() => setPayments([]));
         }
     }, [user?.id]);
 
@@ -79,7 +80,8 @@ export default function SubscriptionPage() {
                 .from('trial_history')
                 .select('id')
                 .eq('user_id', user.id)
-                .limit(1);
+                .limit(1)
+                .catch(() => ({ data: [] }));
 
             if (existing && existing.length > 0) {
                 toast.error('Free trial already used. Please purchase a plan.');
