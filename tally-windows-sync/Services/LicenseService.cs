@@ -15,7 +15,7 @@ namespace TallySyncApp.Services
     {
         private static readonly HttpClient _client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         
-        private const string EDGE_FUNCTION_BASE = "https://lcsehcwocqvxrrgbmhcz.supabase.co/functions/v1";
+        private const string EDGE_FUNCTION_BASE = "https://pfqmqpboomwtxgyfqnsn.supabase.co/functions/v1";
 
         public LicenseResult? CurrentLicense { get; private set; }
         public string? AccessToken { get; private set; }
