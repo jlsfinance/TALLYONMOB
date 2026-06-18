@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
@@ -32,6 +32,9 @@ namespace TallySyncApp.Services
         private ApiClient? _apiClient;
         private OfflineQueueService? _offlineQueue;
         private System.Timers.Timer? _syncTimer;
+        private System.Timers.Timer? _companyDetectionTimer;
+        private readonly object _detectionLock = new object();
+        private bool _isDetecting = false;
         private CancellationTokenSource? _cancellationTokenSource;
         private bool _isSyncing = false;
         private bool _isFirstRun = true;
@@ -110,22 +113,8 @@ namespace TallySyncApp.Services
 
         private static bool NormalizeLegacyCloudConfig(AppSettings settings)
         {
-            if (settings.AuthSettings == null)
-            {
-                settings.AuthSettings = new AuthSettings();
-            }
-
-            var currentUrl = settings.AuthSettings.SupabaseUrl ?? string.Empty;
-            bool isDirectSupabase = currentUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase);
-
-            if (!isDirectSupabase)
-            {
-                return false;
-            }
-
-            settings.AuthSettings.SupabaseUrl = BuildMockSupabaseUrl(settings.SyncSettings?.ApiBaseUrl);
-            settings.AuthSettings.SupabaseAnonKey = LegacyLocalMockSupabaseKey;
-            return true;
+            // Do not overwrite Supabase URLs to mock URLs anymore.
+            return false;
         }
 
         private static string BuildMockSupabaseUrl(string? apiBaseUrl)
@@ -188,6 +177,8 @@ namespace TallySyncApp.Services
         /// </summary>
         private void InitializeServices()
         {
+            StopCompanyDetectionTimer();
+
             // Dispose existing services
             _tallyConnector?.Dispose();
             _apiClient?.Dispose();
@@ -231,6 +222,8 @@ namespace TallySyncApp.Services
             }
 
             _offlineQueue = new OfflineQueueService(_settings.Database.Path);
+
+            StartCompanyDetectionTimer();
         }
 
         /// <summary>
@@ -397,6 +390,98 @@ namespace TallySyncApp.Services
 
             UpdateStatus(SyncState.Idle, "Sync stopped");
             Console.WriteLine("Background sync stopped");
+        }
+
+        private void StartCompanyDetectionTimer()
+        {
+            if (_companyDetectionTimer != null) return;
+
+            _companyDetectionTimer = new System.Timers.Timer(5000); // Check every 5 seconds
+            _companyDetectionTimer.Elapsed += async (s, e) => await DetectCompanyAndNotifyAsync();
+            _companyDetectionTimer.AutoReset = true;
+            _companyDetectionTimer.Start();
+
+            // Run once immediately on startup
+            _ = Task.Run(async () => await DetectCompanyAndNotifyAsync());
+        }
+
+        private void StopCompanyDetectionTimer()
+        {
+            _companyDetectionTimer?.Stop();
+            _companyDetectionTimer?.Dispose();
+            _companyDetectionTimer = null;
+        }
+
+        private async Task DetectCompanyAndNotifyAsync()
+        {
+            // If background sync is active, do not poll to avoid collision
+            if (_isSyncing) return;
+
+            lock (_detectionLock)
+            {
+                if (_isDetecting) return;
+                _isDetecting = true;
+            }
+
+            try
+            {
+                if (_tallyConnector == null) return;
+
+                // Test connection to Tally
+                var tallyResult = await _tallyConnector.TestConnectionAsync();
+                bool isTallyConnected = tallyResult.Success;
+                
+                string? companyName = null;
+                Company? activeCompany = null;
+
+                if (isTallyConnected)
+                {
+                    try
+                    {
+                        activeCompany = await _tallyConnector.GetActiveCompanyAsync();
+                        if (activeCompany != null)
+                        {
+                            companyName = activeCompany.Name;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore connection/parse errors
+                    }
+                }
+
+                // Update Status properties only if changed, and notify UI
+                bool changed = false;
+
+                if (Status.IsTallyConnected != isTallyConnected)
+                {
+                    Status.IsTallyConnected = isTallyConnected;
+                    changed = true;
+                }
+
+                if (Status.CompanyName != companyName)
+                {
+                    Status.CompanyName = companyName;
+                    CurrentCompany = activeCompany;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    StatusChanged?.Invoke(this, Status);
+                }
+            }
+            catch
+            {
+                // Never let background timer crash the app
+            }
+            finally
+            {
+                lock (_detectionLock)
+                {
+                    _isDetecting = false;
+                }
+            }
         }
 
         /// <summary>
@@ -1435,6 +1520,20 @@ FinishCompanySync:
                         catch (Exception tgEx)
                         {
                             SyncLogger.Log($"Telegram notification failed: {tgEx.Message}");
+                        }
+
+                        // ===== FCM PUSH NOTIFICATION TO MOBILE APP =====
+                        try
+                        {
+                            var totalSynced = ledgersSynced + vouchersSynced + salesSynced + purchasesSynced + stockSynced;
+                            if (totalSynced > 0)
+                            {
+                                await SendSyncNotificationAsync(company.Id, syncType, totalSynced);
+                            }
+                        }
+                        catch (Exception fcmEx)
+                        {
+                            SyncLogger.Log($"FCM notification failed: {fcmEx.Message}");
                         }
                     }
                     catch (Exception ex)
@@ -4395,10 +4494,44 @@ FinishCompanySync:
         public void Dispose()
         {
             StopSync();
+            StopCompanyDetectionTimer();
             _tallyConnector?.Dispose();
             _apiClient?.Dispose();
             _offlineQueue?.Dispose();
             _cancellationTokenSource?.Dispose();
+        }
+
+        /// <summary>
+        /// Send FCM push notification to mobile app after sync completes
+        /// </summary>
+        private async Task SendSyncNotificationAsync(string companyId, string syncType, int recordCount)
+        {
+            try
+            {
+                var supabaseUrl = _settings.AuthSettings.SupabaseUrl;
+                var supabaseKey = _settings.AuthSettings.SupabaseAnonKey;
+                var url = $"{supabaseUrl}/functions/v1/send-sync-notification";
+                var payload = new
+                {
+                    company_id = companyId,
+                    sync_type = syncType,
+                    record_count = recordCount
+                };
+                var json = JsonConvert.SerializeObject(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
+                client.DefaultRequestHeaders.Add("apikey", supabaseKey);
+
+                var response = await client.PostAsync(url, content);
+                var result = await response.Content.ReadAsStringAsync();
+                SyncLogger.Log($"FCM sync notification sent: {response.StatusCode} - {result}");
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"FCM sync notification error: {ex.Message}");
+            }
         }
     }
 }
