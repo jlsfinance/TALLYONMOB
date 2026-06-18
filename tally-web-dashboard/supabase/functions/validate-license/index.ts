@@ -39,8 +39,14 @@ serve(async (req) => {
             return new Response(JSON.stringify({
                 valid: true,
                 status: "active",
+                plan: "Super Admin",
                 planName: "Super Admin",
                 isSuperAdmin: true,
+                daysLeft: 3650,
+                activatedAt: null,
+                expiresAt: null,
+                features: ["all"],
+                serialNumber: null,
             }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -49,7 +55,7 @@ serve(async (req) => {
         // Check active license
         const { data: license } = await supabase
             .from("user_licenses")
-            .select("*")
+            .select("*, subscription_plans(name, slug, features, duration_days)")
             .eq("user_id", user.id)
             .eq("status", "active")
             .gte("expires_at", new Date().toISOString())
@@ -61,13 +67,21 @@ serve(async (req) => {
             const daysLeft = Math.ceil(
                 (new Date(license.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
             );
+            const planName = license.subscription_plans?.name ?? license.plan_name ?? "Pro";
+            const features = license.subscription_plans?.features ?? license.features ?? [];
+
             return new Response(JSON.stringify({
                 valid: true,
                 status: "active",
-                planName: license.plan_name,
-                expiresAt: license.expires_at,
+                plan: planName,
+                planName: planName,
+                isSuperAdmin: false,
                 daysLeft,
-                features: license.features || [],
+                activatedAt: license.activated_at,
+                expiresAt: license.expires_at,
+                features,
+                serialNumber: license.serial_number ?? null,
+                licenseKey: license.license_key ?? null,
             }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -83,8 +97,10 @@ serve(async (req) => {
             .single();
 
         if (trial && trial.status === "active") {
-            const trialEnd = new Date(trial.start_date);
+            const trialStart = new Date(trial.start_date);
+            const trialEnd = new Date(trialStart);
             trialEnd.setDate(trialEnd.getDate() + 7);
+
             if (trialEnd > new Date()) {
                 const daysLeft = Math.ceil(
                     (trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -92,11 +108,35 @@ serve(async (req) => {
                 return new Response(JSON.stringify({
                     valid: true,
                     status: "trial",
+                    plan: "Free Trial",
                     planName: "Free Trial",
-                    expiresAt: trialEnd.toISOString(),
+                    isSuperAdmin: false,
                     daysLeft,
+                    activatedAt: trial.start_date,
+                    expiresAt: trialEnd.toISOString(),
                     features: ["basic"],
+                    serialNumber: trial.tally_serial ?? null,
+                    licenseKey: null,
                 }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            } else {
+                // Trial expired
+                return new Response(JSON.stringify({
+                    valid: false,
+                    status: "expired",
+                    plan: "Free Trial",
+                    planName: "Free Trial",
+                    isSuperAdmin: false,
+                    daysLeft: 0,
+                    activatedAt: trial.start_date,
+                    expiresAt: trialEnd.toISOString(),
+                    features: [],
+                    serialNumber: trial.tally_serial ?? null,
+                    licenseKey: null,
+                    error: "Trial expired",
+                }), {
+                    status: 403,
                     headers: { ...corsHeaders, "Content-Type": "application/json" },
                 });
             }
@@ -107,6 +147,15 @@ serve(async (req) => {
             valid: false,
             status: "none",
             error: "No active subscription",
+            plan: "None",
+            planName: "None",
+            isSuperAdmin: false,
+            daysLeft: 0,
+            activatedAt: null,
+            expiresAt: null,
+            features: [],
+            serialNumber: null,
+            licenseKey: null,
         }), {
             status: 403,
             headers: { ...corsHeaders, "Content-Type": "application/json" },

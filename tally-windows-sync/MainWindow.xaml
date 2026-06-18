@@ -575,9 +575,8 @@
                                                 <TextBlock Text=" days left" Foreground="{StaticResource TextSecondary}" FontSize="11"
                                                            FontFamily="Segoe UI Variable"/>
                                             </StackPanel>
-                                            <Button Command="{Binding ValidateLicenseCommand}" Content="Refresh"
-                                                    Style="{StaticResource GhostButton}" FontSize="10" Padding="10,4"
-                                                    Height="24" Margin="0,8,0,0"/>
+                                            <TextBlock Text="{Binding LicenseStatus}" Foreground="{StaticResource TextMuted}"
+                                                       FontSize="10" Margin="0,4,0,0" FontFamily="Segoe UI Variable"/>
                                         </StackPanel>
                                     </Border>
                                 </Grid>
@@ -759,52 +758,100 @@
                                            FontWeight="Bold" Margin="0,0,0,12" FontFamily="Segoe UI Variable"/>
                                 <Border Style="{StaticResource CardBorder}" Margin="0,0,0,24">
                                     <StackPanel>
-                                        <Grid>
+                                        <!-- Row 1: Plan + Status + Days -->
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="PLAN" Margin="0,0,0,4" FontSize="9"
+                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
+                                                <TextBlock Text="{Binding LicensePlan}" Foreground="{StaticResource AccentCyan}"
+                                                           FontWeight="Bold" FontSize="20" FontFamily="Segoe UI Variable"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" HorizontalAlignment="Center" Margin="24,0">
+                                                <TextBlock Text="STATUS" Margin="0,0,0,4" FontSize="9"
+                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
+                                                <TextBlock Text="{Binding LicenseStatus}" Foreground="{StaticResource TextPrimary}"
+                                                           FontWeight="SemiBold" FontSize="14" FontFamily="Segoe UI Variable"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                                <TextBlock Text="DAYS LEFT" Margin="0,0,0,4" FontSize="9"
+                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding LicenseDaysRemaining}" Foreground="{StaticResource AccentGreen}"
+                                                               FontWeight="Bold" FontSize="20" FontFamily="Segoe UI Variable"/>
+                                                    <TextBlock Text=" days" FontSize="12" Foreground="{StaticResource TextSecondary}"
+                                                               VerticalAlignment="Bottom" Margin="4,0,0,3" FontFamily="Segoe UI Variable"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Row 2: Activated + Expires -->
+                                        <Grid Margin="0,0,0,16">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                                                <TextBlock Text="PLAN" Margin="0,0,0,6" FontSize="9"
+                                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                                <TextBlock Text="ACTIVATED" Margin="0,0,0,4" FontSize="9"
                                                            Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
-                                                <TextBlock Text="{Binding LicensePlan}" Foreground="{StaticResource AccentCyan}"
-                                                           FontWeight="Bold" FontSize="22" Margin="0,0,0,20"
-                                                           FontFamily="Segoe UI Variable"/>
-
-                                                <TextBlock Text="STATUS" Margin="0,0,0,6" FontSize="9"
-                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
-                                                <TextBlock Text="{Binding LicenseStatus}" Foreground="{StaticResource TextPrimary}"
-                                                           FontWeight="SemiBold" FontSize="14" Margin="0,0,0,20"
-                                                           FontFamily="Segoe UI Variable"/>
+                                                <TextBlock Text="{Binding LicenseActivatedAt, FallbackValue='--'}"
+                                                           Foreground="{StaticResource TextSecondary}" FontSize="12" FontFamily="Segoe UI Variable"/>
                                             </StackPanel>
 
-                                            <StackPanel Grid.Column="1" Margin="20,0,0,0">
-                                                <TextBlock Text="DAYS REMAINING" Margin="0,0,0,6" FontSize="9"
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="EXPIRES" Margin="0,0,0,4" FontSize="9"
                                                            Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
-                                                    <TextBlock Text="{Binding LicenseDaysRemaining}" Foreground="{StaticResource AccentGreen}"
-                                                               FontWeight="Bold" FontSize="22" FontFamily="Segoe UI Variable"/>
-                                                    <TextBlock Text=" days" FontSize="13" Foreground="{StaticResource TextSecondary}"
-                                                               VerticalAlignment="Bottom" Margin="6,0,0,4"
-                                                               FontFamily="Segoe UI Variable"/>
-                                                </StackPanel>
-
-                                                <TextBlock Text="BOUND TALLY SERIAL" Margin="0,0,0,6" FontSize="9"
-                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
-                                                <TextBlock Text="{Binding Settings.TallySettings.SerialNumber, FallbackValue='Not bound yet'}"
-                                                           FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="12"
-                                                           Foreground="{StaticResource TextPrimary}" Margin="0,0,0,20"/>
+                                                <TextBlock Text="{Binding LicenseExpiresAt, FallbackValue='--'}"
+                                                           Foreground="{StaticResource TextSecondary}" FontSize="12" FontFamily="Segoe UI Variable"/>
                                             </StackPanel>
                                         </Grid>
 
-                                        <Button Command="{Binding ValidateLicenseCommand}"
-                                                Content="Validate &amp; Sync License"
-                                                Style="{StaticResource AccentButton}" HorizontalAlignment="Left"
-                                                Padding="22,10" Margin="0,4,0,14"/>
+                                        <!-- Row 3: Features -->
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
 
-                                        <TextBlock Text="License is validated automatically on login." FontSize="11"
-                                                   Foreground="{StaticResource TextMuted}" Margin="0,0,0,0"
+                                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                                <TextBlock Text="FEATURES" Margin="0,0,0,4" FontSize="9"
+                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
+                                                <TextBlock Text="{Binding LicenseFeatures, FallbackValue='Basic'}"
+                                                           Foreground="{StaticResource TextSecondary}" FontSize="12" FontFamily="Segoe UI Variable"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="TALLY SERIAL" Margin="0,0,0,4" FontSize="9"
+                                                           Foreground="{StaticResource TextMuted}" FontWeight="Bold" FontFamily="Segoe UI Variable"/>
+                                                <TextBlock Text="{Binding Settings.TallySettings.SerialNumber, FallbackValue='Not bound'}"
+                                                           FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Buttons -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
+                                            <Button Command="{Binding ValidateLicenseCommand}"
+                                                    Content="Validate &amp; Sync License"
+                                                    Style="{StaticResource AccentButton}" Margin="0,0,10,0"
+                                                    Padding="18,9"/>
+                                            <Button Command="{Binding DeactivateLicenseCommand}"
+                                                    Content="Deactivate"
+                                                    Style="{StaticResource DangerButton}"
+                                                    Padding="18,9"/>
+                                        </StackPanel>
+
+                                        <TextBlock Text="License auto-validates on login. Re-checks every 30 minutes."
+                                                   FontSize="11" Foreground="{StaticResource TextMuted}"
                                                    TextWrapping="Wrap" FontFamily="Segoe UI Variable"/>
                                     </StackPanel>
                                 </Border>
