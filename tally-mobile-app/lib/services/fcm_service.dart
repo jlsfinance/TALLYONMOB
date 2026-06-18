@@ -30,7 +30,7 @@ class FcmService {
         android: initializationSettingsAndroid,
       );
       await _localNotificationsPlugin.initialize(
-        initializationSettings,
+        initializationSettings: initializationSettings,
       );
 
       // 4. Configure foreground listeners
@@ -40,10 +40,11 @@ class FcmService {
 
         if (notification != null && android != null) {
           _localNotificationsPlugin.show(
-            notification.hashCode,
-            notification.title,
-            notification.body,
-            const NotificationDetails(
+            id: notification.hashCode,
+            title: notification.title,
+            body: notification.body,
+            payload: null,
+            notificationDetails: const NotificationDetails(
               android: AndroidNotificationDetails(
                 'tally_channel',
                 'Tally Notifications',

@@ -238,7 +238,7 @@ class _VoucherListScreenState extends State<VoucherListScreen> {
                 );
               },
             ),
-          ),  ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(

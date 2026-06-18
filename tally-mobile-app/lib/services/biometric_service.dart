@@ -21,10 +21,6 @@ class BiometricService {
       
       return await _auth.authenticate(
         localizedReason: 'Authenticate to access your Tally account',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: true,
-        ),
       );
     } catch (e) {
       return false;
