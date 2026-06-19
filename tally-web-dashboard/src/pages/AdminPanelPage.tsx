@@ -82,29 +82,19 @@ export default function AdminPanelPage() {
     const { data: users = [] } = useQuery({
         queryKey: ['admin-users'],
         queryFn: async () => {
-            const { data: rpcData, error: rpcErr } = await supabase.rpc('get_admin_users');
-            if (rpcErr) {
-                console.error('RPC error, falling back:', rpcErr);
-                const { data: licenses } = await supabase.from('user_licenses').select('*').order('created_at', { ascending: false });
-                const { data: companyList } = await supabase.from('companies').select('id, name, owner_id');
-                const companiesByOwner = new Map<string, any[]>();
-                (companyList || []).forEach((c: any) => {
-                    if (c.owner_id) {
-                        const existing = companiesByOwner.get(c.owner_id) || [];
-                        existing.push(c);
-                        companiesByOwner.set(c.owner_id, existing);
-                    }
-                });
-                return (licenses || []).map((lic: any) => ({
-                    ...lic,
-                    email: null,
-                    plan_name: null,
-                    plan_slug: null,
-                    userCompanies: companiesByOwner.get(lic.user_id) || [],
-                }));
-            }
+            const { data: licenses, error: licErr } = await supabase.from('user_licenses')
+                .select('id, user_id, email, license_key, status, expiry_date, tally_serial, company_gst, plan_id, created_at')
+                .order('created_at', { ascending: false });
+            if (licErr) console.error('License query error:', licErr);
 
-            const { data: companyList } = await supabase.from('companies').select('id, name, owner_id');
+            const { data: companyList } = await supabase.from('companies')
+                .select('id, name, owner_id')
+                .order('created_at', { ascending: false });
+
+            const { data: plansList } = await supabase.from('subscription_plans')
+                .select('id, name, slug');
+
+            const plansMap = new Map((plansList || []).map((p: any) => [p.id, p]));
             const companiesByOwner = new Map<string, any[]>();
             (companyList || []).forEach((c: any) => {
                 if (c.owner_id) {
@@ -114,19 +104,10 @@ export default function AdminPanelPage() {
                 }
             });
 
-            return (Array.isArray(rpcData) ? rpcData : rpcData ? [rpcData] : []).map((u: any) => ({
-                id: u.out_id,
-                user_id: u.out_user_id,
-                email: u.out_email,
-                license_key: u.out_license_key,
-                status: u.out_status,
-                expiry_date: u.out_expiry_date,
-                tally_serial: u.out_tally_serial,
-                company_gst: u.out_company_gst,
-                plan_id: u.out_plan_id,
-                created_at: u.out_created_at,
-                plan: u.out_plan_name ? { name: u.out_plan_name, slug: u.out_plan_slug } : null,
-                userCompanies: companiesByOwner.get(u.out_user_id) || [],
+            return (licenses || []).map((lic: any) => ({
+                ...lic,
+                plan: lic.plan_id ? plansMap.get(lic.plan_id) : null,
+                userCompanies: companiesByOwner.get(lic.user_id) || [],
             }));
         },
         enabled: activeTab === 'users' || activeTab === 'user-detail',
@@ -382,7 +363,7 @@ export default function AdminPanelPage() {
                             const daysLeft = Math.max(0, Math.ceil((new Date(u.expiry_date).getTime() - Date.now()) / 86400000));
                             const companyName = u.userCompanies?.[0]?.name || '';
                             return (
-                                <div key={u.id} onClick={() => { setSelectedUserId(u.id); setActiveTab('user-detail'); }}
+                                <div key={u.id} onClick={() => { setSelectedUserId(u.user_id); setActiveTab('user-detail'); }}
                                     className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] cursor-pointer hover:border-[var(--primary)]/50 transition-all">
                                     <div className="flex items-center justify-between mb-1">
                                         <div className="flex items-center gap-2">
