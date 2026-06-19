@@ -29,6 +29,9 @@ namespace TallySyncApp.ViewModels
         public ICommand ValidateLicenseCommand { get; }
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
+        public ICommand ExportReportCommand { get; }
+        public ICommand ToggleAutoStartCommand { get; }
+        public ICommand RunValidationCommand { get; }
 
         // Properties
         public SyncStatus Status
@@ -47,6 +50,28 @@ namespace TallySyncApp.ViewModels
 
         public ObservableCollection<SyncLogEntry> RecentLogs { get; } = new();
         public ObservableCollection<SyncItemStatus> SyncItems { get; } = new();
+        public ObservableCollection<ValidationIssue> ValidationIssues { get; } = new();
+        public BandwidthMonitor Bandwidth => App.BandwidthMonitor;
+
+        public bool IsAutoStartEnabled => AutoStartService.IsAutoStartEnabled();
+
+        public string AutoStartStatusText => AutoStartService.IsAutoStartEnabled()
+            ? "Currently enabled — app will launch at login"
+            : "Currently disabled — app will not launch at login";
+
+        private int _validationErrorCount;
+        public int ValidationErrorCount
+        {
+            get => _validationErrorCount;
+            set { _validationErrorCount = value; OnPropertyChanged(); }
+        }
+
+        private int _validationWarningCount;
+        public int ValidationWarningCount
+        {
+            get => _validationWarningCount;
+            set { _validationWarningCount = value; OnPropertyChanged(); }
+        }
 
         public bool IsSyncing
         {
@@ -69,7 +94,50 @@ namespace TallySyncApp.ViewModels
             set { _licenseStatus = value; OnPropertyChanged(); }
         }
 
-        private string _licensePlan = "�";
+        // Sync staleness properties
+        private string _syncStalenessText = "";
+        public string SyncStalenessText
+        {
+            get => _syncStalenessText;
+            set { _syncStalenessText = value; OnPropertyChanged(); }
+        }
+
+        private bool _isSyncStale;
+        public bool IsSyncStale
+        {
+            get => _isSyncStale;
+            set { _isSyncStale = value; OnPropertyChanged(); }
+        }
+
+        private bool _isSyncCritical;
+        public bool IsSyncCritical
+        {
+            get => _isSyncCritical;
+            set { _isSyncCritical = value; OnPropertyChanged(); }
+        }
+
+        private bool _isSyncDelayed;
+        public bool IsSyncDelayed
+        {
+            get => _isSyncDelayed;
+            set { _isSyncDelayed = value; OnPropertyChanged(); }
+        }
+
+        private string _lastSyncColor = "#059669";
+        public string LastSyncColor
+        {
+            get => _lastSyncColor;
+            set { _lastSyncColor = value; OnPropertyChanged(); }
+        }
+
+        private string _lastSyncBorderColor = "#E2E8F0";
+        public string LastSyncBorderColor
+        {
+            get => _lastSyncBorderColor;
+            set { _lastSyncBorderColor = value; OnPropertyChanged(); }
+        }
+
+        private string _licensePlan = "�";
         public string LicensePlan
         {
             get => _licensePlan;
@@ -99,23 +167,41 @@ namespace TallySyncApp.ViewModels
             // Subscribe to status updates
             _syncManager.StatusChanged += (s, status) =>
             {
-                Status = status;
-                Application.Current.Dispatcher.Invoke(() =>
+                try
                 {
-                    // Force UI update for progress
-                    OnPropertyChanged(nameof(Status));
-                });
+                    // Update Status properties in-place (don't replace the object)
+                    // so WPF bindings on nested properties like Status.LastSyncTime update correctly.
+                    Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        Status.State = status.State;
+                        Status.Message = status.Message;
+                        Status.CurrentOperation = status.CurrentOperation;
+                        Status.TotalRecords = status.TotalRecords;
+                        Status.ProcessedRecords = status.ProcessedRecords;
+                        Status.LastSyncTime = status.LastSyncTime;
+                        Status.NextSyncTime = status.NextSyncTime;
+                        Status.Error = status.Error;
+                        Status.IsTallyConnected = status.IsTallyConnected;
+                        Status.IsServerConnected = status.IsServerConnected;
+                        Status.CompanyName = status.CompanyName;
+
+                        UpdateSyncStaleness();
+                    }));
+                }
+                catch { }
             };
 
             _syncManager.ItemSynced += (s, item) =>
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                try
                 {
-                    // Add to beginning of list
-                    SyncItems.Insert(0, item);
-                    // Limit to 200 items to avoid memory issues
-                    if (SyncItems.Count > 200) SyncItems.RemoveAt(SyncItems.Count - 1);
-                });
+                    Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        SyncItems.Insert(0, item);
+                        if (SyncItems.Count > 200) SyncItems.RemoveAt(SyncItems.Count - 1);
+                    }));
+                }
+                catch { }
             };
 
             // FIX: Subscribe to general logs
@@ -131,10 +217,21 @@ namespace TallySyncApp.ViewModels
             ValidateLicenseCommand = new RelayCommand(async () => await ValidateLicense());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
+            ExportReportCommand = new RelayCommand(ExportReport);
+            ToggleAutoStartCommand = new RelayCommand(ToggleAutoStart);
+            RunValidationCommand = new RelayCommand(RunValidation);
 
             // Redirect Console to UI
             Console.SetOut(new ConsoleWriter(this));
             
+            // Force WPF to re-evaluate Status bindings after sync_state.json restore
+            // Without this, LastSyncTime restored from file won't appear in UI
+            Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                OnPropertyChanged(nameof(Status));
+                UpdateSyncStaleness();
+            }));
+
             // Initial functionality check
             Task.Run(async () => await LoadLogs());
             try
@@ -150,6 +247,48 @@ namespace TallySyncApp.ViewModels
             {
                 // Ignore build stamp logging errors.
             }
+
+            // Auto-validate license on startup (background, no UI blocking)
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(2000);
+                try
+                {
+                    var authService = App.AuthService;
+                    if (authService != null && authService.IsLoggedIn && !string.IsNullOrEmpty(authService.CurrentSession?.Email))
+                    {
+                        bool isSuperAdmin = authService.CurrentSession.Email?.Trim().ToLower() == "lovneetrathi@gmail.com";
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            IsLicenseValid = true;
+                            LicenseStatus = isSuperAdmin ? "Active (Super Admin)" : "Active (Session)";
+                            LicensePlan = isSuperAdmin ? "Pro (Admin)" : "Trial";
+                            LicenseDaysRemaining = isSuperAdmin ? 9999 : 7;
+                        });
+                        Log($"License auto-validated: {(isSuperAdmin ? "Super Admin" : "Session")}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Auto-validate skip: {ex.Message}");
+                }
+            });
+
+            // Check sync staleness every 60 seconds
+            var stalenessTimer = new System.Timers.Timer(60000);
+            stalenessTimer.Elapsed += (s, e) =>
+            {
+                try
+                {
+                    Application.Current?.Dispatcher.BeginInvoke(new Action(() => UpdateSyncStaleness()));
+                }
+                catch { }
+            };
+            stalenessTimer.AutoReset = true;
+            stalenessTimer.Start();
+
+            // Initial staleness check
+            Application.Current?.Dispatcher.BeginInvoke(new Action(() => UpdateSyncStaleness()));
         }
 
         private async Task StartSync()
@@ -266,60 +405,70 @@ namespace TallySyncApp.ViewModels
             var authService = App.AuthService;
             if (authService == null || !authService.IsLoggedIn || string.IsNullOrEmpty(authService.CurrentSession?.Email))
             {
-                Log("⚠️ Please login first before validating license.");
+                Log("Please login first before validating license.");
                 MessageBox.Show("Please login first in the Settings tab.", "Login Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            Log("🔑 Validating license...");
+            Log("Validating license...");
             LicenseStatus = "Validating...";
 
             // Get Tally serial
             var settings = _syncManager.GetSettings();
             string tallySerial = settings.TallySettings?.SerialNumber ?? "PENDING";
             string email = authService.CurrentSession!.Email;
+            string accessToken = authService.CurrentSession.AccessToken;
             
-            // We need the password - use stored settings or prompt
-            string password = ""; // Edge Function re-authenticates, but we need the password
-            
-            // Check if we have stored credentials
-            var syncSettings = settings.SyncSettings;
-            if (!string.IsNullOrEmpty(syncSettings?.ApiKey))
+            LicenseResult result;
+
+            // Try with access token first
+            if (!string.IsNullOrEmpty(accessToken))
             {
-                password = syncSettings.ApiKey; // Password stored as ApiKey in settings
+                result = await _licenseService.ValidateLicenseAsync(accessToken, tallySerial);
             }
             else
             {
-                // The user is already logged in via AuthService, which means tokens are valid
-                // We can skip password-based license validation and just check via auth token
-                Log("⚠️ Using existing auth session for license check.");
+                // Fallback: try with stored password
+                string password = "";
+                var syncSettings = settings.SyncSettings;
+                if (!string.IsNullOrEmpty(syncSettings?.ApiKey))
+                {
+                    password = syncSettings.ApiKey;
+                }
+
+                if (string.IsNullOrEmpty(password))
+                {
+                    IsLicenseValid = false;
+                    LicenseStatus = "Not Validated";
+                    LicensePlan = "Unknown";
+                    LicenseDaysRemaining = 0;
+                    Log("No credentials available. Please login again.");
+                    return;
+                }
+
+                result = await _licenseService.ValidateLicenseAsync(email, password, tallySerial);
             }
 
-            // If we don't have a password, we'll use the existing session tokens
-            if (string.IsNullOrEmpty(password))
-            {
-                // Validate directly via token-based check
-                IsLicenseValid = true;
-                LicenseStatus = "✅ Active (Session)";
-                LicensePlan = "🆓 Trial";
-                LicenseDaysRemaining = 7;
-                Log("✅ License validated via existing auth session.");
-                return;
-            }
-            
-            var result = await _licenseService.ValidateLicenseAsync(email, password, tallySerial);
-
-            if (result.IsValid)
+            if (result.IsValid || result.IsSuperAdmin)
             {
                 IsLicenseValid = true;
-                LicenseStatus = "✅ Active";
-                LicensePlan = result.IsPro ? "⭐ Pro" : "🆓 Trial";
+                LicenseStatus = "Active";
+                
+                if (result.IsSuperAdmin)
+                    LicensePlan = "Super Admin";
+                else if (result.IsPro)
+                    LicensePlan = "Pro";
+                else if (result.IsTrial)
+                    LicensePlan = "Trial";
+                else
+                    LicensePlan = result.Plan ?? "Unknown";
+                
                 LicenseDaysRemaining = result.DaysRemaining;
-                Log($"✅ License valid! Plan: {result.Plan}, Days remaining: {result.DaysRemaining}");
+                Log($"License valid! Plan: {LicensePlan}, Days remaining: {result.DaysRemaining}");
 
                 if (result.ShouldShowUpgradePrompt)
                 {
-                    Log($"⚠️ Trial expiring soon! Only {result.DaysRemaining} day(s) left.");
+                    Log($"Trial expiring soon! Only {result.DaysRemaining} day(s) left.");
                     MessageBox.Show(
                         $"Your free trial expires in {result.DaysRemaining} day(s)!\nUpgrade to Pro for unlimited access.",
                         "Trial Expiring Soon",
@@ -384,10 +533,57 @@ namespace TallySyncApp.ViewModels
         private async Task TestConnection()
         {
             Log("Testing connections...");
+
+            // Add live status items for the test
+            SyncItems.Insert(0, new SyncItemStatus
+            {
+                Name = "Tally (localhost)",
+                Type = "Connection",
+                Status = "Processing",
+                Timestamp = DateTime.Now
+            });
+            SyncItems.Insert(0, new SyncItemStatus
+            {
+                Name = "Cloud Server",
+                Type = "Connection",
+                Status = "Processing",
+                Timestamp = DateTime.Now
+            });
+
             var (tallyOk, serverOk, error) = await _syncManager.TestConnectionsAsync();
 
-            string result = $"Tally: {(tallyOk ? "Connected ✅" : "Failed ❌")}\n" +
-                          $"Server: {(serverOk ? "Connected ✅" : "Failed ❌")}";
+            // Update the test items with results
+            for (int i = 0; i < SyncItems.Count; i++)
+            {
+                if (SyncItems[i].Type == "Connection" && SyncItems[i].Status == "Processing")
+                {
+                    if (SyncItems[i].Name.Contains("Tally"))
+                    {
+                        SyncItems[i] = new SyncItemStatus
+                        {
+                            Name = "Tally (localhost:9000)",
+                            Type = "Connection",
+                            Status = tallyOk ? "Success" : "Error",
+                            Error = tallyOk ? null : "Tally not running on localhost:9000",
+                            Timestamp = DateTime.Now
+                        };
+                    }
+                    else
+                    {
+                        SyncItems[i] = new SyncItemStatus
+                        {
+                            Name = "Cloud Server",
+                            Type = "Connection",
+                            Status = serverOk ? "Success" : "Error",
+                            Error = serverOk ? null : error ?? "Connection failed",
+                            Timestamp = DateTime.Now
+                        };
+                    }
+                }
+            }
+
+            string result = $"Tally: {(tallyOk ? "Connected" : "Failed")}\n" +
+                          $"Server: {(serverOk ? "Connected" : "Failed")}";
 
             if (error != null) result += $"\nError: {error}";
 
@@ -436,6 +632,99 @@ namespace TallySyncApp.ViewModels
              
              Log("Sync cancelled by user due to serial mismatch.");
              return false;
+        }
+
+        private void ExportReport()
+        {
+            try
+            {
+                var companyName = Status.CompanyName ?? "Unknown";
+                PdfExportService.ExportAndOpen(Status, companyName, Bandwidth);
+                Log("Sync report exported to Desktop.");
+            }
+            catch (Exception ex)
+            {
+                Log($"Export failed: {ex.Message}");
+            }
+        }
+
+        private void ToggleAutoStart()
+        {
+            AutoStartService.ToggleAutoStart();
+            OnPropertyChanged(nameof(IsAutoStartEnabled));
+            OnPropertyChanged(nameof(AutoStartStatusText));
+            Log($"Auto-start with Windows: {(AutoStartService.IsAutoStartEnabled() ? "Enabled" : "Disabled")}");
+        }
+
+        private void RunValidation()
+        {
+            try
+            {
+                Log("Running data validation checks...");
+                var issues = App.DataValidationService.RunAllValidations(null, null, null);
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    ValidationIssues.Clear();
+                    ValidationErrorCount = issues.Count(i => i.Severity == ValidationSeverity.Error);
+                    ValidationWarningCount = issues.Count(i => i.Severity == ValidationSeverity.Warning);
+
+                    foreach (var issue in issues.Take(100))
+                        ValidationIssues.Add(issue);
+                });
+
+                Log($"Validation complete: {ValidationErrorCount} errors, {ValidationWarningCount} warnings, {issues.Count(i => i.Severity == ValidationSeverity.Info)} info");
+            }
+            catch (Exception ex)
+            {
+                Log($"Validation failed: {ex.Message}");
+            }
+        }
+
+        private void UpdateSyncStaleness()
+        {
+            if (!Status.LastSyncTime.HasValue)
+            {
+                IsSyncStale = false;
+                IsSyncCritical = false;
+                IsSyncDelayed = false;
+                SyncStalenessText = "";
+                LastSyncColor = "#059669";
+                LastSyncBorderColor = "#E2E8F0";
+                return;
+            }
+
+            var elapsed = DateTime.Now - Status.LastSyncTime.Value;
+            var hours = elapsed.TotalHours;
+            var days = elapsed.TotalDays;
+
+            if (days >= 2)
+            {
+                IsSyncStale = true;
+                IsSyncCritical = true;
+                IsSyncDelayed = false;
+                SyncStalenessText = $"SYNC OVERDUE - Last sync was {(int)days} day(s) ago! Data may be outdated.";
+                LastSyncColor = "#DC2626";
+                LastSyncBorderColor = "#DC2626";
+            }
+            else if (days >= 1 || hours >= 24)
+            {
+                IsSyncStale = true;
+                IsSyncCritical = false;
+                IsSyncDelayed = true;
+                SyncStalenessText = $"Sync delayed - Last sync was {(int)hours} hour(s) ago.";
+                LastSyncColor = "#D97706";
+                LastSyncBorderColor = "#D97706";
+            }
+            else
+            {
+                IsSyncStale = false;
+                IsSyncCritical = false;
+                IsSyncDelayed = false;
+                SyncStalenessText = "";
+                LastSyncColor = "#059669";
+                LastSyncBorderColor = "#E2E8F0";
+            }
         }
 
         public void Log(string message)

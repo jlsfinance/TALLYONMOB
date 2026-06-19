@@ -25,6 +25,7 @@ namespace TallySyncApp.Services
         private readonly string _apiKey; // Anon Key
         private string? _userToken; // Bearer Token for Auth
         private readonly string _telegramBotToken;
+        private readonly BandwidthMonitor? _bandwidthMonitor;
         private const int MaxPendingTransactionRetries = 3;
         private static readonly TimeSpan ProcessingRecoveryAge = TimeSpan.FromMinutes(5);
         private static readonly Regex RetryTagRegex = new(@"\[retry\s*(\d+)\/\d+\]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -40,11 +41,12 @@ namespace TallySyncApp.Services
             "debit_credit_notes", "voucher_ledger_entries", "voucher_stock_entries"
         };
 
-        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "")
+        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "", BandwidthMonitor? bandwidthMonitor = null)
         {
             _supabaseUrl = supabaseUrl.TrimEnd('/');
             _apiKey = apiKey;
             _telegramBotToken = telegramBotToken;
+            _bandwidthMonitor = bandwidthMonitor;
 
             // FIX: Removed UseProxy = false. We must use system proxy to avoid VPN/Firewall black holes.
             var handler = new HttpClientHandler
@@ -91,7 +93,7 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<(bool Success, string? Message)> TestConnectionAsync()
         {
-            string url = $"{_supabaseUrl}/api/database/records/companies?select=count&limit=0";
+            string url = $"{_supabaseUrl}/rest/v1/companies?select=count&limit=0";
             try
             {
                 AddAuthHeader();
@@ -99,6 +101,8 @@ namespace TallySyncApp.Services
                 // This validates URL and Key
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
                 var response = await _httpClient.SendAsync(request);
+
+                _bandwidthMonitor?.TrackRequest(0, (await response.Content.ReadAsStringAsync()).Length);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -143,7 +147,7 @@ namespace TallySyncApp.Services
                 // SOLUTION: Always fetch the existing company by name first to preserve its database UUID.
                 
                 string encodedName = Uri.EscapeDataString(company.Name);
-                var url = $"{_supabaseUrl}/api/database/records/companies?name=eq.{encodedName}&select=id";
+                var url = $"{_supabaseUrl}/rest/v1/companies?name=eq.{encodedName}&select=id";
                 var responseStr = await _httpClient.GetStringAsync(url);
                 var existingCompanies = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(responseStr);
                 
@@ -846,7 +850,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var url = $"{_supabaseUrl}/api/database/records/app_settings?select=key,value";
+                var url = $"{_supabaseUrl}/rest/v1/app_settings?select=key,value";
                 var response = await _httpClient.GetStringAsync(url);
                 var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(response);
                 
@@ -879,7 +883,7 @@ namespace TallySyncApp.Services
             {
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
-                var url = $"{_supabaseUrl}/api/database/records/sync_metadata?company_id=eq.{companyUuid}&sync_key=eq.{key}&select=sync_value";
+                var url = $"{_supabaseUrl}/rest/v1/sync_metadata?company_id=eq.{companyUuid}&sync_key=eq.{key}&select=sync_value";
                 var response = await _httpClient.GetStringAsync(url);
                 var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(response);
                 return items != null && items.Count > 0 ? items[0]["sync_value"] : null;
@@ -911,7 +915,7 @@ namespace TallySyncApp.Services
             {
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
-                var url = $"{_supabaseUrl}/api/database/records/{tableName}?company_id=eq.{companyUuid}&select=id&limit=1";
+                var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&select=id&limit=1";
                 var response = await _httpClient.GetStringAsync(url);
                 var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
                 return rows != null && rows.Count > 0;
@@ -946,7 +950,7 @@ namespace TallySyncApp.Services
                 while (true)
                 {
                     // Server-side null filter reduces payload; fetch only non-null alter_ids
-                    var url = $"{_supabaseUrl}/api/database/records/{tableName}?company_id=eq.{companyUuid}&select=alter_id&alter_id=not.is.null&limit={PAGE_SIZE}&offset={offset}";
+                    var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&select=alter_id&alter_id=not.is.null&limit={PAGE_SIZE}&offset={offset}";
                     var response = await _httpClient.GetStringAsync(url);
                     
                     var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
@@ -994,7 +998,7 @@ namespace TallySyncApp.Services
                 string companyUuid = ResolveCompanyUuid(companyId);
                 
                 // Fetch from sync_state table
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/api/database/records/sync_state?company_id=eq.{companyUuid}&data_type=eq.{dataType}&select=last_sync_at,last_alter_id,is_initial_sync_complete");
+                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/rest/v1/sync_state?company_id=eq.{companyUuid}&data_type=eq.{dataType}&select=last_sync_at,last_alter_id,is_initial_sync_complete");
                 var response = await _httpClient.SendAsync(request);
                 
                 if (!response.IsSuccessStatusCode) return null;
@@ -1058,87 +1062,83 @@ namespace TallySyncApp.Services
 
         private async Task<ApiResponse<T>> UpsertViaRawSqlAsync<T>(string table, object normalizedPayload, string onConflict)
         {
-            if (!IsSafeSqlIdentifier(table))
+            // Supabase PostgREST upsert - no raw SQL needed
+            try
             {
-                return new ApiResponse<T> { Success = false, Error = $"Unsafe table name '{table}'." };
-            }
+                var rows = ToObjectRows(normalizedPayload);
+                if (rows.Count == 0)
+                    return new ApiResponse<T> { Success = true, Message = "No rows to sync" };
 
-            var rows = ToObjectRows(normalizedPayload);
-            if (rows.Count == 0)
-            {
-                return new ApiResponse<T> { Success = true, Message = "No rows to sync" };
-            }
+                AddAuthHeader();
 
-            var conflictColumns = onConflict
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(IsSafeSqlIdentifier)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                var conflictColumns = onConflict
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(IsSafeSqlIdentifier)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
-            if (conflictColumns.Count == 0)
-            {
-                return new ApiResponse<T> { Success = false, Error = $"Unsafe conflict key '{onConflict}' for '{table}'." };
-            }
+                if (conflictColumns.Count == 0)
+                    return new ApiResponse<T> { Success = false, Error = $"Unsafe conflict key '{onConflict}' for '{table}'." };
 
-            var allColumns = rows
-                .SelectMany(row => row.Properties().Select(prop => prop.Name))
-                .Where(IsSafeSqlIdentifier)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                // Filter out unsupported columns
+                var allColumns = rows
+                    .SelectMany(row => row.Properties().Select(prop => prop.Name))
+                    .Where(IsSafeSqlIdentifier)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
-            var supportedColumns = new List<string>();
-            foreach (var column in allColumns)
-            {
-                if (await ColumnExistsAsync(table, column))
+                var supportedColumns = new List<string>();
+                foreach (var column in allColumns)
                 {
-                    supportedColumns.Add(column);
+                    if (await ColumnExistsAsync(table, column))
+                        supportedColumns.Add(column);
                 }
-            }
 
-            foreach (var row in rows)
-            {
-                foreach (var prop in row.Properties().ToList())
+                foreach (var row in rows)
                 {
-                    if (!supportedColumns.Contains(prop.Name, StringComparer.OrdinalIgnoreCase))
+                    foreach (var prop in row.Properties().ToList())
                     {
-                        prop.Remove();
+                        if (!supportedColumns.Contains(prop.Name, StringComparer.OrdinalIgnoreCase))
+                            prop.Remove();
                     }
                 }
-            }
 
-            var missingConflict = conflictColumns.Where(c => !supportedColumns.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
-            if (missingConflict.Count > 0)
-            {
-                return new ApiResponse<T>
+                var json = JsonConvert.SerializeObject(rows, new JsonSerializerSettings
                 {
-                    Success = false,
-                    Error = $"Cannot upsert '{table}': conflict column(s) missing from schema/payload: {string.Join(", ", missingConflict)}"
-                };
-            }
+                    NullValueHandling = NullValueHandling.Ignore,
+                    DateFormatString = "yyyy-MM-dd"
+                });
 
-            var sql = BuildUpsertSql(table, supportedColumns, conflictColumns, rows, out var parameters);
-            var rawSqlPayload = JsonConvert.SerializeObject(new
-            {
-                query = sql,
-                @params = parameters
-            });
+                var url = $"{_supabaseUrl}/rest/v1/{table}";
+                if (conflictColumns.Count > 0)
+                    url += $"?on_conflict={string.Join(",", conflictColumns)}";
 
-            var content = new StringContent(rawSqlPayload, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync($"{_supabaseUrl}/api/database/advance/rawsql", content);
-            var responseContent = await response.Content.ReadAsStringAsync();
+                var request = new HttpRequestMessage(HttpMethod.Post, url);
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
+                request.Content.Headers.TryAddWithoutValidation("Prefer", "resolution=merge-duplicates,return=minimal");
 
-            if (!response.IsSuccessStatusCode)
-            {
-                var parsed = ParseDatabaseError(responseContent);
-                SyncLogger.Log($"UPSERT FAILED [{table}] RAWSQL HTTP {(int)response.StatusCode}: {responseContent.Substring(0, Math.Min(responseContent.Length, 300))}");
-                return new ApiResponse<T>
+                var response = await _httpClient.SendAsync(request);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                _bandwidthMonitor?.TrackRequest(json.Length, responseContent.Length);
+
+                if (!response.IsSuccessStatusCode)
                 {
-                    Success = false,
-                    Error = BuildDatabaseErrorMessage(table, (int)response.StatusCode, parsed, responseContent)
-                };
-            }
+                    var parsed = ParseDatabaseError(responseContent);
+                    SyncLogger.Log($"UPSERT FAILED [{table}] HTTP {(int)response.StatusCode}: {responseContent.Substring(0, Math.Min(responseContent.Length, 300))}");
+                    return new ApiResponse<T>
+                    {
+                        Success = false,
+                        Error = BuildDatabaseErrorMessage(table, (int)response.StatusCode, parsed, responseContent)
+                    };
+                }
 
-            return new ApiResponse<T> { Success = true, Message = "Sync successful" };
+                return new ApiResponse<T> { Success = true, Message = "Sync successful" };
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<T> { Success = false, Error = $"Upsert failed: {ex.Message}" };
+            }
         }
 
         private static bool IsSafeSqlIdentifier(string value)
@@ -1319,7 +1319,7 @@ namespace TallySyncApp.Services
 
                 var singlePayload = new JArray(row);
                 var content = new StringContent(singlePayload.ToString(Formatting.None), Encoding.UTF8, "application/json");
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/api/database/records/{table}?on_conflict={onConflict}")
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/{table}?on_conflict={onConflict}")
                 {
                     Content = content
                 };
@@ -1430,7 +1430,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var response = await _httpClient.GetAsync($"{_supabaseUrl}/api/database/records/{table}?select=count&limit=0");
+                var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/{table}?select=count&limit=0");
                 if (response.IsSuccessStatusCode)
                 {
                     _tableExistsCache[table] = true;
@@ -1461,7 +1461,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var response = await _httpClient.GetAsync($"{_supabaseUrl}/api/database/records/{table}?select={Uri.EscapeDataString(column)}&limit=1");
+                var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/{table}?select={Uri.EscapeDataString(column)}&limit=1");
                 if (response.IsSuccessStatusCode)
                 {
                     _columnExistsCache[cacheKey] = true;
@@ -1632,7 +1632,7 @@ namespace TallySyncApp.Services
 
         private async Task<List<PendingTransaction>> FetchPendingTransactionsByStatusAsync(string companyUuid, string status)
         {
-            var url = $"{_supabaseUrl}/api/database/records/pending_transactions?company_id=eq.{companyUuid}&status=eq.{Uri.EscapeDataString(status)}&order=created_at.asc";
+            var url = $"{_supabaseUrl}/rest/v1/pending_transactions?company_id=eq.{companyUuid}&status=eq.{Uri.EscapeDataString(status)}&order=created_at.asc";
             var response = await _httpClient.GetStringAsync(url);
             return JsonConvert.DeserializeObject<List<PendingTransaction>>(response) ?? new List<PendingTransaction>();
         }
@@ -1708,7 +1708,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/pending_transactions?id=eq.{transactionId}";
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{transactionId}";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -1744,7 +1744,7 @@ namespace TallySyncApp.Services
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
                 
-                var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&select=voucher_id";
+                var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&select=voucher_id";
                 var response = await _httpClient.GetAsync(url);
                 
                 if (response.IsSuccessStatusCode)
@@ -1780,7 +1780,7 @@ namespace TallySyncApp.Services
                 foreach (var batch in voucherIds.Chunk(100))
                 {
                     var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
-                    var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
                     
                     var updates = new { is_deleted = true, deleted_at = DateTime.UtcNow.ToString("o") };
                     var json = JsonConvert.SerializeObject(updates);
@@ -1822,7 +1822,7 @@ namespace TallySyncApp.Services
                 foreach (var batch in voucherIds.Chunk(100))
                 {
                     var idsParam = string.Join(",", batch.Select(id => $"\"{id}\""));
-                    var url = $"{_supabaseUrl}/api/database/records/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&voucher_id=in.({idsParam})";
                     
                     var request = new HttpRequestMessage(HttpMethod.Delete, url);
                     var response = await _httpClient.SendAsync(request);
@@ -1873,7 +1873,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(record);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/api/database/records/sync_history")
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/sync_history")
                 {
                     Content = content
                 };
@@ -1952,7 +1952,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/sync_history?id=eq.{syncHistoryId}";
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?id=eq.{syncHistoryId}";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -1994,7 +1994,7 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/api/database/records/sync_history?company_id=eq.{companyUuid}&status=eq.running";
+                var url = $"{_supabaseUrl}/rest/v1/sync_history?company_id=eq.{companyUuid}&status=eq.running";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
@@ -2035,7 +2035,7 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                var url = $"{_supabaseUrl}/api/database/records/user_profiles?id=eq.{userId}&select=telegram_chat_id";
+                var url = $"{_supabaseUrl}/rest/v1/user_profiles?id=eq.{userId}&select=telegram_chat_id";
                 var response = await _httpClient.GetAsync(url);
                 
                 if (response.IsSuccessStatusCode)
@@ -2076,7 +2076,7 @@ namespace TallySyncApp.Services
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 // Update the licenses table where user_id matches
-                var url = $"{_supabaseUrl}/api/database/records/licenses?user_id=eq.{userId}";
+                var url = $"{_supabaseUrl}/rest/v1/licenses?user_id=eq.{userId}";
                 
                 // FIX: Use per-request Prefer header instead of polluting DefaultRequestHeaders
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)

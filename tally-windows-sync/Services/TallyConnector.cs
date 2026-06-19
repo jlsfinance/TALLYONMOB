@@ -934,13 +934,16 @@ namespace TallySyncApp.Services
             int chunksRun = 0;
             int MAX_CHUNKS = isFirstSync ? 8 : 3;  // Hard cap on API calls
             
+            // SAFETY CAP: If scout returns too many IDs, Tally's AlterID filter is broken (returns ALL vouchers).
+            // In that case, cap and only fetch the most recent ones.
+            const int INCREMENTAL_SCOUT_CAP = 200;
+            
             while (currentEnd > absoluteStart && chunksRun < MAX_CHUNKS)
             {
                 DateTime currentStart = currentEnd.AddMonths(isFirstSync ? -3 : -1);
                 if (currentStart < absoluteStart) currentStart = absoluteStart;
                 
                 chunksRun++;
-                // Fetch specific to this date chunk
                 var scoutResult = await ScoutModifiedVouchersAsync(companyName, afterAlterId, currentStart, currentEnd);
                 
                 if (scoutResult.Count > 0)
@@ -950,11 +953,16 @@ namespace TallySyncApp.Services
                     if (scoutResult.MaxAlterId > maxScoutAlterId) maxScoutAlterId = scoutResult.MaxAlterId;
                 }
                 
-                // Fast break logic: if we found modified vouchers in this recent chunk, 
-                // we keep going backwards to ensure we didn't miss backdated edits. 
-                // We always scan the entire 10 years to be absolutely sure we catch back-dated edits safely.
-                await Task.Delay(300); // 300ms breathing room for Tally GC
+                // SAFETY: If we collected too many IDs during incremental sync, stop scanning further back.
+                // Tally's AlterID filter is unreliable - it returns ALL vouchers, not just modified ones.
+                if (!isFirstSync && allAlterIds.Count > INCREMENTAL_SCOUT_CAP)
+                {
+                    SyncLogger.Log($"⚠️ Scout safety cap hit: {allAlterIds.Count} IDs collected (expected < {INCREMENTAL_SCOUT_CAP}). Tally AlterID filter may be broken. Capping to most recent {INCREMENTAL_SCOUT_CAP}.");
+                    allAlterIds = allAlterIds.OrderByDescending(id => id).Take(INCREMENTAL_SCOUT_CAP).ToList();
+                    break;
+                }
                 
+                await Task.Delay(300);
                 currentEnd = currentStart.AddDays(-1);
             }
             // ===== PHASE 2: Batched Full Fetch with exact IDs =====
@@ -1465,7 +1473,7 @@ namespace TallySyncApp.Services
 
         private async Task<List<Voucher>> GetVouchersInternalAsync(DateTime? fromDate, DateTime? toDate, string? companyName, string? voucherTypeFilter, Dictionary<string, string>? stockItemHsnCache = null)
         {
-            DateTime effectiveFrom = fromDate ?? new DateTime(2024, 4, 1);
+            DateTime effectiveFrom = fromDate ?? new DateTime(2000, 1, 1);
             DateTime effectiveTo = toDate ?? DateTime.Today.AddDays(1);
 
             string fromDateStr = effectiveFrom.ToString("yyyyMMdd");
@@ -2060,6 +2068,12 @@ namespace TallySyncApp.Services
                             .Where(l => l.LedgerName.Contains("IGST", StringComparison.OrdinalIgnoreCase))
                             .Sum(l => l.Amount));
                         
+                        sale.RoundOff = v.LedgerEntries
+                            .Where(l => l.LedgerName.Contains("Round Off", StringComparison.OrdinalIgnoreCase)
+                                     || l.LedgerName.Contains("ROUND OFF", StringComparison.OrdinalIgnoreCase)
+                                     || l.LedgerName.Contains("ROUND", StringComparison.OrdinalIgnoreCase))
+                            .Sum(l => l.Amount);
+                        
                         var totalTax = sale.CgstAmount + sale.SgstAmount + sale.IgstAmount;
                         sale.TaxableAmount = sale.GrossAmount - totalTax;
                         
@@ -2068,7 +2082,7 @@ namespace TallySyncApp.Services
                             sale.TaxableAmount = v.InventoryEntries.Sum(i => i.Amount);
                         }
                         
-                        sale.NetAmount = sale.TaxableAmount;
+                        sale.NetAmount = sale.TaxableAmount + sale.RoundOff;
                     }
 
                     return sale;
@@ -2133,6 +2147,12 @@ namespace TallySyncApp.Services
                             .Where(l => l.LedgerName.Contains("IGST", StringComparison.OrdinalIgnoreCase))
                             .Sum(l => l.Amount));
                         
+                        purchase.RoundOff = v.LedgerEntries
+                            .Where(l => l.LedgerName.Contains("Round Off", StringComparison.OrdinalIgnoreCase)
+                                     || l.LedgerName.Contains("ROUND OFF", StringComparison.OrdinalIgnoreCase)
+                                     || l.LedgerName.Contains("ROUND", StringComparison.OrdinalIgnoreCase))
+                            .Sum(l => l.Amount);
+                        
                         // Taxable (Net) = Gross - Total Tax
                         var totalTax = purchase.CgstAmount + purchase.SgstAmount + purchase.IgstAmount;
                         purchase.TaxableAmount = purchase.GrossAmount - totalTax;
@@ -2143,7 +2163,7 @@ namespace TallySyncApp.Services
                             purchase.TaxableAmount = v.InventoryEntries.Sum(i => i.Amount);
                         }
                         
-                        purchase.NetAmount = purchase.TaxableAmount; // Net = Taxable (matches Tally ledger)
+                        purchase.NetAmount = purchase.TaxableAmount + purchase.RoundOff;
                     }
 
                     return purchase;

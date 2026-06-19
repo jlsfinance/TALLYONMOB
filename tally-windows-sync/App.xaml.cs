@@ -13,7 +13,7 @@ namespace TallySyncApp
     /// Main Application Entry Point
     /// Tally ERP Sync Application for Windows
     /// </summary>
-    public partial class App : Application
+    public partial class App : System.Windows.Application
     {
         private const string LegacyLocalMockSupabaseUrl = "http://localhost:5000/api/mock/supa";
         private const string LegacyLocalMockSupabaseKey = "mock_key";
@@ -23,21 +23,38 @@ namespace TallySyncApp
         private static SyncManager? _syncManager;
         private static AuthService? _authService;
         private static AppSettings? _settings;
+        private static TrayService? _trayService;
+        private static BandwidthMonitor? _bandwidthMonitor;
+        private static DataValidationService? _dataValidationService;
+        private static MainWindow? _mainWindow;
 
         public static AuthService AuthService => _authService!;
         public static AppSettings Settings => _settings!;
+        public static TrayService TrayService => _trayService!;
+        public static BandwidthMonitor BandwidthMonitor => _bandwidthMonitor!;
+        public static DataValidationService DataValidationService => _dataValidationService!;
 
         static App()
         {
-            // Some Windows 11 tablet/stylus drivers can crash WPF's input pipeline
-            // before the app receives any usable event. TallyLink does not need pen input.
             AppContext.SetSwitch("Switch.System.Windows.Input.Stylus.EnablePointerSupport", false);
         }
 
-        protected override void OnStartup(StartupEventArgs e)
+        protected override void OnStartup(System.Windows.StartupEventArgs e)
         {
-            DisableWpfTabletSupport();
+            // DEBUG: Write immediately to confirm new code is running
+            try
+            {
+                Directory.CreateDirectory(@"C:\Users\Admin\logs");
+                File.WriteAllText(@"C:\Users\Admin\logs\tallylink-debug.log",
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NEW BUILD RUNNING\n");
+            }
+            catch { }
+
             base.OnStartup(e);
+
+            // Initialize services
+            _bandwidthMonitor = new BandwidthMonitor();
+            _dataValidationService = new DataValidationService();
 
             // Load settings first
             LoadSettings();
@@ -58,16 +75,31 @@ namespace TallySyncApp
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
             DispatcherUnhandledException += OnDispatcherUnhandledException;
 
+            bool startMinimized = AutoStartService.ShouldStartMinimized();
+
             // Check if already logged in
             if (_authService!.IsLoggedIn)
             {
                 _logger?.LogInformation($"User already logged in: {_authService.CurrentSession?.Email}");
-                ShowMainWindow();
+                ShowMainWindow(startMinimized);
             }
             else
             {
-                // Show login window
-                ShowLoginWindow();
+                if (startMinimized)
+                {
+                    // Auto-start with --minimized but not logged in: just show tray
+                    _trayService = new TrayService(
+                        () => ShowMainWindow(false),
+                        () => _syncManager?.StartSync(),
+                        () => _syncManager?.StopSync(),
+                        () => _syncManager?.Status.State == SyncState.Syncing);
+                    _trayService.Initialize();
+                    NotificationService.Initialize(_trayService);
+                }
+                else
+                {
+                    ShowLoginWindow();
+                }
             }
         }
 
@@ -105,14 +137,17 @@ namespace TallySyncApp
                 settings.AuthSettings = new AuthSettings();
             }
 
+            // Keep Supabase URLs as-is if they point to a real Supabase project
             var currentUrl = settings.AuthSettings.SupabaseUrl ?? string.Empty;
             bool isDirectSupabase = currentUrl.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase);
 
-            if (!isDirectSupabase)
+            if (isDirectSupabase)
             {
+                // Don't overwrite real Supabase URLs with mock URLs
                 return false;
             }
 
+            // Only build mock URL for non-Supabase endpoints (legacy InsForge)
             settings.AuthSettings.SupabaseUrl = BuildMockSupabaseUrl(settings.SyncSettings?.ApiBaseUrl);
             settings.AuthSettings.SupabaseAnonKey = LegacyLocalMockSupabaseKey;
             return true;
@@ -188,16 +223,40 @@ namespace TallySyncApp
             }
         }
 
-        private void ShowMainWindow()
+        private void ShowMainWindow(bool startMinimized = false)
         {
-            var mainWindow = new MainWindow();
-            mainWindow.Show();
+            _trayService = new TrayService(
+                () =>
+                {
+                    if (_mainWindow != null)
+                    {
+                        _mainWindow.Show();
+                        _mainWindow.WindowState = WindowState.Normal;
+                        _mainWindow.Activate();
+                    }
+                },
+                () => _syncManager?.StartSync(),
+                () => _syncManager?.StopSync(),
+                () => _syncManager?.Status.State == SyncState.Syncing);
+            _trayService.Initialize();
+            NotificationService.Initialize(_trayService);
+
+            _mainWindow = new MainWindow();
+            _mainWindow.Show();
+
+            if (startMinimized)
+            {
+                _mainWindow.WindowState = WindowState.Minimized;
+                _mainWindow.Hide();
+                _trayService.MinimizeToTray(_mainWindow);
+            }
         }
 
-        protected override void OnExit(ExitEventArgs e)
+        protected override void OnExit(System.Windows.ExitEventArgs e)
         {
             _logger?.LogInformation("Application shutting down...");
             _syncManager?.StopSync();
+            _trayService?.Dispose();
             _loggerFactory?.Dispose();
             base.OnExit(e);
         }
@@ -242,20 +301,16 @@ namespace TallySyncApp
         private void OnDispatcherUnhandledException(object sender, 
             System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
         {
-            _logger?.LogError(e.Exception, "Dispatcher unhandled exception");
-            WriteCrashLog(e.Exception);
-
+            // CRITICAL: Suppress WPF keyboard input pipeline bug (NullReferenceException)
+            // This is a known .NET 8 WPF bug - flood of exceptions on every keystroke/mouse move
             if (IsWpfInputPipelineException(e.Exception))
             {
                 e.Handled = true;
-                return;
+                return; // Silent - no logging, no popup
             }
-            
-            MessageBox.Show(
-                $"An error occurred:\n\n{e.Exception.Message}\n\nDetails saved to logs\\crash.log",
-                "Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+
+            _logger?.LogError(e.Exception, "Dispatcher unhandled exception");
+            WriteCrashLog(e.Exception);
 
             e.Handled = true;
         }
@@ -264,61 +319,39 @@ namespace TallySyncApp
         {
             var stack = exception.ToString();
 
+            if (exception is NullReferenceException
+                && (stack.Contains("KeyboardDevice", StringComparison.Ordinal)
+                    || stack.Contains("MouseDevice", StringComparison.Ordinal)
+                    || stack.Contains("HwndKeyboardInputProvider", StringComparison.Ordinal)
+                    || stack.Contains("HwndMouseInputProvider", StringComparison.Ordinal)
+                    || stack.Contains("StylusWisp", StringComparison.Ordinal)
+                    || stack.Contains("TextCompositionManager", StringComparison.Ordinal)
+                    || stack.Contains("InputManager", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
             if (exception is ArgumentNullException argumentNull
-                && string.Equals(argumentNull.ParamName, "composition", StringComparison.Ordinal)
                 && stack.Contains("System.Windows.Input.TextCompositionManager", StringComparison.Ordinal))
             {
                 return true;
             }
 
-            if (exception is not NullReferenceException)
-            {
-                return false;
-            }
-
-            return stack.Contains("System.Windows.Input.KeyboardDevice.ExtractRawKeyboardInputReport", StringComparison.Ordinal)
-                || stack.Contains("System.Windows.Input.StylusWisp.WispLogic", StringComparison.Ordinal)
-                || stack.Contains("System.Windows.Interop.HwndKeyboardInputProvider", StringComparison.Ordinal)
-                || stack.Contains("System.Windows.Interop.HwndMouseInputProvider", StringComparison.Ordinal);
-        }
-
-        private static void DisableWpfTabletSupport()
-        {
-            try
-            {
-                var devices = System.Windows.Input.Tablet.TabletDevices;
-                var devicesType = devices.GetType();
-                var removeMethod = devicesType.GetMethod("HandleTabletRemoved", BindingFlags.Instance | BindingFlags.NonPublic);
-
-                if (removeMethod == null)
-                {
-                    return;
-                }
-
-                while (devices.Count > 0)
-                {
-                    removeMethod.Invoke(devices, new object[] { 0u });
-                }
-            }
-            catch
-            {
-                // Best-effort workaround for WPF input-driver crashes.
-            }
+            return false;
         }
 
         private static void WriteCrashLog(Exception? exception)
         {
             try
             {
-                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                var logPath = @"C:\Users\Admin\logs";
                 Directory.CreateDirectory(logPath);
                 File.AppendAllText(
-                    Path.Combine(logPath, "crash.log"),
+                    Path.Combine(logPath, "tallylink-crash.log"),
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}]\n{exception}\n\n");
             }
             catch
             {
-                // Last-resort crash logging should never throw.
             }
         }
 

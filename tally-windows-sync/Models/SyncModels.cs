@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 
 namespace TallySyncApp.Models
@@ -6,19 +8,31 @@ namespace TallySyncApp.Models
     /// <summary>
     /// Tracks the current sync status for display in UI
     /// </summary>
-    public class SyncStatus
+    public class SyncStatus : INotifyPropertyChanged
     {
-        public SyncState State { get; set; } = SyncState.Idle;
-        public string Message { get; set; } = "Ready";
-        public string? CurrentOperation { get; set; }
-        public int TotalRecords { get; set; }
-        public int ProcessedRecords { get; set; }
-        public DateTime? LastSyncTime { get; set; }
-        public DateTime? NextSyncTime { get; set; }
-        public string? Error { get; set; }
-        public bool IsTallyConnected { get; set; }
-        public bool IsServerConnected { get; set; }
-        public string? CompanyName { get; set; }
+        private SyncState _state = SyncState.Idle;
+        private string _message = "Ready";
+        private string? _currentOperation;
+        private int _totalRecords;
+        private int _processedRecords;
+        private DateTime? _lastSyncTime;
+        private DateTime? _nextSyncTime;
+        private string? _error;
+        private bool _isTallyConnected;
+        private bool _isServerConnected;
+        private string? _companyName;
+
+        public SyncState State { get => _state; set { _state = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); } }
+        public string Message { get => _message; set { _message = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); } }
+        public string? CurrentOperation { get => _currentOperation; set { _currentOperation = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); } }
+        public int TotalRecords { get => _totalRecords; set { _totalRecords = value; OnPropertyChanged(); OnPropertyChanged(nameof(ProgressPercentage)); } }
+        public int ProcessedRecords { get => _processedRecords; set { _processedRecords = value; OnPropertyChanged(); OnPropertyChanged(nameof(ProgressPercentage)); } }
+        public DateTime? LastSyncTime { get => _lastSyncTime; set { _lastSyncTime = value; OnPropertyChanged(); } }
+        public DateTime? NextSyncTime { get => _nextSyncTime; set { _nextSyncTime = value; OnPropertyChanged(); } }
+        public string? Error { get => _error; set { _error = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); } }
+        public bool IsTallyConnected { get => _isTallyConnected; set { _isTallyConnected = value; OnPropertyChanged(); } }
+        public bool IsServerConnected { get => _isServerConnected; set { _isServerConnected = value; OnPropertyChanged(); } }
+        public string? CompanyName { get => _companyName; set { _companyName = value; OnPropertyChanged(); } }
 
         public int ProgressPercentage => TotalRecords > 0 
             ? (int)((double)ProcessedRecords / TotalRecords * 100) 
@@ -26,16 +40,22 @@ namespace TallySyncApp.Models
 
         public string StatusText => State switch
         {
-            SyncState.Idle => "⏸️ Idle",
-            SyncState.Connecting => "🔄 Connecting...",
-            SyncState.FetchingData => $"📥 Fetching {CurrentOperation}...",
-            SyncState.Uploading => $"📤 Uploading {CurrentOperation}...",
-            SyncState.Syncing => $"🔄 Syncing ({ProgressPercentage}%)",
-            SyncState.Completed => "✅ Completed",
-            SyncState.Error => $"❌ Error: {Error}",
-            SyncState.Retrying => $"🔁 Retrying ({CurrentOperation})...",
+            SyncState.Idle => "Idle",
+            SyncState.Connecting => "Connecting...",
+            SyncState.FetchingData => $"Fetching {CurrentOperation}...",
+            SyncState.Uploading => $"Uploading {CurrentOperation}...",
+            SyncState.Syncing => $"Syncing ({ProgressPercentage}%)",
+            SyncState.Completed => "Completed",
+            SyncState.Error => string.IsNullOrEmpty(Error) ? $"Error: {Message}" : $"Error: {Error}",
+            SyncState.Retrying => $"Retrying ({CurrentOperation})...",
             _ => "Unknown"
         };
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
     }
 
     /// <summary>
@@ -158,7 +178,7 @@ namespace TallySyncApp.Models
 
     public class SyncSettings
     {
-        public string ApiBaseUrl { get; set; } = string.Empty;
+        public string ApiBaseUrl { get; set; } = "https://pfqmqpboomwtxgyfqnsn.supabase.co";
         public string ApiKey { get; set; } = string.Empty;
         public int SyncIntervalMinutes { get; set; } = 5;
         public int BatchSize { get; set; } = 100;
@@ -167,6 +187,7 @@ namespace TallySyncApp.Models
         public bool EnableVoucherSync { get; set; } = true;
         public bool AllowAccountingFallbackForInventoryFailure { get; set; } = false;
         public string TelegramBotToken { get; set; } = string.Empty;
+        public DateTime? LastSyncTime { get; set; }
     }
 
     public class DatabaseSettings

@@ -10,7 +10,7 @@ using TallySyncApp.Models;
 namespace TallySyncApp.Services
 {
     /// <summary>
-    /// Handles authentication with InsForge auth API.
+    /// Handles authentication with Supabase auth API.
     /// </summary>
     public class AuthService
     {
@@ -41,8 +41,10 @@ namespace TallySyncApp.Services
             _httpClient = new HttpClient(handler);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
+            // Supabase requires BOTH apikey header AND Bearer token
             if (!string.IsNullOrWhiteSpace(_anonKey))
             {
+                _httpClient.DefaultRequestHeaders.Add("apikey", _anonKey);
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _anonKey);
             }
 
@@ -66,7 +68,7 @@ namespace TallySyncApp.Services
                 );
 
                 var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/sessions",
+                    $"{_baseUrl}/auth/v1/token?grant_type=password",
                     content
                 );
 
@@ -128,7 +130,7 @@ namespace TallySyncApp.Services
                 );
 
                 var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/users",
+                    $"{_baseUrl}/auth/v1/signup",
                     content
                 );
 
@@ -235,7 +237,7 @@ namespace TallySyncApp.Services
                 }
 
                 var response = await _httpClient.PostAsync(
-                    $"{_baseUrl}/api/auth/refresh",
+                    $"{_baseUrl}/auth/v1/token?grant_type=refresh_token",
                     content
                 );
 

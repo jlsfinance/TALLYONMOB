@@ -82,7 +82,48 @@ namespace TallySyncApp.Services
             // Note: Constructors cannot be async, so we run this as a fire-and-forget task.
             // This is for diagnostic purposes only and should not block the constructor.
             _settings = LoadSettings();
+            
+            // Restore LastSyncTime from persistent state file (not appsettings.json which gets overwritten)
+            RestoreLastSyncTime();
+            
             InitializeServices();
+        }
+
+        private string GetStateFilePath() => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "sync_state.json");
+
+        private void RestoreLastSyncTime()
+        {
+            try
+            {
+                var statePath = GetStateFilePath();
+                if (File.Exists(statePath))
+                {
+                    var json = File.ReadAllText(statePath);
+                    var state = JsonConvert.DeserializeObject<SyncStateFile>(json);
+                    if (state?.LastSyncTime.HasValue == true)
+                    {
+                        Status.LastSyncTime = state.LastSyncTime;
+                        _settings.SyncSettings.LastSyncTime = state.LastSyncTime;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void PersistLastSyncTime()
+        {
+            try
+            {
+                var state = new SyncStateFile { LastSyncTime = Status.LastSyncTime };
+                var json = JsonConvert.SerializeObject(state, Formatting.Indented);
+                File.WriteAllText(GetStateFilePath(), json);
+            }
+            catch { }
+        }
+
+        private class SyncStateFile
+        {
+            public DateTime? LastSyncTime { get; set; }
         }
 
         /// <summary>
@@ -214,7 +255,8 @@ namespace TallySyncApp.Services
                 supabaseUrl,
                 supabaseKey,
                 300,
-                _settings.SyncSettings.TelegramBotToken
+                _settings.SyncSettings.TelegramBotToken,
+                App.BandwidthMonitor
             );
 
             // Set User Token if logged in
@@ -470,6 +512,14 @@ namespace TallySyncApp.Services
 
                 if (changed)
                 {
+                    // FIX: If Tally just reconnected, clear stale "Tally Offline" error
+                    if (isTallyConnected && Status.State == SyncState.Error && 
+                        (Status.Message?.Contains("Tally Offline") == true || Status.Message?.Contains("offline") == true))
+                    {
+                        Status.State = SyncState.Idle;
+                        Status.Message = "Tally reconnected";
+                        Status.Error = null;
+                    }
                     StatusChanged?.Invoke(this, Status);
                 }
             }
@@ -657,6 +707,7 @@ namespace TallySyncApp.Services
                         CurrentCompany = company;
                         _uploadedRecordSignatures.Clear(); // reset per-company dedupe window
                         UpdateStatus(SyncState.Syncing, $"Processing: {company.Name}");
+                        NotificationService.NotifySyncStarted(company.Name);
 
                         // Cleanup any stale 'running' syncs from previous sessions
                         await _apiClient!.FailRunningSyncsAsync(company.Id);
@@ -789,30 +840,39 @@ namespace TallySyncApp.Services
                         if (shouldRefreshStockMeta)
                         {
                             UpdateStatus(SyncState.FetchingData, "Caching stock item metadata...");
-                            _hsnCache.Clear();
-                            _stockItemMetaCache.Clear();
-
-                            var stockItems = await _tallyConnector!.GetStockItemsAsync(company.Name);
-                            UpsertStockItemMetaCache(stockItems);
-                            _stockMetaCompanyId = company.Id;
-
-                            _hsnCache = _stockItemMetaCache.Values
-                                .Where(meta => !string.IsNullOrWhiteSpace(meta.HsnCode))
-                                .GroupBy(meta => meta.Name, StringComparer.OrdinalIgnoreCase)
-                                .ToDictionary(g => g.Key, g => g.First().HsnCode.Trim(), StringComparer.OrdinalIgnoreCase);
-
-                            AddLog($"HSN cache ready: {_hsnCache.Count} items | Stock metadata cache: {_stockItemMetaCache.Count} items | Company={company.Name}");
-
-                            bool shouldUploadFullStock = stockItems.Any() && (isFirstSync || !hasStockRowsInCloud);
-                            if (shouldUploadFullStock)
+                            
+                            bool cacheAlreadyHasData = _hsnCache.Count > 0 && _stockItemMetaCache.Count > 0 && cacheBelongsToCurrentCompany;
+                            if (cacheAlreadyHasData)
                             {
-                                await UploadListAsync("stock_items", stockItems, "id");
-                                stockSynced = stockItems.Count;
-                                AddLog($"Synced {stockItems.Count} Stock Items ({(isFirstSync ? "First Sync" : "Stock Backfill")})");
+                                AddLog($"Stock metadata cache already populated ({_stockItemMetaCache.Count} items, HSN: {_hsnCache.Count}) - skipping Tally fetch");
                             }
-                            else if (!isFirstSync)
+                            else
                             {
-                                AddLog($"Stock metadata refreshed from {stockItems.Count} items (incremental mode)");
+                                _hsnCache.Clear();
+                                _stockItemMetaCache.Clear();
+
+                                var stockItems = await _tallyConnector!.GetStockItemsAsync(company.Name);
+                                UpsertStockItemMetaCache(stockItems);
+                                _stockMetaCompanyId = company.Id;
+
+                                _hsnCache = _stockItemMetaCache.Values
+                                    .Where(meta => !string.IsNullOrWhiteSpace(meta.HsnCode))
+                                    .GroupBy(meta => meta.Name, StringComparer.OrdinalIgnoreCase)
+                                    .ToDictionary(g => g.Key, g => g.First().HsnCode.Trim(), StringComparer.OrdinalIgnoreCase);
+
+                                AddLog($"HSN cache ready: {_hsnCache.Count} items | Stock metadata cache: {_stockItemMetaCache.Count} items | Company={company.Name}");
+
+                                bool shouldUploadFullStock = stockItems.Any() && (isFirstSync || !hasStockRowsInCloud);
+                                if (shouldUploadFullStock)
+                                {
+                                    await UploadListAsync("stock_items", stockItems, "id");
+                                    stockSynced = stockItems.Count;
+                                    AddLog($"Synced {stockItems.Count} Stock Items ({(isFirstSync ? "First Sync" : "Stock Backfill")})");
+                                }
+                                else if (!isFirstSync)
+                                {
+                                    AddLog($"Stock metadata refreshed from {stockItems.Count} items (incremental mode)");
+                                }
                             }
                         }
                         else
@@ -966,7 +1026,9 @@ namespace TallySyncApp.Services
                             }
 
                             // Full historical voucher sync (date-based for first time)
-                            DateTime booksStart = new DateTime(2024, 4, 1); 
+                            DateTime booksStart = CurrentCompany?.BooksStartDate 
+                                ?? CurrentCompany?.FinancialYearStart 
+                                ?? new DateTime(2024, 4, 1); 
                             DateTime toDate = DateTime.Today;
                             
                             int totalMonths = ((toDate.Year - booksStart.Year) * 12) + toDate.Month - booksStart.Month + 1;
@@ -1146,11 +1208,36 @@ namespace TallySyncApp.Services
 
                             // 1. Check Ledgers - Always attempt fetch
                             finalLedgers = await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
+                            
+                            // SAFETY: If Tally returns all ledgers (> 1000), AlterID filter is broken.
+                            const int LEDGER_SAFETY_CAP = 1000;
+                            if (finalLedgers.Count > LEDGER_SAFETY_CAP)
+                            {
+                                AddLog($"⚠️ Ledger safety cap: Tally returned {finalLedgers.Count} items (expected < {LEDGER_SAFETY_CAP}). AlterID filter may be broken. Keeping top {LEDGER_SAFETY_CAP} by AlterID.");
+                                finalLedgers = finalLedgers
+                                    .OrderByDescending(l => long.TryParse(l.AlterId, out var aid) ? aid : 0)
+                                    .Take(LEDGER_SAFETY_CAP)
+                                    .ToList();
+                            }
+                            
                             totalToSync += finalLedgers.Count;
 
                             // 1.5 Check Stock Items
                             long lastStockAlterId = await _apiClient!.GetMaxAlterIdAsync(company.Id, "stock_items");
                             finalStockItems = await _tallyConnector!.GetModifiedStockItemsAsync(company.Name, lastStockAlterId);
+                            
+                            // SAFETY: If Tally returns all stock items (> 500), AlterID filter is broken.
+                            // Only upload the ones that actually changed (higher AlterID).
+                            const int STOCK_SAFETY_CAP = 500;
+                            if (finalStockItems.Count > STOCK_SAFETY_CAP)
+                            {
+                                AddLog($"⚠️ Stock items safety cap: Tally returned {finalStockItems.Count} items (expected < {STOCK_SAFETY_CAP}). AlterID filter may be broken. Keeping top {STOCK_SAFETY_CAP} by AlterID.");
+                                finalStockItems = finalStockItems
+                                    .OrderByDescending(s => long.TryParse(s.AlterId, out var aid) ? aid : 0)
+                                    .Take(STOCK_SAFETY_CAP)
+                                    .ToList();
+                            }
+                            
                             totalToSync += finalStockItems.Count;
                             
                             // 2. Check Vouchers with SAFETY CHECKPOINT
@@ -1574,11 +1661,34 @@ FinishCompanySync:
                 Status.LastSyncTime = DateTime.Now;
                 Status.NextSyncTime = DateTime.Now.AddMinutes(_settings.SyncSettings.SyncIntervalMinutes);
                 
+                // Persist LastSyncTime to separate state file (survives rebuilds)
+                PersistLastSyncTime();
+                
+                // Reset per-sync bandwidth counter
+                App.BandwidthMonitor?.ResetCurrentSync();
+                
+                // Run data validation after sync
+                try
+                {
+                    var validationService = App.DataValidationService;
+                    if (validationService != null)
+                    {
+                        var validationIssues = validationService.RunAllValidations(null, null, null);
+                        SyncLogRequested?.Invoke(this, $"Validation: {validationIssues.Count} issues found ({validationIssues.Count(i => i.Severity == ValidationSeverity.Error)} errors, {validationIssues.Count(i => i.Severity == ValidationSeverity.Warning)} warnings)");
+                    }
+                }
+                catch (Exception valEx)
+                {
+                    SyncLogger.Log($"Post-sync validation error: {valEx.Message}");
+                }
+                
                 string msg = Status.TotalRecords == 0 
                     ? "Sync completed. No changes found." 
                     : $"Sync completed! Processed {Status.TotalRecords} records.";
                 
                 UpdateStatus(SyncState.Completed, msg);
+                NotificationService.NotifySyncCompleted(Status.CompanyName ?? "Unknown", Status.TotalRecords, overallStopwatch.Elapsed);
+                NotificationService.NotifyIdle();
 
                 // Cleanup old queue items
                 await _offlineQueue!.CleanupAsync();
@@ -1588,6 +1698,7 @@ FinishCompanySync:
                 AddLog($"ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ CRITICAL SYNC FAILURE: {ex.Message}");
                 Console.WriteLine($"Sync failed: {ex.Message}");
                 UpdateStatus(SyncState.Error, "Sync crashed", ex.Message);
+                NotificationService.NotifySyncFailed(Status.CompanyName ?? "Unknown", ex.Message);
             }
             finally
             {
@@ -1668,6 +1779,12 @@ FinishCompanySync:
 
                     Status.ProcessedRecords += batch.Count;
                     UpdateStatus(SyncState.Uploading, $"Syncing {dataType}: {successCount + failedCount}/{filteredData.Count}", dataType);
+                    
+                    // Delay between batches to prevent Supabase/API timeouts
+                    if (successCount + failedCount < filteredData.Count)
+                    {
+                        await Task.Delay(200);
+                    }
                 }
 
                 stopwatch.Stop();

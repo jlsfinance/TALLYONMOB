@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -17,7 +17,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>2.10.2</Version>
+    <Version>3.1.0</Version>
     <Authors>TallySync</Authors>
     <Company>TallySync</Company>
     <Product>TallySync - Tally Data Sync</Product>
@@ -39,6 +39,13 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms">
+      <Aliases>WinForms</Aliases>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -56,11 +63,11 @@
     <None Remove="TallySyncApp\**" />
   </ItemGroup>
 
-  <!-- Permanently fix: always copy appsettings.json next to EXE after publish -->
-  <!-- PublishSingleFile mode silently skips non-code content files -->
+  <!-- Only copy appsettings.json if it doesn't exist in publish dir (preserve runtime updates) -->
   <Target Name="CopyAppSettingsAfterPublish" AfterTargets="Publish">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\appsettings.json" DestinationFiles="$(PublishDir)appsettings.json" OverwriteReadOnlyFiles="true" />
-    <Message Text="✅ appsettings.json copied to $(PublishDir)" Importance="high" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\appsettings.json" DestinationFiles="$(PublishDir)appsettings.json" 
+          SkipUnchangedFiles="true" OverwriteReadOnlyFiles="true" Condition="!Exists('$(PublishDir)appsettings.json')" />
+    <Message Text="✅ appsettings.json ensured in $(PublishDir)" Importance="high" />
   </Target>
 
 </Project>
