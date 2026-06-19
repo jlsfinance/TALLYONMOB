@@ -38,35 +38,40 @@ export default function AdminPanelPage() {
     const { data: stats } = useQuery({
         queryKey: ['admin-stats'],
         queryFn: async () => {
-            const [usersRes, licensesRes, paymentsRes, trialsRes, plansRes] = await Promise.all([
-                supabase.from('auth.users').select('id', { count: 'exact', head: true }),
-                supabase.from('user_licenses').select('id, status, expiry_date, created_at'),
-                supabase.from('payments').select('id, total_amount, status, created_at'),
-                supabase.from('trial_history').select('id', { count: 'exact', head: true }),
-                supabase.from('subscription_plans').select('*'),
-            ]);
+            try {
+                const [usersRes, licensesRes, paymentsRes, trialsRes, plansRes] = await Promise.all([
+                    supabase.from('user_licenses').select('id, user_id', { count: 'exact', head: true }),
+                    supabase.from('user_licenses').select('id, status, expiry_date, created_at'),
+                    supabase.from('payments').select('id, total_amount, status, created_at'),
+                    supabase.from('trial_history').select('id', { count: 'exact', head: true }),
+                    supabase.from('subscription_plans').select('*'),
+                ]);
 
-            const licenses = licensesRes.data || [];
-            const payments = paymentsRes.data || [];
-            const now = new Date();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const licenses = licensesRes.data || [];
+                const payments = paymentsRes.data || [];
+                const now = new Date();
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-            const active = licenses.filter(l => l.status === 'active' && new Date(l.expiry_date) > now).length;
-            const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expiry_date) <= now).length;
-            const totalRevenue = payments.filter(p => p.status === 'paid').reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
-            const mrr = payments.filter(p => p.status === 'paid' && new Date(p.created_at) >= monthStart).reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
+                const active = licenses.filter(l => l.status === 'active' && new Date(l.expiry_date) > now).length;
+                const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expiry_date) <= now).length;
+                const totalRevenue = payments.filter(p => p.status === 'paid').reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
+                const mrr = payments.filter(p => p.status === 'paid' && new Date(p.created_at) >= monthStart).reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
 
-            return {
-                totalUsers: usersRes.count || 0,
-                activeUsers: active,
-                expiredUsers: expired,
-                trialUsers: trialsRes.count || 0,
-                totalRevenue,
-                mrr,
-                arr: mrr * 12,
-                totalLicenses: licenses.length,
-                totalPayments: payments.length,
-            };
+                return {
+                    totalUsers: usersRes.count || 0,
+                    activeUsers: active,
+                    expiredUsers: expired,
+                    trialUsers: trialsRes.count || 0,
+                    totalRevenue,
+                    mrr,
+                    arr: mrr * 12,
+                    totalLicenses: licenses.length,
+                    totalPayments: payments.length,
+                };
+            } catch (e) {
+                console.error('Admin stats error:', e);
+                return { totalUsers: 0, activeUsers: 0, expiredUsers: 0, trialUsers: 0, totalRevenue: 0, mrr: 0, arr: 0, totalLicenses: 0, totalPayments: 0 };
+            }
         },
         enabled: activeTab === 'dashboard',
         staleTime: 30000,
@@ -119,7 +124,7 @@ export default function AdminPanelPage() {
         queryKey: ['admin-payments'],
         queryFn: async () => {
             const { data } = await supabase.from('payments')
-                .select('*, plan:subscription_plans(name), user:auth.users(email)')
+                .select('*, plan:subscription_plans(name)')
                 .order('created_at', { ascending: false });
             return data || [];
         },

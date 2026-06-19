@@ -18,7 +18,11 @@ const isAuthSessionError = (error) => {
         || message.includes('refresh token')
         || message.includes('token expired')
         || message.includes('unauthorized')
+        || message.includes('authsessionmissing')
+        || message.includes('session missing')
+        || message.includes('session_missing')
         || code === 'pgrst301'
+        || code === 'auth_session_missing'
         || String(error?.statusCode || '') === '401'
         || String(error?.statusCode || '') === '403'
     );

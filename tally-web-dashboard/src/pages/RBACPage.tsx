@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Users,
   UserPlus,
@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
+import { supabase } from "@/lib/insforge";
 
 // Types
 interface User {
@@ -431,19 +432,6 @@ const initialAccessLog: AccessLogEntry[] = [
     location: "Unknown Location",
     suspicious: true,
   },
-];
-
-const companies: Company[] = [
-  { id: "1", name: "Tally Solutions Pvt Ltd", userCount: 5 },
-  { id: "2", name: "Kumar Trading Co", userCount: 3 },
-  { id: "3", name: "Sharma Enterprises", userCount: 2 },
-  { id: "4", name: "Patel Manufacturing", userCount: 1 },
-  { id: "5", name: "Gupta Retail", userCount: 2 },
-  { id: "6", name: "Gupta Wholesale", userCount: 1 },
-  { id: "7", name: "Singh Industries", userCount: 1 },
-  { id: "8", name: "Mehta Constructions", userCount: 1 },
-  { id: "9", name: "Reddy Foods", userCount: 2 },
-  { id: "10", name: "Nair Exports", userCount: 1 },
 ];
 
 // Helper functions
@@ -1815,9 +1803,127 @@ function Star({ size = 16 }: { size?: number }) {
 // Main Component
 export default function RBACPage() {
   const [activeTab, setActiveTab] = useState("users");
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [roles, setRoles] = useState<Role[]>(initialRoles);
-  const [accessLog] = useState<AccessLogEntry[]>(initialAccessLog);
+  const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [accessLog, setAccessLog] = useState<AccessLogEntry[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadRealData();
+  }, []);
+
+  const loadRealData = async () => {
+    setLoading(true);
+    try {
+      // Load users from user_licenses
+      const { data: licenses } = await supabase
+        .from("user_licenses")
+        .select("id, user_id, license_key, status, expiry_date, created_at")
+        .order("created_at", { ascending: false });
+
+      // Load companies
+      const { data: comps } = await supabase
+        .from("companies")
+        .select("id, name, owner_id")
+        .order("created_at", { ascending: false });
+
+      // Load roles
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("*")
+        .order("name");
+
+      // Load activity logs
+      const { data: logs } = await supabase
+        .from("activity_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      // Build users from licenses
+      if (licenses && licenses.length > 0) {
+        const companyMap = new Map((comps || []).map((c: any) => [c.id, c]));
+        const ownerCompanies = new Map<string, string[]>();
+        (comps || []).forEach((c: any) => {
+          if (c.owner_id) {
+            if (!ownerCompanies.has(c.owner_id)) ownerCompanies.set(c.owner_id, []);
+            ownerCompanies.get(c.owner_id)!.push(c.name);
+          }
+        });
+
+        const userMap = new Map<string, User>();
+        (licenses || []).forEach((l: any) => {
+          const uid = l.user_id;
+          if (!userMap.has(uid)) {
+            const companyNames = ownerCompanies.get(uid) || [];
+            userMap.set(uid, {
+              id: uid,
+              name: uid.substring(0, 8),
+              email: `${uid.substring(0, 8)}@user`,
+              role: l.license_key?.startsWith("TOM-SUPER") ? "Super Admin" : "User",
+              status: l.status === "active" ? "active" : l.status === "expired" ? "inactive" : "suspended",
+              lastActive: l.created_at ? new Date(l.created_at).toLocaleDateString() : "Never",
+              lastLogin: l.created_at ? new Date(l.created_at).toLocaleDateString() : "Never",
+              companyAccess: companyNames,
+              defaultCompany: companyNames[0] || "N/A",
+            });
+          }
+        });
+        setUsers(Array.from(userMap.values()));
+      }
+
+      // Build roles
+      if (roleData && roleData.length > 0) {
+        const builtRoles: Role[] = roleData.map((r: any) => ({
+          id: r.id,
+          name: r.display_name || r.name,
+          color: r.is_system ? "#06b6d4" : "#8b5cf6",
+          permissions: r.permissions || {},
+          isCustom: !r.is_system,
+          userCount: 0,
+        }));
+        setRoles(builtRoles);
+      } else {
+        // Default roles if table is empty
+        setRoles([
+          { id: "1", name: "Super Admin", color: "#ef4444", permissions: {}, isCustom: false, userCount: 1 },
+          { id: "2", name: "Admin", color: "#f59e0b", permissions: {}, isCustom: false, userCount: 0 },
+          { id: "3", name: "Accountant", color: "#3b82f6", permissions: {}, isCustom: false, userCount: 0 },
+          { id: "4", name: "Viewer", color: "#6b7280", permissions: {}, isCustom: false, userCount: 0 },
+        ]);
+      }
+
+      // Build access log
+      if (logs && logs.length > 0) {
+        setAccessLog(logs.map((l: any) => ({
+          id: l.id,
+          userId: l.user_id || "unknown",
+          userName: l.user_email || l.user_id?.substring(0, 8) || "Unknown",
+          action: l.action || "unknown",
+          resource: l.resource || "unknown",
+          timestamp: l.created_at || new Date().toISOString(),
+          ipAddress: l.ip_address || "N/A",
+          device: l.device || "Web",
+          location: l.location || "N/A",
+          suspicious: false,
+        })));
+      }
+
+      // Build companies
+      if (comps && comps.length > 0) {
+        setCompanies(comps.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          userCount: 1,
+        })));
+      }
+    } catch (e) {
+      console.error("RBAC data load error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const tabs = [
     { id: "users", label: "Users", icon: Users },

@@ -1,38 +1,120 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Zap, Crown, Building2, Star } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Check, Zap, Crown, Building2, Star, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SEO from '../components/common/SEO';
+import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 const PLANS = [
   {
-    name: 'Trial', price: 'Free', duration: '7 days', icon: <Zap size={20} />,
+    name: 'Trial', price: 'Free', priceInPaise: 0, duration: '7 days', icon: <Zap size={20} />,
     features: ['1 Company', '1,000 Vouchers', 'Basic Reports', 'Mobile Access', 'Email Support'],
-    cta: 'Start Free Trial', color: 'border-slate-500/30', popular: false,
+    cta: 'Start Free Trial', color: 'border-slate-500/30', popular: false, planId: 'trial',
   },
   {
-    name: 'Monthly', price: '₹299', duration: '/month', icon: <Star size={20} />,
+    name: 'Monthly', price: '₹299', priceInPaise: 29900, duration: '/month', icon: <Star size={20} />,
     features: ['3 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports'],
-    cta: 'Subscribe Now', color: 'border-indigo-500/50', popular: true,
+    cta: 'Subscribe Now', color: 'border-indigo-500/50', popular: true, planId: 'monthly',
   },
   {
-    name: 'Quarterly', price: '₹799', duration: '/quarter', badge: 'Save 11%', icon: <Star size={20} />,
+    name: 'Quarterly', price: '₹799', priceInPaise: 79900, duration: '/quarter', badge: 'Save 11%', icon: <Star size={20} />,
     features: ['5 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export'],
-    cta: 'Subscribe Now', color: 'border-emerald-500/50', popular: false,
+    cta: 'Subscribe Now', color: 'border-emerald-500/50', popular: false, planId: 'quarterly',
   },
   {
-    name: 'Yearly', price: '₹2,999', duration: '/year', badge: 'Save 17%', icon: <Crown size={20} />,
+    name: 'Yearly', price: '₹2,999', priceInPaise: 299900, duration: '/year', badge: 'Save 17%', icon: <Crown size={20} />,
     features: ['10 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export', 'API Access', 'Custom Reports'],
-    cta: 'Subscribe Now', color: 'border-amber-500/50', popular: false,
+    cta: 'Subscribe Now', color: 'border-amber-500/50', popular: false, planId: 'yearly',
   },
   {
-    name: 'Enterprise', price: 'Custom', duration: 'per year', icon: <Building2 size={20} />,
+    name: 'Enterprise', price: 'Custom', priceInPaise: 0, duration: 'per year', icon: <Building2 size={20} />,
     features: ['Unlimited Companies', 'Unlimited Vouchers', 'All Features', 'Dedicated Support', 'Custom Integrations', 'SLA Guarantee', 'On-premise Option', 'Training Sessions'],
-    cta: 'Contact Sales', color: 'border-violet-500/50', popular: false,
+    cta: 'Contact Sales', color: 'border-violet-500/50', popular: false, planId: 'enterprise',
   },
 ];
 
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export default function PricingPage() {
   const navigate = useNavigate();
+  const { user } = useAuth() as any;
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  const handleSubscribe = async (plan: typeof PLANS[0]) => {
+    if (plan.planId === 'trial') {
+      navigate('/subscription');
+      return;
+    }
+    if (plan.planId === 'enterprise') {
+      window.open('mailto:lovneetrathi@gmail.com?subject=Enterprise%20Plan%20Inquiry', '_blank');
+      return;
+    }
+
+    if (!user) {
+      toast.error('Please sign in to subscribe');
+      navigate('/login');
+      return;
+    }
+
+    setLoadingPlan(plan.planId);
+    try {
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded) {
+        toast.error('Failed to load payment gateway. Check your internet.');
+        setLoadingPlan(null);
+        return;
+      }
+
+      const razorpay = new window.Razorpay({
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: plan.priceInPaise,
+        currency: 'INR',
+        name: 'TallyLink',
+        description: `${plan.name} Plan - ${plan.price}${plan.duration}`,
+        prefill: {
+          email: user.email || '',
+          contact: '',
+        },
+        theme: {
+          color: '#6366f1',
+        },
+        handler: function (response: any) {
+          toast.success('Payment successful! Activating your plan...');
+          setLoadingPlan(null);
+          navigate('/subscription?payment=success&payment_id=' + response.razorpay_payment_id);
+        },
+        modal: {
+          ondismiss: function () {
+            setLoadingPlan(null);
+          },
+        },
+      });
+      razorpay.open();
+    } catch (err: any) {
+      console.error('Razorpay error:', err);
+      toast.error('Payment failed: ' + (err.message || 'Unknown error'));
+      setLoadingPlan(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -72,9 +154,13 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <button onClick={() => navigate('/subscription')}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all ${plan.popular ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--on-surface)] hover:border-indigo-500/50'}`}>
-                {plan.cta}
+              <button 
+                onClick={() => handleSubscribe(plan)}
+                disabled={loadingPlan === plan.planId}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${plan.popular ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--on-surface)] hover:border-indigo-500/50'}`}>
+                {loadingPlan === plan.planId ? (
+                  <><Loader2 size={14} className="animate-spin" /> Processing...</>
+                ) : plan.cta}
               </button>
             </motion.div>
           ))}
