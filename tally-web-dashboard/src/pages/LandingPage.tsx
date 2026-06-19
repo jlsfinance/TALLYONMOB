@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 const GITHUB_DOWNLOADS = {
-    pc: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink.exe',
+    pc: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink-Setup-3.1.0.exe',
     android: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink.apk',
     releases: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 };
