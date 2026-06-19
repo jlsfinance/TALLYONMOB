@@ -359,8 +359,9 @@ export default function AdminPanelPage() {
                     </div>
                     <div className="space-y-1.5">
                         {filteredUsers.map((u: any) => {
-                            const isExpired = u.status === 'expired' || new Date(u.expiry_date) < new Date();
-                            const daysLeft = Math.max(0, Math.ceil((new Date(u.expiry_date).getTime() - Date.now()) / 86400000));
+                            const expiryDate = u.expires_at || u.expiry_date;
+                            const isExpired = u.status === 'expired' || (expiryDate && new Date(expiryDate) < new Date());
+                            const daysLeft = expiryDate ? Math.max(0, Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)) : 0;
                             const companyName = u.userCompanies?.[0]?.name || '';
                             return (
                                 <div key={u.id} onClick={() => { setSelectedUserId(u.user_id); setActiveTab('user-detail'); }}
@@ -665,6 +666,7 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
     const [payments, setPayments] = useState<any[]>([]);
     const [vouchers, setVouchers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [paymentFilter, setPaymentFilter] = useState<string>('all');
 
     useEffect(() => {
         const load = async () => {
@@ -672,10 +674,10 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setLicense(lic);
 
-            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at').eq('owner_id', userId);
+            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id').or(`owner_id.eq.${userId},owner_id.eq.${userId}`);
             setCompanies(comps || []);
 
-            const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(10);
+            const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
             setPayments(pays || []);
 
             if (comps && comps.length > 0) {
@@ -691,8 +693,14 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
     if (loading) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Loading user data...</div>;
     if (!license) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">No license found</div>;
 
-    const isExpired = license.status === 'expired' || new Date(license.expiry_date) < new Date();
-    const daysLeft = Math.max(0, Math.ceil((new Date(license.expiry_date).getTime() - Date.now()) / 86400000));
+    const expiryDate = license.expires_at || license.expiry_date;
+    const isExpired = license.status === 'expired' || (expiryDate && new Date(expiryDate) < new Date());
+    const daysLeft = expiryDate ? Math.max(0, Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)) : 0;
+
+    const filteredPayments = paymentFilter === 'all' ? payments : payments.filter((p: any) => p.status === paymentFilter);
+    const paidCount = payments.filter((p: any) => p.status === 'paid' || p.status === 'completed').length;
+    const pendingCount = payments.filter((p: any) => p.status === 'pending').length;
+    const failedCount = payments.filter((p: any) => p.status === 'failed' || p.status === 'cancelled').length;
 
     return (
         <div className="space-y-3 px-[2px]">
@@ -709,13 +717,15 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
                     }`}>{license.status.toUpperCase()}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <div><span className="text-[var(--text-muted)]">Key:</span> <span className="font-bold font-mono">{license.license_key}</span></div>
                     <div><span className="text-[var(--text-muted)]">Email:</span> <span className="font-bold">{license.email || 'N/A'}</span></div>
-                    <div><span className="text-[var(--text-muted)]">User ID:</span> <span className="font-mono text-[8px]">{license.user_id}</span></div>
-                    <div><span className="text-[var(--text-muted)]">Expiry:</span> <span className="font-bold">{new Date(license.expiry_date).toLocaleDateString('en-IN')}</span></div>
-                    <div><span className="text-[var(--text-muted)]">Days Left:</span> <span className="font-bold">{daysLeft}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Plan:</span> <span className="font-bold">{license.plan_slug || license.plan_id || 'N/A'}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Key:</span> <span className="font-bold font-mono">{license.license_key || 'N/A'}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Status:</span> <span className={`font-bold ${isExpired ? 'text-red-500' : 'text-emerald-500'}`}>{license.status}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Expiry:</span> <span className="font-bold">{expiryDate ? new Date(expiryDate).toLocaleDateString('en-IN') : 'N/A'}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Days Left:</span> <span className="font-bold">{daysLeft > 0 ? daysLeft : 'Expired'}</span></div>
                     {license.tally_serial && <div><span className="text-[var(--text-muted)]">Tally SN:</span> <span className="font-bold">{license.tally_serial}</span></div>}
                     {license.company_gst && <div><span className="text-[var(--text-muted)]">GST:</span> <span className="font-bold">{license.company_gst}</span></div>}
+                    <div><span className="text-[var(--text-muted)]">User ID:</span> <span className="font-mono text-[8px]">{license.user_id}</span></div>
                     <div><span className="text-[var(--text-muted)]">Created:</span> {new Date(license.created_at).toLocaleDateString('en-IN')}</div>
                 </div>
             </div>
@@ -724,7 +734,7 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                 <span className="text-[12px] font-black">Companies ({companies.length})</span>
                 {companies.length === 0 ? (
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No companies</p>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No companies linked</p>
                 ) : (
                     <div className="mt-2 space-y-1.5">
                         {companies.map((c: any) => (
@@ -766,21 +776,53 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
                 )}
             </div>
 
-            {/* Payments */}
+            {/* Payments with filters */}
             <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                <span className="text-[12px] font-black">Payments ({payments.length})</span>
-                {payments.length === 0 ? (
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No payments</p>
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-black">Payments ({payments.length})</span>
+                </div>
+                {/* Status filter chips */}
+                <div className="flex gap-1.5 mb-2 flex-wrap">
+                    <button onClick={() => setPaymentFilter('all')}
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all ${paymentFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]'}`}>
+                        All ({payments.length})
+                    </button>
+                    <button onClick={() => setPaymentFilter('pending')}
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all ${paymentFilter === 'pending' ? 'bg-amber-500 text-white' : 'bg-amber-500/10 text-amber-500'}`}>
+                        Pending ({pendingCount})
+                    </button>
+                    <button onClick={() => setPaymentFilter('paid')}
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all ${paymentFilter === 'paid' ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                        Paid ({paidCount})
+                    </button>
+                    {failedCount > 0 && (
+                        <button onClick={() => setPaymentFilter('failed')}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded-full transition-all ${paymentFilter === 'failed' ? 'bg-red-500 text-white' : 'bg-red-500/10 text-red-500'}`}>
+                            Failed ({failedCount})
+                        </button>
+                    )}
+                </div>
+                {filteredPayments.length === 0 ? (
+                    <p className="text-[10px] text-[var(--text-muted)]">No {paymentFilter === 'all' ? '' : paymentFilter} payments</p>
                 ) : (
-                    <div className="mt-2 space-y-1">
-                        {payments.map((p: any) => (
+                    <div className="space-y-1">
+                        {filteredPayments.map((p: any) => (
                             <div key={p.id} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold">{formatCurrency(Number(p.total_amount || p.amount || 0))}</span>
-                                    <span className="text-[var(--text-muted)]">{p.plan_slug || p.payment_method || '-'}</span>
+                                    <span className="text-[var(--text-muted)]">{p.plan_slug || '-'}</span>
+                                    {p.payment_method && (
+                                        <span className="px-1.5 py-0.5 rounded bg-[var(--surface)] text-[var(--text-muted)] text-[8px]">
+                                            {p.payment_method === 'admin' ? '👤 By Admin' : p.payment_method === 'razorpay' ? '💳 Razorpay' : `📋 ${p.payment_method}`}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className={`font-bold ${p.status === 'completed' || p.status === 'paid' ? 'text-emerald-500' : p.status === 'failed' ? 'text-red-500' : 'text-amber-500'}`}>{p.status}</span>
+                                    <span className={`font-bold px-1.5 py-0.5 rounded ${
+                                        p.status === 'completed' || p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' :
+                                        p.status === 'failed' || p.status === 'cancelled' ? 'bg-red-500/10 text-red-500' :
+                                        'bg-amber-500/10 text-amber-500'
+                                    }`}>{p.status}</span>
                                     <span className="text-[var(--text-muted)]">{new Date(p.created_at).toLocaleDateString('en-IN')}</span>
                                 </div>
                             </div>
