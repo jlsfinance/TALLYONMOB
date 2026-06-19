@@ -114,7 +114,7 @@ export default function AdminPanelPage() {
                 }
             });
 
-            return (rpcData || []).map((u: any) => ({
+            return (Array.isArray(rpcData) ? rpcData : rpcData ? [rpcData] : []).map((u: any) => ({
                 id: u.out_id,
                 user_id: u.out_user_id,
                 email: u.out_email,
