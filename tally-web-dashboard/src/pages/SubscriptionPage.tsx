@@ -9,6 +9,26 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+declare global {
+    interface Window {
+        Razorpay: any;
+    }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+    return new Promise((resolve) => {
+        if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+            resolve(true);
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+}
+
 const PLANS = [
     { name: 'Free Trial', slug: 'trial', price: 0, duration: '7 days', icon: Clock, color: 'text-slate-400', features: ['Single company', '50 vouchers/day', 'Basic reports', 'Mobile access'] },
     { name: 'Monthly', slug: 'monthly', price: 299, duration: '30 days', icon: Zap, color: 'text-blue-500', features: ['1 company', '100 vouchers/day', 'All reports', 'WhatsApp share', 'Email invoices'] },
@@ -45,28 +65,66 @@ export default function SubscriptionPage() {
 
     const handlePurchase = async () => {
         if (!selectedPlan || !user?.id) return;
+
+        const plan = PLANS.find(p => p.slug === selectedPlan);
+        if (!plan || plan.price === 0) return;
+
         setLoading(true);
         try {
-            const plan = PLANS.find(p => p.slug === selectedPlan);
-            if (!plan) return;
+            const scriptLoaded = await loadRazorpayScript();
+            if (!scriptLoaded) {
+                toast.error('Failed to load payment gateway. Check your internet.');
+                setLoading(false);
+                return;
+            }
 
-            const { error } = await supabase.from('payments').insert({
-                user_id: user.id,
-                plan_slug: selectedPlan,
-                amount: plan.price,
-                coupon_code: couponCode || null,
-                discount: couponDiscount,
-                final_amount: Math.max(0, plan.price - couponDiscount),
-                status: 'pending',
-                payment_method: 'manual',
+            const amountInPaise = Math.max(0, plan.price - couponDiscount) * 100;
+
+            const razorpay = new window.Razorpay({
+                key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+                amount: amountInPaise,
+                currency: 'INR',
+                name: 'TallyLink',
+                description: `${plan.name} Plan - ₹${plan.price} ${plan.duration}`,
+                prefill: {
+                    email: user.email || '',
+                    contact: '',
+                },
+                theme: {
+                    color: '#6366f1',
+                },
+                handler: async function (response: any) {
+                    try {
+                        const { error } = await supabase.from('payments').insert({
+                            user_id: user.id,
+                            plan_slug: selectedPlan,
+                            amount: plan.price,
+                            coupon_code: couponCode || null,
+                            discount: couponDiscount,
+                            final_amount: Math.max(0, plan.price - couponDiscount),
+                            status: 'completed',
+                            payment_method: 'razorpay',
+                            razorpay_payment_id: response.razorpay_payment_id,
+                        });
+                        if (error) console.error('Payment record error:', error);
+                    } catch (e) {
+                        console.error('Failed to record payment:', e);
+                    }
+                    toast.success('Payment successful! Activating your plan...');
+                    setLoading(false);
+                    setTimeout(() => window.location.reload(), 1500);
+                },
+                modal: {
+                    ondismiss: function () {
+                        setLoading(false);
+                        toast.error('Payment cancelled');
+                    },
+                },
             });
-
-            if (error) throw error;
-
-            toast.success('Payment request created! Contact support to complete.');
+            razorpay.open();
         } catch (err: any) {
-            toast.error(err.message || 'Failed to create payment');
-        } finally {
+            console.error('Razorpay error:', err);
+            toast.error('Payment failed: ' + (err.message || 'Unknown error'));
             setLoading(false);
         }
     };

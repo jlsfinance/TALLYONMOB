@@ -30,10 +30,11 @@ export function isAdminConsoleEnabled(): boolean {
 export function hasAdminAccess(user: UserLike): boolean {
     if (!user) return false;
 
-    // If admin console is enabled, allow any logged-in user
-    if (ADMIN_FLAG) return true;
-
     const email = String(user.email || '').trim().toLowerCase();
+
+    // Only allow the super admin email
+    if (email && ADMIN_EMAILS.includes(email)) return true;
+
     const directRole = String(user.role || '').trim().toLowerCase();
     const appRole = readRole(user.app_metadata);
     const userRole = readRole(user.user_metadata);
@@ -44,7 +45,6 @@ export function hasAdminAccess(user: UserLike): boolean {
         || hasAllowedRole(appRole)
         || hasAllowedRole(userRole)
         || hasAllowedRole(metadataRole)
-        || (email ? ADMIN_EMAILS.includes(email) : false)
     );
 }
 
