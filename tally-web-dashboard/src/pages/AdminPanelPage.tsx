@@ -44,7 +44,7 @@ export default function AdminPanelPage() {
             try {
                 const [usersRes, licensesRes, paymentsRes, trialsRes, plansRes] = await Promise.all([
                     supabase.from('user_licenses').select('id, user_id', { count: 'exact', head: true }),
-                    supabase.from('user_licenses').select('id, status, expiry_date, created_at'),
+                    supabase.from('user_licenses').select('id, status, expires_at, expiry_date, created_at'),
                     supabase.from('payments').select('id, total_amount, status, created_at'),
                     supabase.from('trial_history').select('id', { count: 'exact', head: true }),
                     supabase.from('subscription_plans').select('*'),
@@ -55,8 +55,8 @@ export default function AdminPanelPage() {
                 const now = new Date();
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-                const active = licenses.filter(l => l.status === 'active' && new Date(l.expiry_date) > now).length;
-                const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expiry_date) <= now).length;
+                const active = licenses.filter(l => l.status === 'active' && new Date(l.expires_at || l.expiry_date) > now).length;
+                const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expires_at || l.expiry_date) <= now).length;
                 const totalRevenue = payments.filter(p => p.status === 'paid').reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
                 const mrr = payments.filter(p => p.status === 'paid' && new Date(p.created_at) >= monthStart).reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
 
@@ -121,7 +121,18 @@ export default function AdminPanelPage() {
         queryFn: async () => {
             const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
             if (error) console.error('Companies query error:', error);
-            return data || [];
+
+            const ownerIds = [...new Set((data || []).map((c: any) => c.owner_id).filter(Boolean))];
+            let emailMap = new Map<string, string>();
+            if (ownerIds.length > 0) {
+                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', ownerIds);
+                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
+            }
+
+            return (data || []).map((c: any) => ({
+                ...c,
+                _ownerEmail: emailMap.get(c.owner_id) || c.owner_id?.slice(0, 8) || 'Unknown',
+            }));
         },
         enabled: activeTab === 'companies' || activeTab === 'company-detail',
     });
@@ -155,7 +166,26 @@ export default function AdminPanelPage() {
                 .select('*')
                 .order('created_at', { ascending: false });
             if (error) console.error('Payments query error:', error);
-            return data || [];
+
+            const userIds = [...new Set((data || []).map((p: any) => p.user_id).filter(Boolean))];
+            let emailMap = new Map<string, string>();
+            if (userIds.length > 0) {
+                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', userIds);
+                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
+            }
+
+            const planSlugs = [...new Set((data || []).map((p: any) => p.plan_slug).filter(Boolean))];
+            let planMap = new Map<string, string>();
+            if (planSlugs.length > 0) {
+                const { data: plansList } = await supabase.from('subscription_plans').select('slug, name');
+                (plansList || []).forEach((pl: any) => { if (pl.name) planMap.set(pl.slug, pl.name); });
+            }
+
+            return (data || []).map((p: any) => ({
+                ...p,
+                _email: emailMap.get(p.user_id) || p.user_id?.slice(0, 8) || 'N/A',
+                _planName: planMap.get(p.plan_slug) || p.plan_slug?.replace(/_/g, ' ') || 'N/A',
+            }));
         },
         enabled: activeTab === 'payments',
     });
@@ -203,12 +233,14 @@ export default function AdminPanelPage() {
     // Extend trial mutation
     const extendMutation = useMutation({
         mutationFn: async ({ licenseId, days }: { licenseId: string; days: number }) => {
-            const { data: lic } = await supabase.from('user_licenses').select('expiry_date').eq('id', licenseId).single();
+            const { data: lic } = await supabase.from('user_licenses').select('expires_at, expiry_date').eq('id', licenseId).single();
             if (!lic) throw new Error('Not found');
-            const newExpiry = new Date(lic.expiry_date);
+            const baseDate = lic.expires_at || lic.expiry_date;
+            if (!baseDate) throw new Error('No expiry date found');
+            const newExpiry = new Date(baseDate);
             newExpiry.setDate(newExpiry.getDate() + days);
             const { error } = await supabase.from('user_licenses')
-                .update({ expiry_date: newExpiry.toISOString(), updated_at: new Date().toISOString() })
+                .update({ expires_at: newExpiry.toISOString(), expiry_date: newExpiry.toISOString(), updated_at: new Date().toISOString() })
                 .eq('id', licenseId);
             if (error) throw error;
         },
@@ -233,11 +265,13 @@ export default function AdminPanelPage() {
 
     // Assign license mutation
     const assignLicenseMutation = useMutation({
-        mutationFn: async ({ email, planSlug, days }: { email: string; planSlug: string; days: number }) => {
+        mutationFn: async ({ email, planSlug, days, mobile, tallySerial }: { email: string; planSlug: string; days: number; mobile?: string; tallySerial?: string }) => {
             const { data, error } = await supabase.rpc('assign_license', {
                 p_email: email,
                 p_plan_slug: planSlug,
                 p_duration_days: days,
+                p_mobile: mobile || null,
+                p_tally_serial: tallySerial || null,
             });
             if (error) throw error;
             if (data && !data[0]?.success) throw new Error(data[0]?.message || 'Failed');
@@ -349,7 +383,7 @@ export default function AdminPanelPage() {
                     <AssignLicenseForm
                         plans={plans}
                         onSubmit={(email, planSlug, days) => assignLicenseMutation.mutate({ email, planSlug, days })}
-                        loading={assignLicenseMutation.isPending}
+                        loading={assignLicenseMutation.isLoading}
                     />
                     <div className="flex items-center gap-2">
                         <div className="flex-1 relative">
@@ -415,20 +449,43 @@ export default function AdminPanelPage() {
 
             {/* ═══ COMPANIES TAB ═══ */}
             {activeTab === 'companies' && (
-                <div className="space-y-1.5 px-[2px]">
-                    {companies.map((c: any) => (
-                        <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); setActiveTab('company-detail'); }}
-                            className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] cursor-pointer hover:border-[var(--primary)]/50 transition-all">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className={`w-2 h-2 rounded-full ${c.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                    <span className="text-[11px] font-bold">{c.name}</span>
-                                    {c.tally_serial && <span className="text-[9px] text-[var(--text-muted)]">SN: {c.tally_serial}</span>}
+                <div className="space-y-3 px-[2px]">
+                    {(() => {
+                        const grouped = new Map<string, any[]>();
+                        companies.forEach((c: any) => {
+                            const key = c._ownerEmail || 'Unknown';
+                            const existing = grouped.get(key) || [];
+                            existing.push(c);
+                            grouped.set(key, existing);
+                        });
+                        return Array.from(grouped.entries()).map(([email, comps]) => (
+                            <div key={email} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                                <div className="px-3 py-2 bg-[var(--surface-container)] flex items-center gap-2 border-b border-[var(--border)]">
+                                    <Mail size={11} className="text-[var(--primary)]" />
+                                    <span className="text-[11px] font-bold">{email}</span>
+                                    <span className="text-[9px] text-[var(--text-muted)]">({comps.length} companies)</span>
                                 </div>
-                                <span className="text-[9px] text-[var(--text-muted)]">{new Date(c.created_at).toLocaleDateString('en-IN')}</span>
+                                <div className="divide-y divide-[var(--border)]">
+                                    {comps.map((c: any) => (
+                                        <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); setActiveTab('company-detail'); }}
+                                            className="px-3 py-2 cursor-pointer hover:bg-[var(--primary)]/5 transition-all">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`w-2 h-2 rounded-full ${c.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                                    <span className="text-[11px] font-bold">{c.name}</span>
+                                                    {c.tally_serial && <span className="text-[9px] text-[var(--text-muted)]">SN: {c.tally_serial}</span>}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {c.last_sync_at && <span className="text-[8px] text-[var(--text-muted)]">Last: {new Date(c.last_sync_at).toLocaleDateString('en-IN')}</span>}
+                                                    <ArrowUpRight size={10} className="text-[var(--text-muted)]" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ));
+                    })()}
                     {companies.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No companies</p>}
                 </div>
             )}
@@ -494,19 +551,31 @@ export default function AdminPanelPage() {
             {/* ═══ PAYMENTS TAB ═══ */}
             {activeTab === 'payments' && (
                 <div className="space-y-1.5 px-[2px]">
+                    <div className="p-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center gap-3 text-[9px] font-bold text-[var(--text-muted)]">
+                        <span className="flex-1">User</span>
+                        <span className="w-20">Amount</span>
+                        <span className="w-20">Plan</span>
+                        <span className="w-16">Status</span>
+                        <span className="w-20">Method</span>
+                        <span className="w-20">Date</span>
+                    </div>
                     {payments.map((p: any) => (
                         <div key={p.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                             <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-bold">{p.invoice_number || 'N/A'}</span>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                                    p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' : p.status === 'failed' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'
-                                }`}>{p.status.toUpperCase()}</span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-[9px] text-[var(--text-muted)]">
-                                <span>{formatCurrency(p.total_amount)}</span>
-                                <span>{p.user?.email || 'N/A'}</span>
-                                <span>{p.plan?.name || 'N/A'}</span>
-                                <span>{new Date(p.created_at).toLocaleDateString()}</span>
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[11px] font-bold truncate block">{p._email}</span>
+                                        {p.razorpay_payment_id && <span className="text-[8px] text-[var(--text-muted)] font-mono block">{p.razorpay_payment_id}</span>}
+                                    </div>
+                                    <span className="w-20 text-[11px] font-bold text-emerald-500">{formatCurrency(p.final_amount || p.amount || 0)}</span>
+                                    <span className="w-20 text-[9px] text-[var(--text-muted)] capitalize">{p._planName}</span>
+                                    <span className={`w-16 text-[9px] font-bold px-2 py-0.5 rounded ${
+                                        p.status === 'completed' || p.status === 'paid' ? 'bg-emerald-500/10 text-emerald-500' :
+                                        p.status === 'failed' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'
+                                    }`}>{(p.status || 'unknown').toUpperCase()}</span>
+                                    <span className="w-20 text-[9px] text-[var(--text-muted)]">{p.payment_method || 'N/A'}</span>
+                                    <span className="w-20 text-[9px] text-[var(--text-muted)]">{new Date(p.created_at).toLocaleDateString('en-IN')}</span>
+                                </div>
                             </div>
                         </div>
                     ))}
@@ -631,9 +700,11 @@ function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => void }) {
 }
 
 // Assign License Form - email-based or quick assign from list
-function AssignLicenseForm({ plans, onSubmit, loading }: { plans: any[]; onSubmit: (email: string, planSlug: string, days: number) => void; loading: boolean }) {
+function AssignLicenseForm({ plans, onSubmit, loading }: { plans: any[]; onSubmit: (email: string, planSlug: string, days: number, mobile?: string, tallySerial?: string) => void; loading: boolean }) {
     const [open, setOpen] = useState(false);
     const [email, setEmail] = useState('');
+    const [mobile, setMobile] = useState('');
+    const [tallySerial, setTallySerial] = useState('');
     const [planSlug, setPlanSlug] = useState('monthly');
     const [days, setDays] = useState(30);
 
@@ -653,10 +724,16 @@ function AssignLicenseForm({ plans, onSubmit, loading }: { plans: any[]; onSubmi
     return (
         <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 space-y-2">
             <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Assign License to User</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <p className="text-[8px] text-emerald-400/60">One license = One Email + One Tally Serial + Unlimited Companies</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="user@email.com"
                     type="email"
                     className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
+                <input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="Mobile number (optional)"
+                    type="tel"
+                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
+                <input value={tallySerial} onChange={e => setTallySerial(e.target.value)} placeholder="Tally Serial Number (optional)"
+                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded font-mono" />
                 <select value={planSlug} onChange={e => {
                     setPlanSlug(e.target.value);
                     setDays(PLAN_DAYS[e.target.value] || 30);
@@ -678,7 +755,7 @@ function AssignLicenseForm({ plans, onSubmit, loading }: { plans: any[]; onSubmi
             </div>
             <div className="flex gap-1">
                 <button disabled={loading || !email}
-                    onClick={() => { onSubmit(email, planSlug, days); setEmail(''); }}
+                    onClick={() => { onSubmit(email, planSlug, days, mobile, tallySerial); setEmail(''); setMobile(''); setTallySerial(''); }}
                     className="text-[10px] font-bold px-3 py-1.5 rounded bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1">
                     {loading ? <RefreshCw size={10} className="animate-spin" /> : <UserPlus size={10} />}
                     {loading ? 'Assigning...' : 'Assign License'}
@@ -697,6 +774,32 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
     const [vouchers, setVouchers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [paymentFilter, setPaymentFilter] = useState<string>('all');
+    const [transferSerial, setTransferSerial] = useState('');
+    const [transferring, setTransferring] = useState(false);
+
+    const handleTransferSerial = async () => {
+        if (!transferSerial || !license) return;
+        setTransferring(true);
+        try {
+            const { data, error } = await supabase.rpc('transfer_tally_serial', {
+                p_license_id: license.id,
+                p_new_tally_serial: transferSerial,
+                p_admin_id: (await supabase.auth.getUser()).data.user?.id,
+                p_reason: 'Admin transfer'
+            });
+            if (error) throw error;
+            if (data && !data.success) throw new Error(data.message);
+            toast.success(data?.message || 'Serial transferred');
+            setTransferSerial('');
+            // Refresh
+            const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+            setLicense(lic);
+        } catch (err: any) {
+            toast.error(err.message || 'Transfer failed');
+        } finally {
+            setTransferring(false);
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -704,16 +807,19 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setLicense(lic);
 
-            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id').or(`owner_id.eq.${userId},owner_id.eq.${userId}`);
+            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id').eq('owner_id', userId);
             setCompanies(comps || []);
 
             const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
             setPayments(pays || []);
 
             if (comps && comps.length > 0) {
-                const companyIds = comps.map((c: any) => c.id);
-                const { data: vchs } = await supabase.from('vouchers').select('id, voucher_type, party_ledger_name, amount, vch_date, company_id').in('company_id', companyIds).order('vch_date', { ascending: false }).limit(20);
-                setVouchers(vchs || []);
+                let allVchs: any[] = [];
+                for (const comp of comps) {
+                    const { data: vchs } = await supabase.from('vouchers').select('id, voucher_type, party_ledger_name, amount, vch_date, company_id').eq('company_id', comp.id).order('vch_date', { ascending: false }).limit(20);
+                    if (vchs) allVchs.push(...vchs);
+                }
+                setVouchers(allVchs.sort((a: any, b: any) => new Date(b.vch_date).getTime() - new Date(a.vch_date).getTime()).slice(0, 20));
             }
             setLoading(false);
         };
@@ -753,11 +859,34 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
                     <div><span className="text-[var(--text-muted)]">Status:</span> <span className={`font-bold ${isExpired ? 'text-red-500' : 'text-emerald-500'}`}>{license.status}</span></div>
                     <div><span className="text-[var(--text-muted)]">Expiry:</span> <span className="font-bold">{expiryDate ? new Date(expiryDate).toLocaleDateString('en-IN') : 'N/A'}</span></div>
                     <div><span className="text-[var(--text-muted)]">Days Left:</span> <span className="font-bold">{daysLeft > 0 ? daysLeft : 'Expired'}</span></div>
-                    {license.tally_serial && <div><span className="text-[var(--text-muted)]">Tally SN:</span> <span className="font-bold">{license.tally_serial}</span></div>}
-                    {license.company_gst && <div><span className="text-[var(--text-muted)]">GST:</span> <span className="font-bold">{license.company_gst}</span></div>}
+                    <div><span className="text-[var(--text-muted)]">Tally Serial:</span> <span className={`font-bold font-mono ${license.tally_serial ? 'text-emerald-500' : 'text-amber-500'}`}>{license.tally_serial || 'Not bound yet'}</span></div>
+                    {license.mobile && <div><span className="text-[var(--text-muted)]">Mobile:</span> <span className="font-bold">{license.mobile}</span></div>}
+                    {license.tally_serial && <div className="col-span-2"><span className="text-[var(--text-muted)]">Companies:</span> <span className="font-bold text-blue-500">Unlimited (same Tally Serial)</span></div>}
                     <div><span className="text-[var(--text-muted)]">User ID:</span> <span className="font-mono text-[8px]">{license.user_id}</span></div>
                     <div><span className="text-[var(--text-muted)]">Created:</span> {new Date(license.created_at).toLocaleDateString('en-IN')}</div>
                 </div>
+            </div>
+
+            {/* Transfer Tally Serial */}
+            <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                <span className="text-[11px] font-black text-amber-500">Transfer Tally Serial</span>
+                <p className="text-[8px] text-[var(--text-muted)] mb-2">Move this license to a different Tally installation</p>
+                <div className="flex gap-2">
+                    <input value={transferSerial} onChange={e => setTransferSerial(e.target.value)}
+                        placeholder="New Tally Serial Number"
+                        className="flex-1 px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded font-mono" />
+                    <button disabled={transferring || !transferSerial}
+                        onClick={handleTransferSerial}
+                        className="text-[10px] font-bold px-3 py-1.5 rounded bg-amber-500 text-white disabled:opacity-50 flex items-center gap-1">
+                        {transferring ? <RefreshCw size={10} className="animate-spin" /> : null}
+                        {transferring ? 'Transferring...' : 'Transfer'}
+                    </button>
+                </div>
+                {license.tally_serial && (
+                    <p className="text-[8px] text-[var(--text-muted)] mt-1">
+                        Current: <span className="font-mono font-bold text-amber-500">{license.tally_serial}</span>
+                    </p>
+                )}
             </div>
 
             {/* Companies */}
@@ -864,21 +993,22 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
     );
 }
 
-// Company Detail Panel
+// Company Detail Panel - dashboard-like view
 function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: () => void }) {
     const [company, setCompany] = useState<any>(null);
     const [vouchers, setVouchers] = useState<any[]>([]);
     const [ledgers, setLedgers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [voucherFilter, setVoucherFilter] = useState<string>('all');
 
     useEffect(() => {
         const load = async () => {
             setLoading(true);
             const { data: comp } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
             setCompany(comp);
-            const { data: vchs } = await supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).limit(50);
+            const { data: vchs } = await supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).limit(100);
             setVouchers(vchs || []);
-            const { data: lgrs } = await supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(50);
+            const { data: lgrs } = await supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100);
             setLedgers(lgrs || []);
             setLoading(false);
         };
@@ -889,21 +1019,35 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
     if (!company) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Company not found</div>;
 
     const totalAmount = vouchers.reduce((s: number, v: any) => s + Number(v.amount || 0), 0);
-    const typeBreakdown = vouchers.reduce((acc: Record<string, number>, v: any) => { acc[v.voucher_type || 'Other'] = (acc[v.voucher_type || 'Other'] || 0) + 1; return acc; }, {});
+    const typeBreakdown = vouchers.reduce((acc: Record<string, { count: number; amount: number }>, v: any) => {
+        const t = v.voucher_type || 'Other';
+        if (!acc[t]) acc[t] = { count: 0, amount: 0 };
+        acc[t].count += 1;
+        acc[t].amount += Number(v.amount || 0);
+        return acc;
+    }, {});
+
+    const filteredVouchers = voucherFilter === 'all' ? vouchers : vouchers.filter((v: any) => v.voucher_type === voucherFilter);
+    const totalLedgerBalance = ledgers.reduce((s: number, l: any) => s + Math.abs(Number(l.closing_balance || l.amount || 0)), 0);
 
     return (
         <div className="space-y-3 px-[2px]">
             <button onClick={onBack} className="flex items-center gap-1 text-[10px] font-bold text-[var(--primary)] hover:underline">← Back to Companies</button>
 
+            {/* Company Header */}
             <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-[12px] font-black">{company.name}</span>
+                    <div className="flex items-center gap-2">
+                        <Building2 size={16} className="text-[var(--primary)]" />
+                        <span className="text-[13px] font-black">{company.name}</span>
+                    </div>
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${company.is_active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{company.is_active ? 'ACTIVE' : 'INACTIVE'}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                     {company.tally_serial && <div><span className="text-[var(--text-muted)]">Tally SN:</span> <span className="font-bold">{company.tally_serial}</span></div>}
                     {company.formal_name && <div><span className="text-[var(--text-muted)]">Formal:</span> <span className="font-bold">{company.formal_name}</span></div>}
                     {company.phone && <div><span className="text-[var(--text-muted)]">Phone:</span> <span className="font-bold">{company.phone}</span></div>}
+                    {company.gst_number && <div><span className="text-[var(--text-muted)]">GST:</span> <span className="font-bold font-mono">{company.gst_number}</span></div>}
                     {company.address && <div className="col-span-2"><span className="text-[var(--text-muted)]">Address:</span> <span className="font-bold">{company.address}</span></div>}
                     {company.owner_id && <div><span className="text-[var(--text-muted)]">Owner:</span> <span className="font-mono text-[8px]">{company.owner_id}</span></div>}
                     <div><span className="text-[var(--text-muted)]">Created:</span> {new Date(company.created_at).toLocaleDateString('en-IN')}</div>
@@ -911,21 +1055,60 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
                 </div>
             </div>
 
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-2">
+                <div className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                    <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Vouchers</span>
+                    <p className="text-lg font-black text-blue-500">{vouchers.length}</p>
+                </div>
+                <div className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                    <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Total Amount</span>
+                    <p className="text-lg font-black text-emerald-500">₹{totalAmount.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                    <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Ledgers</span>
+                    <p className="text-lg font-black text-purple-500">{ledgers.length}</p>
+                </div>
+            </div>
+
+            {/* Voucher Type Breakdown */}
             <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                <span className="text-[12px] font-black">Vouchers ({vouchers.length}) — Total: ₹{totalAmount.toLocaleString('en-IN')}</span>
-                <div className="flex gap-1.5 mt-1 flex-wrap">
-                    {Object.entries(typeBreakdown).map(([type, count]) => (
-                        <span key={type} className="text-[8px] px-1.5 py-0.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">{type}: {count}</span>
+                <span className="text-[12px] font-black">Voucher Types</span>
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                    {Object.entries(typeBreakdown).map(([type, data]: [string, { count: number; amount: number }]) => (
+                        <span key={type} className="text-[8px] px-2 py-1 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">
+                            {type}: {data.count} (₹{data.amount.toLocaleString('en-IN')})
+                        </span>
                     ))}
                 </div>
-                {vouchers.length === 0 ? (
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No vouchers</p>
+            </div>
+
+            {/* Vouchers with filter */}
+            <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-black">Vouchers ({vouchers.length})</span>
+                    <span className="text-[9px] font-bold text-emerald-500">Total: ₹{totalAmount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex gap-1 mb-2 flex-wrap">
+                    <button onClick={() => setVoucherFilter('all')}
+                        className={`text-[8px] font-bold px-2 py-0.5 rounded-full transition-all ${voucherFilter === 'all' ? 'bg-[var(--primary)] text-white' : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]'}`}>
+                        All ({vouchers.length})
+                    </button>
+                    {Object.entries(typeBreakdown).map(([type, data]: [string, { count: number; amount: number }]) => (
+                        <button key={type} onClick={() => setVoucherFilter(type)}
+                            className={`text-[8px] font-bold px-2 py-0.5 rounded-full transition-all ${voucherFilter === type ? 'bg-[var(--primary)] text-white' : 'bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]'}`}>
+                            {type} ({data.count})
+                        </button>
+                    ))}
+                </div>
+                {filteredVouchers.length === 0 ? (
+                    <p className="text-[10px] text-[var(--text-muted)]">No vouchers{voucherFilter !== 'all' ? ` of type "${voucherFilter}"` : ''}</p>
                 ) : (
-                    <div className="mt-2 space-y-1 max-h-[300px] overflow-y-auto">
-                        {vouchers.map((v: any) => (
+                    <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                        {filteredVouchers.map((v: any) => (
                             <div key={v.id} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
                                 <div className="flex items-center gap-2">
-                                    <span className="px-1 py-0.5 rounded bg-[var(--surface)] text-[8px] font-bold">{v.voucher_type}</span>
+                                    <span className="px-1.5 py-0.5 rounded bg-[var(--surface)] text-[8px] font-bold">{v.voucher_type}</span>
                                     <span className="text-[var(--text-muted)]">{v.party_ledger_name || '-'}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -938,19 +1121,25 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
                 )}
             </div>
 
+            {/* Ledgers */}
             <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                <span className="text-[12px] font-black">Ledgers ({ledgers.length})</span>
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-black">Ledgers ({ledgers.length})</span>
+                    <span className="text-[9px] font-bold text-purple-500">Total: ₹{totalLedgerBalance.toLocaleString('en-IN')}</span>
+                </div>
                 {ledgers.length === 0 ? (
-                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No ledgers</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">No ledgers</p>
                 ) : (
-                    <div className="mt-2 space-y-1 max-h-[300px] overflow-y-auto">
+                    <div className="space-y-1 max-h-[300px] overflow-y-auto">
                         {ledgers.map((l: any) => (
                             <div key={l.id} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
                                 <div className="flex items-center gap-2">
                                     <span className="font-bold">{l.name || '-'}</span>
                                     {l.parent_group && <span className="text-[var(--text-muted)]">({l.parent_group})</span>}
                                 </div>
-                                <span className="font-bold">₹{Number(l.closing_balance || l.amount || 0).toLocaleString('en-IN')}</span>
+                                <span className={`font-bold ${Number(l.closing_balance || l.amount || 0) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    ₹{Number(l.closing_balance || l.amount || 0).toLocaleString('en-IN')}
+                                </span>
                             </div>
                         ))}
                     </div>
@@ -980,12 +1169,14 @@ function AdminReportsPanel() {
             let allVouchers: any[] = [];
             let allStockItems: any[] = [];
             if (companyIds.length > 0) {
-                const [vRes, sRes] = await Promise.all([
-                    supabase.from('vouchers').select('id, company_id, voucher_type, party_ledger_name, amount, vch_date').in('company_id', companyIds),
-                    supabase.from('stock_items').select('id, company_id, stock_item_name, amount, quantity').in('company_id', companyIds),
-                ]);
-                allVouchers = vRes.data || [];
-                allStockItems = sRes.data || [];
+                for (const cid of companyIds) {
+                    const [vRes, sRes] = await Promise.all([
+                        supabase.from('vouchers').select('id, company_id, voucher_type, party_ledger_name, amount, vch_date').eq('company_id', cid).order('vch_date', { ascending: false }).limit(500),
+                        supabase.from('stock_items').select('id, company_id, name, rate, current_stock').eq('company_id', cid),
+                    ]);
+                    if (vRes.data) allVouchers.push(...vRes.data);
+                    if (sRes.data) allStockItems.push(...sRes.data);
+                }
             }
 
             const { data: allPayments } = await supabase.from('payments').select('*');
@@ -994,10 +1185,10 @@ function AdminReportsPanel() {
             // Top Products
             const prodMap = new Map<string, { name: string; totalAmount: number; totalQty: number; count: number }>();
             allStockItems.forEach((s: any) => {
-                const name = s.stock_item_name || 'Unknown';
+                const name = s.name || 'Unknown';
                 const ex = prodMap.get(name) || { name, totalAmount: 0, totalQty: 0, count: 0 };
-                ex.totalAmount += Number(s.amount || 0);
-                ex.totalQty += Number(s.quantity || 0);
+                ex.totalAmount += Number(s.rate || 0);
+                ex.totalQty += Number(s.current_stock || 0);
                 ex.count += 1;
                 prodMap.set(name, ex);
             });

@@ -19,17 +19,17 @@ const PLANS = [
     cta: 'Start Free Trial', color: 'border-slate-500/30', popular: false, planId: 'trial',
   },
   {
-    name: 'Monthly', price: '₹299', priceInPaise: 29900, duration: '/month', icon: <Star size={20} />,
+    name: 'Monthly', price: '₹99', priceInPaise: 9900, duration: '/month', icon: <Star size={20} />,
     features: ['3 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports'],
     cta: 'Subscribe Now', color: 'border-indigo-500/50', popular: true, planId: 'monthly',
   },
   {
-    name: 'Quarterly', price: '₹799', priceInPaise: 79900, duration: '/quarter', badge: 'Save 11%', icon: <Star size={20} />,
+    name: 'Quarterly', price: '₹249', priceInPaise: 24900, duration: '/quarter', badge: 'Save 16%', icon: <Star size={20} />,
     features: ['5 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export'],
     cta: 'Subscribe Now', color: 'border-emerald-500/50', popular: false, planId: 'quarterly',
   },
   {
-    name: 'Yearly', price: '₹2,999', priceInPaise: 299900, duration: '/year', badge: 'Save 17%', icon: <Crown size={20} />,
+    name: 'Yearly', price: '₹999', priceInPaise: 99900, duration: '/year', badge: 'Save 17%', icon: <Crown size={20} />,
     features: ['10 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export', 'API Access', 'Custom Reports'],
     cta: 'Subscribe Now', color: 'border-amber-500/50', popular: false, planId: 'yearly',
   },

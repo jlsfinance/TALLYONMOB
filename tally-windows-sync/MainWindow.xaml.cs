@@ -1,14 +1,20 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 using TallySyncApp.Services;
+using TallySyncApp.Models;
+using TallySyncApp.Pages;
 
 namespace TallySyncApp
 {
     public partial class MainWindow : Window
     {
+        private List<Voucher> _vouchers = new();
+        private List<Ledger> _ledgers = new();
+
         public MainWindow()
         {
             try
@@ -22,8 +28,7 @@ namespace TallySyncApp
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] XAML PARSE ERROR:\n{ex}\n\n");
                 MessageBox.Show($"UI failed to load:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-            
-            // Set user email in data context
+
             try
             {
                 if (App.AuthService?.CurrentSession != null)
@@ -42,8 +47,42 @@ namespace TallySyncApp
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] CONSTRUCTOR ERROR:\n{ex}\n\n");
             }
 
-            // Handle window closing - minimize to tray instead of close
+            VoucherDetailPage.OnBack += () => NavigateBack();
+            VoucherDetailPage.OnPartyClick += (name, gstin) => NavigateToParty(name, gstin);
+            VoucherDetailPage.OnStockItemClick += (name, _) => { };
+            VoucherDetailPage.OnNavigateVoucher += (idx, scroll) => { };
+
+            PartyDetailPage.OnBack += () => NavigateBack();
+            PartyDetailPage.OnVoucherClick += (idx, scroll) => NavigateToVoucher(_vouchers, idx);
+
             Closing += OnWindowClosing;
+            PreviewKeyDown += OnPreviewKeyDown;
+        }
+
+        private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (VoucherDetailPage.Visibility == Visibility.Visible)
+            {
+                if (e.Key == System.Windows.Input.Key.Escape)
+                {
+                    NavigateBack();
+                    e.Handled = true;
+                }
+            }
+            else if (PartyDetailPage.Visibility == Visibility.Visible)
+            {
+                if (e.Key == System.Windows.Input.Key.Escape)
+                {
+                    NavigateBack();
+                    e.Handled = true;
+                }
+            }
+        }
+
+        public void LoadVoucherData(List<Voucher> vouchers, List<Ledger> ledgers)
+        {
+            _vouchers = vouchers;
+            _ledgers = ledgers;
         }
 
         private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -76,6 +115,8 @@ namespace TallySyncApp
             if (LivePage != null) LivePage.Visibility = Visibility.Collapsed;
             if (SettingsPage != null) SettingsPage.Visibility = Visibility.Collapsed;
             if (HistoryPage != null) HistoryPage.Visibility = Visibility.Collapsed;
+            if (VoucherDetailPage != null) VoucherDetailPage.Visibility = Visibility.Collapsed;
+            if (PartyDetailPage != null) PartyDetailPage.Visibility = Visibility.Collapsed;
 
             switch (page)
             {
@@ -95,7 +136,34 @@ namespace TallySyncApp
                     if (HistoryPage != null) HistoryPage.Visibility = Visibility.Visible;
                     if (PageTitle != null) PageTitle.Text = "History";
                     break;
+                case "voucher_detail":
+                    if (VoucherDetailPage != null) VoucherDetailPage.Visibility = Visibility.Visible;
+                    if (PageTitle != null) PageTitle.Text = "Voucher";
+                    break;
+                case "party_detail":
+                    if (PartyDetailPage != null) PartyDetailPage.Visibility = Visibility.Visible;
+                    if (PageTitle != null) PageTitle.Text = "Party";
+                    break;
             }
+        }
+
+        public void NavigateToVoucher(List<Voucher> vouchers, int index)
+        {
+            _vouchers = vouchers;
+            VoucherDetailPage.LoadVoucher(vouchers, index);
+            ShowPage("voucher_detail");
+        }
+
+        public void NavigateToParty(string partyName, string? gstin)
+        {
+            PartyDetailPage.LoadParty(partyName, _vouchers);
+            ShowPage("party_detail");
+        }
+
+        public void NavigateBack()
+        {
+            ShowPage("dashboard");
+            NavDashboard.IsChecked = true;
         }
 
         private void NavDashboard_Checked(object sender, RoutedEventArgs e)
@@ -131,9 +199,9 @@ namespace TallySyncApp
         {
             if (value is bool isConnected && isConnected)
             {
-                return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669")); // Green
+                return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#059669"));
             }
-            return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")); // Gray
+            return new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8"));
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -142,7 +210,6 @@ namespace TallySyncApp
         }
     }
 
-    // Helper to convert null/optional values to visibility
     public class NullToVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -157,7 +224,6 @@ namespace TallySyncApp
         }
     }
 
-    // Converter: 0 count -> Visible (show empty message), >0 -> Collapsed (hide empty message)
     public class CountToVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -173,7 +239,6 @@ namespace TallySyncApp
         }
     }
 
-    // Converter: string color hex to SolidColorBrush
     public class StringToBrushConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -195,7 +260,6 @@ namespace TallySyncApp
         }
     }
 
-    // Converter: bool to Visibility
     public class BoolToVisibilityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -209,7 +273,6 @@ namespace TallySyncApp
         }
     }
 
-    // Converter: ValidationSeverity enum to color Brush
     public class ValidationSeverityConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

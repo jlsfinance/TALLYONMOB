@@ -1,13 +1,13 @@
-LIVEKEEPING TALLY SYNC - END USER LICENSE AGREEMENT (EULA)
+SYNCORA TALLY SYNC - END USER LICENSE AGREEMENT (EULA)
 
 Please read this agreement carefully before installing or using the software.
 
 1. LICENSE GRANT
-LiveKeeping grants you a non-exclusive, non-transferable license to use the LiveKeeping Tally Sync software for the purpose of synchronizing financial data from Tally ERP to the LiveKeeping cloud platform.
+SYNCORA grants you a non-exclusive, non-transferable license to use the SYNCORA Tally Sync software for the purpose of synchronizing financial data from Tally ERP to the SYNCORA cloud platform.
 
 2. DATA PRIVACY & SAFETY
 - The software processes financial data from Tally on your device.
-- Only required financial data is uploaded to the LiveKeeping cloud.
+- Only required financial data is uploaded to the SYNCORA cloud.
 - Sensitive personal data (excluding business financial records required for sync) is not collected.
 - All data transfers are encrypted.
 
@@ -23,4 +23,4 @@ The software is provided "AS IS" without warranty of any kind. Use at your own r
 5. TERMINATION
 This license is effective until terminated. Your rights under this license will terminate automatically if you fail to comply with any of its terms.
 
-Copyright (c) 2026 LiveKeeping. All rights reserved.
+Copyright (c) 2026 SYNCORA. All rights reserved.

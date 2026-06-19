@@ -18,9 +18,9 @@
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
     <Version>3.1.0</Version>
-    <Authors>TallySync</Authors>
-    <Company>TallySync</Company>
-    <Product>TallySync - Tally Data Sync</Product>
+    <Authors>SYNCORA</Authors>
+    <Company>SYNCORA</Company>
+    <Product>SYNCORA - Tally Data Sync</Product>
     <Description>Sync Tally ERP data to cloud for mobile access</Description>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>

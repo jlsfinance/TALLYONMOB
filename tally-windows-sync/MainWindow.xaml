@@ -4,8 +4,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
+        xmlns:local="clr-namespace:TallySyncApp.Pages"
         mc:Ignorable="d"
-        Title="TallyLink" Height="650" Width="950"
+        Title="SYNCORA" Height="650" Width="950"
         Icon="pack://application:,,,/tallylink_logo.png"
         FontFamily="Segoe UI" Background="#F1F5F9"
         WindowStartupLocation="CenterScreen"
@@ -186,7 +187,7 @@
                     <Border Width="44" Height="44" Background="#1E3A5F" CornerRadius="12" HorizontalAlignment="Center">
                         <Image Source="pack://application:,,,/tallylink_logo.png" Margin="8" RenderOptions.BitmapScalingMode="HighQuality"/>
                     </Border>
-                    <TextBlock Text="TallyLink" Foreground="White" FontSize="17" FontWeight="Bold" 
+                    <TextBlock Text="SYNCORA" Foreground="White" FontSize="17" FontWeight="Bold"
                                HorizontalAlignment="Center" Margin="0,12,0,0"/>
                     <TextBlock Text="{Binding Status.CompanyName, FallbackValue=''}" Foreground="#64748B" 
                                FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
@@ -860,6 +861,14 @@
                         <DataGridTextColumn Header="Error" Binding="{Binding Error}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
+
+                <!-- Voucher Detail Page -->
+                <local:VoucherDetailPage x:Name="VoucherDetailPage" Visibility="Collapsed"
+                                          Margin="0"/>
+
+                <!-- Party Detail Page -->
+                <local:PartyDetailPage x:Name="PartyDetailPage" Visibility="Collapsed"
+                                        Margin="0"/>
             </Grid>
 
             <!-- Status Bar -->

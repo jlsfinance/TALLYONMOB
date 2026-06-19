@@ -1,6 +1,6 @@
-# 🖥️ LiveKeeping Windows Sync App
+# 🖥️ SYNCORA Windows Sync App
 
-A robust, production-grade desktop application to sync Tally ERP data with the LiveKeeping Cloud.
+A robust, production-grade desktop application to sync Tally ERP data with the SYNCORA Cloud.
 
 ## ✨ Features
 - **Auto-Sync**: Automatically syncs ledgers, vouchers, and stock every 5 minutes.
@@ -54,4 +54,4 @@ A robust, production-grade desktop application to sync Tally ERP data with the L
 - **Port Conflict**: If port 9000 is used, change it in Tally and the App Settings.
 
 ---
-Built with ❤️ for LiveKeeping
+Built with ❤️ for SYNCORA

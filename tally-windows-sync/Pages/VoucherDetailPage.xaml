@@ -1,0 +1,173 @@
+<UserControl x:Class="TallySyncApp.Pages.VoucherDetailPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="White">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar: Back + Voucher Nav -->
+        <Border Grid.Row="0" Background="#1E3A5F" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Content="← Back" Click="Back_Click"
+                        Background="Transparent" Foreground="White" BorderThickness="0"
+                        FontSize="12" FontWeight="SemiBold" Cursor="Hand" Padding="4,4"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="VoucherTypeLabel" Text="" Foreground="#CBD5E1" FontSize="12" FontWeight="SemiBold"/>
+                    <TextBlock Text=" · " Foreground="#64748B" FontSize="12"/>
+                    <TextBlock x:Name="VoucherNumberLabel" Text="" Foreground="White" FontSize="12" FontWeight="Bold"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="NavIndicator" Text="" Foreground="#94A3B8" FontSize="10" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Button Content="◀" Click="PrevVoucher_Click" Width="28" Height="28"
+                            Background="#2563EB" Foreground="White" BorderThickness="0" FontSize="12"
+                            Cursor="Hand" Margin="0,0,4,0"/>
+                    <Button Content="▶" Click="NextVoucher_Click" Width="28" Height="28"
+                            Background="#2563EB" Foreground="White" BorderThickness="0" FontSize="12"
+                            Cursor="Hand"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Voucher Content (scrollable) -->
+        <ScrollViewer Grid.Row="1" x:Name="VoucherScroll" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Background="#F8FAFC">
+            <StackPanel Margin="16" x:Name="VoucherContent">
+
+                <!-- Voucher Header Card -->
+                <Border Background="White" CornerRadius="12" Padding="16" Margin="0,0,0,12"
+                        BorderBrush="#E2E8F0" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="VoucherTitle" Text="" FontSize="18" FontWeight="Bold" Foreground="#0F172A"/>
+                            <TextBlock x:Name="VoucherDate" Text="" FontSize="12" Foreground="#64748B" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="VoucherNumber" Text="" FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <Border Grid.Column="1" x:Name="AmountBorder" CornerRadius="8" Padding="12,8" VerticalAlignment="Center">
+                            <TextBlock x:Name="VoucherAmount" Text="" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Party Name (Clickable) -->
+                <Border Background="White" CornerRadius="12" Padding="16" Margin="0,0,0,12"
+                        BorderBrush="#E2E8F0" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Width="40" Height="40" CornerRadius="10" Background="#EEF2FF"
+                                VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Text="👤" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="PARTY" FontSize="9" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="PartyName" Text="" FontSize="14" FontWeight="Bold" Foreground="#1E3A5F"
+                                       Cursor="Hand" TextDecorations="Underline" MouseLeftButtonDown="PartyName_Click"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2" Text="→" FontSize="16" Foreground="#CBD5E1" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Narration -->
+                <Border Background="White" CornerRadius="12" Padding="16" Margin="0,0,0,12"
+                        BorderBrush="#E2E8F0" BorderThickness="1" x:Name="NarrationBorder">
+                    <StackPanel>
+                        <TextBlock Text="NARRATION" FontSize="9" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,6"/>
+                        <TextBlock x:Name="NarrationText" Text="" FontSize="12" Foreground="#334155" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Ledger Entries -->
+                <Border Background="White" CornerRadius="12" Padding="16" Margin="0,0,0,12"
+                        BorderBrush="#E2E8F0" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="LEDGER ENTRIES" FontSize="9" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,8"/>
+                        <ItemsControl x:Name="LedgerEntriesList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#F8FAFC" CornerRadius="8" Padding="12,8" Margin="0,0,0,6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding LedgerName}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                <Border x:Name="DebitCreditBadge" CornerRadius="4" Padding="4,1" HorizontalAlignment="Left" Margin="0,2,0,0">
+                                                    <TextBlock x:Name="DebitCreditText" Text="{Binding Direction}" FontSize="9" FontWeight="Bold"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding AmountFormatted}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Inventory Entries -->
+                <Border Background="White" CornerRadius="12" Padding="16" Margin="0,0,0,12"
+                        BorderBrush="#E2E8F0" BorderThickness="1" x:Name="InventoryBorder" Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock Text="STOCK ITEMS" FontSize="9" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,8"/>
+                        <ItemsControl x:Name="InventoryEntriesList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#F8FAFC" CornerRadius="8" Padding="12,8" Margin="0,0,0,6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding StockItemName}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"
+                                                           Cursor="Hand" TextDecorations="Underline" MouseLeftButtonDown="StockItem_Click"/>
+                                                <TextBlock FontSize="10" Foreground="#64748B" Margin="0,2,0,0">
+                                                    <Run Text="{Binding Quantity, Mode=OneWay}"/>
+                                                    <Run Text=" × "/>
+                                                    <Run Text="{Binding RateFormatted, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding AmountFormatted}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Swipe Hint -->
+                <TextBlock Text="← Swipe or drag left/right to navigate between vouchers →"
+                           FontSize="10" Foreground="#CBD5E1" HorizontalAlignment="Center" Margin="0,8,0,20"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Drag overlay for swipe detection -->
+        <Canvas x:Name="SwipeCanvas" Grid.Row="1" Background="Transparent" Visibility="Collapsed"/>
+    </Grid>
+</UserControl>

@@ -416,15 +416,6 @@ const stockApi = {
         if (item?.name) itemName = item.name;
       }
       const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      let rpcRowsRes = { data: null, error: new Error('skip') };
-      try { rpcRowsRes = await db.rpc("insforge_stock_item_history", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam, p_limit: limit, p_offset: 0 }); } catch (_) {}
-      if (!rpcRowsRes.error && Array.isArray(rpcRowsRes.data) && rpcRowsRes.data.length > 0) {
-        let rpcSummaryRes = { data: null, error: new Error('skip') };
-        try { rpcSummaryRes = await db.rpc("insforge_stock_item_history_summary", { p_company_id: companyId, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_party: party || null, p_voucher_types: voucherTypesParam }); } catch (_) {}
-        const rows = sort === "asc" ? [...rpcRowsRes.data].reverse() : rpcRowsRes.data;
-        const summary2 = rpcSummaryRes?.data?.[0] || { opening_qty: Number(item?.opening_stock || item?.opening_balance || 0), total_in_qty: 0, total_out_qty: 0, total_in_amount: 0, total_out_amount: 0, closing_qty: Number(item?.opening_stock || item?.opening_balance || 0) };
-        return { data: { item, rows, summary: summary2 }, error: null };
-      }
       let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
       if (entriesRes.error) return entriesRes;
       let entryRows = entriesRes.data || [];

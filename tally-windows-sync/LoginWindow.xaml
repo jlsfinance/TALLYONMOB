@@ -1,7 +1,7 @@
 <Window x:Class="TallySyncApp.LoginWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="TallyLink" Height="520" Width="400"
+        Title="SYNCORA" Height="520" Width="400"
         Icon="pack://application:,,,/tallylink_logo.png"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -28,7 +28,7 @@
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,20">
-                    <TextBlock Text="TallyLink" Foreground="White" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <TextBlock Text="SYNCORA" Foreground="White" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
                     <TextBlock Text="Cloud Sync for Tally" Foreground="#94A3B8" FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                 </StackPanel>
             </Grid>

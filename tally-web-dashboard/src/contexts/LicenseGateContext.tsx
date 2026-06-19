@@ -80,10 +80,10 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 const PLAN_LIMITS: Record<string, number> = {
     trial: 1,
-    monthly: 1,
-    quarterly: 2,
-    half_yearly: 3,
-    yearly: 5,
+    monthly: -1, // unlimited
+    quarterly: -1, // unlimited
+    half_yearly: -1, // unlimited
+    yearly: -1, // unlimited
     lifetime: -1, // unlimited
 };
 

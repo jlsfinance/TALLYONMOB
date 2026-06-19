@@ -166,10 +166,13 @@ namespace TallySyncApp.Services
             return result.Error switch
             {
                 "AUTH_FAILED" => "Invalid email or password.",
-                "LICENSE_MISMATCH" => "This license is registered to a different Tally installation.\nContact support to reset your serial.",
+                "TALLY_MISMATCH" => $"This license is already linked to another Tally Serial Number ({result.BoundSerial}).\n\nContact support to transfer your license.",
+                "LICENSE_MISMATCH" => $"This license is already linked to another Tally Serial Number ({result.BoundSerial}).\n\nContact support to transfer your license.",
                 "TRIAL_EXPIRED" => "Your 7-day free trial has expired.\nUpgrade to Pro to continue using TallyLink.",
-                "SUBSCRIPTION_EXPIRED" => "Your Pro subscription has expired.\nRenew your subscription to continue.",
+                "SUBSCRIPTION_EXPIRED" => "Your subscription has expired.\nRenew your subscription to continue.",
+                "LICENSE_SUSPENDED" => "Your license has been suspended.\nContact support for assistance.",
                 "LICENSE_BLOCKED" => "Your license has been blocked.\nContact support for assistance.",
+                "NO_LICENSE" => "No active subscription found.\nPlease purchase a plan to continue.",
                 "TIMEOUT" => "Server not responding. Please try again.",
                 "NETWORK_ERROR" => "Cannot connect to license server.\nCheck your internet connection.",
                 _ => result.Message ?? "Unknown error occurred."
@@ -202,6 +205,12 @@ namespace TallySyncApp.Services
 
         [JsonProperty("message")]
         public string? Message { get; set; }
+
+        [JsonProperty("boundSerial")]
+        public string? BoundSerial { get; set; }
+
+        [JsonProperty("emailBound")]
+        public string? EmailBound { get; set; }
 
         [JsonProperty("access_token")]
         public string? AccessToken { get; set; }

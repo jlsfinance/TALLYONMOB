@@ -31,11 +31,11 @@ function loadRazorpayScript(): Promise<boolean> {
 
 const PLANS = [
     { name: 'Free Trial', slug: 'trial', price: 0, duration: '7 days', icon: Clock, color: 'text-slate-400', features: ['Single company', '50 vouchers/day', 'Basic reports', 'Mobile access'] },
-    { name: 'Monthly', slug: 'monthly', price: 299, duration: '30 days', icon: Zap, color: 'text-blue-500', features: ['1 company', '100 vouchers/day', 'All reports', 'WhatsApp share', 'Email invoices'] },
-    { name: 'Quarterly', slug: 'quarterly', price: 799, duration: '90 days', icon: Shield, color: 'text-purple-500', popular: false, features: ['2 companies', 'Unlimited vouchers', 'Advanced analytics', 'Priority support', 'GST filing'] },
-    { name: 'Half Yearly', slug: 'half_yearly', price: 1499, duration: '180 days', icon: Star, color: 'text-indigo-500', features: ['3 companies', 'Unlimited vouchers', 'Advanced analytics', 'Priority support', 'GST filing'] },
-    { name: 'Yearly', slug: 'yearly', price: 2999, duration: '365 days', icon: Crown, color: 'text-amber-500', popular: true, features: ['5 companies', 'Unlimited everything', 'AI insights', 'Custom templates', 'Dedicated support'] },
-    { name: 'Lifetime', slug: 'lifetime', price: 9999, duration: 'Forever', icon: Crown, color: 'text-emerald-500', features: ['Unlimited companies', 'Unlimited everything', 'AI insights', 'Custom templates', 'Dedicated support', 'Free updates'] },
+    { name: 'Monthly', slug: 'monthly', price: 99, duration: '30 days', icon: Zap, color: 'text-blue-500', features: ['1 company', '100 vouchers/day', 'All reports', 'WhatsApp share', 'Email invoices'] },
+    { name: 'Quarterly', slug: 'quarterly', price: 249, duration: '90 days', icon: Shield, color: 'text-purple-500', popular: false, features: ['2 companies', 'Unlimited vouchers', 'Advanced analytics', 'Priority support', 'GST filing'] },
+    { name: 'Half Yearly', slug: 'half_yearly', price: 499, duration: '180 days', icon: Star, color: 'text-indigo-500', features: ['3 companies', 'Unlimited vouchers', 'Advanced analytics', 'Priority support', 'GST filing'] },
+    { name: 'Yearly', slug: 'yearly', price: 999, duration: '365 days', icon: Crown, color: 'text-amber-500', popular: true, features: ['5 companies', 'Unlimited everything', 'AI insights', 'Custom templates', 'Dedicated support'] },
+    { name: 'Lifetime', slug: 'lifetime', price: 4999, duration: 'Forever', icon: Crown, color: 'text-emerald-500', features: ['Unlimited companies', 'Unlimited everything', 'AI insights', 'Custom templates', 'Dedicated support', 'Free updates'] },
 ];
 
 function formatCurrency(n: number) {
