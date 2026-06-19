@@ -11,7 +11,7 @@ import {
     Edit, Trash2, AlertTriangle, Mail, Phone, Key, Shield, UserPlus
 } from 'lucide-react';
 
-type Tab = 'dashboard' | 'users' | 'companies' | 'plans' | 'coupons' | 'payments' | 'activity' | 'leads' | 'user-detail';
+type Tab = 'dashboard' | 'users' | 'companies' | 'plans' | 'coupons' | 'payments' | 'activity' | 'leads' | 'user-detail' | 'company-detail' | 'reports';
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -22,6 +22,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
     { key: 'payments', label: 'Payments', icon: DollarSign },
     { key: 'activity', label: 'Activity', icon: Activity },
     { key: 'leads', label: 'Leads', icon: TrendingUp },
+    { key: 'reports', label: 'Reports', icon: BarChart3 },
 ];
 
 function formatCurrency(n: number) {
@@ -33,6 +34,7 @@ export default function AdminPanelPage() {
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
     const [search, setSearch] = useState('');
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
     const queryClient = useQueryClient();
 
     // ═══ DASHBOARD ═══
@@ -117,18 +119,18 @@ export default function AdminPanelPage() {
     const { data: companies = [] } = useQuery({
         queryKey: ['admin-companies'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('companies').select('id, name, tally_serial, owner_id, is_active, created_at').order('created_at', { ascending: false });
+            const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
             if (error) console.error('Companies query error:', error);
             return data || [];
         },
-        enabled: activeTab === 'companies',
+        enabled: activeTab === 'companies' || activeTab === 'company-detail',
     });
 
     // ═══ PLANS ═══
     const { data: plans = [] } = useQuery({
         queryKey: ['admin-plans'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('subscription_plans').select('id, name, slug, duration_days, price, features, is_trial, is_active, sort_order').order('sort_order');
+            const { data, error } = await supabase.from('subscription_plans').select('*').order('sort_order');
             if (error) console.error('Plans query error:', error);
             return data || [];
         },
@@ -415,12 +417,16 @@ export default function AdminPanelPage() {
             {activeTab === 'companies' && (
                 <div className="space-y-1.5 px-[2px]">
                     {companies.map((c: any) => (
-                        <div key={c.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                        <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); setActiveTab('company-detail'); }}
+                            className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] cursor-pointer hover:border-[var(--primary)]/50 transition-all">
                             <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-bold">{c.name}</span>
-                                <span className="text-[9px] text-[var(--text-muted)]">{new Date(c.created_at).toLocaleDateString()}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${c.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                    <span className="text-[11px] font-bold">{c.name}</span>
+                                    {c.tally_serial && <span className="text-[9px] text-[var(--text-muted)]">SN: {c.tally_serial}</span>}
+                                </div>
+                                <span className="text-[9px] text-[var(--text-muted)]">{new Date(c.created_at).toLocaleDateString('en-IN')}</span>
                             </div>
-                            {c.tally_serial && <p className="text-[9px] text-[var(--text-muted)]">Serial: {c.tally_serial}</p>}
                         </div>
                     ))}
                     {companies.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No companies</p>}
@@ -435,9 +441,19 @@ export default function AdminPanelPage() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <span className="text-[11px] font-bold">{p.name}</span>
-                                    <span className="text-[9px] text-[var(--text-muted)] ml-2">{p.duration_days} days</span>
+                                    <span className="text-[9px] text-[var(--text-muted)] ml-2">{p.duration_days ? `${p.duration_days} days` : 'N/A'}</span>
                                 </div>
-                                <span className="text-[11px] font-black text-emerald-500">{formatCurrency(Number(p.price) || 0)}</span>
+                                <div className="flex items-center gap-3 text-[11px] font-black">
+                                    {p.price_monthly > 0 && <span className="text-emerald-500">₹{p.price_monthly}/mo</span>}
+                                    {p.price_yearly > 0 && <span className="text-blue-500">₹{p.price_yearly}/yr</span>}
+                                    {p.price_monthly === 0 && p.price_yearly === 0 && <span className="text-slate-400">Free</span>}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-[9px] text-[var(--text-muted)]">
+                                <span>Users: {p.max_users || '∞'}</span>
+                                <span>Vouchers: {p.max_vouchers === -1 ? '∞' : p.max_vouchers}</span>
+                                <span>GST: {p.gst_percent || 0}%</span>
+                                <span className={p.is_active ? 'text-emerald-500' : 'text-red-500'}>{p.is_active ? 'Active' : 'Inactive'}</span>
                             </div>
                             <div className="flex gap-1 mt-1">
                                 {(p.features || []).map((f: string) => (
@@ -446,6 +462,7 @@ export default function AdminPanelPage() {
                             </div>
                         </div>
                     ))}
+                    {plans.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No plans</p>}
                 </div>
             )}
 
@@ -544,6 +561,19 @@ export default function AdminPanelPage() {
                     userId={selectedUserId}
                     onBack={() => { setActiveTab('users'); setSelectedUserId(null); }}
                 />
+            )}
+
+            {/* ═══ COMPANY DETAIL TAB ═══ */}
+            {activeTab === 'company-detail' && selectedCompanyId && (
+                <CompanyDetailPanel
+                    companyId={selectedCompanyId}
+                    onBack={() => { setActiveTab('companies'); setSelectedCompanyId(null); }}
+                />
+            )}
+
+            {/* ═══ REPORTS TAB ═══ */}
+            {activeTab === 'reports' && (
+                <AdminReportsPanel />
             )}
         </div>
     );
@@ -823,13 +853,254 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
                                         p.status === 'failed' || p.status === 'cancelled' ? 'bg-red-500/10 text-red-500' :
                                         'bg-amber-500/10 text-amber-500'
                                     }`}>{p.status}</span>
-                                    <span className="text-[var(--text-muted)]">{new Date(p.created_at).toLocaleDateString('en-IN')}</span>
+                                        <span className="text-[var(--text-muted)]">{new Date(p.created_at).toLocaleDateString('en-IN')}</span>
                                 </div>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+// Company Detail Panel
+function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: () => void }) {
+    const [company, setCompany] = useState<any>(null);
+    const [vouchers, setVouchers] = useState<any[]>([]);
+    const [ledgers, setLedgers] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            const { data: comp } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
+            setCompany(comp);
+            const { data: vchs } = await supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).limit(50);
+            setVouchers(vchs || []);
+            const { data: lgrs } = await supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(50);
+            setLedgers(lgrs || []);
+            setLoading(false);
+        };
+        load();
+    }, [companyId]);
+
+    if (loading) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Loading company data...</div>;
+    if (!company) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Company not found</div>;
+
+    const totalAmount = vouchers.reduce((s: number, v: any) => s + Number(v.amount || 0), 0);
+    const typeBreakdown = vouchers.reduce((acc: Record<string, number>, v: any) => { acc[v.voucher_type || 'Other'] = (acc[v.voucher_type || 'Other'] || 0) + 1; return acc; }, {});
+
+    return (
+        <div className="space-y-3 px-[2px]">
+            <button onClick={onBack} className="flex items-center gap-1 text-[10px] font-bold text-[var(--primary)] hover:underline">← Back to Companies</button>
+
+            <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-black">{company.name}</span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${company.is_active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{company.is_active ? 'ACTIVE' : 'INACTIVE'}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    {company.tally_serial && <div><span className="text-[var(--text-muted)]">Tally SN:</span> <span className="font-bold">{company.tally_serial}</span></div>}
+                    {company.formal_name && <div><span className="text-[var(--text-muted)]">Formal:</span> <span className="font-bold">{company.formal_name}</span></div>}
+                    {company.phone && <div><span className="text-[var(--text-muted)]">Phone:</span> <span className="font-bold">{company.phone}</span></div>}
+                    {company.address && <div className="col-span-2"><span className="text-[var(--text-muted)]">Address:</span> <span className="font-bold">{company.address}</span></div>}
+                    {company.owner_id && <div><span className="text-[var(--text-muted)]">Owner:</span> <span className="font-mono text-[8px]">{company.owner_id}</span></div>}
+                    <div><span className="text-[var(--text-muted)]">Created:</span> {new Date(company.created_at).toLocaleDateString('en-IN')}</div>
+                    {company.last_sync_at && <div><span className="text-[var(--text-muted)]">Last Sync:</span> {new Date(company.last_sync_at).toLocaleString('en-IN')}</div>}
+                </div>
+            </div>
+
+            <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                <span className="text-[12px] font-black">Vouchers ({vouchers.length}) — Total: ₹{totalAmount.toLocaleString('en-IN')}</span>
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                    {Object.entries(typeBreakdown).map(([type, count]) => (
+                        <span key={type} className="text-[8px] px-1.5 py-0.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">{type}: {count}</span>
+                    ))}
+                </div>
+                {vouchers.length === 0 ? (
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No vouchers</p>
+                ) : (
+                    <div className="mt-2 space-y-1 max-h-[300px] overflow-y-auto">
+                        {vouchers.map((v: any) => (
+                            <div key={v.id} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-1 py-0.5 rounded bg-[var(--surface)] text-[8px] font-bold">{v.voucher_type}</span>
+                                    <span className="text-[var(--text-muted)]">{v.party_ledger_name || '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">₹{Number(v.amount || 0).toLocaleString('en-IN')}</span>
+                                    <span className="text-[var(--text-muted)]">{v.vch_date ? new Date(v.vch_date).toLocaleDateString('en-IN') : '-'}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                <span className="text-[12px] font-black">Ledgers ({ledgers.length})</span>
+                {ledgers.length === 0 ? (
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">No ledgers</p>
+                ) : (
+                    <div className="mt-2 space-y-1 max-h-[300px] overflow-y-auto">
+                        {ledgers.map((l: any) => (
+                            <div key={l.id} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">{l.name || '-'}</span>
+                                    {l.parent_group && <span className="text-[var(--text-muted)]">({l.parent_group})</span>}
+                                </div>
+                                <span className="font-bold">₹{Number(l.closing_balance || l.amount || 0).toLocaleString('en-IN')}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Admin Reports Panel
+function AdminReportsPanel() {
+    const [loading, setLoading] = useState(true);
+    const [topProducts, setTopProducts] = useState<any[]>([]);
+    const [topCustomersSale, setTopCustomersSale] = useState<any[]>([]);
+    const [topCustomersPayment, setTopCustomersPayment] = useState<any[]>([]);
+    const [inactiveCompanies, setInactiveCompanies] = useState<any[]>([]);
+    const [companyPerformance, setCompanyPerformance] = useState<any[]>([]);
+
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+
+            const { data: allCompanies } = await supabase.from('companies').select('id, name, is_active, last_sync_at, owner_id');
+            const companies = allCompanies || [];
+            const companyIds = companies.map((c: any) => c.id);
+
+            let allVouchers: any[] = [];
+            let allStockItems: any[] = [];
+            if (companyIds.length > 0) {
+                const [vRes, sRes] = await Promise.all([
+                    supabase.from('vouchers').select('id, company_id, voucher_type, party_ledger_name, amount, vch_date').in('company_id', companyIds),
+                    supabase.from('stock_items').select('id, company_id, stock_item_name, amount, quantity').in('company_id', companyIds),
+                ]);
+                allVouchers = vRes.data || [];
+                allStockItems = sRes.data || [];
+            }
+
+            const { data: allPayments } = await supabase.from('payments').select('*');
+            const payments = allPayments || [];
+
+            // Top Products
+            const prodMap = new Map<string, { name: string; totalAmount: number; totalQty: number; count: number }>();
+            allStockItems.forEach((s: any) => {
+                const name = s.stock_item_name || 'Unknown';
+                const ex = prodMap.get(name) || { name, totalAmount: 0, totalQty: 0, count: 0 };
+                ex.totalAmount += Number(s.amount || 0);
+                ex.totalQty += Number(s.quantity || 0);
+                ex.count += 1;
+                prodMap.set(name, ex);
+            });
+            setTopProducts(Array.from(prodMap.values()).sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 10));
+
+            // Top Customers by Sale
+            const custSaleMap = new Map<string, { name: string; totalAmount: number; count: number; company: string }>();
+            allVouchers.forEach((v: any) => {
+                const name = v.party_ledger_name;
+                if (!name) return;
+                const comp = companies.find((c: any) => c.id === v.company_id);
+                const ex = custSaleMap.get(name) || { name, totalAmount: 0, count: 0, company: comp?.name || '' };
+                ex.totalAmount += Number(v.amount || 0);
+                ex.count += 1;
+                custSaleMap.set(name, ex);
+            });
+            setTopCustomersSale(Array.from(custSaleMap.values()).sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 10));
+
+            // Top Customers by Payment
+            const custPayMap = new Map<string, { userId: string; totalPaid: number; count: number }>();
+            payments.filter((p: any) => p.status === 'paid' || p.status === 'completed').forEach((p: any) => {
+                const ex = custPayMap.get(p.user_id) || { userId: p.user_id, totalPaid: 0, count: 0 };
+                ex.totalPaid += Number(p.total_amount || p.amount || 0);
+                ex.count += 1;
+                custPayMap.set(p.user_id, ex);
+            });
+            const { data: allLicenses } = await supabase.from('user_licenses').select('user_id, email');
+            const emailMap = new Map((allLicenses || []).map((l: any) => [l.user_id, l.email]));
+            setTopCustomersPayment(Array.from(custPayMap.values()).map(c => ({ ...c, email: emailMap.get(c.userId) || c.userId })).sort((a, b) => b.totalPaid - a.totalPaid).slice(0, 10));
+
+            // Inactive Companies
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+            setInactiveCompanies(companies.filter((c: any) => !c.last_sync_at || new Date(c.last_sync_at) < thirtyDaysAgo));
+
+            // Company Performance
+            const perfMap = new Map<string, { name: string; vouchers: number; totalAmount: number; active: boolean }>();
+            companies.forEach((c: any) => perfMap.set(c.name, { name: c.name, vouchers: 0, totalAmount: 0, active: c.is_active }));
+            allVouchers.forEach((v: any) => {
+                const comp = companies.find((c: any) => c.id === v.company_id);
+                if (!comp) return;
+                const ex = perfMap.get(comp.name)!;
+                ex.vouchers += 1;
+                ex.totalAmount += Number(v.amount || 0);
+            });
+            setCompanyPerformance(Array.from(perfMap.values()).sort((a, b) => b.totalAmount - a.totalAmount));
+
+            setLoading(false);
+        };
+        load();
+    }, []);
+
+    if (loading) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Generating reports...</div>;
+
+    return (
+        <div className="space-y-3 px-[2px]">
+            <span className="text-[14px] font-black text-[var(--on-surface)]">Admin Analytics Reports</span>
+
+            <ReportCard title="Top Selling Products" emptyMsg="No product data" items={topProducts.map((p, i) => ({
+                rank: i + 1, label: p.name, sub: `Qty: ${p.totalQty.toLocaleString('en-IN')}`, value: `₹${p.totalAmount.toLocaleString('en-IN')}`, valueColor: 'text-emerald-500'
+            }))} />
+
+            <ReportCard title="Top Customers (by Sale)" emptyMsg="No customer data" items={topCustomersSale.map((c, i) => ({
+                rank: i + 1, label: c.name, sub: c.company ? `${c.company} · ${c.count} vouchers` : `${c.count} vouchers`, value: `₹${c.totalAmount.toLocaleString('en-IN')}`, valueColor: 'text-blue-500'
+            }))} />
+
+            <ReportCard title="Top Customers (by Payment)" emptyMsg="No payment data" items={topCustomersPayment.map((c, i) => ({
+                rank: i + 1, label: c.email || c.userId?.slice(0, 8), sub: `${c.count} payments`, value: `₹${c.totalPaid.toLocaleString('en-IN')}`, valueColor: 'text-emerald-500'
+            }))} />
+
+            <ReportCard title={`Inactive Companies (${inactiveCompanies.length})`} emptyMsg="All companies active!" subtitle="No sync in 30+ days" items={inactiveCompanies.map((c: any) => ({
+                rank: 0, label: c.name, sub: c.last_sync_at ? `Last: ${new Date(c.last_sync_at).toLocaleDateString('en-IN')}` : 'Never synced', value: '', valueColor: ''
+            }))} />
+
+            <ReportCard title="Company Performance" emptyMsg="No data" items={companyPerformance.map((c, i) => ({
+                rank: i + 1, label: c.name, sub: `${c.vouchers} vouchers`, value: `₹${c.totalAmount.toLocaleString('en-IN')}`, valueColor: 'text-[var(--on-surface)]'
+            }))} />
+        </div>
+    );
+}
+
+function ReportCard({ title, emptyMsg, subtitle, items }: { title: string; emptyMsg: string; subtitle?: string; items: { rank: number; label: string; sub: string; value: string; valueColor: string }[] }) {
+    return (
+        <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+            <span className="text-[12px] font-black">{title}</span>
+            {subtitle && <span className="text-[9px] text-[var(--text-muted)] ml-2">{subtitle}</span>}
+            {items.length === 0 ? (
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">{emptyMsg}</p>
+            ) : (
+                <div className="mt-2 space-y-1">
+                    {items.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between p-1.5 rounded bg-[var(--bg)] text-[9px]">
+                            <div className="flex items-center gap-2">
+                                {item.rank > 0 && <span className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-black ${item.rank <= 3 ? 'bg-amber-500/20 text-amber-500' : 'bg-[var(--surface)] text-[var(--text-muted)]'}`}>{item.rank}</span>}
+                                <div>
+                                    <span className="font-bold">{item.label}</span>
+                                    {item.sub && <span className="text-[var(--text-muted)] ml-1">{item.sub}</span>}
+                                </div>
+                            </div>
+                            {item.value && <span className={`font-bold ${item.valueColor}`}>{item.value}</span>}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
