@@ -82,19 +82,29 @@ export default function AdminPanelPage() {
     const { data: users = [] } = useQuery({
         queryKey: ['admin-users'],
         queryFn: async () => {
-            const { data: licenses, error: licErr } = await supabase.from('user_licenses')
-                .select('*')
-                .order('created_at', { ascending: false });
-            if (licErr) console.error('License query error:', licErr);
+            const { data: rpcData, error: rpcErr } = await supabase.rpc('get_admin_users');
+            if (rpcErr) {
+                console.error('RPC error, falling back:', rpcErr);
+                const { data: licenses } = await supabase.from('user_licenses').select('*').order('created_at', { ascending: false });
+                const { data: companyList } = await supabase.from('companies').select('id, name, owner_id');
+                const companiesByOwner = new Map<string, any[]>();
+                (companyList || []).forEach((c: any) => {
+                    if (c.owner_id) {
+                        const existing = companiesByOwner.get(c.owner_id) || [];
+                        existing.push(c);
+                        companiesByOwner.set(c.owner_id, existing);
+                    }
+                });
+                return (licenses || []).map((lic: any) => ({
+                    ...lic,
+                    email: null,
+                    plan_name: null,
+                    plan_slug: null,
+                    userCompanies: companiesByOwner.get(lic.user_id) || [],
+                }));
+            }
 
-            const { data: companyList } = await supabase.from('companies')
-                .select('id, name, owner_id')
-                .order('created_at', { ascending: false });
-
-            const { data: plansList } = await supabase.from('subscription_plans')
-                .select('id, name, slug');
-
-            const plansMap = new Map((plansList || []).map((p: any) => [p.id, p]));
+            const { data: companyList } = await supabase.from('companies').select('id, name, owner_id');
             const companiesByOwner = new Map<string, any[]>();
             (companyList || []).forEach((c: any) => {
                 if (c.owner_id) {
@@ -104,13 +114,22 @@ export default function AdminPanelPage() {
                 }
             });
 
-            return (licenses || []).map((lic: any) => ({
-                ...lic,
-                plan: lic.plan_id ? plansMap.get(lic.plan_id) : null,
-                userCompanies: companiesByOwner.get(lic.user_id) || [],
+            return (rpcData || []).map((u: any) => ({
+                id: u.out_id,
+                user_id: u.out_user_id,
+                email: u.out_email,
+                license_key: u.out_license_key,
+                status: u.out_status,
+                expiry_date: u.out_expiry_date,
+                tally_serial: u.out_tally_serial,
+                company_gst: u.out_company_gst,
+                plan_id: u.out_plan_id,
+                created_at: u.out_created_at,
+                plan: u.out_plan_name ? { name: u.out_plan_name, slug: u.out_plan_slug } : null,
+                userCompanies: companiesByOwner.get(u.out_user_id) || [],
             }));
         },
-        enabled: activeTab === 'users',
+        enabled: activeTab === 'users' || activeTab === 'user-detail',
     });
 
     // ═══ COMPANIES ═══
@@ -268,6 +287,7 @@ export default function AdminPanelPage() {
         if (!search) return users;
         const q = search.toLowerCase();
         return users.filter((u: any) =>
+            u.email?.toLowerCase().includes(q) ||
             u.license_key?.toLowerCase().includes(q) ||
             u.tally_serial?.toLowerCase().includes(q) ||
             u.company_gst?.toLowerCase().includes(q) ||
@@ -368,7 +388,7 @@ export default function AdminPanelPage() {
                                         <div className="flex items-center gap-2">
                                             <span className={`w-2 h-2 rounded-full ${isExpired ? 'bg-red-500' : u.status === 'suspended' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                                             <div>
-                                                <span className="text-[11px] font-bold">{u.license_key}</span>
+                                                <span className="text-[11px] font-bold">{u.email || u.user_id?.slice(0, 8) || 'Unknown'}</span>
                                                 {companyName && <span className="text-[9px] text-[var(--text-muted)] ml-2">{companyName}</span>}
                                             </div>
                                         </div>
@@ -377,6 +397,7 @@ export default function AdminPanelPage() {
                                         }`}>{u.status.toUpperCase()}</span>
                                     </div>
                                     <div className="flex items-center gap-3 text-[9px] text-[var(--text-muted)]">
+                                        <span className="font-mono">{u.license_key}</span>
                                         {u.tally_serial && <span>SN: {u.tally_serial}</span>}
                                         {u.company_gst && <span>GST: {u.company_gst}</span>}
                                         {u.plan && <span>Plan: {u.plan.name}</span>}
@@ -708,6 +729,7 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                     <div><span className="text-[var(--text-muted)]">Key:</span> <span className="font-bold font-mono">{license.license_key}</span></div>
+                    <div><span className="text-[var(--text-muted)]">Email:</span> <span className="font-bold">{license.email || 'N/A'}</span></div>
                     <div><span className="text-[var(--text-muted)]">User ID:</span> <span className="font-mono text-[8px]">{license.user_id}</span></div>
                     <div><span className="text-[var(--text-muted)]">Expiry:</span> <span className="font-bold">{new Date(license.expiry_date).toLocaleDateString('en-IN')}</span></div>
                     <div><span className="text-[var(--text-muted)]">Days Left:</span> <span className="font-bold">{daysLeft}</span></div>
