@@ -14,7 +14,7 @@ type LaunchState = 'preparing' | 'opening' | 'fallback' | 'error' | 'opened';
 export default function BillingLaunchPage() {
     const { selectedCompany } = useAuth() as any;
     const [launchState, setLaunchState] = useState<LaunchState>('preparing');
-    const [statusMessage, setStatusMessage] = useState('Preparing your JLS BILL session...');
+    const [statusMessage, setStatusMessage] = useState('Preparing your session...');
     const [errorMessage, setErrorMessage] = useState('');
     const [handoffId, setHandoffId] = useState<string | null>(null);
     const launchBusy = launchState === 'preparing' || launchState === 'opening';
@@ -22,27 +22,27 @@ export default function BillingLaunchPage() {
     const runLaunch = async () => {
         setErrorMessage('');
         setLaunchState('preparing');
-        setStatusMessage('Preparing your JLS BILL session...');
+        setStatusMessage('Preparing your billing session...');
 
         try {
             const handoff = await createBillingHandoff(selectedCompany);
             setHandoffId(handoff.handoffId);
             setLaunchState('opening');
-            setStatusMessage('Opening JLS BILL...');
+            setStatusMessage('Opening billing app...');
 
             const launchResult = await attemptOpenJlsBilling(handoff.handoffId);
             if (launchResult.opened) {
                 setLaunchState('opened');
-                setStatusMessage('JLS BILL opened successfully.');
+                setStatusMessage('Billing app opened successfully.');
                 return;
             }
 
             setLaunchState('fallback');
-            setStatusMessage('JLS BILL did not confirm launch. You can retry or install/update it from Play Store.');
+            setStatusMessage('Billing app did not confirm launch. You can retry or install/update it from Play Store.');
         } catch (error: any) {
             console.error('Billing launch failed:', error);
             setLaunchState('error');
-            setErrorMessage(error?.message || 'Unable to launch JLS BILL right now.');
+            setErrorMessage(error?.message || 'Unable to launch billing app right now.');
             setStatusMessage('Billing handoff failed.');
         }
     };
@@ -59,7 +59,7 @@ export default function BillingLaunchPage() {
                         {launchState === 'error' ? <AlertTriangle size={28} /> : launchState === 'opened' ? <CheckCircle2 size={28} /> : <RefreshCw size={28} className={launchState !== 'fallback' ? 'animate-spin' : ''} />}
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-2xl font-bold text-[var(--on-surface)] tracking-tight">Launching JLS BILL</h1>
+                        <h1 className="text-2xl font-bold text-[var(--on-surface)] tracking-tight">Launching Billing App</h1>
                         <p className="text-sm text-[var(--text-muted)] mt-2 leading-relaxed">{statusMessage}</p>
                         {selectedCompany?.name && (
                             <p className="text-xs text-[var(--text-muted)] mt-3">Company context: <span className="font-semibold text-[var(--on-surface)]">{selectedCompany.name}</span></p>
@@ -94,7 +94,7 @@ export default function BillingLaunchPage() {
 
                 <div className="mt-4 flex flex-col sm:flex-row gap-3 text-sm">
                     <a href={PLAY_STORE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-[var(--primary)] font-medium">
-                        <ExternalLink size={14} /> View JLS BILL listing
+                        <ExternalLink size={14} /> View Billing App listing
                     </a>
                     <SafeLink to="/select-mode" className="text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors">
                         Back to module selection

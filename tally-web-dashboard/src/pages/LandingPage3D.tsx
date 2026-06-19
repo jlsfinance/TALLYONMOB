@@ -166,7 +166,7 @@ export default function LandingPage3D() {
 
     return (
         <div className="bg-[#0A0C10] text-[#e2e2e8] selection:bg-cyan-500/30 selection:text-white font-sans overflow-x-hidden min-h-screen relative">
-            <SEO title="TallyLink | Fast Lending & Real-time Sync" description="Access Tally ERP 9 and TallyPrime with 0.2s sync and unlock instant business credit lines based on sales." />
+            <SEO title="SYNCORA TallyOnMobile | Fast Lending & Real-time Sync" description="Access Tally ERP 9 and TallyPrime with 0.2s sync and unlock instant business credit lines based on sales." />
             
             <WebGLBackground />
 
@@ -177,7 +177,7 @@ export default function LandingPage3D() {
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
                             <span className="text-xl font-black italic tracking-tighter text-white">TL</span>
                         </div>
-                        <span className="text-lg font-black uppercase tracking-widest hidden sm:block">TallyLink</span>
+                        <span className="text-lg font-black uppercase tracking-widest hidden sm:block">SYNCORA TallyOnMobile</span>
                     </div>
 
                     <div className="hidden md:flex items-center gap-2 p-1 bg-white/[0.03] backdrop-blur-2xl rounded-2xl border border-white/5">
@@ -265,7 +265,7 @@ export default function LandingPage3D() {
                             <div className="w-full max-w-[460px] p-2 rounded-3xl bg-gradient-to-br from-white/10 to-white/5 border border-white/15 backdrop-blur-xl shadow-2xl">
                                 <div className="relative rounded-2xl overflow-hidden bg-slate-950/80 border border-white/5 aspect-[4/3] flex items-center justify-center">
                                     <img 
-                                        alt="TallyLink Premium Dashboard Mockup" 
+                                        alt="SYNCORA TallyOnMobile Premium Dashboard Mockup" 
                                         className="w-full h-full object-cover rounded-xl"
                                         src="https://lh3.googleusercontent.com/aida/AP1WRLt8DNHkOrHV7vrp57UliyO_USk44IEOu9fc8X5Ua9GTve71LtoSiEcjbvYmqrf_1NBDA2SJaZFdQy15clPrkr0yuaEZHNJacyQVZWc9tOTCcTyqbKbMuKWpLKQi1HPApCaxN_YlO1NsZt8oqgv9_Irm6h0o-TKeVMFtKRDvglsreesTWdT2JLZMIVGYYcTZQVpvoUTzitI2P5RD7-sL4zrKtMVtDaKlnGZgm9B_bc3PrE8KgzPjwHmnZto"
                                     />
@@ -437,7 +437,7 @@ export default function LandingPage3D() {
                         <div className="flex-1 space-y-6">
                             <h2 className="text-3xl sm:text-5xl font-black tracking-tight">Your Data, Fortress Protected</h2>
                             <p className="text-slate-300 font-medium leading-relaxed">
-                                TallyLink adheres to military-grade standards. Your data is encrypted in transit and at rest. We partner strictly with RBI-regulated NBFCs to ensure your lending journey is fully compliant.
+                                SYNCORA TallyOnMobile adheres to military-grade standards. Your data is encrypted in transit and at rest. We partner strictly with RBI-regulated NBFCs to ensure your lending journey is fully compliant.
                             </p>
                             <div className="flex flex-wrap gap-3 pt-2">
                                 <div className="px-4 py-2 rounded-full bg-white/[0.04] border border-white/10 flex items-center gap-2">
@@ -472,12 +472,12 @@ export default function LandingPage3D() {
                     <div className="max-w-3xl mx-auto space-y-4">
                         {[
                             {
-                                q: "Is my Tally data safe with TallyLink?",
+                                q: "Is my Tally data safe with SYNCORA TallyOnMobile?",
                                 a: "Absolutely. We enforce banking-grade AES-256 encryption. Your financial data is securely transmitted and only accessed to assess credit limits with your explicit consent."
                             },
                             {
                                 q: "Do I need to provide any collateral for the loan?",
-                                a: "No. All credit lines extended through TallyLink NBFC partners are fully unsecured. We use your real-time Tally sales ledger as the primary underwriting factor."
+                                a: "No. All credit lines extended through SYNCORA TallyOnMobile NBFC partners are fully unsecured. We use your real-time Tally sales ledger as the primary underwriting factor."
                             },
                             {
                                 q: "How fast is the disbursal process?",
@@ -520,9 +520,9 @@ export default function LandingPage3D() {
                     <div className="space-y-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center text-sm font-black italic text-[#00363e]">TL</div>
-                            <span className="text-lg font-black uppercase tracking-widest text-white">TallyLink</span>
+                            <span className="text-lg font-black uppercase tracking-widest text-white">SYNCORA TallyOnMobile</span>
                         </div>
-                        <p className="text-xs text-slate-500 font-bold">© 2026 TallyLink Technologies. Precision Wealth Systems.</p>
+                        <p className="text-xs text-slate-500 font-bold">© 2026 SYNCORA Technologies. Precision Wealth Systems.</p>
                     </div>
 
                     <div>

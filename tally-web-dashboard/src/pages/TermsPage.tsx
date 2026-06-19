@@ -8,7 +8,7 @@ const termsCards = [
         title: 'Service scope',
         icon: FileText,
         points: [
-            'JLS Bill provides billing, GST invoicing, ledgers, stock workflows, and related support features delivered through our app and connected services.',
+            'SYNCORA TallyOnMobile provides billing, GST invoicing, ledgers, stock workflows, and related support features delivered through our app and connected services.',
             'Use of the app requires truthful account details and lawful business activity. You remain responsible for the content and correctness of entries you create.',
         ],
     },
@@ -42,8 +42,8 @@ export default function TermsPage() {
     return (
         <PublicPageLayout
             badge="Terms and Conditions"
-            title="Rules for using JLS Bill responsibly"
-            description="These terms define how JLS Bill can be used, what behavior is prohibited, how we handle availability, and how support or disputes are managed."
+            title="Rules for using SYNCORA TallyOnMobile responsibly"
+            description="These terms define how SYNCORA TallyOnMobile can be used, what behavior is prohibited, how we handle availability, and how support or disputes are managed."
             canonicalPath={APP_INFO.termsPath}
             icon={FileText}
             actions={

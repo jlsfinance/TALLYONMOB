@@ -45,7 +45,7 @@ export default function ContactUsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <SEO title="Contact Us | TallyOnMobile" description="Get in touch with TallyOnMobile team. Email, WhatsApp, phone support available." canonical="https://tallyonmob.vercel.app/contact" />
+      <SEO title="Contact Us | SYNCORA TallyOnMobile" description="Get in touch with SYNCORA TallyOnMobile team. Email, WhatsApp, phone support available." canonical="https://tallyonmob.vercel.app/contact" />
       
       <div className="max-w-5xl mx-auto px-4 py-8 pb-24">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] mb-6 transition-colors">

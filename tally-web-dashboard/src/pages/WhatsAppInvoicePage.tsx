@@ -46,7 +46,7 @@ export default function WhatsAppInvoicePage() {
                 `Party: ${voucher.party_name || 'N/A'}\n` +
                 `Amount: ${amount}\n\n` +
                 `View & pay: ${window.location.origin}/invoice/${voucher.id}\n\n` +
-                `Powered by TallyLink Cloud`
+                `Powered by SYNCORA TallyOnMobile Cloud`
             );
 
             // Open WhatsApp

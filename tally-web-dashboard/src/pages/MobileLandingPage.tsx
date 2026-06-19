@@ -166,7 +166,7 @@ export default function MobileLandingPage() {
 
     return (
         <div className="bg-[#0A0C10] text-[#e2e2e8] selection:bg-cyan-500/30 selection:text-white font-sans overflow-x-hidden min-h-screen relative">
-            <SEO title="TallyLink | Mobile Fast Lending & Sync" description="Access Tally ERP 9 and TallyPrime on the go with 0.2s sync and unlock instant business credit lines based on sales." />
+            <SEO title="SYNCORA TallyOnMobile | Mobile Fast Lending & Sync" description="Access Tally ERP 9 and TallyPrime on the go with 0.2s sync and unlock instant business credit lines based on sales." />
             
             <WebGLBackground />
 
@@ -177,7 +177,7 @@ export default function MobileLandingPage() {
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
                             <span className="text-xl font-black italic tracking-tighter text-white">TL</span>
                         </div>
-                        <span className="text-lg font-black uppercase tracking-widest">TallyLink</span>
+                        <span className="text-lg font-black uppercase tracking-widest">SYNCORA TallyOnMobile</span>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -236,7 +236,7 @@ export default function MobileLandingPage() {
                     <div className="w-full p-1.5 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/15 backdrop-blur-xl shadow-2xl">
                         <div className="relative rounded-xl overflow-hidden bg-slate-950/80 border border-white/5 aspect-[4/3] flex items-center justify-center">
                             <img 
-                                alt="TallyLink Premium Dashboard Mockup" 
+                                        alt="SYNCORA TallyOnMobile Premium Dashboard Mockup" 
                                 className="w-full h-full object-cover rounded-lg"
                                 src="https://lh3.googleusercontent.com/aida/AP1WRLt8DNHkOrHV7vrp57UliyO_USk44IEOu9fc8X5Ua9GTve71LtoSiEcjbvYmqrf_1NBDA2SJaZFdQy15clPrkr0yuaEZHNJacyQVZWc9tOTCcTyqbKbMuKWpLKQi1HPApCaxN_YlO1NsZt8oqgv9_Irm6h0o-TKeVMFtKRDvglsreesTWdT2JLZMIVGYYcTZQVpvoUTzitI2P5RD7-sL4zrKtMVtDaKlnGZgm9B_bc3PrE8KgzPjwHmnZto"
                             />
@@ -381,7 +381,7 @@ export default function MobileLandingPage() {
                 <section className="py-12 border-t border-white/5 space-y-6 max-w-lg mx-auto">
                     <h2 className="text-2xl font-black tracking-tight">Data Protected</h2>
                     <p className="text-xs text-slate-300 font-medium leading-relaxed">
-                        TallyLink adheres to military-grade standards. We partner strictly with RBI-regulated NBFCs to ensure safe, ethical, and fully compliant business lending.
+                        SYNCORA TallyOnMobile adheres to military-grade standards. We partner strictly with RBI-regulated NBFCs to ensure safe, ethical, and fully compliant business lending.
                     </p>
                     <div className="grid gap-3 pt-2">
                         <div className="px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 flex items-center gap-3">
@@ -446,9 +446,9 @@ export default function MobileLandingPage() {
                     <div className="space-y-2">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center text-sm font-black italic text-[#00363e]">TL</div>
-                            <span className="text-lg font-black uppercase tracking-widest text-white">TallyLink</span>
+                            <span className="text-lg font-black uppercase tracking-widest text-white">SYNCORA TallyOnMobile</span>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-bold">© 2026 TallyLink Technologies. All rights reserved.</p>
+                        <p className="text-[10px] text-slate-500 font-bold">© 2026 SYNCORA Technologies. All rights reserved.</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-8 text-xs font-bold">

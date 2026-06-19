@@ -32,12 +32,12 @@ export default function AccountDeletionPage() {
         <PublicPageLayout
             badge="Account Deletion"
             title="How verified account and business data deletion works"
-            description="This page explains how JLS Bill handles account closure, deletion requests, and the limited cases where records must still be retained for compliance or fraud review."
+            description="This page explains how SYNCORA TallyOnMobile handles account closure, deletion requests, and the limited cases where records must still be retained for compliance or fraud review."
             canonicalPath={APP_INFO.accountDeletionPath}
             icon={Trash2}
             actions={
                 <>
-                    <a href={`mailto:${APP_INFO.supportEmail}?subject=JLS%20Bill%20Account%20Deletion%20Request`} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
+                    <a href={`mailto:${APP_INFO.supportEmail}?subject=SYNCORA%20Account%20Deletion%20Request`} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
                         Email deletion request
                     </a>
                     <a href={`tel:${APP_INFO.supportPhone.replace(/\s+/g, '')}`} className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">

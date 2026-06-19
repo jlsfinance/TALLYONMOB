@@ -43,12 +43,18 @@ export default function DashboardPage() {
     const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
     const [dataFyStart, setDataFyStart] = useState<string | null>(null);
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const defaultFyStartYear = currentMonth < 3 ? currentYear - 1 : currentYear;
+    const [fyYear, setFyYear] = useState(defaultFyStartYear);
+    const [showFyDropdown, setShowFyDropdown] = useState(false);
+    const fyOptions = Array.from({ length: 10 }, (_, i) => defaultFyStartYear - i);
 
     const periodFilters = [
         { key: 'today', label: 'Today', icon: <Clock size={12} /> },
         { key: 'month', label: 'Month', icon: <Calendar size={12} /> },
         { key: '30days', label: '30 Days', icon: <Activity size={12} /> },
-        { key: 'year', label: 'FY', icon: <TrendingUp size={12} /> },
     ];
 
     const openVoucher = (voucher: any) => {
@@ -110,23 +116,16 @@ export default function DashboardPage() {
 
     const getDateRange = () => {
         const now = new Date();
+        const fyStartStr = `${fyYear}-04-01`;
+        const fyEndStr = `${fyYear + 1}-03-31`;
         switch (period) {
             case 'today': return { from: format(now, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
             case 'month': return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') };
             case '30days': return { from: format(subDays(now, 30), 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
-            case 'year': {
-                if (dataFyStart) {
-                    const fyEnd = `${parseInt(dataFyStart.substring(0, 4)) + 1}-03-31`;
-                    const to = fyEnd < format(now, 'yyyy-MM-dd') ? fyEnd : format(now, 'yyyy-MM-dd');
-                    return { from: dataFyStart, to };
-                }
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
-                const startYear = currentMonth < 3 ? currentYear - 1 : currentYear;
-                const fyStart = new Date(startYear, 3, 1);
-                return { from: format(fyStart, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+            default: {
+                const to = fyEndStr < format(now, 'yyyy-MM-dd') ? fyEndStr : format(now, 'yyyy-MM-dd');
+                return { from: fyStartStr, to };
             }
-            default: return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') };
         }
     };
 
@@ -497,6 +496,33 @@ export default function DashboardPage() {
                             </span>
                         </button>
                     ))}
+                    {/* FY Selector Dropdown */}
+                    <div className="relative ml-1">
+                        <button
+                            onClick={() => setShowFyDropdown(!showFyDropdown)}
+                            className="flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)]"
+                        >
+                            <TrendingUp size={12} />
+                            <span>FY {fyYear.toString().slice(2)}-{String(fyYear + 1).slice(2)}</span>
+                            <svg className={`w-3 h-3 transition-transform ${showFyDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                        {showFyDropdown && (
+                            <>
+                                <div className="fixed inset-0 z-10" onClick={() => setShowFyDropdown(false)} />
+                                <div className="absolute top-full left-0 mt-1 z-20 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden min-w-[130px]">
+                                    {fyOptions.map((year) => (
+                                        <button
+                                            key={year}
+                                            onClick={() => { setFyYear(year); setShowFyDropdown(false); }}
+                                            className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors hover:bg-[var(--surface-variant)] ${fyYear === year ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--on-surface)]'}`}
+                                        >
+                                            FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </HeaderPortal>
 
@@ -579,6 +605,33 @@ export default function DashboardPage() {
                                 {filter.label}
                             </button>
                         ))}
+                        {/* Mobile FY Selector */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowFyDropdown(!showFyDropdown)}
+                                className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase transition-all whitespace-nowrap bg-sky-500/10 text-sky-500 border border-sky-500/20"
+                            >
+                                <TrendingUp size={12} />
+                                FY {fyYear.toString().slice(2)}-{String(fyYear + 1).slice(2)}
+                                <svg className={`w-3 h-3 transition-transform ${showFyDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {showFyDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowFyDropdown(false)} />
+                                    <div className="absolute top-full left-0 mt-1 z-20 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden min-w-[130px]">
+                                        {fyOptions.map((year) => (
+                                            <button
+                                                key={year}
+                                                onClick={() => { setFyYear(year); setShowFyDropdown(false); }}
+                                                className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors hover:bg-[var(--surface-variant)] ${fyYear === year ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--on-surface)]'}`}
+                                            >
+                                                FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}

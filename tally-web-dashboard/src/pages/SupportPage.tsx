@@ -37,7 +37,7 @@ export default function SupportPage() {
         <PublicPageLayout
             badge="Support Center"
             title="Contact, escalation, and issue-reporting guidance"
-            description="Use this page when you need product support, refund help, a security response, or account deletion assistance for JLS Bill."
+            description="Use this page when you need product support, refund help, a security response, or account deletion assistance for SYNCORA TallyOnMobile."
             canonicalPath={APP_INFO.supportPath}
             icon={LifeBuoy}
             actions={

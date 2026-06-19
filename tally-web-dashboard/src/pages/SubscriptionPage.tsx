@@ -84,7 +84,7 @@ export default function SubscriptionPage() {
                 key: import.meta.env.VITE_RAZORPAY_KEY_ID,
                 amount: amountInPaise,
                 currency: 'INR',
-                name: 'TallyLink',
+                name: 'SYNCORA TallyOnMobile',
                 description: `${plan.name} Plan - ₹${plan.price} ${plan.duration}`,
                 prefill: {
                     email: user.email || '',

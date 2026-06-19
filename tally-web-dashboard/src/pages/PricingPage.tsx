@@ -20,18 +20,28 @@ const PLANS = [
   },
   {
     name: 'Monthly', price: '₹99', priceInPaise: 9900, duration: '/month', icon: <Star size={20} />,
-    features: ['3 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports'],
+    features: ['1 Company', '100 Vouchers/day', 'All Reports', 'WhatsApp Share', 'Email Invoices', 'Priority Support'],
     cta: 'Subscribe Now', color: 'border-indigo-500/50', popular: true, planId: 'monthly',
   },
   {
     name: 'Quarterly', price: '₹249', priceInPaise: 24900, duration: '/quarter', badge: 'Save 16%', icon: <Star size={20} />,
-    features: ['5 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export'],
+    features: ['2 Companies', 'Unlimited Vouchers', 'Advanced Analytics', 'Priority Support', 'GST Filing', 'Data Export'],
     cta: 'Subscribe Now', color: 'border-emerald-500/50', popular: false, planId: 'quarterly',
   },
   {
+    name: 'Half Yearly', price: '₹499', priceInPaise: 49900, duration: '/6 months', badge: 'Save 17%', icon: <Star size={20} />,
+    features: ['3 Companies', 'Unlimited Vouchers', 'Advanced Analytics', 'Priority Support', 'GST Filing', 'Data Export'],
+    cta: 'Subscribe Now', color: 'border-purple-500/50', popular: false, planId: 'half_yearly',
+  },
+  {
     name: 'Yearly', price: '₹999', priceInPaise: 99900, duration: '/year', badge: 'Save 17%', icon: <Crown size={20} />,
-    features: ['10 Companies', 'Unlimited Vouchers', 'All Reports', 'AI Insights', 'WhatsApp Alerts', 'Priority Support', 'GST Reports', 'Data Export', 'API Access', 'Custom Reports'],
+    features: ['5 Companies', 'Unlimited Everything', 'AI Insights', 'Custom Templates', 'Dedicated Support', 'GST Filing', 'API Access'],
     cta: 'Subscribe Now', color: 'border-amber-500/50', popular: false, planId: 'yearly',
+  },
+  {
+    name: 'Lifetime', price: '₹4,999', priceInPaise: 499900, duration: 'forever', badge: 'Best Value', icon: <Crown size={20} />,
+    features: ['Unlimited Companies', 'Unlimited Everything', 'AI Insights', 'Custom Templates', 'Dedicated Support', 'Free Updates', 'Lifetime Access'],
+    cta: 'Buy Lifetime', color: 'border-emerald-500/50', popular: false, planId: 'lifetime',
   },
   {
     name: 'Enterprise', price: 'Custom', priceInPaise: 0, duration: 'per year', icon: <Building2 size={20} />,
@@ -88,7 +98,7 @@ export default function PricingPage() {
         key: import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount: plan.priceInPaise,
         currency: 'INR',
-        name: 'TallyLink',
+        name: 'SYNCORA TallyOnMobile',
         description: `${plan.name} Plan - ${plan.price}${plan.duration}`,
         prefill: {
           email: user.email || '',
@@ -118,7 +128,7 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <SEO title="Pricing | TallyOnMobile" description="Simple, transparent pricing for TallyOnMobile. Start free, upgrade when ready. All plans include real-time Tally sync." canonical="https://tallyonmob.vercel.app/pricing" />
+      <SEO title="Pricing | SYNCORA TallyOnMobile" description="Simple, transparent pricing for SYNCORA TallyOnMobile. Start free, upgrade when ready. All plans include real-time Tally sync." canonical="https://tallyonmob.vercel.app/pricing" />
       
       <div className="max-w-6xl mx-auto px-4 py-8 pb-24">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] mb-6 transition-colors">

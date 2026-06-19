@@ -32,7 +32,7 @@ export default function RefundPolicyPage() {
         <PublicPageLayout
             badge="Refund and Cancellation"
             title="How billing cancellations and refund reviews are handled"
-            description="This page explains how JLS Bill handles cancellation, refund eligibility, and the information required to review a billing dispute or service issue."
+            description="This page explains how SYNCORA TallyOnMobile handles cancellation, refund eligibility, and the information required to review a billing dispute or service issue."
             canonicalPath={APP_INFO.refundPath}
             icon={RefreshCcw}
             actions={

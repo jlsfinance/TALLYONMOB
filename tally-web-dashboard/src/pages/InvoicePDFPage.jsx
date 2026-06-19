@@ -1261,7 +1261,7 @@ export default function InvoicePDFPage() {
     -------------------
 
     Thank you for your business!
-    Generated via JLS BillBook`;
+    Generated via SYNCORA TallyOnMobile`;
 
         window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
     };

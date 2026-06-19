@@ -101,7 +101,7 @@ const JOURNEY_STEPS = [
     },
     {
         step: 2,
-        title: 'TallyLink Sync App',
+        title: 'SYNCORA TallyOnMobile Sync App',
         subtitle: 'Windows Background Service',
         desc: 'Our lightweight Windows app runs in the background, continuously syncing your Tally data to the cloud via secure API.',
         icon: <ArrowRight size={28} />,
@@ -111,7 +111,7 @@ const JOURNEY_STEPS = [
     },
     {
         step: 3,
-        title: 'TallyLink Cloud',
+        title: 'SYNCORA TallyOnMobile Cloud',
         subtitle: 'Secure Cloud Storage',
         desc: 'Your data is encrypted and stored in Indian data centers. Always available, always synced, always secure.',
         icon: <Cloud size={28} />,
@@ -171,7 +171,7 @@ export default function LandingPage() {
 
     return (
         <div className="bg-[#0A0C10] text-white selection:bg-cyan-500/30 font-sans overflow-x-hidden min-h-screen">
-            <SEO title="TallyLink Cloud — Real-time Tally Sync & Business Management" description="Sync Tally ERP 9/TallyPrime to cloud in 0.2s. Access dashboards, send invoices via WhatsApp, AI-powered insights, and manage your business from anywhere." />
+            <SEO title="SYNCORA TallyOnMobile — Real-time Tally Sync & Business Management" description="Sync Tally ERP 9/TallyPrime to cloud in 0.2s. Access dashboards, send invoices via WhatsApp, AI-powered insights, and manage your business from anywhere." />
 
             {/* ===== HEADER ===== */}
             <header className="fixed top-0 w-full bg-[#111318]/80 backdrop-blur-xl border-b border-white/10 z-50">
@@ -180,7 +180,7 @@ export default function LandingPage() {
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
                             <span className="text-sm font-black italic text-white">TL</span>
                         </div>
-                        <span className="text-base font-black uppercase tracking-widest hidden sm:block">TallyLink</span>
+                        <span className="text-base font-black uppercase tracking-widest hidden sm:block">SYNCORA TallyOnMobile</span>
                     </div>
                     <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-400">
                         <button onClick={() => document.getElementById('journey')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-white transition-colors">How it Works</button>
@@ -342,7 +342,7 @@ export default function LandingPage() {
                     <div className="text-center space-y-3">
                         <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-widest">Powerful Features</p>
                         <h2 className="text-3xl md:text-4xl font-black tracking-tight">Everything You Need</h2>
-                        <p className="text-sm text-slate-400 max-w-lg mx-auto">From basic accounting to AI-powered insights — TallyLink has it all.</p>
+                        <p className="text-sm text-slate-400 max-w-lg mx-auto">From basic accounting to AI-powered insights — SYNCORA TallyOnMobile has it all.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -438,7 +438,7 @@ export default function LandingPage() {
             <section className="py-20 px-4 md:px-8 border-t border-white/5">
                 <div className="max-w-3xl mx-auto text-center space-y-6">
                     <h2 className="text-3xl md:text-4xl font-black tracking-tight">Ready to Transform Your Business?</h2>
-                    <p className="text-sm text-slate-400">Join 15,000+ businesses already using TallyLink to manage their accounts from anywhere.</p>
+                    <p className="text-sm text-slate-400">Join 15,000+ businesses already using SYNCORA TallyOnMobile to manage their accounts from anywhere.</p>
                     <button onClick={() => navigate('/login')} className="group px-8 py-4 bg-gradient-to-r from-cyan-400 to-cyan-600 text-[#00363e] rounded-xl text-sm font-black uppercase tracking-wider hover:scale-[1.02] transition-all inline-flex items-center gap-3 shadow-xl shadow-cyan-400/25">
                         Start Free Now <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                     </button>
@@ -452,7 +452,7 @@ export default function LandingPage() {
                         <div>
                             <div className="flex items-center gap-2 mb-4">
                                 <div className="w-8 h-8 rounded-lg bg-cyan-500 flex items-center justify-center text-xs font-black text-[#00363e]">TL</div>
-                                <span className="text-sm font-black uppercase tracking-widest">TallyLink</span>
+                                <span className="text-sm font-black uppercase tracking-widest">SYNCORA TallyOnMobile</span>
                             </div>
                             <p className="text-[10px] text-slate-500 leading-relaxed">Real-time Tally sync for modern businesses.</p>
                         </div>
@@ -492,7 +492,7 @@ export default function LandingPage() {
                         </div>
                     </div>
                     <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                        <p>© 2026 TallyLink Technologies. All rights reserved.</p>
+                        <p>© 2026 SYNCORA Technologies. All rights reserved.</p>
                         <div className="flex items-center gap-4">
                             <span className="flex items-center gap-1"><ShieldCheck size={10} /> AES-256 Encrypted</span>
                             <span className="flex items-center gap-1"><Lock size={10} /> ISO 27001</span>

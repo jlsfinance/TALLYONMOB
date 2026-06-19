@@ -117,8 +117,8 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
             <SEO
-                title={isLogin ? "Client Login | TallyLink" : "Create Account | TallyLink"}
-                description="Securely access your TallyLink business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
+                title={isLogin ? "Client Login | SYNCORA TallyOnMobile" : "Create Account | SYNCORA TallyOnMobile"}
+                description="Securely access your SYNCORA TallyOnMobile business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
@@ -147,7 +147,7 @@ export default function LoginPage() {
                             </svg>
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">TallyLink</h1>
+                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">SYNCORA TallyOnMobile</h1>
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
                         </div>
                     </div>
@@ -168,7 +168,7 @@ export default function LoginPage() {
                             <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
                                 {isLogin
                                     ? 'Sign in to access your business dashboard'
-                                    : 'Get started with TallyLink in under a minute'
+                                    : 'Get started with SYNCORA TallyOnMobile in under a minute'
                                 }
                             </p>
                         </motion.div>

@@ -249,7 +249,7 @@ export default function BillingDashboard() {
                                     <Store size={30} />
                                 </div>
                                 <div>
-                                    <p className="text-xs font-black uppercase tracking-[0.35em] text-[var(--primary)]">JLS BILL</p>
+                                    <p className="text-xs font-black uppercase tracking-[0.35em] text-[var(--primary)]">SYNCORA</p>
                                     <h1 className="text-3xl font-black tracking-[-0.04em] text-[var(--on-surface)] sm:text-4xl">
                                         Smart Calculator & GST Billing
                                     </h1>
@@ -310,7 +310,7 @@ export default function BillingDashboard() {
                             <div className="flex items-center justify-between gap-3">
                                 <div>
                                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-cyan-300/70">Desktop listing panel</p>
-                                    <h2 className="mt-2 text-2xl font-black tracking-tight">JLS BILL</h2>
+                                    <h2 className="mt-2 text-2xl font-black tracking-tight">SYNCORA</h2>
                                     <p className="mt-1 text-sm text-slate-300">Billing, invoices, ledger, and privacy controls based on the live Play Store listing.</p>
                                 </div>
                                 <div className="rounded-[22px] border border-white/10 bg-white/10 p-3 text-cyan-300 backdrop-blur">
@@ -452,7 +452,7 @@ export default function BillingDashboard() {
                             <EmptyState
                                 icon={<Receipt />}
                                 title={loading ? 'Loading billing activity' : 'No billing activity yet'}
-                                description={loading ? 'Pulling the latest billing stream for this company.' : 'Start with an invoice or launch the JLS BILL handoff to begin.'}
+                                description={loading ? 'Pulling the latest billing stream for this company.' : 'Start with an invoice or launch the SYNCORA handoff to begin.'}
                             />
                         ) : (
                             <div className="divide-y divide-[var(--border)]">

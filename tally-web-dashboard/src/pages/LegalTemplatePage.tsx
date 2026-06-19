@@ -25,7 +25,7 @@ export default function LegalTemplatePage() {
     return (
         <div className="min-h-screen bg-[#030712] text-slate-300 selection:bg-cyan-500/30 font-sans selection:text-white">
             <SEO
-                title={`${page.title} | TallyLink Legal Portal`}
+                title={`${page.title} | SYNCORA Legal Portal`}
                 description={page.executiveSummary}
                 canonical={`https://tallyonmob.vercel.app/legal/${slug}`}
                 schema={{
@@ -36,7 +36,7 @@ export default function LegalTemplatePage() {
                     "dateModified": page.lastUpdated,
                     "author": {
                         "@type": "Organization",
-                        "name": "TallyLink Technologies"
+                        "name": "SYNCORA Technologies"
                     }
                 }}
             />
@@ -48,7 +48,7 @@ export default function LegalTemplatePage() {
                             <div className="text-white transform group-hover:rotate-12 transition-transform">{page.icon}</div>
                         </div>
                         <div className="flex flex-col">
-                            <span className="font-black text-xl tracking-tighter uppercase italic text-white leading-none">TallyLink</span>
+                            <span className="font-black text-xl tracking-tighter uppercase italic text-white leading-none">SYNCORA</span>
                             <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-cyan-500/80">Legal Portal</span>
                         </div>
                     </div>

@@ -24,7 +24,7 @@ export default function AboutUsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <SEO title="About Us | TallyOnMobile" description="TallyOnMobile - India's leading Tally cloud sync platform. Real-time Tally data on any device." canonical="https://tallyonmob.vercel.app/about" />
+      <SEO title="About Us | SYNCORA TallyOnMobile" description="SYNCORA TallyOnMobile - India's leading Tally cloud sync platform. Real-time Tally data on any device." canonical="https://tallyonmob.vercel.app/about" />
       
       <div className="max-w-5xl mx-auto px-4 py-8 pb-24">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] mb-6 transition-colors">
@@ -33,7 +33,7 @@ export default function AboutUsPage() {
 
         {/* Hero */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-black text-[var(--on-surface)] mb-4">About TallyOnMobile</h1>
+          <h1 className="text-4xl font-black text-[var(--on-surface)] mb-4">About SYNCORA TallyOnMobile</h1>
           <p className="text-lg text-[var(--text-muted)] max-w-2xl mx-auto">
             We're on a mission to make Tally data accessible to every business owner, accountant, and decision-maker — anytime, anywhere.
           </p>
@@ -57,13 +57,13 @@ export default function AboutUsPage() {
             Tally is the backbone of Indian accounting. But accessing your financial data has been limited to one desktop, one location. We're changing that.
           </p>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            TallyOnMobile bridges the gap between Tally's powerful accounting engine and modern cloud accessibility. Your data stays in Tally — we just make it visible, portable, and insightful across all your devices.
+            SYNCORA TallyOnMobile bridges the gap between Tally's powerful accounting engine and modern cloud accessibility. Your data stays in Tally — we just make it visible, portable, and insightful across all your devices.
           </p>
         </div>
 
         {/* Why TallyOnMobile */}
         <div className="mb-8">
-          <h2 className="text-2xl font-black text-[var(--on-surface)] mb-6">Why TallyOnMobile?</h2>
+          <h2 className="text-2xl font-black text-[var(--on-surface)] mb-6">Why SYNCORA TallyOnMobile?</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {FEATURES.map((f, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}

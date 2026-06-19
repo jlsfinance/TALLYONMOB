@@ -41,13 +41,13 @@ export default function SecurityPage() {
     return (
         <PublicPageLayout
             badge="Security Center"
-            title="How JLS Bill reduces crash risk and raises the bar against abuse"
+            title="How SYNCORA TallyOnMobile reduces crash risk and raises the bar against abuse"
             description="This page describes the practical protections built into the app, what users should still do on their side, and how to report a security concern responsibly."
             canonicalPath={APP_INFO.securityPath}
             icon={Lock}
             actions={
                 <>
-                    <a href={`mailto:${APP_INFO.supportEmail}?subject=JLS%20Bill%20Security%20Report`} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
+                    <a href={`mailto:${APP_INFO.supportEmail}?subject=SYNCORA%20Security%20Report`} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
                         Report a security issue
                     </a>
                     <a href={APP_INFO.playStoreUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">

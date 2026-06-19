@@ -156,7 +156,7 @@ const OnboardingPage = () => {
                         <Sparkles className="w-10 h-10 text-white" />
                     </div>
                     <h1 className="text-5xl md:text-6xl font-black text-white mb-4 tracking-tight">
-                        Welcome to <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">TallyLink</span>
+                        Welcome to <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">SYNCORA TallyOnMobile</span>
                     </h1>
                     <p className="text-xl text-gray-400 max-w-2xl mx-auto">
                         Sync your Tally data to the cloud and access it anywhere, anytime

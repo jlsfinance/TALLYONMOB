@@ -46,8 +46,8 @@ export default function PrivacyPolicyPage() {
     return (
         <PublicPageLayout
             badge="Privacy Policy"
-            title="How JLS Bill handles business and user data"
-            description="This page explains what data JLS Bill processes, why it is needed, how it is protected, and how users can request deletion or support."
+            title="How SYNCORA TallyOnMobile handles business and user data"
+            description="This page explains what data SYNCORA TallyOnMobile processes, why it is needed, how it is protected, and how users can request deletion or support."
             canonicalPath={APP_INFO.privacyPath}
             icon={ShieldCheck}
             actions={
