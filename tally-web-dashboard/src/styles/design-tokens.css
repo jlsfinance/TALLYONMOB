@@ -1,0 +1,198 @@
+/* ============================================
+   LIVEKEEPINGS-INSPIRED DESIGN TOKENS
+   Professional Fintech — Clean Blue Theme
+   ============================================ */
+
+:root {
+  /* ==========================================
+     COLOR PALETTE - CORE
+     ========================================== */
+  
+  /* Primary — LiveKeepings Blue */
+  --primary: #1565C0;
+  --primary-rgb: 21, 101, 192;
+  --primary-light: #1976D2;
+  --primary-dark: #0D47A1;
+  
+  /* Secondary — Professional Slate */
+  --secondary: #546E7A;
+  --secondary-rgb: 84, 110, 122;
+  --secondary-light: #78909C;
+  
+  /* Tertiary — Success Green */
+  --tertiary: #2E7D32;
+  --tertiary-rgb: 46, 125, 50;
+  
+  /* Backgrounds */
+  --bg-primary: #F5F7FA;
+  --bg-secondary: #FFFFFF;
+  --bg-gradient: linear-gradient(180deg, #F5F7FA 0%, #FFFFFF 100%);
+  
+  /* Text Colors */
+  --text-primary: #263238;
+  --text-secondary: #37474F;
+  --text-tertiary: #546E7A;
+  --text-muted: #78909C;
+  --text-disabled: #B0BEC5;
+  
+  /* Status Colors */
+  --status-success: #2E7D32;
+  --status-success-bg: #E8F5E9;
+  --status-warning: #F57F17;
+  --status-warning-bg: #FFF8E1;
+  --status-error: #C62828;
+  --status-error-bg: #FFEBEE;
+  --status-info: #1565C0;
+  --status-info-bg: #E3F2FD;
+  
+  /* ==========================================
+     SHADOWS & DEPTH
+     ========================================== */
+  
+  --shadow-xs: 0 1px 3px rgba(38, 50, 56, 0.04);
+  --shadow-sm: 0 2px 8px rgba(38, 50, 56, 0.06);
+  --shadow-md: 0 4px 12px rgba(38, 50, 56, 0.08);
+  --shadow-lg: 0 8px 24px rgba(38, 50, 56, 0.10);
+  --shadow-xl: 0 16px 48px rgba(38, 50, 56, 0.12);
+  
+  /* ==========================================
+     GRADIENTS
+     ========================================== */
+  
+  /* Card Gradients — Subtle */
+  --gradient-card-sales: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+  --gradient-card-purchases: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+  --gradient-card-outstanding: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
+  --gradient-card-profit: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+  
+  /* ==========================================
+     TYPOGRAPHY
+     ========================================== */
+  
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  
+  /* Font Sizes */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  
+  /* Font Weights */
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  
+  /* ==========================================
+     SPACING
+     ========================================== */
+  
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  
+  /* ==========================================
+     BORDER RADIUS
+     ========================================== */
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+  
+  /* ==========================================
+     TRANSITIONS
+     ========================================== */
+  
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --transition-fast: all 0.15s var(--ease-out);
+  --transition-base: all 0.2s var(--ease-out);
+  --transition-slow: all 0.3s var(--ease-out);
+  
+  /* ==========================================
+     Z-INDEX
+     ========================================== */
+  
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-fixed: 30;
+  --z-modal: 50;
+  --z-toast: 80;
+  --z-max: 9999;
+}
+
+/* Dark Mode Tokens */
+.dark {
+  --primary: #42A5F5;
+  --primary-rgb: 66, 165, 245;
+  --primary-light: #64B5F6;
+  --primary-dark: #1E88E5;
+  
+  --secondary: #90A4AE;
+  --secondary-rgb: 144, 164, 174;
+  --secondary-light: #B0BEC5;
+  
+  --tertiary: #66BB6A;
+  --tertiary-rgb: 102, 187, 106;
+  
+  --bg-primary: #0D1117;
+  --bg-secondary: #161B22;
+  --bg-gradient: linear-gradient(180deg, #0D1117 0%, #161B22 100%);
+  
+  --text-primary: #F0F6FC;
+  --text-secondary: #E6EDF3;
+  --text-tertiary: #8B949E;
+  --text-muted: #6E7681;
+  --text-disabled: #484F58;
+  
+  --status-success: #66BB6A;
+  --status-success-bg: rgba(46, 125, 50, 0.1);
+  --status-warning: #F0883E;
+  --status-warning-bg: rgba(240, 136, 62, 0.1);
+  --status-error: #F85149;
+  --status-error-bg: rgba(248, 81, 73, 0.1);
+  --status-info: #42A5F5;
+  --status-info-bg: rgba(21, 101, 192, 0.1);
+  
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-primary);
+  background: var(--bg-gradient);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

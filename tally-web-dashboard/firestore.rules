@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if user is signed in
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Require authentication for all standard Tally Sync collections
+    match /companies/{id} { allow read, write: if isAuthenticated(); }
+    match /ledgers/{id} { allow read, write: if isAuthenticated(); }
+    match /vouchers/{id} { allow read, write: if isAuthenticated(); }
+    match /stock_items/{id} { allow read, write: if isAuthenticated(); }
+    match /voucher_ledger_entries/{id} { allow read, write: if isAuthenticated(); }
+    match /voucher_stock_entries/{id} { allow read, write: if isAuthenticated(); }
+    match /sales/{id} { allow read, write: if isAuthenticated(); }
+    match /purchases/{id} { allow read, write: if isAuthenticated(); }
+    match /ledger_groups/{id} { allow read, write: if isAuthenticated(); }
+    match /cost_centres/{id} { allow read, write: if isAuthenticated(); }
+    match /stock_groups/{id} { allow read, write: if isAuthenticated(); }
+    match /stock_categories/{id} { allow read, write: if isAuthenticated(); }
+    match /voucher_types/{id} { allow read, write: if isAuthenticated(); }
+    match /sync_history/{id} { allow read, write: if isAuthenticated(); }
+    
+    // Catch-all fallback
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

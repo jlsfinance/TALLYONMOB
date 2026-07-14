@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>app_icon.ico</ApplicationIcon>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <AssemblyName>TallyLink</AssemblyName>
+    <RootNamespace>TallySyncApp</RootNamespace>
+    <Version>2.10.2</Version>
+    <Authors>TallySync</Authors>
+    <Company>TallySync</Company>
+    <Product>TallySync - Tally Data Sync</Product>
+    <Description>Sync Tally ERP data to cloud for mobile access</Description>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="app_icon.ico" />
+    <Resource Include="tallylink_logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="appwrite" Version="0.27.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Exclude TallySyncApp subfolder to avoid conflicts -->
+  <ItemGroup>
+    <Compile Remove="TallySyncApp\**" />
+    <Page Remove="TallySyncApp\**" />
+    <EmbeddedResource Remove="TallySyncApp\**" />
+    <None Remove="TallySyncApp\**" />
+  </ItemGroup>
+
+  <!-- Permanently fix: always copy appsettings.json next to EXE after publish -->
+  <!-- PublishSingleFile mode silently skips non-code content files -->
+  <Target Name="CopyAppSettingsAfterPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\appsettings.json" DestinationFiles="$(PublishDir)appsettings.json" OverwriteReadOnlyFiles="true" />
+    <Message Text="✅ appsettings.json copied to $(PublishDir)" Importance="high" />
+  </Target>
+
+</Project>
+
+
+
+
+

@@ -1,0 +1,279 @@
+/* Material 3 System - Restored & Cleaned */
+
+/* Light Mode (Default) - Clean & Professional */
+:root {
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
+    --primary-container: #dbeafe;
+    --on-primary-container: #1e40af;
+
+    --secondary: #64748b;
+    --secondary-foreground: #ffffff;
+    --secondary-container: #f1f5f9;
+    --on-secondary-container: #0f172a;
+
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-variant: #f8fafc;
+    --surface-elevated: #ffffff;
+
+    --on-background: #0f172a;
+    --on-surface: #0f172a;
+    --on-surface-variant: #64748b;
+    --text-muted: #94a3b8;
+
+    --success: #10b981;
+    --success-bg: #dcfce7;
+    --error: #ef4444;
+    --error-bg: #fee2e2;
+    --warning: #f59e0b;
+    --warning-bg: #fef3c7;
+
+    --border: #e2e8f0;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+
+    /* Material 3 Mappings */
+    --md-sys-color-primary: var(--primary);
+    --md-sys-color-on-primary: var(--primary-foreground);
+    --md-sys-color-primary-container: var(--primary-container);
+    --md-sys-color-on-primary-container: var(--on-primary-container);
+    --md-sys-color-background: var(--background);
+    --md-sys-color-surface: var(--surface);
+    --md-sys-color-surface-variant: var(--surface-variant);
+    --md-sys-color-on-surface: var(--on-surface);
+    --md-sys-color-on-surface-variant: var(--on-surface-variant);
+    --md-radius-xl: var(--radius-xl);
+    --md-radius-full: var(--radius-full);
+}
+
+/* Dark Mode - Deep Nebula Premium */
+[class="dark"] {
+    --primary: #8b5cf6;
+    --primary-foreground: #ffffff;
+    --primary-container: rgba(139, 92, 246, 0.2);
+    --on-primary-container: #ddd6fe;
+
+    --secondary: #06b6d4;
+    --secondary-foreground: #ffffff;
+    --secondary-container: rgba(6, 182, 212, 0.2);
+    --on-secondary-container: #cffafe;
+
+    --background: #030014;
+    --surface: rgba(15, 23, 42, 0.6);
+    --surface-variant: rgba(30, 41, 59, 0.6);
+    --surface-elevated: #0f172a;
+
+    --on-background: #ffffff;
+    --on-surface: #ffffff;
+    --on-surface-variant: #94a3b8;
+    --text-muted: #64748b;
+
+    --success: #10b981;
+    --success-bg: rgba(16, 185, 129, 0.15);
+    --error: #ef4444;
+    --error-bg: rgba(239, 68, 68, 0.15);
+    --warning: #f59e0b;
+    --warning-bg: rgba(245, 158, 11, 0.15);
+
+    --border: rgba(255, 255, 255, 0.1);
+}
+
+.page-m3 {
+    background-color: transparent;
+    min-height: auto;
+    padding: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--on-surface);
+}
+
+/* Header */
+.page-m3__header {
+    margin-bottom: 32px;
+}
+
+.page-m3__title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--on-surface);
+    letter-spacing: -0.025em;
+}
+
+.page-m3__subtitle {
+    font-size: 14px;
+    color: var(--on-surface-variant);
+}
+
+/* KPI Cards */
+.page-m3__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.page-m3__stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--md-radius-xl);
+    padding: 20px;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.page-m3__stat-card:hover {
+    transform: translateY(-4px);
+    background: var(--surface-variant);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.page-m3__stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--on-surface);
+}
+
+.page-m3__stat-label {
+    font-size: 13px;
+    color: var(--on-surface-variant);
+    margin-top: 4px;
+}
+
+/* Filters */
+.page-m3__filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 8px;
+}
+
+/* Filter Chips */
+.page-m3__filter-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.page-m3__chip {
+    height: 40px;
+    padding: 0 20px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--on-surface-variant);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.page-m3__chip:hover {
+    background: var(--surface-variant);
+    color: var(--on-surface);
+}
+
+.page-m3__chip--active,
+.page-m3__chip.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: transparent;
+}
+
+/* Inputs */
+.page-m3__input,
+.page-m3__select,
+.page-m3__textarea,
+.page-m3__search-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--on-surface);
+    border-radius: 12px;
+    padding: 12px 16px;
+    width: 100%;
+}
+
+.page-m3__input:focus,
+.page-m3__search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-container);
+}
+
+/* Search Bar */
+.page-m3__search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.page-m3__search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--text-muted);
+}
+
+.page-m3__search-input {
+    padding-left: 40px;
+}
+
+/* List Cards & Items */
+.page-m3__card,
+.page-m3__list-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    transition: all 0.2s;
+    color: var(--on-surface);
+    display: block;
+    /* Ensure it works for Links */
+    text-decoration: none;
+}
+
+.page-m3__card:hover,
+.page-m3__list-item:hover {
+    background: var(--surface-variant);
+    transform: translateY(-2px);
+    border-color: var(--primary);
+}
+
+/* FAB */
+.page-m3__fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 20px;
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.page-m3__fab:hover {
+    transform: scale(1.05);
+    background: var(--primary-dark);
+}
+
+/* Empty State */
+.page-m3__empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://tallyonmob.vercel.app/</loc>
+    <lastmod>2026-02-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://tallyonmob.vercel.app/login</loc>
+    <lastmod>2026-02-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Legal Pages -->
+  <url><loc>https://tallyonmob.vercel.app/legal/privacy-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/terms-and-conditions</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/refund-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/cookie-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/acceptable-use-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/billing-and-subscription</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/termination-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/gst-compliance-statement</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/data-protection-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/service-level-agreement</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/intellectual-property-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/user-grievance-redressal</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/disclaimer-and-liability</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/indemnification-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/security-statement</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/sub-processor-list</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/anti-spam-policy</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/third-party-disclosures</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/compliance-with-indian-laws</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/data-processing-addendum</loc><priority>0.5</priority></url>
+  <url><loc>https://tallyonmob.vercel.app/legal/accessibility-statement</loc><priority>0.5</priority></url>
+</urlset>

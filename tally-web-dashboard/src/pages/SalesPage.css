@@ -1,0 +1,250 @@
+/* Material 3 Design System for TallyLink (Theme Aware) */
+/* Using global variables from index.css instead of local overrides */
+
+.page-m3 {
+    background-color: var(--background);
+    min-height: 100vh;
+    padding: 16px;
+    font-family: 'Inter', sans-serif;
+    padding-bottom: 80px;
+    /* Space for FAB */
+    transition: background-color 0.3s;
+}
+
+/* Header */
+.page-m3__header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.page-m3__title {
+    font-size: 32px;
+    font-weight: 600;
+    color: var(--primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.page-m3__subtitle {
+    font-size: 14px;
+    color: var(--on-surface-variant);
+}
+
+/* KPI Cards */
+.page-m3__stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.page-m3__stat-card {
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+}
+
+.page-m3__stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.page-m3__stat-label {
+    font-size: 12px;
+    color: var(--on-surface-variant);
+    margin-top: 4px;
+}
+
+/* Filters */
+.page-m3__filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.page-m3__chip {
+    height: 32px;
+    padding: 0 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--on-surface-variant);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.page-m3__chip:hover {
+    background: var(--surface-variant);
+}
+
+.page-m3__chip.active {
+    background: var(--primary);
+    color: var(--on-primary);
+    border-color: var(--primary);
+    font-weight: 500;
+}
+
+/* Date Range */
+.page-m3__date-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    background: var(--surface);
+    padding: 8px 16px;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+    width: fit-content;
+    border: 1px solid var(--border);
+}
+
+.page-m3__date-input {
+    border: none;
+    font-size: 14px;
+    color: var(--on-surface);
+    background: transparent;
+    width: 130px;
+}
+
+/* List */
+.page-m3__list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.page-m3__card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.page-m3__card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary);
+}
+
+.page-m3__card-left {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.page-m3__avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--on-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+    opacity: 0.1;
+    /* Useopacity for background tint effect */
+}
+
+/* Correction for avatar text visibility over opacity background */
+.page-m3__avatar-text {
+    /* This implies a structural change might be needed, but sticking to CSS only */
+    /* Alternative: use rgba for background */
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--primary);
+    opacity: 1;
+}
+
+/* Re-defining avatar properly without opacity hacks */
+.page-m3__avatar {
+    background: var(--surface-variant);
+    color: var(--primary);
+    border: 1px solid var(--border);
+    opacity: 1;
+}
+
+.page-m3__card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.page-m3__party-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--on-surface);
+}
+
+.page-m3__details {
+    font-size: 12px;
+    color: var(--on-surface-variant);
+}
+
+.page-m3__card-right {
+    text-align: right;
+}
+
+.page-m3__amount {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary);
+}
+
+/* FAB */
+.page-m3__fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: var(--primary);
+    color: var(--on-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow: var(--shadow-lg);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.page-m3__fab:hover {
+    transform: scale(1.05);
+    box-shadow: 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+    background: var(--primary-dark);
+}
+
+/* Loading */
+.page-m3__loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    color: var(--primary);
+}

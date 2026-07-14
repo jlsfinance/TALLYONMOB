@@ -1,0 +1,97 @@
+/* LedgersPage 3D Styles - Theme Aware */
+
+.ledgers-3d__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px 24px;
+    background: var(--surface);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow-sm);
+}
+
+.ledgers-3d__header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Stats Row */
+.ledgers-3d__stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.ledgers-3d__stat-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: var(--shadow-sm);
+}
+
+.ledgers-3d__stat-btn:hover {
+    background: var(--surface-variant);
+    border-color: var(--primary);
+}
+
+.ledgers-3d__stat-btn.active {
+    background: var(--surface-elevated);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+}
+
+.ledgers-3d__stat-btn.active.green {
+    background: var(--success-bg);
+    border-color: var(--success);
+}
+
+.ledgers-3d__stat-btn.active.red {
+    background: var(--error-bg);
+    border-color: var(--error);
+}
+
+.ledgers-3d__stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--on-surface);
+    margin-bottom: 4px;
+}
+
+.ledgers-3d__stat-value.green {
+    color: var(--success);
+}
+
+.ledgers-3d__stat-value.red {
+    color: var(--error);
+}
+
+.ledgers-3d__stat-label {
+    font-size: 11px;
+    color: var(--on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Avatar color variants */
+.page-3d__list-avatar.green {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.page-3d__list-avatar.red {
+    background: var(--error-bg);
+    color: var(--error);
+    border: 1px solid var(--error);
+}

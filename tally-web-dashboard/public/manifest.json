@@ -1,0 +1,45 @@
+{
+    "name": "TallyLink - Free Tally on Mobile",
+    "short_name": "TallyLink",
+    "description": "Access Tally ERP 9 & TallyPrime data on mobile for FREE. Real-time sync, reports, and dashboard.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#030712",
+    "theme_color": "#030712",
+    "orientation": "portrait-primary",
+    "categories": ["business", "finance", "productivity"],
+    "lang": "en-IN",
+    "dir": "ltr",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "/app_icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "/app_icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=2000",
+            "sizes": "1280x720",
+            "type": "image/jpeg",
+            "form_factor": "wide",
+            "label": "TallyLink Dashboard Desktop"
+        },
+        {
+            "src": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=600",
+            "sizes": "600x1200",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "TallyLink Mobile View"
+        }
+    ]
+}

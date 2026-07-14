@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+bin/
+obj/
+PublishOutput/
+PublishOutput-InsForge/
+.tmp_sync_harness2/
+TallyLink.deps.json
+TallyLink.runtimeconfig.json
+tally-windows-sync/tally-windows-sync/
+
+# NuGet
+*.nuget.*
+project.assets.json
+project.nuget.cache
+
+# Secrets
+.env
+appsettings.json
+
+# Logs & errors
+*.txt
+*.log
+build_*
+publish_*
+dev_*
+out.txt
+current_error.txt
+err.txt
+errors.txt
+error.txt
+output.txt
+testoutput.txt
+
+# Supabase temp
+supabase/.temp/
+
+# Misc
+draft.json
+temp.json
+types.txt
+variations.json
+test.cjs
+create_release.ps1
+installer/
+*.ico

@@ -1,0 +1,196 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const FIREBASE_PROJECT_ID = "studio-1865737492-158b7";
+const FIREBASE_CLIENT_EMAIL = "firebase-adminsdk-fbsvc@studio-1865737492-158b7.iam.gserviceaccount.com";
+const FIREBASE_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCrBwjs7UZew7ww\npwIK9AfsD8N28jRT0KaS9APA6xy0XxhziBKujDrm8AFTqoZeDgMsYWiTx9YQOkVC\nA6mio3QODgq+v9yWOt69cXlAMcVRqhRi646uMRcyewEGBg8cq5MaNSsKUzynff1p\nMW+SEXup1ZDc/PpbhHPlXIOH5jlGnRd6N4M/Nm97CkW4qI7cjvwwPBMZHRPOak39\nc7bs/3j8xwKgTfAp3A0oBH82Odb1CtYXn7paSitCIpByqhQGXjig1E7EL/lTYwC6\nKdZfPbBAxomuITH4VywFR4l1WvIQgrkhe54EApNZFETG5XHMMNHjAlDfn+pVEEBH\nnWxmcyGzAgMBAAECggEAK0GGvOHQNASectGynxGUdVyRS+K7YF1729wSnPb6Fhad\nKQ9H5lS6SxF1zHLrNBuoKs/iMspOtmD+hlFF1MgxgKKFjjQZdvehwVlTWOydoud4\n64H3XtA0tUROAHeE1/P/Kxg6cAyYYSZo8vOZa+C3Hb/RuUrUiVQJOf/5lmQgpV6I\n6Jrus7YMzAICsl64YEIO4aAO+JHjdZ5PLL0J5P7J/vAZG3/KqxtCLMNuW+8nX9eU\nz56A5eAK+lNysl8evr6iKfmQiYEiDi3w12nEJ+Jf6pAFXKT1fgDdqJ0S2r75Isey\nRIgKnHOzVjs5nESxPVYJv5yjLbA0o4U2TkTnjOGGEQKBgQDgZAmP0qbvZoLnAk04\n+xGa3uavJXBNJqv8kuTo0cK5FuMxIJaLMkxx3fLtDsyRskkt7zioZT6udEy66YS2\nIvwk8EvoD/3sWBd7dboYF7DuP9JNapjIX7ApzTCU405eQJ+C/xo1YFmeY/TUfMuV\nlduEBQXkb0GzDa7zKH1coSjE4wKBgQDDHp1Y4GvQ0rMdAXEAElV+HHHiTxPYI2c6\n0/SVCdwDYwr2MYe+3vWDPe9zwO3pHIBNGg68NB79CqYqFOP1I1skzOaayBfVMPrm\nalXpTDqih2I/Y4VqBYfK+XliLspEsZx5mZlyZICwStqqs1m5F08GUXlRkXej5Xjb\nVawBwBmY8QKBgQCEhXBEOYOPpbovlmNnAJhwH66bx/+gAPPX8iUw/xkCWOsKi5V9\nVdJh+VPL/05/yYyAjWSnx0uSmmrqhJl1PAowAp7ByhgL6ibMKkYijnNW8ehRAmCD\nDkgrF9zWQbx5266ZHfIrjeC/s4bXq3BMwrlnKdRGChMCHVWyk7od56v9QwKBgGBX\n9Ym1BoeOAjMISyul4eDrWrBMK5hFoutBTTtqKuDhPsBhpI1yufeb1Whqkw7Pq+pm\nO3BirAp1/6Y3uneIhbCeHB/BPUNfdAPh7ZnMsgceojx6f53iLTLkDDOWtvlEWecR\nGNuLFJ/31hEDjgH+qF6OTEEietjKrepfWxdiK0GBAoGATRdL5wmwxyNq0KChMC7n\n8W7T/nP2lVhk+gZKZPb5RhCQZA+x/zdQnQ+WKhr+AjsyQ/2aVRzX6kUModeDHV1v\nk2qSMjLS00HgWsgjXCktnrKFZ5zc8egS39JMOV68m4TM0csesu9UeXOmrrpZx05x\nha5RgYk+mzZT0qKxqMSCim4=\n-----END PRIVATE KEY-----\n`;
+
+async function getAccessToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iss: FIREBASE_CLIENT_EMAIL,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const base64url = (obj: any) =>
+    btoa(JSON.stringify(obj)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  const unsignedToken = `${base64url(header)}.${base64url(payload)}`;
+
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(FIREBASE_PRIVATE_KEY);
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, encoder.encode(unsignedToken));
+  const signedToken = `${unsignedToken}.${btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "")}`;
+
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${signedToken}`,
+  });
+
+  const tokenData = await tokenResponse.json();
+  return tokenData.access_token;
+}
+
+async function sendFCMMessage(
+  token: string,
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+): Promise<boolean> {
+  try {
+    const accessToken = await getAccessToken();
+    const message = {
+      message: {
+        token,
+        notification: { title, body },
+        data,
+        android: {
+          priority: "high" as const,
+          notification: {
+            channel_id: "tally_channel",
+            sound: "default",
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+            },
+          },
+        },
+      },
+    };
+
+    const response = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(message),
+      }
+    );
+
+    const result = await response.json();
+    return !!result.name;
+  } catch (err) {
+    console.error("FCM send error:", err);
+    return false;
+  }
+}
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Find companies that haven't synced in 2+ days
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: staleCompanies, error: fetchError } = await supabase
+      .from("companies")
+      .select("id, company_name, last_sync_at")
+      .or(`last_sync_at.is.null,last_sync_at.lt.${twoDaysAgo}`);
+
+    if (fetchError) {
+      return new Response(
+        JSON.stringify({ error: fetchError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!staleCompanies || staleCompanies.length === 0) {
+      return new Response(
+        JSON.stringify({ message: "All companies synced recently", notified: 0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let notified = 0;
+    const results: Array<{ company_id: string; company_name: string; sent: number; devices: number }> = [];
+
+    for (const company of staleCompanies) {
+      // Get device tokens for this company
+      const { data: devices } = await supabase
+        .from("device_tokens")
+        .select("token")
+        .eq("company_id", company.id);
+
+      if (!devices || devices.length === 0) continue;
+
+      // Calculate days since last sync
+      const lastSync = company.last_sync_at
+        ? Math.floor((Date.now() - new Date(company.last_sync_at).getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      const daysText = lastSync !== null ? `${lastSync} days` : "long time";
+      const title = "Tally Sync Reminder";
+      const body = `${company.company_name} hasn't synced with Tally in ${daysText}. Open the sync app to keep your data up to date.`;
+      const data = { action: "sync", company_id: company.id };
+
+      let sent = 0;
+      for (const device of devices) {
+        const ok = await sendFCMMessage(device.token, title, body, data);
+        if (ok) sent++;
+      }
+
+      // Store in notification history
+      await supabase.from("notifications").insert({
+        id: crypto.randomUUID(),
+        company_id: company.id,
+        title,
+        body,
+        type: "sync_reminder",
+        metadata: { days_since_sync: lastSync, sent },
+        created_at: new Date().toISOString(),
+      });
+
+      notified++;
+      results.push({
+        company_id: company.id,
+        company_name: company.company_name,
+        sent,
+        devices: devices.length,
+      });
+    }
+
+    return new Response(
+      JSON.stringify({ notified, results }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error: any) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
