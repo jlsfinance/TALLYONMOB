@@ -14,6 +14,7 @@ import {
 } from '../services/conversation';
 import { searchParties, getVouchersByParty as fuzzyGetVouchers } from '../services/fuzzySearch';
 import { formatDate, formatVoucherType, formatIndian } from '../utils/formatters';
+import { requireCompany } from './company';
 
 const VOUCHERS_PER_PAGE = 5;
 
@@ -147,14 +148,15 @@ async function generateInvoicePdf(
  */
 export async function invoiceCommand(ctx: Context): Promise<void> {
   const chatId = ctx.chat!.id;
+  const companyId = await requireCompany(ctx, 'invoice');
+  if (!companyId) return;
+
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const args = text.replace(/^\/invoice\s*/i, '').trim();
 
   if (args) {
-    // Direct party query: /invoice <party>
     await searchAndShowParties(ctx, args);
   } else {
-    // Ask for party name and set state
     setState(chatId, ConversationState.AWAITING_PARTY, { reportType: 'invoice' });
     await ctx.replyWithMarkdown(
       '🧾 *Invoice / Voucher Search*\n\nPlease enter a *party name* to search for invoices:',
@@ -177,12 +179,14 @@ export async function searchAndShowParties(
   query: string,
 ): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Invoice: searching parties', { chatId, query });
+  const session = getSession(chatId);
+  const companyId = session.companyId;
+  logger.info('Invoice: searching parties', { chatId, query, companyId });
 
   await ctx.replyWithMarkdown(`🔍 *Searching parties for:* \`${query}\`…`);
 
   try {
-    const matches = await searchParties(query, { maxResults: 10 });
+    const matches = await searchParties(query, { maxResults: 10, companyId });
     const parties = matches.slice(0, 5);
 
     // Store in session for later reference
@@ -237,14 +241,16 @@ export async function searchAndShowParties(
  */
 export async function onPartySelected(ctx: Context, partyName: string): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Invoice: party selected', { chatId, partyName });
+  const session = getSession(chatId);
+  const companyId = session.companyId;
+  logger.info('Invoice: party selected', { chatId, partyName, companyId });
 
   storeSession(chatId, { lastSearchedParty: partyName });
 
   await ctx.replyWithMarkdown(`📄 *Fetching vouchers for* \`${partyName}\`…`);
 
   try {
-    const vouchers = await fuzzyGetVouchers(partyName, { limit: 20 });
+    const vouchers = await fuzzyGetVouchers(partyName, { limit: 20, companyId });
     storeResults(chatId, vouchers, { pageSize: VOUCHERS_PER_PAGE });
 
     if (vouchers.length === 0) {

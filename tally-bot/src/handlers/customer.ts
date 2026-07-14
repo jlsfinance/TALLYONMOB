@@ -9,6 +9,7 @@ import {
 import { searchParties } from '../services/fuzzySearch';
 import { getSupabaseClient } from '../supabase/client';
 import { formatDate, formatVoucherType, formatIndian } from '../utils/formatters';
+import { requireCompany } from './company';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,15 +30,18 @@ interface PartyExtendedInfo {
 /**
  * Fetch extended party info for the customer dashboard.
  */
-async function fetchPartyExtendedInfo(partyName: string): Promise<PartyExtendedInfo | null> {
+async function fetchPartyExtendedInfo(partyName: string, companyId?: string): Promise<PartyExtendedInfo | null> {
   const supabase = getSupabaseClient();
 
   // Fetch from ledgers table
-  const { data: ledgerData } = await supabase
+  let ledgerQuery = supabase
     .from('ledgers')
     .select('*')
-    .ilike('party_name', partyName)
-    .limit(1);
+    .ilike('party_name', partyName);
+
+  if (companyId) ledgerQuery = ledgerQuery.eq('company_id', companyId);
+
+  const { data: ledgerData } = await ledgerQuery.limit(1);
 
   const ledger = ledgerData?.[0];
 
@@ -49,10 +53,14 @@ async function fetchPartyExtendedInfo(partyName: string): Promise<PartyExtendedI
   const openingBalance = Number(ledger.opening_balance) || 0;
 
   // Fetch recent vouchers for this party (last 10)
-  const { data: vouchers } = await supabase
+  let vouchersQuery = supabase
     .from('vouchers')
     .select('voucher_number, voucher_date, amount, voucher_type')
-    .ilike('party_name', `%${partyName}%`)
+    .ilike('party_name', `%${partyName}%`);
+
+  if (companyId) vouchersQuery = vouchersQuery.eq('company_id', companyId);
+
+  const { data: vouchers } = await vouchersQuery
     .order('voucher_date', { ascending: false })
     .limit(10);
 
@@ -107,6 +115,9 @@ async function fetchPartyExtendedInfo(partyName: string): Promise<PartyExtendedI
  */
 export async function customerCommand(ctx: Context): Promise<void> {
   const chatId = ctx.chat!.id;
+  const companyId = await requireCompany(ctx, 'customer');
+  if (!companyId) return;
+
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const args = text.replace(/^\/customer\s*/i, '').trim();
 
@@ -135,12 +146,14 @@ export async function searchAndShowCustomerParties(
   query: string,
 ): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Customer: searching parties', { chatId, query });
+  const session = getSession(chatId);
+  const companyId = session.companyId;
+  logger.info('Customer: searching parties', { chatId, query, companyId });
 
   await ctx.replyWithMarkdown(`🔍 *Searching parties for:* \`${query}\`…`);
 
   try {
-    const matches = await searchParties(query, { maxResults: 10 });
+    const matches = await searchParties(query, { maxResults: 10, companyId });
     const parties = matches.slice(0, 5);
 
     storeSession(chatId, {
@@ -239,7 +252,8 @@ export async function onCustomerAction(
   await ctx.replyWithMarkdown(`⏳ *Fetching ${action.replace(/_/g, ' ')} for* \`${partyName}\`…`);
 
   try {
-    const info = await fetchPartyExtendedInfo(partyName);
+    const session = getSession(chatId);
+    const info = await fetchPartyExtendedInfo(partyName, session.companyId);
 
     if (!info) {
       await ctx.replyWithMarkdown(

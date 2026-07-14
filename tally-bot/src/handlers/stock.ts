@@ -9,6 +9,7 @@ import {
 import { searchItems } from '../services/fuzzySearch';
 import { getSupabaseClient } from '../supabase/client';
 import { formatIndian } from '../utils/formatters';
+import { requireCompany } from './company';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,14 +31,17 @@ interface StockDetails {
 /**
  * Fetch detailed stock info from stock_items table.
  */
-async function fetchStockDetails(itemName: string): Promise<StockDetails | null> {
+async function fetchStockDetails(itemName: string, companyId?: string): Promise<StockDetails | null> {
   const supabase = getSupabaseClient();
 
-  const { data, error } = await supabase
+  let q = supabase
     .from('stock_items')
     .select('*')
-    .ilike('item_name', `%${itemName}%`)
-    .limit(1);
+    .ilike('item_name', `%${itemName}%`);
+
+  if (companyId) q = q.eq('company_id', companyId);
+
+  const { data, error } = await q.limit(1);
 
   if (error || !data || data.length === 0) {
     return null;
@@ -119,6 +123,9 @@ function formatStockMessage(stock: StockDetails): string {
  */
 export async function stockCommand(ctx: Context): Promise<void> {
   const chatId = ctx.chat!.id;
+  const companyId = await requireCompany(ctx, 'stock');
+  if (!companyId) return;
+
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const args = text.replace(/^\/stock\s*/i, '').trim();
 
@@ -148,13 +155,16 @@ export async function searchAndShowStockItems(
   query: string,
 ): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Stock: searching items', { chatId, query });
+  const session = getSession(chatId);
+  const companyId = session.companyId;
+  logger.info('Stock: searching items', { chatId, query, companyId });
 
   await ctx.replyWithMarkdown(`🔍 *Searching items for:* \`${query}\`…`);
 
   try {
     const matches = await searchItems(query, {
       maxResults: 10,
+      companyId,
       additionalFields: 'current_stock,rate,mrp,hsn_code,gst_rate,unit',
     });
     const items = matches.slice(0, 5);
@@ -218,7 +228,8 @@ export async function onStockItemSelected(ctx: Context, itemName: string): Promi
   await ctx.replyWithMarkdown(`📦 *Fetching details for* \`${itemName}\`…`);
 
   try {
-    const details = await fetchStockDetails(itemName);
+    const session = getSession(chatId);
+    const details = await fetchStockDetails(itemName, session.companyId);
 
     if (!details) {
       await ctx.replyWithMarkdown(
@@ -262,11 +273,16 @@ export async function onLowStockItems(ctx: Context): Promise<void> {
   await ctx.replyWithMarkdown('⚠️ *Fetching low stock items…*');
 
   try {
+    const session = getSession(chatId);
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
+    let q = supabase
       .from('stock_items')
       .select('item_name, current_stock, unit, rate')
-      .lt('current_stock', 10)
+      .lt('current_stock', 10);
+
+    if (session.companyId) q = q.eq('company_id', session.companyId);
+
+    const { data, error } = await q
       .order('current_stock', { ascending: true })
       .limit(25);
 

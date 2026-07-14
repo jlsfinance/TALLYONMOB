@@ -44,6 +44,7 @@ import {
   onCustomerPartySelected,
   onCustomerAction,
 } from './handlers/customer';
+import { companyCommand, onCompanySelected } from './handlers/company';
 
 // ---------------------------------------------------------------------------
 // Bot setup
@@ -123,6 +124,7 @@ bot.command('invoice', invoiceCommand);
 bot.command('ledger', ledgerCommand);
 bot.command('stock', stockCommand);
 bot.command('customer', customerCommand);
+bot.command('company', companyCommand);
 
 // ---------------------------------------------------------------------------
 // Callback Query handler — centralised dispatch for all inline keyboards
@@ -261,6 +263,17 @@ bot.on('callback_query', async (ctx) => {
     const partyName = callbackData.slice('cust_full_inv:'.length);
     clearSession(chatId);
     return onPartySelected(ctx, partyName);
+  }
+
+  // ── Company selection ──
+  if (callbackData === 'company') {
+    clearSession(chatId);
+    return companyCommand(ctx);
+  }
+
+  if (callbackData.startsWith('company:')) {
+    const companyId = callbackData.slice('company:'.length);
+    return onCompanySelected(ctx, companyId);
   }
 
   // ── No-op button ──

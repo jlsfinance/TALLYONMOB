@@ -13,6 +13,7 @@ import {
 import { searchParties } from '../services/fuzzySearch';
 import { getSupabaseClient } from '../supabase/client';
 import { formatDate, formatIndian } from '../utils/formatters';
+import { requireCompany } from './company';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,25 +73,33 @@ async function fetchLedgerEntries(
   partyName: string,
   dateFrom: string,
   dateTo: string,
+  companyId?: string,
 ): Promise<{ entries: LedgerEntry[]; openingBalance: number; closingBalance: number }> {
   const supabase = getSupabaseClient();
 
   // Fetch opening balance from ledgers table
-  const { data: ledgerData } = await supabase
+  let ledgerQuery = supabase
     .from('ledgers')
     .select('opening_balance')
-    .ilike('party_name', partyName)
-    .limit(1);
+    .ilike('party_name', partyName);
+
+  if (companyId) ledgerQuery = ledgerQuery.eq('company_id', companyId);
+
+  const { data: ledgerData } = await ledgerQuery.limit(1);
 
   const openingBalance = Number(ledgerData?.[0]?.opening_balance) || 0;
 
   // Fetch vouchers for this party in date range
-  const { data: vouchers } = await supabase
+  let vouchersQuery = supabase
     .from('vouchers')
     .select('voucher_date, voucher_number, voucher_type, amount, party_name')
     .ilike('party_name', `%${partyName}%`)
     .gte('voucher_date', dateFrom)
-    .lte('voucher_date', dateTo)
+    .lte('voucher_date', dateTo);
+
+  if (companyId) vouchersQuery = vouchersQuery.eq('company_id', companyId);
+
+  const { data: vouchers } = await vouchersQuery
     .order('voucher_date', { ascending: true })
     .order('voucher_number', { ascending: true });
 
@@ -298,6 +307,9 @@ async function generateLedgerPdf(
  */
 export async function ledgerCommand(ctx: Context): Promise<void> {
   const chatId = ctx.chat!.id;
+  const companyId = await requireCompany(ctx, 'ledger');
+  if (!companyId) return;
+
   const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
   const args = text.replace(/^\/ledger\s*/i, '').trim();
 
@@ -326,12 +338,14 @@ export async function searchAndShowPartiesForLedger(
   query: string,
 ): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Ledger: searching parties', { chatId, query });
+  const session = getSession(chatId);
+  const companyId = session.companyId;
+  logger.info('Ledger: searching parties', { chatId, query, companyId });
 
   await ctx.replyWithMarkdown(`🔍 *Searching parties for:* \`${query}\`…`);
 
   try {
-    const matches = await searchParties(query, { maxResults: 10 });
+    const matches = await searchParties(query, { maxResults: 10, companyId });
     const parties = matches.slice(0, 5);
 
     storeSession(chatId, {
@@ -476,10 +490,12 @@ async function generateAndSendLedgerPdf(
   await ctx.replyWithMarkdown('📄 *Generating ledger PDF…* Please wait ⏳');
 
   try {
+    const session = getSession(chatId);
     const { entries, openingBalance, closingBalance } = await fetchLedgerEntries(
       partyName,
       dateFrom,
       dateTo,
+      session.companyId,
     );
 
     const fileName = `ledger_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateFrom}_${dateTo}.pdf`;

@@ -2,6 +2,8 @@ import { Context } from 'telegraf';
 import logger from '../logger';
 import { getSupabaseClient } from '../supabase/client';
 import { formatIndian, formatDate } from '../utils/formatters';
+import { requireCompany } from './company';
+import { getSession } from '../services/conversation';
 
 interface DashboardData {
   todaySales: number;
@@ -17,7 +19,7 @@ interface DashboardData {
 /**
  * Fetch all dashboard metrics from Supabase.
  */
-async function fetchDashboardData(): Promise<DashboardData> {
+async function fetchDashboardData(companyId?: string): Promise<DashboardData> {
   const supabase = getSupabaseClient();
   const today = new Date().toISOString().slice(0, 10);
 
@@ -33,12 +35,16 @@ async function fetchDashboardData(): Promise<DashboardData> {
 
   try {
     // 1. Today's sales: sum of amounts where voucher_type = 'Sales' and date = today
-    const { data: salesData, error: salesErr } = await supabase
+    let salesQuery = supabase
       .from('vouchers')
       .select('amount')
       .eq('voucher_type', 'Sales')
       .gte('voucher_date', today)
       .lte('voucher_date', today);
+
+    if (companyId) salesQuery = salesQuery.eq('company_id', companyId);
+
+    const { data: salesData, error: salesErr } = await salesQuery;
 
     if (salesErr) {
       logger.warn('Dashboard: error fetching today sales', { error: salesErr.message });
@@ -47,12 +53,16 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 2. Today's purchases: sum of amounts where voucher_type = 'Purchase' and date = today
-    const { data: purchaseData, error: purchaseErr } = await supabase
+    let purchaseQuery = supabase
       .from('vouchers')
       .select('amount')
       .eq('voucher_type', 'Purchase')
       .gte('voucher_date', today)
       .lte('voucher_date', today);
+
+    if (companyId) purchaseQuery = purchaseQuery.eq('company_id', companyId);
+
+    const { data: purchaseData, error: purchaseErr } = await purchaseQuery;
 
     if (purchaseErr) {
       logger.warn('Dashboard: error fetching today purchases', { error: purchaseErr.message });
@@ -61,12 +71,16 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 3. Today's collections: sum of amounts where voucher_type = 'Receipt' and date = today
-    const { data: collectionData, error: collectionErr } = await supabase
+    let collectionQuery = supabase
       .from('vouchers')
       .select('amount')
       .eq('voucher_type', 'Receipt')
       .gte('voucher_date', today)
       .lte('voucher_date', today);
+
+    if (companyId) collectionQuery = collectionQuery.eq('company_id', companyId);
+
+    const { data: collectionData, error: collectionErr } = await collectionQuery;
 
     if (collectionErr) {
       logger.warn('Dashboard: error fetching today collections', { error: collectionErr.message });
@@ -75,10 +89,14 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 4. Outstanding from Sundry Debtors (ledgers with parent group matching)
-    const { data: debtorsData, error: debtorsErr } = await supabase
+    let debtorsQuery = supabase
       .from('ledgers')
       .select('opening_balance')
-      .ilike('group_name', '%Sundry Debtors%');
+      .ilike('parent', '%Sundry Debtors%');
+
+    if (companyId) debtorsQuery = debtorsQuery.eq('company_id', companyId);
+
+    const { data: debtorsData, error: debtorsErr } = await debtorsQuery;
 
     if (debtorsErr) {
       logger.warn('Dashboard: error fetching debtors', { error: debtorsErr.message });
@@ -90,10 +108,14 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 5. Total customers (count of ledgers in Sundry Debtors group)
-    const { count: customerCount, error: customerErr } = await supabase
+    let customerQuery = supabase
       .from('ledgers')
       .select('id', { count: 'exact', head: true })
-      .ilike('group_name', '%Sundry Debtors%');
+      .ilike('parent', '%Sundry Debtors%');
+
+    if (companyId) customerQuery = customerQuery.eq('company_id', companyId);
+
+    const { count: customerCount, error: customerErr } = await customerQuery;
 
     if (customerErr) {
       logger.warn('Dashboard: error counting customers', { error: customerErr.message });
@@ -102,10 +124,14 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 6. Total suppliers (count of ledgers in Sundry Creditors group)
-    const { count: supplierCount, error: supplierErr } = await supabase
+    let supplierQuery = supabase
       .from('ledgers')
       .select('id', { count: 'exact', head: true })
-      .ilike('group_name', '%Sundry Creditors%');
+      .ilike('parent', '%Sundry Creditors%');
+
+    if (companyId) supplierQuery = supplierQuery.eq('company_id', companyId);
+
+    const { count: supplierCount, error: supplierErr } = await supplierQuery;
 
     if (supplierErr) {
       logger.warn('Dashboard: error counting suppliers', { error: supplierErr.message });
@@ -114,10 +140,14 @@ async function fetchDashboardData(): Promise<DashboardData> {
     }
 
     // 7. Low stock items (quantity < 10)
-    const { data: stockData, error: stockErr } = await supabase
+    let stockQuery = supabase
       .from('stock_items')
-      .select('item_name, current_stock, unit')
-      .lt('current_stock', 10)
+      .select('name, current_stock, unit')
+      .lt('current_stock', 10);
+
+    if (companyId) stockQuery = stockQuery.eq('company_id', companyId);
+
+    const { data: stockData, error: stockErr } = await stockQuery
       .order('current_stock', { ascending: true })
       .limit(10);
 
@@ -141,9 +171,13 @@ async function fetchDashboardData(): Promise<DashboardData> {
 /**
  * Format the dashboard data into a Telegram-friendly Markdown message.
  */
-function formatDashboardMessage(data: DashboardData): string {
+function formatDashboardMessage(data: DashboardData, companyName?: string): string {
+  const header = companyName
+    ? `📊 *Dashboard — ${companyName}*`
+    : '📊 *Dashboard — TallyOnMobile*';
+
   const lines: string[] = [
-    '📊 *Dashboard — TallyOnMobile*',
+    header,
     `📅 *Date:* ${formatDate(new Date().toISOString())}`,
     '',
     '━━━━━━━━━━━━━━━━━━',
@@ -185,11 +219,14 @@ function formatDashboardMessage(data: DashboardData): string {
  */
 export async function dashboardCommand(ctx: Context): Promise<void> {
   const chatId = ctx.chat!.id;
-  logger.info('Dashboard requested', { chatId });
+  const companyId = await requireCompany(ctx, 'dashboard');
+  if (!companyId) return;
+
+  logger.info('Dashboard requested', { chatId, companyId });
 
   await ctx.replyWithMarkdown('📊 *Fetching your dashboard…* Please wait ⏳');
 
-  const data = await fetchDashboardData();
+  const data = await fetchDashboardData(companyId);
 
   if (data.error) {
     await ctx.replyWithMarkdown(
@@ -204,7 +241,8 @@ export async function dashboardCommand(ctx: Context): Promise<void> {
     );
   }
 
-  const message = formatDashboardMessage(data);
+  const session = getSession(chatId);
+  const message = formatDashboardMessage(data, session.companyName);
 
   await ctx.replyWithMarkdown(message, {
     reply_markup: {

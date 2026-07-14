@@ -12,6 +12,12 @@
  */
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import config from '../config';
+import ws from 'ws';
+
+// Railway runs Node 18, which has no native WebSocket. supabase-js always
+// constructs a Realtime client, and that throws without a WebSocket impl.
+// Polyfill the global so client creation succeeds (bot doesn't use realtime).
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = ws;
 
 let client: SupabaseClient | null = null;
 
@@ -112,6 +118,27 @@ export interface CompanyRecord {
   phone?: string;
   is_active?: boolean;
   [key: string]: any;
+}
+
+// ─── Company ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all active companies.
+ */
+export async function getCompanies(): Promise<{ data: CompanyRecord[] | null; error: string | null }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) return { data: null, error: error.message };
+    return { data: data as CompanyRecord[], error: null };
+  } catch (err: any) {
+    return { data: null, error: err?.message || 'Unknown error fetching companies' };
+  }
 }
 
 // ─── Party / Ledger Search ─────────────────────────────────────────────

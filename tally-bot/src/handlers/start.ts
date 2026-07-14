@@ -1,6 +1,6 @@
 import { Context, Markup } from 'telegraf';
 import logger from '../logger';
-import { clearSession } from '../services/conversation';
+import { clearSession, getSession } from '../services/conversation';
 
 const BUSINESS_NAME = 'TallyOnMobile';
 const WELCOME_EMOJI = '🤖';
@@ -8,7 +8,11 @@ const WELCOME_EMOJI = '🤖';
 /**
  * Build the main menu inline keyboard.
  */
-function mainKeyboard() {
+function mainKeyboard(companyName?: string) {
+  const companyLabel = companyName
+    ? `🏢 ${companyName.length > 15 ? companyName.slice(0, 13) + '…' : companyName}`
+    : '🏢 Select Company';
+
   return Markup.inlineKeyboard([
     [
       Markup.button.callback('📊 Dashboard', 'dashboard'),
@@ -18,6 +22,9 @@ function mainKeyboard() {
     [
       Markup.button.callback('📦 Stock', 'stock'),
       Markup.button.callback('👥 Customer', 'customer'),
+      Markup.button.callback(companyLabel, 'company'),
+    ],
+    [
       Markup.button.callback('❓ Help', 'help'),
     ],
   ]);
@@ -27,9 +34,10 @@ function mainKeyboard() {
  * /start – Welcome message with business branding and main menu.
  */
 export async function startCommand(ctx: Context): Promise<void> {
+  const chatId = ctx.chat!.id;
   const firstName = ctx.from?.first_name ?? 'User';
 
-  clearSession(ctx.chat!.id);
+  clearSession(chatId);
 
   const welcomeText = [
     `${WELCOME_EMOJI} *Welcome to ${BUSINESS_NAME}!*`,
@@ -43,6 +51,9 @@ export async function startCommand(ctx: Context): Promise<void> {
     '📦  **Stock** — Item details, stock level & low stock alerts',
     '👥  **Customer** — Party info, outstanding, payments & statements',
     '',
+    '🏢  *First time?* Tap "Select Company" below to choose your company.',
+    'All data is filtered by the selected company.',
+    '',
     'You can also chat naturally in *Hindi / English / Hinglish*, e.g.:',
     '• "ABC ka hisab dikhao"',
     '• "XYZ ka balance"',
@@ -52,7 +63,8 @@ export async function startCommand(ctx: Context): Promise<void> {
     'Select an option below to get started 👇',
   ].join('\n');
 
-  await ctx.replyWithMarkdown(welcomeText, mainKeyboard());
+  const ctxSession = getSession(chatId);
+  await ctx.replyWithMarkdown(welcomeText, mainKeyboard(ctxSession.companyName));
 }
 
 /**
@@ -67,6 +79,7 @@ export async function helpCommand(ctx: Context): Promise<void> {
     '',
     '`/start` — Restart / show welcome menu',
     '`/help` — Show this help message',
+    '`/company` — Select / switch company',
     '`/dashboard` — Today\'s business summary',
     '`/invoice <party>` — Search & download invoices',
     '`/ledger <party>` — Get party-wise ledger PDF',

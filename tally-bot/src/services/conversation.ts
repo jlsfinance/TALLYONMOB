@@ -75,6 +75,14 @@ export interface ConversationContext {
   /** Output format: 'pdf', 'excel', 'text', 'summary' */
   format?: string;
 
+  // ---- Company selection ----
+  /** Currently selected company UUID */
+  companyId?: string;
+  /** Currently selected company display name */
+  companyName?: string;
+  /** Pending flow to re-dispatch after company selection */
+  pendingFlow?: { command: string; args?: any };
+
   // ---- Metadata ----
   /** Timestamp (epoch ms) of the last interaction */
   lastInteractionAt?: number;
