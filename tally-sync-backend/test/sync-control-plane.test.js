@@ -6,7 +6,9 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const routes = fs.readFileSync(path.join(root, 'src/routes/syncRoutes.js'), 'utf8');
 const service = fs.readFileSync(path.join(root, 'src/services/syncControlService.js'), 'utf8');
+const syncService = fs.readFileSync(path.join(root, 'src/services/syncService.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'migrations/20261009_sync_control_plane.sql'), 'utf8');
+const phase3Migration = fs.readFileSync(path.join(root, 'migrations/20261009_incremental_sync_performance.sql'), 'utf8');
 
 const requiredRoutes = [
   "router.post('/device/register'",
@@ -37,6 +39,22 @@ test('Phase 2 migration contains required tables, constraints, indexes, and RLS'
   assert.match(migration, /UNIQUE\(company_id, idempotency_key\)/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
   assert.match(migration, /idx_sync_conflicts_company_status/);
+});
+
+test('Phase 3 exposes resumable checkpoint/progress APIs and durable fields', () => {
+  assert.match(routes, /router\.get\('\/checkpoint\/:companyId\/:module'/);
+  assert.match(routes, /router\.put\('\/checkpoint\/:companyId\/:module'/);
+  assert.match(routes, /router\.get\('\/progress\/:companyId'/);
+  assert.match(syncService, /static async getCheckpoint\b/);
+  assert.match(syncService, /static async saveCheckpoint\b/);
+  assert.match(syncService, /static async getSyncProgress\b/);
+  for (const column of ['records_processed', 'bytes_processed', 'page_size', 'last_alter_id', 'expires_at']) {
+    assert.match(phase3Migration, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  assert.match(phase3Migration, /idx_vouchers_company_alter_id/);
+  assert.match(phase3Migration, /idx_ledgers_company_alter_id/);
+  assert.match(phase3Migration, /idx_stock_company_alter_id/);
+  assert.match(phase3Migration, /ALTER TABLE public\.sync_checkpoint ENABLE ROW LEVEL SECURITY/);
 });
 
 test('Live endpoint integration is opt-in and clearly reported', async (t) => {

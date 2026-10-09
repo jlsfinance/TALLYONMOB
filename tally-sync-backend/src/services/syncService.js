@@ -296,6 +296,64 @@ class SyncService {
         }
     }
 
+    /** Read the latest resumable checkpoint without advancing ALTERID state. */
+    static async getCheckpoint(companyId, module, sessionId = null) {
+        let query = supabase
+            .from('sync_checkpoint')
+            .select('*')
+            .eq('company_id', companyId)
+            .eq('module', module)
+            .in('status', ['active', 'running', 'paused', 'failed'])
+            .order('updated_at', { ascending: false })
+            .limit(1);
+        if (sessionId) query = query.eq('sync_session_id', sessionId);
+        const { data, error } = await query.maybeSingle();
+        if (error) throw error;
+        return data || null;
+    }
+
+    /** Persist a durable checkpoint after a chunk has been accepted. */
+    static async saveCheckpoint(companyId, module, checkpoint) {
+        const payload = {
+            id: checkpoint.id || uuidv4(),
+            company_id: companyId,
+            sync_session_id: checkpoint.syncSessionId,
+            module,
+            current_chunk: Number(checkpoint.currentChunk || 0),
+            total_chunks: Number(checkpoint.totalChunks || 0),
+            last_processed_id: checkpoint.lastProcessedId || null,
+            last_alter_id: checkpoint.lastAlterId == null ? null : Number(checkpoint.lastAlterId),
+            records_processed: Number(checkpoint.recordsProcessed || 0),
+            bytes_processed: Number(checkpoint.bytesProcessed || 0),
+            page_size: Number(checkpoint.pageSize || 500),
+            status: checkpoint.status || 'running',
+            error_message: checkpoint.errorMessage || null,
+            expires_at: checkpoint.expiresAt || null,
+            updated_at: new Date().toISOString(),
+        };
+        const { data, error } = await supabase
+            .from('sync_checkpoint')
+            .upsert(payload, { onConflict: 'id' })
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    }
+
+    /** Return run and chunk telemetry for the dashboard progress panel. */
+    static async getSyncProgress(companyId, limit = 20) {
+        const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+        const [runs, checkpoints] = await Promise.all([
+            supabase.from('sync_runs').select('*').eq('company_id', companyId)
+                .order('started_at', { ascending: false }).limit(safeLimit),
+            supabase.from('sync_checkpoint').select('*').eq('company_id', companyId)
+                .order('updated_at', { ascending: false }).limit(safeLimit),
+        ]);
+        if (runs.error) throw runs.error;
+        if (checkpoints.error) throw checkpoints.error;
+        return { runs: runs.data || [], checkpoints: checkpoints.data || [] };
+    }
+
     /**
      * Create sync log entry
      */

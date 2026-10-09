@@ -346,6 +346,51 @@ router.delete('/sync/data/:companyId/:dataType', async (req, res) => {
     }
 });
 
+// Resumable chunk checkpoint for large-company imports.
+router.get('/checkpoint/:companyId/:module', async (req, res) => {
+    try {
+        const checkpoint = await SyncService.getCheckpoint(
+            req.params.companyId,
+            req.params.module,
+            req.query.sessionId || null
+        );
+        res.status(200).json({ success: true, data: checkpoint });
+    } catch (error) {
+        logger.error('Checkpoint read failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to load sync checkpoint' });
+    }
+});
+
+router.put('/checkpoint/:companyId/:module', async (req, res) => {
+    const { companyId, module } = req.params;
+    const { syncSessionId, currentChunk, totalChunks, lastProcessedId, lastAlterId,
+        recordsProcessed, bytesProcessed, pageSize, status, errorMessage, expiresAt } = req.body;
+    if (!syncSessionId) {
+        return res.status(400).json({ success: false, error: 'syncSessionId is required' });
+    }
+    try {
+        const checkpoint = await SyncService.saveCheckpoint(companyId, module, {
+            id: req.body.id,
+            syncSessionId, currentChunk, totalChunks, lastProcessedId, lastAlterId,
+            recordsProcessed, bytesProcessed, pageSize, status, errorMessage, expiresAt
+        });
+        res.status(200).json({ success: true, data: checkpoint });
+    } catch (error) {
+        logger.error('Checkpoint write failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to save sync checkpoint' });
+    }
+});
+
+router.get('/progress/:companyId', async (req, res) => {
+    try {
+        const progress = await SyncService.getSyncProgress(req.params.companyId, req.query.limit);
+        res.status(200).json({ success: true, data: progress });
+    } catch (error) {
+        logger.error('Sync progress read failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to load sync progress' });
+    }
+});
+
 // Register or re-activate a Windows/Tally device for a company.
 router.post('/device/register', async (req, res) => {
     const { companyId, deviceId, name, platform, metadata } = req.body;

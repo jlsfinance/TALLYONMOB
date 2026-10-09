@@ -20,12 +20,14 @@ import { supabase } from './insforge';
 export interface SyncState {
     id: string;
     company_id: string;
-    module: 'vouchers' | 'ledgers' | 'stock_items' | 'masters';
-    last_alter_id: number;
-    last_sync_time: string | null;
-    total_records_synced: number;
-    status: 'idle' | 'syncing' | 'paused' | 'error';
-    error_message: string | null;
+    data_type: 'vouchers' | 'ledgers' | 'stock' | 'stock_items' | 'masters';
+    module?: 'vouchers' | 'ledgers' | 'stock_items' | 'masters';
+    last_alter_id: number | string | null;
+    last_sync_at: string | null;
+    last_sync_time?: string | null;
+    total_records_synced?: number;
+    status?: 'idle' | 'syncing' | 'paused' | 'error';
+    error_message?: string | null;
 }
 
 export interface SyncCheckpoint {
@@ -36,7 +38,7 @@ export interface SyncCheckpoint {
     current_chunk: number;
     total_chunks: number;
     last_processed_id: string | null;
-    status: 'active' | 'completed' | 'failed';
+    status: 'active' | 'running' | 'paused' | 'completed' | 'failed';
 }
 
 export interface SyncProgress {
@@ -75,8 +77,8 @@ const CHUNK_SIZES: Record<SyncModule, number> = {
 const MODULE_TABLES: Record<SyncModule, string> = {
     vouchers: 'vouchers',
     ledgers: 'ledgers',
-    stock_items: 'stock_items',
-    masters: 'stock_items', // masters fallback
+    stock_items: 'stock',
+    masters: 'stock', // masters fallback
 };
 
 const RETRY_DELAYS = [10000, 30000, 60000, 300000]; // 10s, 30s, 1m, 5m
@@ -114,7 +116,7 @@ export class IncrementalSyncEngine {
             .from('sync_state')
             .select('*')
             .eq('company_id', this.companyId)
-            .eq('module', module)
+            .eq('data_type', module)
             .single();
 
         if (error || !data) {
@@ -122,23 +124,30 @@ export class IncrementalSyncEngine {
                 .from('sync_state')
                 .insert({
                     company_id: this.companyId,
-                    module,
+                    data_type: module,
                     last_alter_id: 0,
-                    status: 'idle',
+                    is_initial_sync_complete: false,
                 })
                 .select()
                 .single();
-            return created!;
+            return { ...created, module, last_sync_time: created?.last_sync_at || null, total_records_synced: 0 };
         }
-        return data;
+        return { ...data, module: data.data_type, last_sync_time: data.last_sync_at || null, total_records_synced: 0 };
     }
 
     private async updateSyncState(module: SyncModule, updates: Partial<SyncState>) {
+        const dbUpdates: Record<string, unknown> = { ...updates, updated_at: new Date().toISOString() };
+        if (dbUpdates.last_sync_time && !dbUpdates.last_sync_at) dbUpdates.last_sync_at = dbUpdates.last_sync_time;
+        delete dbUpdates.module;
+        delete dbUpdates.status;
+        delete dbUpdates.error_message;
+        delete dbUpdates.total_records_synced;
+        delete dbUpdates.last_sync_time;
         await supabase
             .from('sync_state')
-            .update({ ...updates, updated_at: new Date().toISOString() })
+            .update(dbUpdates)
             .eq('company_id', this.companyId)
-            .eq('module', module);
+            .eq('data_type', module);
     }
 
     // --------------------------------------------------------
@@ -153,7 +162,7 @@ export class IncrementalSyncEngine {
                 module,
                 current_chunk: 0,
                 total_chunks: totalChunks,
-                status: 'active',
+                status: 'running',
             })
             .select()
             .single();
@@ -185,7 +194,7 @@ export class IncrementalSyncEngine {
             .eq('company_id', this.companyId)
             .eq('module', module)
             .eq('sync_session_id', this.sessionId)
-            .eq('status', 'active')
+            .in('status', ['active', 'running', 'paused'])
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -548,15 +557,16 @@ export class IncrementalSyncEngine {
             .eq('company_id', this.companyId);
 
         for (const state of syncStates || []) {
-            const table = MODULE_TABLES[state.module as SyncModule];
+            const module = (state.data_type || state.module) as SyncModule;
+            const table = MODULE_TABLES[module];
             const { count: cloudCount } = await supabase
                 .from(table)
                 .select('*', { count: 'exact', head: true })
                 .eq('company_id', this.companyId);
 
-            if (state.total_records_synced !== cloudCount) {
+            if (state.is_initial_sync_complete && cloudCount === 0) {
                 mismatches.push(
-                    `${state.module}: expected ${state.total_records_synced}, found ${cloudCount}`
+                    `${module}: marked complete but no cloud records were found`
                 );
             }
         }
@@ -590,14 +600,21 @@ export class IncrementalSyncEngine {
             .eq('company_id', this.companyId)
             .eq('status', 'failed');
 
-        const lastSync = states
-            ?.map(s => s.last_sync_time)
+        const normalizedStates = (states || []).map((state: any) => ({
+            ...state,
+            module: state.data_type,
+            last_sync_time: state.last_sync_at || null,
+            total_records_synced: state.total_records_synced || 0,
+            status: state.last_sync_at ? 'idle' : 'paused',
+        }));
+        const lastSync = normalizedStates
+            .map(s => s.last_sync_time)
             .filter(Boolean)
             .sort()
             .pop() || null;
 
         return {
-            states: states || [],
+            states: normalizedStates,
             pendingQueue: pending || 0,
             failedQueue: failed || 0,
             lastSync,
