@@ -51,6 +51,8 @@ Thumbs.db
 
 # Sync related
 sync_queue.db
+sync-queue.json
+.device-id
 .temp/
 .snapshots/
 publish/
