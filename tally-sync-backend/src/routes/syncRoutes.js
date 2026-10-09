@@ -11,6 +11,7 @@ const logger = require('../utils/logger');
 const { body, validationResult } = require('express-validator');
 const { SYNC_DATA_TYPES } = require('../config/constants');
 const TelegramService = require('../services/telegramService');
+const SyncControlService = require('../services/syncControlService');
 
 // Validation middleware for sync requests
 const validateSync = [
@@ -39,10 +40,28 @@ router.post('/', validateSync, async (req, res) => {
         });
     }
 
-    const { companyId, dataType, data, isIncremental } = req.body;
+    const { companyId, dataType, data, isIncremental, deviceId } = req.body;
+    const resolvedDeviceId = deviceId || req.headers['x-device-id'] || null;
+    const idempotencyKey = req.body.idempotencyKey || req.headers['x-idempotency-key'] || null;
+    let syncRun = null;
 
     try {
         logger.info(`Sync started: ${dataType} - Company: ${companyId} - Records: ${data.length}`);
+
+        const replayedResponse = await SyncControlService.safe(
+            () => SyncControlService.getIdempotentResponse(companyId, idempotencyKey), null
+        );
+        if (replayedResponse) {
+            return res.status(200).json({ ...replayedResponse, replayed: true });
+        }
+        await SyncControlService.safe(() => SyncControlService.registerDevice({
+            companyId, deviceId: resolvedDeviceId, name: req.body.deviceName,
+            platform: req.body.platform, metadata: req.body.deviceMetadata,
+        }), null);
+        syncRun = await SyncControlService.safe(() => SyncControlService.createRun({
+            companyId, deviceId: resolvedDeviceId, dataType, totalRecords: data.length,
+            metadata: { incremental: Boolean(isIncremental) },
+        }), null);
 
         // Create sync log
         const syncLogId = await SyncService.createSyncLog(companyId, dataType, isIncremental ? 'incremental' : 'full');
@@ -50,11 +69,13 @@ router.post('/', validateSync, async (req, res) => {
         // Perform sync
         const result = await SyncService.syncCollection(companyId, dataType, data, {
             isIncremental,
-            syncLogId
+            syncLogId,
+            deviceId: resolvedDeviceId
         });
 
         // Update sync log
         await SyncService.updateSyncLog(syncLogId, result);
+        await SyncControlService.safe(() => SyncControlService.finishRun(syncRun?.id, result), null);
 
         // Update company last sync timestamp
         await CompanyService.updateLastSync(companyId);
@@ -62,13 +83,20 @@ router.post('/', validateSync, async (req, res) => {
         // 🔔 Notify via Telegram
         await TelegramService.sendSyncReport(companyId, dataType, result);
 
-        res.status(200).json({
+        const responsePayload = {
             success: true,
             message: `Successfully synced ${result.count} items to ${dataType}`,
             details: result
-        });
+        };
+        await SyncControlService.safe(
+            () => SyncControlService.saveIdempotentResponse(companyId, resolvedDeviceId, idempotencyKey, responsePayload), null
+        );
+        res.status(200).json(responsePayload);
     } catch (error) {
         logger.error(`Sync failed for ${dataType}:`, error);
+        await SyncControlService.safe(() => SyncControlService.finishRun(syncRun?.id, {
+            success: false, failed: data.length, errors: [{ error: error.message }]
+        }), null);
         res.status(500).json({
             success: false,
             error: 'Sync failed',
@@ -315,6 +343,74 @@ router.delete('/sync/data/:companyId/:dataType', async (req, res) => {
             success: false,
             error: 'Failed to clear data'
         });
+    }
+});
+
+// Register or re-activate a Windows/Tally device for a company.
+router.post('/device/register', async (req, res) => {
+    const { companyId, deviceId, name, platform, metadata } = req.body;
+    if (!companyId || !deviceId) return res.status(400).json({ success: false, error: 'companyId and deviceId are required' });
+    try {
+        const device = await SyncControlService.registerDevice({ companyId, deviceId, name, platform, metadata });
+        res.status(200).json({ success: true, data: device });
+    } catch (error) {
+        logger.error('Device registration failed:', error);
+        res.status(500).json({ success: false, error: 'Device registration failed', message: error.message });
+    }
+});
+
+router.post('/device/:deviceId/revoke', async (req, res) => {
+    const { companyId } = req.body;
+    const { deviceId } = req.params;
+    if (!companyId) return res.status(400).json({ success: false, error: 'companyId is required' });
+    try {
+        const device = await SyncControlService.revokeDevice(companyId, deviceId);
+        res.status(200).json({ success: true, data: device });
+    } catch (error) {
+        logger.error('Device revoke failed:', error);
+        res.status(500).json({ success: false, error: 'Device revoke failed', message: error.message });
+    }
+});
+
+router.get('/devices/:companyId', async (req, res) => {
+    try {
+        const devices = await SyncControlService.listDevices(req.params.companyId);
+        res.status(200).json({ success: true, data: devices });
+    } catch (error) {
+        logger.error('Device list failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to list devices', message: error.message });
+    }
+});
+
+router.get('/health/:companyId', async (req, res) => {
+    try {
+        const health = await SyncControlService.getHealth(req.params.companyId);
+        res.status(200).json({ success: true, data: health });
+    } catch (error) {
+        logger.error('Sync health failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to load sync health', message: error.message });
+    }
+});
+
+router.get('/conflicts/:companyId', async (req, res) => {
+    try {
+        const conflicts = await SyncControlService.listConflicts(req.params.companyId, req.query.status || 'open');
+        res.status(200).json({ success: true, data: conflicts });
+    } catch (error) {
+        logger.error('Conflict list failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to list conflicts', message: error.message });
+    }
+});
+
+router.post('/conflicts/:id/resolve', async (req, res) => {
+    const { resolution } = req.body;
+    if (!resolution) return res.status(400).json({ success: false, error: 'resolution is required' });
+    try {
+        const conflict = await SyncControlService.resolveConflict(req.params.id, resolution);
+        res.status(200).json({ success: true, data: conflict });
+    } catch (error) {
+        logger.error('Conflict resolution failed:', error);
+        res.status(500).json({ success: false, error: 'Failed to resolve conflict', message: error.message });
     }
 });
 
