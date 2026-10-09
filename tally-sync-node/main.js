@@ -6,10 +6,10 @@ const xml2js = require('xml2js');
 require('dotenv').config();
 
 let CONFIG = {
-    TALLY_URL: 'http://127.0.0.1:9000',
-    BACKEND_URL: 'http://localhost:5000/api/v1/sync',
-    API_KEY: 'vypar_sync_secure_882937401',
-    TIMEOUT: 5000
+    TALLY_URL: process.env.TALLY_URL || 'http://127.0.0.1:9000',
+    BACKEND_URL: process.env.BACKEND_URL || 'http://127.0.0.1:5000/api/v1/sync',
+    API_KEY: process.env.SYNC_API_KEY || '',
+    TIMEOUT: Number(process.env.REQUEST_TIMEOUT_MS || 5000)
 };
 
 let mainWindow;
