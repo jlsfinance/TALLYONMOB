@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
 const { SYNC_STATUS, MAX_SYNC_BATCH_SIZE } = require('../config/constants');
+const SyncControlService = require('./syncControlService');
 
 class SyncService {
     /**
@@ -20,7 +21,8 @@ class SyncService {
     static async syncCollection(companyId, table, data, options = {}) {
         const {
             isIncremental = false,
-            syncLogId = null
+            syncLogId = null,
+            deviceId = null
         } = options;
 
         if (!Array.isArray(data) || data.length === 0) {
@@ -30,6 +32,7 @@ class SyncService {
         const startTime = Date.now();
         let successCount = 0;
         let failedCount = 0;
+        let conflictCount = 0;
         const errors = [];
 
         try {
@@ -38,9 +41,20 @@ class SyncService {
 
             for (let i = 0; i < batches.length; i++) {
                 const batch = batches[i];
+                const staleRecords = await this.findStaleRecords(companyId, table, batch);
+                conflictCount += staleRecords.length;
+                for (const conflict of staleRecords) {
+                    await SyncControlService.safe(() => SyncControlService.recordConflict({
+                        companyId, deviceId, dataType: table, recordId: conflict.id,
+                        localVersion: conflict.existing, incomingVersion: conflict.incoming,
+                    }), null);
+                }
+                const staleIds = new Set(staleRecords.map((record) => record.id));
+                const eligibleBatch = batch.filter((item) => !staleIds.has(item.id || item.guid || item.remoteId));
+                if (eligibleBatch.length === 0) continue;
 
                 // Transform data to ensure company_id and proper formatting
-                const formattedData = batch.map(item => this.transformRecord(item, companyId, table));
+                const formattedData = eligibleBatch.map(item => this.transformRecord(item, companyId, table));
 
                 try {
                     const { error } = await supabase
@@ -52,17 +66,17 @@ class SyncService {
 
                     if (error) {
                         logger.error(`Batch ${i + 1} failed for ${table}:`, error);
-                        failedCount += batch.length;
+                        failedCount += eligibleBatch.length;
                         errors.push({
                             batch: i + 1,
                             error: error.message
                         });
                     } else {
-                        successCount += batch.length;
+                        successCount += eligibleBatch.length;
                     }
                 } catch (batchError) {
                     logger.error(`Batch ${i + 1} exception for ${table}:`, batchError);
-                    failedCount += batch.length;
+                    failedCount += eligibleBatch.length;
                     errors.push({
                         batch: i + 1,
                         error: batchError.message
@@ -80,9 +94,10 @@ class SyncService {
             const result = {
                 count: successCount,
                 failed: failedCount,
+                conflicts: conflictCount,
                 total: data.length,
                 duration,
-                success: failedCount === 0,
+                success: failedCount === 0 && conflictCount === 0,
                 errors: errors.length > 0 ? errors : undefined
             };
 
@@ -475,6 +490,28 @@ class SyncService {
         }
 
         return results;
+    }
+
+    static async findStaleRecords(companyId, table, batch) {
+        const ids = batch.map((item) => item.id || item.guid || item.remoteId).filter(Boolean);
+        if (!ids.length) return [];
+        try {
+            const { data, error } = await supabase.from(table).select('id,alter_id,raw_data')
+                .eq('company_id', companyId).in('id', ids);
+            if (error) throw error;
+            const existingById = new Map((data || []).map((row) => [row.id, row]));
+            return batch.map((item) => {
+                const id = item.id || item.guid || item.remoteId;
+                const existing = existingById.get(id);
+                const incomingAlter = Number(item.alterId || item.alter_id);
+                const existingAlter = Number(existing?.alter_id);
+                if (!existing || !Number.isFinite(incomingAlter) || !Number.isFinite(existingAlter)) return null;
+                return incomingAlter < existingAlter ? { id, existing, incoming: item } : null;
+            }).filter(Boolean);
+        } catch (error) {
+            logger.warn(`Conflict preflight skipped for ${table}: ${error.message}`);
+            return [];
+        }
     }
 
     /**

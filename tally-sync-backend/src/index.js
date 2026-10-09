@@ -31,9 +31,10 @@ const reportRoutes = require('./routes/reports');
 const appwriteMockRoute = require('./routes/appwriteMockRoute');
 const adminRoutes = require('./routes/adminRoutes');
 const invoiceExtractRoutes = require('./routes/invoiceExtract');
+const { validateSyncCredential } = require('./middleware/auth');
 
 // Use Routes
-app.use('/api/v1/sync', syncRoutes);
+app.use('/api/v1/sync', validateSyncCredential, syncRoutes);
 app.use('/api/v1/data', dataRoutes);
 app.use('/api/v1/telegram', telegramRoutes);
 app.use('/api/v1/contact', contactRoutes);
@@ -77,5 +78,4 @@ app.listen(PORT, () => {
         console.log('Telegram bot token not configured; bot is inactive');
     }
 });
-
 
