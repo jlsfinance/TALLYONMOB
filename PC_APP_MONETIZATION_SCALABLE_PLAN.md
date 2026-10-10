@@ -74,6 +74,19 @@ Repository में पहले से ये structures मौजूद ह�
 
 इसका मतलब है कि system को zero से बनाना नहीं है; मुख्य काम **consolidation, security hardening और production enforcement** है।
 
+### Owner/admin को user की serial confirm करने की जरूरत
+
+Business owner की जरूरत यह है कि वह किसी user की Tally serial binding confirm कर सके। यह feature बनेगा, लेकिन पूरी serial key को सामान्य list/API/UI में खुला दिखाना सुरक्षित नहीं होगा। Recommended confirmation flow:
+
+1. Admin panel में user, company और device के साथ **masked serial** दिखे, जैसे `TLY-****-4821`।
+2. User को app में स्पष्ट consent और **“Verify my Tally serial”** action दिखे।
+3. Admin masked value के साथ binding status, first-bound time, last validation और device status देख सके।
+4. Full serial की जरूरत होने पर केवल authorized support/admin action से temporary reveal हो, reason मांगा जाए और audit log बने।
+5. Normal exports, analytics, logs और error messages में raw serial कभी न आए।
+6. Confirmation के लिए user से app में दिख रही serial का consented confirmation लिया जाए; किसी दूसरे user की raw serial बिना authorization share नहीं की जाएगी।
+
+इस requirement को **Phase 1: Serial binding hardening** का explicit deliverable माना जाए: `Serial Binding & Admin Visibility`। Test/demo के लिए production serial की जगह dummy value जैसे `TEST-TALLY-0001` इस्तेमाल की जाएगी।
+
 ---
 
 ## 3. Important gaps और risks
@@ -205,6 +218,8 @@ Trial history में email, mobile, device, serial, GST/PAN और IP fields 
 ## Phase 1 — Serial binding hardening
 
 **Goal:** एक paid account को unauthorized Tally installation पर freely move न किया जा सके।
+
+इस phase में admin को user की serial binding **confirm करने का सुरक्षित तरीका** भी मिलेगा; इसका अर्थ raw serial को सभी admins या सभी screens पर खोल देना नहीं है।
 
 ### Tasks
 
