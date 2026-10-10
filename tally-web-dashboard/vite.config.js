@@ -30,8 +30,8 @@ export default defineConfig(({ mode }) => {
     // If you still need to proxy specific backend endpoints, add them here.
 
     return {
-        // Rooted chunk URLs remain valid on direct navigations such as /select-mode.
-        base: '/',
+        // GitHub Pages serves this project below /TALLYONMOB/; local preview stays rooted.
+        base: process.env.GITHUB_ACTIONS ? '/TALLYONMOB/' : '/',
         plugins: [
             tallyApiDevPlugin(),
             react(),
