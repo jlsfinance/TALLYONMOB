@@ -95,7 +95,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 3 — Guided onboarding aur first sync
 
-**Status:** In progress · **Branch:** `feature/phase-3-guided-onboarding` · **Base:** `feature/professional-roadmap-phases`.
+**Status:** Implemented · manual onboarding/Tally-device validation pending · **Branch:** `feature/stock-item-tabs-rebuild`.
 
 ### Kya banana hai
 - First-time user ke liye short setup wizard: company select/create, Tally connection verify, first sync tak le jaana.
@@ -118,7 +118,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 4 — Branded invoice preview aur PDF/export
 
-**Status:** In progress · **Branch:** `feature/phase-4-branded-invoices` · **Base:** `feature/phase-3-guided-onboarding`.
+**Status:** Implemented · sample PDF/print validation pending · **Branch:** `feature/stock-item-tabs-rebuild`.
 
 ### Kya banana hai
 - Company logo/name/contact/GSTIN ke saath polished invoice template aur A4 print/PDF preview.
@@ -183,7 +183,7 @@ git push                            # uske baad ke pushes
 |---|---|---|---|
 | Phase 1 | Complete | `feature/professional-roadmap-phases` | [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7), dashboard restore [`b448d76`](https://github.com/jlsfinance/TALLYONMOB/commit/b448d76) |
 | Phase 2 | Complete | `feature/professional-roadmap-phases` | [`6a2c33d`](https://github.com/jlsfinance/TALLYONMOB/commit/6a2c33d) |
-| Phase 3 | In progress | `feature/phase-3-guided-onboarding` | Guided company/connection/first-sync wizard implementation in progress |
-| Phase 4 | In progress | `feature/phase-4-branded-invoices` | Additive Branded preview/PDF template and selector in progress |
+| Phase 3 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`f981ea7`](https://github.com/jlsfinance/TALLYONMOB/commit/f981ea7) — guided company/connection/first-sync wizard integrated |
+| Phase 4 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`e6c9e4f`](https://github.com/jlsfinance/TALLYONMOB/commit/e6c9e4f) — additive Branded preview/PDF template and selector integrated |
 | Phase 5 | Planned | `feature/phase-5-business-insights` | Not started |
 | Phase 6 | Planned | `feature/phase-6-release-hardening` | Not started |
