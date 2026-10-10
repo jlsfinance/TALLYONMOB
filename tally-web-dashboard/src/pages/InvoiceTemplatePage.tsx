@@ -48,6 +48,13 @@ const TEMPLATES = [
         desc: 'Premium gold theme',
         colors: { primary: '#b45309', accent: '#fffbeb', text: '#78350f' },
         preview: 'border-l-4 border-amber-600'
+    },
+    {
+        id: 'branded',
+        name: 'Branded A4',
+        desc: 'New polished A4 preview and PDF',
+        colors: { primary: '#4338ca', accent: '#eef2ff', text: '#1e1b4b' },
+        preview: 'border-t-4 border-indigo-600'
     }
 ];
 
