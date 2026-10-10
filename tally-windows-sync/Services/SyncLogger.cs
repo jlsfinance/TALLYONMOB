@@ -45,6 +45,26 @@ namespace TallySyncApp.Services
             }
         }
 
+        public static void LogEvent(string eventName, string level, object? data = null)
+        {
+            try
+            {
+                var entry = new
+                {
+                    timestamp = DateTime.UtcNow,
+                    eventName,
+                    level,
+                    processId = Environment.ProcessId,
+                    data
+                };
+                File.AppendAllText(
+                    Path.Combine(LogDir, "sync-events.jsonl"),
+                    JsonSerializer.Serialize(entry) + Environment.NewLine,
+                    Encoding.UTF8);
+            }
+            catch { }
+        }
+
         public static void SaveFile(string fileName, string content)
         {
             try

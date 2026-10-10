@@ -15,6 +15,7 @@ namespace TallySyncApp.ViewModels
     {
         private readonly SyncManager _syncManager;
         private readonly LicenseService _licenseService;
+        private readonly TallyDiagnosticsService _diagnosticsService = new();
         private SyncStatus _status;
         private bool _isSyncing;
         private string _consoleOutput = "";
@@ -29,6 +30,7 @@ namespace TallySyncApp.ViewModels
         public ICommand ValidateLicenseCommand { get; }
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
+        public ICommand RunDiagnosticsCommand { get; }
         public ICommand ExportReportCommand { get; }
         public ICommand ToggleAutoStartCommand { get; }
         public ICommand RunValidationCommand { get; }
@@ -46,6 +48,13 @@ namespace TallySyncApp.ViewModels
         {
             get => _consoleOutput;
             set { _consoleOutput = value; OnPropertyChanged(); }
+        }
+
+        private string _diagnosticsText = "Diagnostics have not been run.";
+        public string DiagnosticsText
+        {
+            get => _diagnosticsText;
+            set { _diagnosticsText = value; OnPropertyChanged(); }
         }
 
         public ObservableCollection<SyncLogEntry> RecentLogs { get; } = new();
@@ -217,6 +226,7 @@ namespace TallySyncApp.ViewModels
             ValidateLicenseCommand = new RelayCommand(async () => await ValidateLicense());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
+            RunDiagnosticsCommand = new RelayCommand(async () => await RunDiagnostics());
             ExportReportCommand = new RelayCommand(ExportReport);
             ToggleAutoStartCommand = new RelayCommand(ToggleAutoStart);
             RunValidationCommand = new RelayCommand(RunValidation);
@@ -602,6 +612,34 @@ namespace TallySyncApp.ViewModels
             });
         }
 
+        private async Task RunDiagnostics()
+        {
+            DiagnosticsText = "Checking Tally ports and loaded companies...";
+            SyncLogger.LogEvent("diagnostics.started", "info", new { host = Settings.TallySettings.Host, port = Settings.TallySettings.Port });
+            try
+            {
+                var result = await _diagnosticsService.RunAsync(Settings.TallySettings.Host, Settings.TallySettings.Port);
+                if (result.Reachable)
+                {
+                    DiagnosticsText = $"Connected: {result.Endpoint}"
+                        + (string.IsNullOrWhiteSpace(result.Version) ? string.Empty : $"\nVersion: {result.Version}")
+                        + $"\nCompanies detected: {result.Companies.Count}"
+                        + (result.Companies.Count == 0 ? "\nNo company list returned; keep Tally open with a company loaded." : $"\n{string.Join("\n", result.Companies)}");
+                    SyncLogger.LogEvent("diagnostics.completed", "info", new { result.Port, result.Version, companies = result.Companies.Count });
+                }
+                else
+                {
+                    DiagnosticsText = $"Tally unavailable on ports 9000–9002.\n{result.Error}\nStart Tally and enable ODBC/HTTP server, then use Retry.";
+                    SyncLogger.LogEvent("diagnostics.failed", "error", new { result.Error, result.Port });
+                }
+            }
+            catch (Exception ex)
+            {
+                DiagnosticsText = $"Diagnostics failed: {ex.Message}";
+                SyncLogger.LogEvent("diagnostics.failed", "error", new { error = ex.Message });
+            }
+        }
+
         private async Task<bool> CheckSerialAndConfirmAsync()
         {
              var (isValid, current, stored, msg) = await _syncManager.CheckTallySerialAsync();
@@ -775,6 +813,4 @@ namespace TallySyncApp.ViewModels
         }
     }
 }
-
-
 

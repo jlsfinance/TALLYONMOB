@@ -620,7 +620,16 @@
                                 <TextBlock Text="Port (Default: 9000)" Foreground="#64748B" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"/>
                                 <TextBox Text="{Binding Settings.TallySettings.Port}" Style="{StaticResource InputField}" Margin="0,0,0,14"/>
 
-                                <Button Command="{Binding TestConnectionCommand}" Content="Test Tally Connection" Style="{StaticResource PrimaryBtn}" HorizontalAlignment="Left"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Command="{Binding TestConnectionCommand}" Content="Test Tally Connection" Style="{StaticResource PrimaryBtn}" HorizontalAlignment="Left"/>
+                                    <Button Command="{Binding RunDiagnosticsCommand}" Content="Run Diagnostics / Retry" Style="{StaticResource PrimaryBtn}" Margin="10,0,0,0" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Tally diagnostics" FontWeight="SemiBold" Foreground="#334155" FontSize="12"/>
+                                        <TextBlock Text="{Binding DiagnosticsText}" Foreground="#64748B" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 
