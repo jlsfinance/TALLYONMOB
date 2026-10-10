@@ -10,7 +10,7 @@ import { TrendingUp, Search, Plus, IndianRupee, Receipt, Filter } from 'lucide-r
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import TransactionCard from '@/components/shared/TransactionCard';
-import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
+import FinancialPeriodSelector from '@/components/shared/FinancialPeriodSelector';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 export default function SalesPage() {
@@ -220,7 +220,7 @@ export default function SalesPage() {
             {/* Period selector is rendered in page content so it remains usable on
                 mobile and desktop even when the shell header is remounted. */}
             <div className="flex justify-end relative z-20">
-                <CompactDateFilter
+                <FinancialPeriodSelector
                     selectedFy={selectedFy}
                     onFyChange={(fy) => {
                         setSelectedFy(fy);

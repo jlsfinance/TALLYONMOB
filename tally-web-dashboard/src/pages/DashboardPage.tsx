@@ -11,6 +11,7 @@ import {
 import { Spinner } from '../components/ui/GlassUI';
 import { BarChart3D } from '../components/3d';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
+import FinancialPeriodSelector from '../components/shared/FinancialPeriodSelector';
 import { subMonths, startOfMonth as startOfMonthDate, endOfMonth as endOfMonthDate } from 'date-fns';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
@@ -498,56 +499,7 @@ export default function DashboardPage() {
                 </div>
             </HeaderPortal>
 
-            <HeaderPortal type="filters">
-                <div className="flex max-w-full overflow-visible bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-95 md:scale-100 origin-right [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {periodFilters.map((filter) => (
-                        <button
-                            key={filter.key}
-                            onClick={() => setPeriod(filter.key)}
-                            className={`
-                                hidden md:flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
-                                ${period === filter.key
-                                    ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)] scale-105'
-                                    : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
-                                }
-                            `}
-                        >
-                            {filter.icon}
-                            <span className={period === filter.key ? 'block' : 'hidden md:block'}>
-                                {filter.label}
-                            </span>
-                        </button>
-                    ))}
-                    {/* FY Selector Dropdown */}
-                    <div className="relative ml-1" style={{ overflow: 'visible' }}>
-                        <button
-                            ref={fyButtonRef}
-                            onClick={toggleFyDropdown}
-                            className="flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)]"
-                        >
-                            <TrendingUp size={12} />
-                            <span>FY {fyYear.toString().slice(2)}-{String(fyYear + 1).slice(2)}</span>
-                            <svg className={`w-3 h-3 transition-transform ${showFyDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                        </button>
-                        {showFyDropdown && (
-                            <>
-                                <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowFyDropdown(false)} />
-                                <div style={fyDropdownStyle} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden min-w-[130px]">
-                                    {fyOptions.map((year) => (
-                                        <button
-                                            key={year}
-                                            onClick={() => { setFyYear(year); setShowFyDropdown(false); }}
-                                            className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors hover:bg-[var(--surface-variant)] ${fyYear === year ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--on-surface)]'}`}
-                                        >
-                                            FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </HeaderPortal>
+
 
             <HeaderPortal type="actions">
                 <div className="hidden md:flex items-center gap-2">
@@ -569,6 +521,15 @@ export default function DashboardPage() {
                     </button>
                 </div>
             </HeaderPortal>
+
+            <FinancialPeriodSelector
+                className="mb-3"
+                selectedFy={`FY ${fyYear}-${String(fyYear + 1).slice(2)}`}
+                onFyChange={(fy) => {
+                    const match = fy.match(/(20\d{2})/);
+                    if (match) setFyYear(Number(match[1]));
+                }}
+            />
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-3">
@@ -628,20 +589,6 @@ export default function DashboardPage() {
                                 {filter.label}
                             </button>
                         ))}
-                        {/* Direct mobile FY selector; the shell header selector is
-                            intentionally duplicated only for desktop. */}
-                        <select
-                            value={fyYear}
-                            onChange={(e) => setFyYear(Number(e.target.value))}
-                            className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase bg-sky-500/10 text-sky-500 border border-sky-500/20 appearance-none cursor-pointer"
-                            aria-label="Financial year"
-                        >
-                            {fyOptions.map((year) => (
-                                <option key={year} value={year}>
-                                    FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
-                                </option>
-                            ))}
-                        </select>
                     </div>
 
                     {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}
