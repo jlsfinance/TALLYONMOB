@@ -5,6 +5,7 @@ import { supabase } from '../lib/insforge';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
+import BrandedInvoiceTemplate from '../components/invoice/BrandedInvoiceTemplate';
 import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
 } from 'lucide-react';
@@ -131,6 +132,7 @@ export default function InvoicePDFPage() {
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
     const [isMobile, setIsMobile] = useState(false);
+    const [generatingPdf, setGeneratingPdf] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
@@ -158,6 +160,10 @@ export default function InvoicePDFPage() {
             loadInvoice();
             const savedUpi = localStorage.getItem(`upi_${selectedCompany.id}`);
             if (savedUpi) setUpiId(savedUpi);
+            try {
+                const savedTemplate = JSON.parse(localStorage.getItem(`invoice_template_${selectedCompany.id}`) || '{}');
+                if (savedTemplate?.template === 'branded') setTemplate('branded');
+            } catch (_) { }
         }
     }, [id, selectedCompany?.id]);
 
@@ -804,6 +810,124 @@ export default function InvoicePDFPage() {
         }
     };
 
+    const normalizedVoucherType = String(invoice?.voucher_type || '').trim().toLowerCase();
+    const isReceiptVoucher = normalizedVoucherType === 'receipt';
+    const isPaymentVoucher = normalizedVoucherType === 'payment';
+    const isAccountingVoucher = isReceiptVoucher || isPaymentVoucher;
+    const accountingTitle = isReceiptVoucher ? 'RECEIPT' : isPaymentVoucher ? 'PAYMENT VOUCHER' : '';
+    const accountingPartyLabel = isReceiptVoucher ? 'RECEIVED FROM' : 'PAID TO';
+    const accountingVerb = isReceiptVoucher ? 'Received' : 'Paid';
+
+    const generateBrandedPDF = async (action = 'download') => {
+        setGeneratingPdf(true);
+        try {
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 16;
+            const contentWidth = pageWidth - margin * 2;
+            const amount = absNumber(invoice?.net_amount || invoice?.total_amount || invoice?.grand_total);
+            const brandedType = String(invoice?.voucher_type || '').toLowerCase();
+            const brandedReceipt = brandedType === 'receipt';
+            const brandedPayment = brandedType === 'payment';
+            const brandedAccounting = brandedReceipt || brandedPayment;
+            const title = brandedReceipt ? 'RECEIPT' : brandedPayment ? 'PAYMENT VOUCHER' : brandedType.includes('purchase') ? 'PURCHASE VOUCHER' : 'TAX INVOICE';
+            let y = 18;
+            doc.setFillColor(30, 41, 96);
+            doc.rect(0, 0, pageWidth, 11, 'F');
+            doc.setTextColor(15, 23, 42);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(18);
+            doc.text(companyInfo?.name || 'Company Name', margin, y);
+            doc.setFontSize(13);
+            doc.setTextColor(67, 56, 202);
+            doc.text(title, pageWidth - margin, y, { align: 'right' });
+            doc.setTextColor(15, 23, 42);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            const meta = [companyInfo?.address, companyInfo?.gstin ? `GSTIN: ${companyInfo.gstin}` : '', companyInfo?.phone].filter(Boolean).join(' | ');
+            if (meta) doc.text(doc.splitTextToSize(meta, contentWidth * 0.62), margin, y + 6);
+            doc.text(`No: ${invoice?.invoice_number || '-'}`, pageWidth - margin, y + 6, { align: 'right' });
+            doc.text(`Date: ${formatDate(invoice?.invoice_date)}`, pageWidth - margin, y + 11, { align: 'right' });
+            y += 28;
+            doc.setDrawColor(203, 213, 225);
+            doc.line(margin, y, pageWidth - margin, y);
+            y += 10;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 116, 139);
+            doc.text(brandedReceipt ? 'RECEIVED FROM' : brandedPayment ? 'PAID TO' : brandedType.includes('purchase') ? 'SUPPLIER' : 'BILL TO', margin, y);
+            doc.setTextColor(15, 23, 42);
+            doc.setFontSize(12);
+            doc.text(invoice?.party_ledger_name || invoice?.party_name || 'Cash / Bank', margin, y + 7);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            if (invoice?.party_address) doc.text(doc.splitTextToSize(invoice.party_address, contentWidth * 0.58), margin, y + 13);
+            doc.text(`Mode: ${invoice?.payment_mode || 'Cash / Bank'}`, pageWidth - margin, y + 7, { align: 'right' });
+            if (invoice?.party_gstin) doc.text(`GSTIN: ${invoice.party_gstin}`, pageWidth - margin, y + 13, { align: 'right' });
+            y += 30;
+            if (brandedAccounting) {
+                doc.setFillColor(238, 242, 255);
+                doc.roundedRect(margin, y, contentWidth, 28, 3, 3, 'F');
+                doc.setTextColor(67, 56, 202);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.text(brandedReceipt ? 'AMOUNT RECEIVED' : 'AMOUNT PAID', margin + 7, y + 9);
+                doc.setTextColor(15, 23, 42);
+                doc.setFontSize(19);
+                doc.text(`INR ${formatNumber(amount)}`, pageWidth - margin - 7, y + 12, { align: 'right' });
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(8);
+                doc.text(numberToWords(amount), margin + 7, y + 20);
+                y += 40;
+            } else {
+                const tableBody = items.length ? items.map((item, index) => ({
+                    no: index + 1,
+                    item: item.stock_item_name || item.item_name || 'Item',
+                    qty: `${item.quantity || 0} ${item.unit || ''}`,
+                    rate: formatNumber(item.rate),
+                    amount: formatNumber(item.amount)
+                })) : [{ no: 1, item: 'No item lines available', qty: '-', rate: '-', amount: formatNumber(invoice?.taxable_amount ?? amount) }];
+                autoTable(doc, {
+                    startY: y,
+                    margin: { left: margin, right: margin },
+                    columns: [{ header: '#', dataKey: 'no' }, { header: 'Item', dataKey: 'item' }, { header: 'Qty', dataKey: 'qty' }, { header: 'Rate', dataKey: 'rate' }, { header: 'Amount', dataKey: 'amount' }],
+                    body: tableBody,
+                    theme: 'grid',
+                    headStyles: { fillColor: [30, 41, 96], textColor: [255, 255, 255], fontStyle: 'bold' },
+                    styles: { fontSize: 8, cellPadding: 3, textColor: [15, 23, 42] },
+                    columnStyles: { no: { cellWidth: 10, halign: 'center' }, qty: { cellWidth: 25, halign: 'right' }, rate: { cellWidth: 28, halign: 'right' }, amount: { cellWidth: 32, halign: 'right' } }
+                });
+                y = doc.lastAutoTable.finalY + 8;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(11);
+                doc.text('Grand Total', pageWidth - margin - 45, y, { align: 'right' });
+                doc.text(`INR ${formatNumber(amount)}`, pageWidth - margin, y, { align: 'right' });
+                y += 12;
+            }
+            if (invoice?.narration) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.text('Notes', margin, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(doc.splitTextToSize(invoice.narration, contentWidth), margin, y + 6);
+            }
+            doc.setDrawColor(203, 213, 225);
+            doc.line(pageWidth - margin - 55, 265, pageWidth - margin, 265);
+            doc.setFontSize(8);
+            doc.text(`For ${companyInfo?.name || 'Company'}`, pageWidth - margin, 271, { align: 'right' });
+            doc.text('Authorized signatory', pageWidth - margin, 278, { align: 'right' });
+            const filename = `Branded_${title.replace(/\s+/g, '_')}_${invoice?.invoice_number || 'Document'}.pdf`;
+            if (action === 'share') {
+                const blob = doc.output('blob');
+                const file = new File([blob], filename, { type: 'application/pdf' });
+                if (navigator.share && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: filename });
+                else doc.save(filename);
+            } else doc.save(filename);
+        } finally {
+            setGeneratingPdf(false);
+        }
+    };
+
     // Generate Professional PDF using jsPDF
     const generatePDF = async (action = 'download') => {
         const doc = new jsPDF('p', 'mm', 'a4');
@@ -1287,6 +1411,28 @@ export default function InvoicePDFPage() {
 
     const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
 
+    if (template === 'branded') {
+        return <BrandedInvoiceTemplate
+            invoice={invoice}
+            items={items}
+            companyInfo={companyInfo}
+            formatCurrency={formatCurrency}
+            formatNumber={formatNumber}
+            formatDate={formatDate}
+            numberToWords={numberToWords}
+            onDownload={() => generateBrandedPDF('download')}
+            onShare={() => generateBrandedPDF('share')}
+            onEdit={() => navigate(`/edit-invoice/${id}`)}
+            template={template}
+            onTemplateChange={(value) => {
+                setTemplate(value);
+                if (selectedCompany?.id) {
+                    localStorage.setItem(`invoice_template_${selectedCompany.id}`, JSON.stringify({ template: value }));
+                }
+            }}
+        />;
+    }
+
     return (
         <div className="bg-[#f8f9fa] min-h-screen pb-10 font-sans">
             {/* Header Actions Portal */}
@@ -1299,6 +1445,7 @@ export default function InvoicePDFPage() {
 
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-1 md:gap-2">
+                    <label className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-[10px] font-bold text-[var(--on-surface)]"><span>Template</span><select value={template} onChange={(event) => { setTemplate(event.target.value); if (selectedCompany?.id) localStorage.setItem(`invoice_template_${selectedCompany.id}`, JSON.stringify({ template: event.target.value })); }} className="bg-transparent font-bold outline-none"><option value="professional">Default</option><option value="branded">Branded</option></select></label>
                     <button
                         onClick={handleWhatsAppShare}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
