@@ -38,6 +38,7 @@ export interface SyncCheckpoint {
     current_chunk: number;
     total_chunks: number;
     last_processed_id: string | null;
+    last_processed_alter_id: number | null;
     status: 'active' | 'running' | 'paused' | 'completed' | 'failed';
 }
 
@@ -169,12 +170,13 @@ export class IncrementalSyncEngine {
         return data?.id || '';
     }
 
-    private async updateCheckpoint(checkpointId: string, chunk: number, lastId: string) {
+    private async updateCheckpoint(checkpointId: string, chunk: number, lastId: string, lastAlterId: number) {
         await supabase
             .from('sync_checkpoint')
             .update({
                 current_chunk: chunk,
                 last_processed_id: lastId,
+                last_processed_alter_id: lastAlterId,
                 updated_at: new Date().toISOString(),
             })
             .eq('id', checkpointId);
@@ -193,11 +195,11 @@ export class IncrementalSyncEngine {
             .select('*')
             .eq('company_id', this.companyId)
             .eq('module', module)
-            .eq('sync_session_id', this.sessionId)
             .in('status', ['active', 'running', 'paused'])
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
+        if (data?.sync_session_id) this.sessionId = data.sync_session_id;
         return data;
     }
 
@@ -232,7 +234,6 @@ export class IncrementalSyncEngine {
     private async fetchIncremental(
         module: SyncModule,
         lastAlterId: number,
-        offset: number,
         limit: number
     ): Promise<{ records: any[]; maxAlterId: number }> {
         const table = MODULE_TABLES[module];
@@ -243,7 +244,7 @@ export class IncrementalSyncEngine {
             .eq('company_id', this.companyId)
             .gt('alter_id', lastAlterId)
             .order('alter_id', { ascending: true })
-            .range(offset, offset + limit - 1);
+            .limit(limit);
 
         if (error) throw new Error(`Fetch failed for ${module}: ${error.message}`);
 
@@ -358,106 +359,42 @@ export class IncrementalSyncEngine {
         const startTime = Date.now();
         const chunkSize = CHUNK_SIZES[module];
         const state = await this.getSyncState(module);
-        const lastAlterId = state.last_alter_id || 0;
-
-        // Check for resumable checkpoint
         const checkpoint = await this.getActiveCheckpoint(module);
-        let startChunk = checkpoint?.current_chunk || 0;
-        let startOffset = startChunk * chunkSize;
-
-        // First pass: count total records
-        const { records: firstBatch, maxAlterId: firstMax } = await this.fetchIncremental(module, lastAlterId, 0, chunkSize);
-        if (firstBatch.length === 0) {
-            await this.updateSyncState(module, {
-                status: 'idle',
-                last_sync_time: new Date().toISOString(),
-            });
+        let cursor = Number(checkpoint?.last_processed_alter_id ?? state.last_alter_id ?? 0);
+        let currentChunk = checkpoint?.current_chunk || 0;
+        const totalEstimate = await this.estimateTotal(module, cursor);
+        if (totalEstimate === 0) {
+            await this.updateSyncState(module, { last_sync_time: new Date().toISOString() });
             return { synced: 0, chunks: 0, durationMs: Date.now() - startTime, status: 'completed' };
         }
-
-        // Estimate total records
-        const totalEstimate = firstBatch.length >= chunkSize
-            ? await this.estimateTotal(module, lastAlterId)
-            : firstBatch.length;
         const totalChunks = Math.ceil(totalEstimate / chunkSize);
-
         const checkpointId = checkpoint?.id || await this.createCheckpoint(module, totalChunks);
-
         let totalSynced = 0;
-        let currentChunk = startChunk;
-        let maxAlterId = lastAlterId;
-
-        // Process first batch if resuming from chunk 0
-        if (currentChunk === 0 && firstBatch.length > 0) {
-            await this.upsertRecords(module, firstBatch);
-            totalSynced += firstBatch.length;
-            maxAlterId = Math.max(maxAlterId, firstMax);
-            await this.updateCheckpoint(checkpointId, 0, firstBatch[firstBatch.length - 1]?.id || '');
-            currentChunk = 1;
-            startOffset = chunkSize;
-        }
-
-        // Process remaining chunks
-        for (let offset = startOffset; offset < totalEstimate + chunkSize; offset += chunkSize) {
+        while (true) {
             if (this.abortController?.signal.aborted) {
                 await this.updateSyncState(module, { status: 'paused' });
                 return { synced: totalSynced, chunks: currentChunk, durationMs: Date.now() - startTime, status: 'paused' };
             }
-
-            const { records, maxAlterId: batchMax } = await this.fetchIncremental(module, lastAlterId, offset, chunkSize);
-
+            const { records } = await this.fetchIncremental(module, cursor, chunkSize);
             if (records.length === 0) break;
-
-            // Retry logic for upsert
             let retries = 0;
             while (retries < RETRY_DELAYS.length) {
-                try {
-                    await this.upsertRecords(module, records);
-                    break;
-                } catch (err: any) {
-                    retries++;
-                    if (retries >= RETRY_DELAYS.length) throw err;
-                    await new Promise(r => setTimeout(r, RETRY_DELAYS[retries - 1]));
-                }
+                try { await this.upsertRecords(module, records); break; }
+                catch (err: any) { retries++; if (retries >= RETRY_DELAYS.length) throw err; await new Promise(r => setTimeout(r, RETRY_DELAYS[retries - 1])); }
             }
-
-            totalSynced += records.length;
-            maxAlterId = Math.max(maxAlterId, batchMax);
-            await this.updateCheckpoint(checkpointId, currentChunk, records[records.length - 1]?.id || '');
-            currentChunk++;
-
-            // Report progress
-            this.progressCallback?.({
-                module,
-                currentChunk,
-                totalChunks,
-                recordsSynced: totalSynced,
-                totalRecords: totalEstimate,
-                status: 'syncing',
-                speed: totalSynced / ((Date.now() - startTime) / 1000),
-                eta: ((totalEstimate - totalSynced) / (totalSynced / ((Date.now() - startTime) / 1000))) || 0,
-            });
+            const batchMax = Math.max(...records.map((r: any) => Number(r.alter_id || 0)));
+            if (batchMax <= cursor) throw new Error(`Non-advancing Alter ID cursor for ${module}`);
+            cursor = batchMax; totalSynced += records.length; currentChunk++;
+            await this.updateCheckpoint(checkpointId, currentChunk, records[records.length - 1]?.id || '', cursor);
+            const elapsed = Math.max((Date.now() - startTime) / 1000, 0.001);
+            this.progressCallback?.({ module, currentChunk, totalChunks, recordsSynced: totalSynced, totalRecords: Math.max(totalEstimate, totalSynced), status: 'syncing', speed: totalSynced / elapsed, eta: totalSynced > 0 ? Math.max(0, (Math.max(totalEstimate, totalSynced) - totalSynced) / (totalSynced / elapsed)) : 0 });
+            if (records.length < chunkSize) break;
         }
-
-        // Update sync state
-        await this.updateSyncState(module, {
-            last_alter_id: maxAlterId,
-            last_sync_time: new Date().toISOString(),
-            total_records_synced: (state.total_records_synced || 0) + totalSynced,
-            status: 'idle',
-        });
-
+        await this.updateSyncState(module, { last_alter_id: cursor, last_sync_time: new Date().toISOString() });
         await this.completeCheckpoint(checkpointId);
-
         const durationMs = Date.now() - startTime;
         await this.logHistory(module, 'incremental', totalSynced, currentChunk, durationMs, 'completed');
-
-        return {
-            synced: totalSynced,
-            chunks: currentChunk,
-            durationMs,
-            status: 'completed',
-        };
+        return { synced: totalSynced, chunks: currentChunk, durationMs, status: 'completed' };
     }
 
     private async estimateTotal(module: SyncModule, lastAlterId: number): Promise<number> {
