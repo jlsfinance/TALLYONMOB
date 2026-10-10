@@ -1876,10 +1876,11 @@ FinishCompanySync:
 
         private int GetEffectiveBatchSize()
         {
-            // Keep sync throughput high by default while still respecting larger user-configured values.
+            // Safety contract: no cloud upload request may contain more than 100 rows.
+            // This protects low-end PCs, Tally XML memory, and Supabase request limits.
             var configured = _settings.SyncSettings.BatchSize;
             if (configured <= 0) configured = 100;
-            var baseSize = Math.Clamp(configured, 100, 500);
+            var baseSize = Math.Clamp(configured, 1, 100);
             if (_tallyFailureCount >= 5) return Math.Min(baseSize, 25);
             if (_tallyFailureCount >= 4) return Math.Min(baseSize, 50);
             if (_tallyFailureCount >= 3) return Math.Min(baseSize, 75);
@@ -4654,7 +4655,6 @@ FinishCompanySync:
         }
     }
 }
-
 
 
 

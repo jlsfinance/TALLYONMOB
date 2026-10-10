@@ -20,6 +20,8 @@ namespace TallySyncApp.Services
     /// </summary>
     public class ApiClient : IDisposable
     {
+        // Hard protocol limit: every PostgREST request must contain at most 100 rows.
+        private const int MaxRowsPerRequest = 100;
         private readonly HttpClient _httpClient;
         private readonly string _supabaseUrl;
         private readonly string _apiKey; // Anon Key
@@ -1020,8 +1022,53 @@ namespace TallySyncApp.Services
         {
             try
             {
-                AddAuthHeader();
+                var normalizedPayload = NormalizePayloadForUpsert(payload);
+                var rows = ToObjectRows(normalizedPayload);
 
+                // Defense in depth: voucher-child and derived-data callers may pass
+                // a large list directly. Split here so no request can exceed 100 rows.
+                if (rows.Count > MaxRowsPerRequest)
+                {
+                    var chunks = rows
+                        .Select((row, index) => new { row, index })
+                        .GroupBy(x => x.index / MaxRowsPerRequest)
+                        .Select(group => new JArray(group.Select(x => x.row)))
+                        .ToList();
+                    var total = 0;
+                    for (var index = 0; index < chunks.Count; index++)
+                    {
+                        var chunkResult = await UpsertSingleChunkAsync<T>(table, chunks[index], onConflict);
+                        if (!chunkResult.Success)
+                        {
+                            return new ApiResponse<T>
+                            {
+                                Success = false,
+                                Error = $"Chunk {index + 1}/{chunks.Count} failed for '{table}': {chunkResult.Error}"
+                            };
+                        }
+                        total += chunks[index].Count;
+                    }
+                    SyncLogger.Log($"[INFO] Hard-capped '{table}' upload into {chunks.Count} request(s), {total} rows total.");
+                    return new ApiResponse<T> { Success = true, Message = $"Uploaded {total} rows in {chunks.Count} chunks (max {MaxRowsPerRequest})." };
+                }
+
+                return await UpsertSingleChunkAsync<T>(table, normalizedPayload, onConflict);
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<T>
+                {
+                    Success = false,
+                    Error = $"Request failed: {ex.Message}"
+                };
+            }
+        }
+
+        private async Task<ApiResponse<T>> UpsertSingleChunkAsync<T>(string table, object payload, string onConflict)
+        {
+            try
+            {
+                AddAuthHeader();
                 var normalizedPayload = NormalizePayloadForUpsert(payload);
                 if (string.Equals(table, "vouchers", StringComparison.OrdinalIgnoreCase)
                     && normalizedPayload is JArray voucherRows)
@@ -1033,21 +1080,17 @@ namespace TallySyncApp.Services
                     NullValueHandling = NullValueHandling.Ignore,
                     DateFormatString = "yyyy-MM-dd"
                 };
-
                 var json = normalizedPayload is JToken token
                     ? token.ToString(Formatting.None)
                     : JsonConvert.SerializeObject(normalizedPayload, serializerSettings);
-
                 if (table == "vouchers")
                 {
                     SyncLogger.Log($"DEBUG UPLOAD VOUCHERS: {json.Substring(0, Math.Min(json.Length, 500))}...");
                 }
-
                 if (table == "companies")
                 {
                     SyncLogger.Log($"DEBUG UPLOAD COMPANY: {json}");
                 }
-
                 return await UpsertViaRawSqlAsync<T>(table, normalizedPayload, onConflict);
             }
             catch (Exception ex)
