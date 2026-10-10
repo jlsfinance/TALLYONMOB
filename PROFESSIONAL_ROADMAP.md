@@ -17,15 +17,15 @@
 
 ## Phase 2 — Tally Sync Center
 
-**Status:** In progress
+**Status:** Complete
 
-- Show one clear connection state: checking, connected, offline, or unavailable, with a useful retry action.
-- Make the port setting safe and persistent so a refresh does not lose the user's configuration.
+- Show one clear connection state: checking, connected, offline, or not checked, with a useful retry action.
+- Validate and persist the port setting, and use that same port for both single and batch sync.
 - Surface voucher-load errors separately from a genuinely empty voucher list.
 - Add searchable/selectable voucher handling and visible batch-sync progress.
 - Improve sync success/failure summaries, empty states, responsive spacing, and dark-mode contrast.
 
-**Acceptance checks:** A failed connection cannot start a sync; loading, empty, error, and partial-success states are distinguishable; production build and TypeScript check pass.
+**Acceptance checks:** A failed/unverified connection cannot start a sync; loading, empty, load-error, and partial-success states are distinguishable; batch export uses the configured port and carries the selected company context; TypeScript, production build, and a mocked export smoke test pass.
 
 ## Phase 3 — Guided setup and business-ready outputs
 
@@ -42,5 +42,5 @@
 | Phase | Status | GitHub delivery |
 |---|---|---|
 | Phase 1 | Complete | `feature/professional-roadmap-phases` — `46a7ee7` |
-| Phase 2 | In progress | Sync Center usability and reliability |
+| Phase 2 | Complete | `feature/professional-roadmap-phases` — Tally Sync Center update |
 | Phase 3 | Planned | Not started |
