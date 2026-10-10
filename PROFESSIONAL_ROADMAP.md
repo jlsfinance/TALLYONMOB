@@ -195,6 +195,16 @@ git push                            # uske baad ke pushes
 - Added `RELEASE_HARDENING_CHECKLIST.md` covering core journeys, mobile/accessibility, offline/PWA, performance, deployment and rollback.
 - Automated validation passed: TypeScript, Phase 5 checks, accessibility audit, production/PWA build, release artifact check and diff check.
 
+
+## Phase 7 — Mobile dashboard reliability & QA
+
+**Status:** In progress · **Branch:** `feature/phase-7-mobile-dashboard-qa` · **Base:** Phase 6 release-hardening branch.
+
+### Scope
+- Repeatable mobile regression checks for the FY selector, Parties voucher previews, Stock SKU tabs and mobile navigation shell.
+- Verify touch-scroll, persistence, empty/error handling hooks and mobile-safe action surfaces without changing database schemas or financial calculations.
+- Include the checks in the existing `check:all` release gate and document remaining manual device checks.
+
 ## Delivery log
 
 | Phase | Status | Branch | Commit / note |
@@ -205,3 +215,4 @@ git push                            # uske baad ke pushes
 | Phase 4 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`e6c9e4f`](https://github.com/jlsfinance/TALLYONMOB/commit/e6c9e4f) — additive Branded preview/PDF template and selector integrated |
 | Phase 5 | Implemented; manual reconciliation pending | `feature/phase-5-business-insights` | Design `20c3a79`; implementation and checks in current delivery commit |
 | Phase 6 | Implemented; manual browser smoke pass pending | `feature/phase-6-release-hardening` | Release hardening, CI quality gate and checklist added in current delivery commit |
+| Phase 7 | In progress | `feature/phase-7-mobile-dashboard-qa` | Mobile dashboard reliability and regression gate being implemented |
