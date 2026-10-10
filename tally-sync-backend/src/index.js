@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const compression = require('compression');
 require('dotenv').config({ override: true });
 
 const app = express();
@@ -10,6 +11,9 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(helmet());
 app.use(cors()); // Allow all origins for dev
+// Compress large sync responses and health/history payloads; express.json inflates
+// compressed requests before validation, so existing clients remain compatible.
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '50mb' })); // Large payload for Tally data
 app.use(morgan('dev'));
 
@@ -78,4 +82,3 @@ app.listen(PORT, () => {
         console.log('Telegram bot token not configured; bot is inactive');
     }
 });
-
