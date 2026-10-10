@@ -628,6 +628,20 @@ export default function DashboardPage() {
                                 {filter.label}
                             </button>
                         ))}
+                        {/* Direct mobile FY selector; the shell header selector is
+                            intentionally duplicated only for desktop. */}
+                        <select
+                            value={fyYear}
+                            onChange={(e) => setFyYear(Number(e.target.value))}
+                            className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase bg-sky-500/10 text-sky-500 border border-sky-500/20 appearance-none cursor-pointer"
+                            aria-label="Financial year"
+                        >
+                            {fyOptions.map((year) => (
+                                <option key={year} value={year}>
+                                    FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}

@@ -217,22 +217,22 @@ export default function SalesPage() {
                 </div>
             </HeaderPortal>
 
-            <HeaderPortal type="actions">
-                <div className="flex items-center gap-2">
-                    <CompactDateFilter
-                        selectedFy={selectedFy}
-                        onFyChange={(fy) => {
-                            setSelectedFy(fy);
-                            // A month belongs to the previous FY; reset to the
-                            // complete selected financial year immediately.
-                            setSelectedMonth('all');
-                        }}
-                        selectedMonth={selectedMonth}
-                        onMonthChange={setSelectedMonth}
-                        monthsInFy={monthsInFy}
-                    />
-                </div>
-            </HeaderPortal>
+            {/* Period selector is rendered in page content so it remains usable on
+                mobile and desktop even when the shell header is remounted. */}
+            <div className="flex justify-end relative z-20">
+                <CompactDateFilter
+                    selectedFy={selectedFy}
+                    onFyChange={(fy) => {
+                        setSelectedFy(fy);
+                        // A month belongs to the previous FY; reset to the
+                        // complete selected financial year immediately.
+                        setSelectedMonth('all');
+                    }}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                    monthsInFy={monthsInFy}
+                />
+            </div>
 
             {/* Performance Indicators */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
