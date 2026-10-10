@@ -27,6 +27,23 @@ const validateCompanySync = [
     body('company.name').isString().notEmpty().withMessage('Company name is required'),
 ];
 
+// Registration is the bootstrap endpoint. Every other mutating sync endpoint
+// must prove an active, non-revoked device before touching sync data.
+router.use(async (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/device/register' || (req.path.startsWith('/device/') && req.path.endsWith('/revoke'))) return next();
+    const companyId = req.body?.companyId || req.params?.companyId;
+    const deviceId = req.body?.deviceId || req.headers['x-device-id'];
+    const deviceToken = req.headers['x-device-token'];
+    if (!companyId || !deviceId) return res.status(401).json({ success: false, error: 'DEVICE_REQUIRED' });
+    try {
+        req.device = await SyncControlService.assertDeviceActive(companyId, deviceId, deviceToken);
+        return next();
+    } catch (error) {
+        const status = ['DEVICE_REQUIRED', 'DEVICE_NOT_REGISTERED', 'DEVICE_TOKEN_REQUIRED', 'DEVICE_TOKEN_INVALID'].includes(error.code) ? 401 : 403;
+        return res.status(status).json({ success: false, error: error.code || 'DEVICE_NOT_AUTHORIZED' });
+    }
+});
+
 /**
  * POST / - Main sync endpoint for batch data
  * Used by Windows Sync App to upload Tally data
@@ -54,10 +71,9 @@ router.post('/', validateSync, async (req, res) => {
         if (replayedResponse) {
             return res.status(200).json({ ...replayedResponse, replayed: true });
         }
-        await SyncControlService.safe(() => SyncControlService.registerDevice({
-            companyId, deviceId: resolvedDeviceId, name: req.body.deviceName,
-            platform: req.body.platform, metadata: req.body.deviceMetadata,
-        }), null);
+        // Re-check immediately before the write path; do not swallow a revoke
+        // race or a failed device-token verification.
+        await SyncControlService.touchDevice(companyId, resolvedDeviceId, req.headers['x-device-token']);
         syncRun = await SyncControlService.safe(() => SyncControlService.createRun({
             companyId, deviceId: resolvedDeviceId, dataType, totalRecords: data.length,
             metadata: { incremental: Boolean(isIncremental) },
@@ -97,6 +113,10 @@ router.post('/', validateSync, async (req, res) => {
         await SyncControlService.safe(() => SyncControlService.finishRun(syncRun?.id, {
             success: false, failed: data.length, errors: [{ error: error.message }]
         }), null);
+        if (['DEVICE_REVOKED', 'DEVICE_NOT_REGISTERED', 'DEVICE_TOKEN_REQUIRED', 'DEVICE_TOKEN_INVALID'].includes(error.code)) {
+            const status = error.code === 'DEVICE_REVOKED' ? 403 : 401;
+            return res.status(status).json({ success: false, error: error.code });
+        }
         res.status(500).json({
             success: false,
             error: 'Sync failed',
@@ -391,16 +411,18 @@ router.get('/progress/:companyId', async (req, res) => {
     }
 });
 
-// Register or re-activate a Windows/Tally device for a company.
+// Register a Windows/Tally device. Revoked devices cannot be reactivated here.
 router.post('/device/register', async (req, res) => {
     const { companyId, deviceId, name, platform, metadata } = req.body;
+    const deviceToken = req.headers['x-device-token'];
     if (!companyId || !deviceId) return res.status(400).json({ success: false, error: 'companyId and deviceId are required' });
     try {
-        const device = await SyncControlService.registerDevice({ companyId, deviceId, name, platform, metadata });
-        res.status(200).json({ success: true, data: device });
+        const result = await SyncControlService.registerDevice({ companyId, deviceId, name, platform, metadata, deviceToken });
+        res.status(200).json({ success: true, data: result.device, ...(result.deviceToken ? { deviceToken: result.deviceToken } : {}) });
     } catch (error) {
         logger.error('Device registration failed:', error);
-        res.status(500).json({ success: false, error: 'Device registration failed', message: error.message });
+        const status = error.code === 'DEVICE_REVOKED' ? 409 : ['DEVICE_TOKEN_REQUIRED', 'DEVICE_TOKEN_INVALID'].includes(error.code) ? 401 : 500;
+        res.status(status).json({ success: false, error: error.code || 'DEVICE_REGISTRATION_FAILED' });
     }
 });
 
@@ -408,12 +430,14 @@ router.post('/device/:deviceId/revoke', async (req, res) => {
     const { companyId } = req.body;
     const { deviceId } = req.params;
     if (!companyId) return res.status(400).json({ success: false, error: 'companyId is required' });
+    if (!req.syncContext?.global) return res.status(403).json({ success: false, error: 'GLOBAL_CONTROL_KEY_REQUIRED' });
     try {
         const device = await SyncControlService.revokeDevice(companyId, deviceId);
         res.status(200).json({ success: true, data: device });
     } catch (error) {
         logger.error('Device revoke failed:', error);
-        res.status(500).json({ success: false, error: 'Device revoke failed', message: error.message });
+        const status = error.code === 'DEVICE_NOT_ACTIVE' ? 404 : 500;
+        res.status(status).json({ success: false, error: error.code || 'DEVICE_REVOKE_FAILED' });
     }
 });
 

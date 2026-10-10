@@ -25,7 +25,7 @@ export default function DeviceManagementPage() {
     setLoading(true);
     try {
       const [deviceRes, runRes, auditRes] = await Promise.all([
-        supabase.from('sync_devices').select('*').eq('company_id', selectedCompany.id).order('last_seen_at', { ascending: false }),
+        supabase.from('sync_devices').select('id,device_id,name,platform,status,last_seen_at,created_at,revoked_at').eq('company_id', selectedCompany.id).order('last_seen_at', { ascending: false }),
         supabase.from('sync_runs').select('*').eq('company_id', selectedCompany.id).order('started_at', { ascending: false }).limit(20),
         supabase.from('sync_history').select('*').eq('company_id', selectedCompany.id).order('created_at', { ascending: false }).limit(25),
       ]);

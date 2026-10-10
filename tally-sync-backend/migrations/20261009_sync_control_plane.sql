@@ -14,8 +14,18 @@ CREATE TABLE IF NOT EXISTS sync_devices (
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     revoked_at TIMESTAMPTZ,
+    device_token_hash TEXT,
+    device_token_issued_at TIMESTAMPTZ,
+    last_token_seen_at TIMESTAMPTZ,
+    token_revoked_at TIMESTAMPTZ,
     UNIQUE(company_id, device_id)
 );
+
+ALTER TABLE public.sync_devices
+  ADD COLUMN IF NOT EXISTS device_token_hash TEXT,
+  ADD COLUMN IF NOT EXISTS device_token_issued_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_token_seen_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS token_revoked_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS sync_runs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -60,6 +70,30 @@ CREATE TABLE IF NOT EXISTS sync_conflicts (
 
 CREATE INDEX IF NOT EXISTS idx_sync_devices_company_status ON sync_devices(company_id, status);
 CREATE INDEX IF NOT EXISTS idx_sync_devices_last_seen ON sync_devices(company_id, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_devices_token_hash ON sync_devices(device_token_hash) WHERE device_token_hash IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.enforce_sync_device_revocation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  IF OLD.status = 'revoked' AND NEW.status = 'active' THEN
+    RAISE EXCEPTION 'DEVICE_REVOKED';
+  END IF;
+  IF NEW.status = 'revoked' THEN
+    NEW.revoked_at = COALESCE(NEW.revoked_at, NOW());
+    NEW.token_revoked_at = COALESCE(NEW.token_revoked_at, NOW());
+    NEW.device_token_hash = NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_sync_device_revocation ON public.sync_devices;
+CREATE TRIGGER trg_enforce_sync_device_revocation
+  BEFORE UPDATE ON public.sync_devices
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_sync_device_revocation();
 CREATE INDEX IF NOT EXISTS idx_sync_runs_company_started ON sync_runs(company_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_runs_status ON sync_runs(company_id, status);
 CREATE INDEX IF NOT EXISTS idx_sync_conflicts_company_status ON sync_conflicts(company_id, status, detected_at DESC);

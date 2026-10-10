@@ -3,12 +3,30 @@ const { supabase } = require('../config/supabase');
 const logger = require('../utils/logger');
 
 const uuid = () => crypto.randomUUID();
+const DEVICE_FIELDS = 'id,company_id,device_id,name,platform,status,last_seen_at,metadata,created_at,revoked_at,device_token_issued_at,last_token_seen_at,token_revoked_at';
+const hashDeviceToken = (token) => crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+const generateDeviceToken = () => crypto.randomBytes(32).toString('base64url');
+const tokensMatch = (token, expectedHash) => {
+  if (!token || !expectedHash) return false;
+  const actual = Buffer.from(hashDeviceToken(token), 'utf8');
+  const expected = Buffer.from(expectedHash, 'utf8');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+};
+const securityError = (code) => Object.assign(new Error(code), { code });
 
 class SyncControlService {
-  static async registerDevice({ companyId, deviceId, name, platform, metadata }) {
+  static async registerDevice({ companyId, deviceId, name, platform, metadata, deviceToken }) {
     if (!companyId || !deviceId) throw new Error('companyId and deviceId are required');
     const now = new Date().toISOString();
-    const { data, error } = await supabase.from('sync_devices').upsert({
+    const { data: existing, error: lookupError } = await supabase.from('sync_devices').select(`${DEVICE_FIELDS},device_token_hash`)
+      .eq('company_id', companyId).eq('device_id', deviceId).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (existing?.status === 'revoked') throw securityError('DEVICE_REVOKED');
+    if (existing?.device_token_hash && !tokensMatch(deviceToken, existing.device_token_hash)) {
+      throw securityError(deviceToken ? 'DEVICE_TOKEN_INVALID' : 'DEVICE_TOKEN_REQUIRED');
+    }
+    const issuedToken = existing?.device_token_hash ? null : generateDeviceToken();
+    const values = {
       company_id: companyId,
       device_id: deviceId,
       name: name || deviceId,
@@ -17,17 +35,34 @@ class SyncControlService {
       last_seen_at: now,
       metadata: metadata || {},
       revoked_at: null,
-    }, { onConflict: 'company_id,device_id' }).select().single();
+      ...(issuedToken ? { device_token_hash: hashDeviceToken(issuedToken), device_token_issued_at: now, token_revoked_at: null } : {}),
+    };
+    const query = existing
+      ? supabase.from('sync_devices').update(values).eq('id', existing.id).eq('status', 'active')
+      : supabase.from('sync_devices').insert(values);
+    const { data, error } = await query.select(DEVICE_FIELDS).single();
     if (error) throw error;
-    return data;
+    return { device: data, deviceToken: issuedToken };
   }
 
-  static async touchDevice(companyId, deviceId) {
-    if (!companyId || !deviceId) return null;
+  static async assertDeviceActive(companyId, deviceId, deviceToken) {
+    if (!companyId || !deviceId) throw securityError('DEVICE_REQUIRED');
+    const { data, error } = await supabase.from('sync_devices').select(`${DEVICE_FIELDS},device_token_hash`)
+      .eq('company_id', companyId).eq('device_id', deviceId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw securityError('DEVICE_NOT_REGISTERED');
+    if (data.status !== 'active' || data.revoked_at || data.token_revoked_at) throw securityError('DEVICE_REVOKED');
+    if (!tokensMatch(deviceToken, data.device_token_hash)) throw securityError(deviceToken ? 'DEVICE_TOKEN_INVALID' : 'DEVICE_TOKEN_REQUIRED');
+    const { device_token_hash: ignored, ...safeDevice } = data;
+    return safeDevice;
+  }
+
+  static async touchDevice(companyId, deviceId, deviceToken) {
+    await this.assertDeviceActive(companyId, deviceId, deviceToken);
     const { data, error } = await supabase.from('sync_devices').update({
       last_seen_at: new Date().toISOString(),
-      status: 'active',
-    }).eq('company_id', companyId).eq('device_id', deviceId).select().maybeSingle();
+      last_token_seen_at: new Date().toISOString(),
+    }).eq('company_id', companyId).eq('device_id', deviceId).eq('status', 'active').select(DEVICE_FIELDS).maybeSingle();
     if (error) throw error;
     return data;
   }
@@ -36,13 +71,16 @@ class SyncControlService {
     const { data, error } = await supabase.from('sync_devices').update({
       status: 'revoked',
       revoked_at: new Date().toISOString(),
-    }).eq('company_id', companyId).eq('device_id', deviceId).select().single();
+      token_revoked_at: new Date().toISOString(),
+      device_token_hash: null,
+    }).eq('company_id', companyId).eq('device_id', deviceId).eq('status', 'active').select(DEVICE_FIELDS).maybeSingle();
     if (error) throw error;
+    if (!data) throw securityError('DEVICE_NOT_ACTIVE');
     return data;
   }
 
   static async listDevices(companyId) {
-    const { data, error } = await supabase.from('sync_devices').select('*')
+    const { data, error } = await supabase.from('sync_devices').select(DEVICE_FIELDS)
       .eq('company_id', companyId).order('last_seen_at', { ascending: false });
     if (error) throw error;
     return data || [];
