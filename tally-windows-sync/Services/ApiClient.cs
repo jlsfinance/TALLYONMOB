@@ -703,13 +703,16 @@ namespace TallySyncApp.Services
         /// <summary>
         /// Sync voucher line items (ledger entries and stock/inventory entries) to their respective tables
         /// </summary>
-        public async Task<(int LedgerEntriesSynced, int StockEntriesSynced)> SyncVoucherEntriesAsync(
+        public async Task<(int LedgerEntriesSynced, int StockEntriesSynced, bool IsComplete, string Error)> SyncVoucherEntriesAsync(
             string companyId, 
             List<Voucher> vouchers,
             string? ownerId = null)
         {
             int ledgerEntriesSynced = 0;
             int stockEntriesSynced = 0;
+            bool ledgerComplete = true;
+            bool stockComplete = true;
+            var reconciliationErrors = new List<string>();
             
             try
             {
@@ -732,10 +735,14 @@ namespace TallySyncApp.Services
                 if (!ledgerTableExists)
                 {
                     SyncLogger.Log("[WARN] Skipping voucher_ledger_entries sync: table missing in backend schema.");
+                    ledgerComplete = !vouchers.Any(v => (v.LedgerEntries?.Count ?? 0) > 0);
+                    if (!ledgerComplete) reconciliationErrors.Add("voucher_ledger_entries table missing");
                 }
                 if (!stockTableExists)
                 {
                     SyncLogger.Log("[WARN] Skipping voucher_stock_entries sync: table missing in backend schema.");
+                    stockComplete = !vouchers.Any(v => (v.InventoryEntries?.Count ?? 0) > 0);
+                    if (!stockComplete) reconciliationErrors.Add("voucher_stock_entries table missing");
                 }
 
                 // 1. Extract and sync Ledger Entries to voucher_ledger_entries
@@ -780,7 +787,12 @@ namespace TallySyncApp.Services
                     SyncLogger.Log($"[INFO] Syncing {allLedgerEntries.Count} voucher ledger entries...");
                     var ledgerResult = await UpsertAsync<object>("voucher_ledger_entries", allLedgerEntries, "id");
                     if (ledgerResult.Success) ledgerEntriesSynced = allLedgerEntries.Count;
-                    else SyncLogger.Log($"[WARN] Ledger entries sync failed: {ledgerResult.Error}");
+                    else
+                    {
+                        ledgerComplete = false;
+                        reconciliationErrors.Add($"ledger entries upload failed: {ledgerResult.Error}");
+                        SyncLogger.Log($"[WARN] Ledger entries sync failed: {ledgerResult.Error}");
+                    }
                 }
                 
                 // 2. Extract and sync Inventory/Stock Entries to voucher_stock_entries
@@ -833,15 +845,23 @@ namespace TallySyncApp.Services
                     SyncLogger.Log($"[INFO] Syncing {allStockEntries.Count} voucher stock entries...");
                     var stockResult = await UpsertAsync<object>("voucher_stock_entries", allStockEntries, "id");
                     if (stockResult.Success) stockEntriesSynced = allStockEntries.Count;
-                    else SyncLogger.Log($"[WARN] Stock entries sync failed: {stockResult.Error}");
+                    else
+                    {
+                        stockComplete = false;
+                        reconciliationErrors.Add($"stock entries upload failed: {stockResult.Error}");
+                        SyncLogger.Log($"[WARN] Stock entries sync failed: {stockResult.Error}");
+                    }
                 }
             }
             catch (Exception ex)
             {
+                ledgerComplete = false;
+                stockComplete = false;
+                reconciliationErrors.Add(ex.Message);
                 SyncLogger.Log($"[ERROR] SyncVoucherEntriesAsync error: {ex.Message}");
             }
-            
-            return (ledgerEntriesSynced, stockEntriesSynced);
+            var reconciliationError = string.Join("; ", reconciliationErrors);
+            return (ledgerEntriesSynced, stockEntriesSynced, ledgerComplete && stockComplete, reconciliationError);
         }
 
         /// <summary>
@@ -1837,6 +1857,99 @@ namespace TallySyncApp.Services
             {
                 SyncLogger.Log($"ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â GetCloudVoucherIdsAsync error: {ex.Message}");
                 return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Phase 11: fetch active cloud master identities without loading full rows.
+        /// A failed read is explicit so deletion reconciliation can fail closed.
+        /// </summary>
+        public async Task<(bool Success, HashSet<string> Ids)> GetCloudMasterIdsAsync(
+            string companyId, string tableName)
+        {
+            var allowedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "vouchers", "ledgers", "stock_items" };
+            if (!allowedTables.Contains(tableName)) throw new ArgumentException("Unsupported deletion table", nameof(tableName));
+            try
+            {
+                AddAuthHeader();
+                var companyUuid = ResolveCompanyUuid(companyId);
+                var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&is_deleted=eq.false&select=master_id&master_id=not.is.null";
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return (false, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(await response.Content.ReadAsStringAsync()) ?? new();
+                var ids = rows.Select(row => row.TryGetValue("master_id", out var value) ? value?.ToString()?.Trim() : null)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))!
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return (true, ids);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"Cloud deletion identity read failed for {tableName}: {ex.Message}");
+                return (false, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            }
+        }
+
+        /// <summary>
+        /// Record tombstones first, then soft-delete the target rows. Both operations are
+        /// company-scoped and split into <=100-row requests. Re-running the same set is safe.
+        /// </summary>
+        public async Task<int> ApplyDeletedRecordsAsync(
+            string companyId, string tableName, IEnumerable<string> masterIds)
+        {
+            var ids = masterIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (ids.Count == 0) return 0;
+            var entityType = tableName switch
+            {
+                "vouchers" => "voucher",
+                "ledgers" => "ledger",
+                "stock_items" => "stock_item",
+                _ => throw new ArgumentException("Unsupported deletion table", nameof(tableName))
+            };
+            try
+            {
+                AddAuthHeader();
+                var companyUuid = ResolveCompanyUuid(companyId);
+                var deleted = 0;
+                foreach (var batch in ids.Chunk(100))
+                {
+                    var tombstones = batch.Select(id => new
+                    {
+                        company_id = companyUuid,
+                        entity_type = entityType,
+                        entity_id = id,
+                        guid = id,
+                        deleted_at = DateTime.UtcNow.ToString("o"),
+                        synced = false
+                    }).ToList();
+                    var tombstoneRequest = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/deleted_records?on_conflict=company_id,entity_type,entity_id")
+                    {
+                        Content = new StringContent(JsonConvert.SerializeObject(tombstones), Encoding.UTF8, "application/json")
+                    };
+                    tombstoneRequest.Headers.TryAddWithoutValidation("Prefer", "resolution=merge-duplicates");
+                    var tombstoneResponse = await _httpClient.SendAsync(tombstoneRequest);
+                    if (!tombstoneResponse.IsSuccessStatusCode)
+                    {
+                        SyncLogger.Log($"[DELETE] Tombstone insert failed for {entityType}: {tombstoneResponse.StatusCode}");
+                        continue;
+                    }
+                    var quotedIds = string.Join(",", batch.Select(id => $"\"{id.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""));
+                    var patchUrl = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyUuid}&master_id=in.({quotedIds})";
+                    var patch = new HttpRequestMessage(HttpMethod.Patch, patchUrl)
+                    {
+                        Content = new StringContent(JsonConvert.SerializeObject(new { is_deleted = true, deleted_at = DateTime.UtcNow.ToString("o") }), Encoding.UTF8, "application/json")
+                    };
+                    var patchResponse = await _httpClient.SendAsync(patch);
+                    if (patchResponse.IsSuccessStatusCode) deleted += batch.Length;
+                    else SyncLogger.Log($"[DELETE] Soft-delete failed for {entityType}: {patchResponse.StatusCode}");
+                }
+                return deleted;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"ApplyDeletedRecordsAsync error: {ex.Message}");
+                return 0;
             }
         }
 

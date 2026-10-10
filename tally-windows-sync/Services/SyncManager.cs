@@ -1081,11 +1081,13 @@ namespace TallySyncApp.Services
                                     if (vouchersWithEntries.Count > 0)
                                     {
                                         var ownerId = App.AuthService?.CurrentSession?.UserId;
-                                        var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, vouchersWithEntries, ownerId);
+                                        var (ledgerEntries, stockEntries, childSyncComplete, childSyncError) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, vouchersWithEntries, ownerId);
                                         if (ledgerEntries > 0 || stockEntries > 0)
                                         {
                                             AddLog($"   ?? {ledgerEntries} ledger entries, {stockEntries} stock entries");
                                         }
+                                        if (!childSyncComplete)
+                                            AddLog($"[PARTIAL] Voucher child reconciliation incomplete: {childSyncError}");
                                     }
 
                                     // 3. Extract Sales Locally
@@ -1334,14 +1336,14 @@ namespace TallySyncApp.Services
                                 if (finalVouchersWithEntries.Count > 0)
                                 {
                                     var ownerId = App.AuthService?.CurrentSession?.UserId;
-                                    var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, finalVouchersWithEntries, ownerId);
+                                    var (ledgerEntries, stockEntries, childSyncComplete, childSyncError) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, finalVouchersWithEntries, ownerId);
                                     if (ledgerEntries > 0 || stockEntries > 0)
                                     {
                                         AddLog($"   ?? {ledgerEntries} ledger entries, {stockEntries} stock entries");
                                     }
+                                    if (!childSyncComplete)
+                                        AddLog($"[PARTIAL] Voucher child reconciliation incomplete: {childSyncError}");
                                 }
-                                
-                                
                                 // Show sample of what was modified
                                 foreach (var v in finalVouchers.Take(5))
                                 {
@@ -1487,19 +1489,13 @@ namespace TallySyncApp.Services
                         }
 
                         // ===========================================
-                        // DELETE DETECTION: DISABLED FOR PERFORMANCE
-                        // Scanning 2 years of vouchers every sync causes Tally to hang.
-                        // We will implement a lighter Delete detection in future (e.g. ID-only fetch).
-                        // ===========================================
-                        /*
+                        // PHASE 11: ID-ONLY DELETE PROPAGATION
+                        // Runs only after the initial baseline exists. A failed scout
+                        // never causes destructive action (fail-closed).
                         if (!isFirstSync && serverOk)
                         {
-                             // ... Disabled ...
+                            await ReconcileDeletedRecordsAsync(company);
                         }
-                        */
-                                    
-                        /* Orphaned code removed */
-
 FinishCompanySync:
                         // =====  SYNC SUMMARY =====
                         var summarySb = new StringBuilder();
@@ -2049,6 +2045,39 @@ FinishCompanySync:
             });
         }
 
+        /// <summary>
+        /// Phase 11: compare only stable master IDs. Any failed snapshot fails closed;
+        /// no rows are deleted unless both sides were read successfully.
+        /// </summary>
+        private async Task ReconcileDeletedRecordsAsync(Company company)
+        {
+            if (_tallyConnector == null || _apiClient == null) return;
+            var targets = new[]
+            {
+                (Table: "vouchers", Type: "vouchers"),
+                (Table: "ledgers", Type: "ledgers"),
+                (Table: "stock_items", Type: "stock_items")
+            };
+            foreach (var target in targets)
+            {
+                var cloud = await _apiClient.GetCloudMasterIdsAsync(company.Id, target.Table);
+                var tally = await _tallyConnector.GetCurrentMasterIdsAsync(company.Name, target.Type);
+                if (!cloud.Success || !tally.Success)
+                {
+                    AddLog($"[DELETE] Skipped {target.Table}: identity snapshot incomplete (fail-closed).");
+                    continue;
+                }
+                var missing = cloud.Ids.Except(tally.Ids, StringComparer.OrdinalIgnoreCase).ToList();
+                if (missing.Count == 0)
+                {
+                    AddLog($"[DELETE] {target.Table}: no missing records.");
+                    continue;
+                }
+                var applied = await _apiClient.ApplyDeletedRecordsAsync(company.Id, target.Table, missing);
+                AddLog($"[DELETE] {target.Table}: detected {missing.Count}, soft-deleted {applied}.");
+            }
+        }
+
         private static void EnsureVoucherIds(List<Voucher> vouchers, string companyId)
         {
             foreach (var voucher in vouchers)
@@ -2185,8 +2214,10 @@ FinishCompanySync:
                     return;
                 }
 
-                var (ledgerEntryCount, stockEntryCount) = await _apiClient.SyncVoucherEntriesAsync(company.Id, vouchers, ownerId);
+                var (ledgerEntryCount, stockEntryCount, childSyncComplete, childSyncError) = await _apiClient.SyncVoucherEntriesAsync(company.Id, vouchers, ownerId);
                 AddLog($"   [MIRROR] Local voucher mirror saved ({ledgerEntryCount} ledger, {stockEntryCount} stock entries) for voucher {effectiveVoucherNumber}.");
+                if (!childSyncComplete)
+                    AddLog($"   [PARTIAL] Local voucher child reconciliation incomplete: {childSyncError}");
             }
             catch (Exception ex)
             {

@@ -1,5 +1,20 @@
 # TallyonMOB Sync Rebuild — Phase Plan
 
+## Execution status — updated 2026-10-10
+
+### Completed
+
+- **Phase 8 — Sync foundation:** implemented and retained. Upload paths enforce the maximum 100-row request contract.
+- **Phase 9 — Durable cursors/all-FY scan:** implemented. Voucher incremental discovery uses ALTERID and durable `sync_state` checkpoints.
+- **Phase 10 — Parent/child reconciliation:** child ledger/stock upload failures now return an explicit completeness result and produce `[PARTIAL]` PC logs. Remaining validation: Windows build and quarantine-path test require a .NET/Tally test environment.
+- **Phase 11 — Delete propagation:** implemented on branch `feature/phase-11-delete-propagation`, commit `28138a4`, and applied through Supabase MCP. Live schema now has soft-delete columns, tombstone uniqueness, and resurrection-prevention triggers.
+
+### Current next work
+
+- **Next:** Phase 12 — canonical stock model and complete source fields.
+- Before claiming Phase 12 complete, reconcile SKU Summary/History/Customers/Suppliers against real Tally voucher lines, including GST, quantity and rate.
+- The live Tally deletion scenario still needs an operator test: delete one voucher, ledger and stock item in Tally, run sync, then verify cloud soft-delete/tombstone and retry behavior.
+
 ## Non-negotiable contract
 
 - **No upload request may contain more than 100 rows.**

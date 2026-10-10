@@ -912,6 +912,54 @@ namespace TallySyncApp.Services
             return Math.Max(MIN_BATCH_SIZE, defaultBatchSize);
         }
         
+        /// <summary>
+        /// Phase 11: stream only stable Tally identities for deletion reconciliation.
+        /// No voucher lines or master payloads are materialized in memory.
+        /// </summary>
+        public async Task<(bool Success, HashSet<string> Ids)> GetCurrentMasterIdsAsync(
+            string companyName, string entityType)
+        {
+            var normalizedType = entityType.Trim().ToLowerInvariant();
+            var (collectionType, nodeName) = normalizedType switch
+            {
+                "voucher" or "vouchers" => ("Voucher", "VOUCHER"),
+                "ledger" or "ledgers" => ("Ledger", "LEDGER"),
+                "stock_item" or "stock_items" or "stock" => ("Stock Item", "STOCKITEM"),
+                _ => (string.Empty, string.Empty)
+            };
+            if (string.IsNullOrEmpty(collectionType))
+                throw new ArgumentException($"Unsupported deletion entity type: {entityType}", nameof(entityType));
+
+            var request = $@"
+<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>DeleteIdentityScout</ID></HEADER>
+<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY></STATICVARIABLES>
+<TDL><TDLMESSAGE><COLLECTION NAME=""DeleteIdentityScout""><TYPE>{collectionType}</TYPE><FETCH>MASTERID, GUID, ALTERID, NAME, DATE, VOUCHERTYPENAME, VOUCHERNUMBER</FETCH></COLLECTION></TDLMESSAGE></TDL>
+</DESC></BODY></ENVELOPE>";
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using var reader = await SendRequestReaderAsync(request, companyName, 180);
+                if (reader == null) return (false, ids);
+                var settings = new XmlReaderSettings { CheckCharacters = false, IgnoreComments = true, DtdProcessing = DtdProcessing.Ignore };
+                using var xmlReader = XmlReader.Create(reader, settings);
+                while (xmlReader.Read())
+                {
+                    if (xmlReader.NodeType != XmlNodeType.Element ||
+                        !xmlReader.LocalName.Equals(nodeName, StringComparison.OrdinalIgnoreCase)) continue;
+                    var element = (XElement)XNode.ReadFrom(xmlReader);
+                    var masterId = GetElementValue(element, "MASTERID") ?? GetElementValue(element, "GUID") ?? GetAttribute(element, "MASTERID") ?? GetAttribute(element, "GUID");
+                    if (!string.IsNullOrWhiteSpace(masterId)) ids.Add(masterId.Trim());
+                }
+                Log($"✅ Delete identity scout: {normalizedType}={ids.Count}");
+                return (true, ids);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.LogError($"Delete identity scout failed for {normalizedType}: {ex.Message}", ex);
+                return (false, ids);
+            }
+        }
+
         public async Task<List<Voucher>> GetModifiedVouchersAsync(string companyName, long afterAlterId, Dictionary<string, string>? stockItemHsnCache = null)
         {
             SyncLogger.Log($"Ã°Å¸â€Â Incremental Sync: Checking vouchers with ALTERID > {afterAlterId}");
