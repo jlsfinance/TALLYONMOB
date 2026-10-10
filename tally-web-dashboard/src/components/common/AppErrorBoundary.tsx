@@ -9,18 +9,23 @@ interface AppErrorBoundaryProps {
 interface AppErrorBoundaryState {
     hasError: boolean;
     errorMessage: string;
+    incidentId: string;
 }
 
 export default class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
     state: AppErrorBoundaryState = {
         hasError: false,
         errorMessage: '',
+        incidentId: '',
     };
+
+    private recoveryPanel = React.createRef<HTMLDivElement>();
 
     static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
         return {
             hasError: true,
             errorMessage: error?.message || 'Unexpected application error',
+            incidentId: `ERR-${Date.now().toString(36).toUpperCase()}`,
         };
     }
 
@@ -33,12 +38,16 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
     }
 
     private handleRetry = () => {
-        this.setState({ hasError: false, errorMessage: '' });
+        this.setState({ hasError: false, errorMessage: '', incidentId: '' });
     };
 
     private handleReload = () => {
         window.location.reload();
     };
+
+    componentDidUpdate() {
+        if (this.state.hasError) this.recoveryPanel.current?.focus();
+    }
 
     render() {
         if (!this.state.hasError) {
@@ -46,14 +55,14 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
         }
 
         return (
-            <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_32%),var(--background)] px-4 py-10 text-[var(--on-background)] sm:px-6 lg:px-8">
+            <main ref={this.recoveryPanel} tabIndex={-1} role="alert" aria-labelledby="recovery-title" className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_32%),var(--background)] px-4 py-10 text-[var(--on-background)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:px-6 lg:px-8">
                 <div className="mx-auto max-w-3xl rounded-[32px] border border-[var(--border)] bg-[var(--surface)]/95 p-8 shadow-[var(--shadow-xl)]">
                     <div className="inline-flex items-center gap-2 rounded-full bg-[var(--error-bg)] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--error)]">
                         <AlertTriangle size={16} />
                         Protected recovery mode
                     </div>
 
-                    <h1 className="mt-5 text-4xl font-black tracking-[-0.04em] text-[var(--on-surface)]">
+                    <h1 id="recovery-title" className="mt-5 text-4xl font-black tracking-[-0.04em] text-[var(--on-surface)]">
                         The app hit an unexpected state.
                     </h1>
                     <p className="mt-4 text-sm leading-7 text-[var(--on-surface-variant)] sm:text-base">
@@ -63,14 +72,15 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
                     <div className="mt-6 rounded-[24px] border border-[var(--border)] bg-[var(--background)]/80 p-4 text-sm text-[var(--on-surface-variant)]">
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-muted)]">Last error</p>
                         <p className="mt-2 break-words font-medium text-[var(--on-surface)]">{this.state.errorMessage || 'Unknown rendering failure'}</p>
+                        <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Incident: {this.state.incidentId || 'not available'}</p>
                     </div>
 
                     <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                        <button onClick={this.handleRetry} className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
+                        <button type="button" onClick={this.handleRetry} className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2">
                             <RefreshCw size={16} />
                             Retry
                         </button>
-                        <button onClick={this.handleReload} className="inline-flex items-center justify-center gap-2 rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
+                        <button type="button" onClick={this.handleReload} className="inline-flex items-center justify-center gap-2 rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2">
                             <ShieldCheck size={16} />
                             Reload app
                         </button>
@@ -80,7 +90,7 @@ export default class AppErrorBoundary extends React.Component<AppErrorBoundaryPr
                         </a>
                     </div>
                 </div>
-            </div>
+            </main>
         );
     }
 }

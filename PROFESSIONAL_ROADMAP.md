@@ -169,7 +169,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 6 — QA, accessibility aur release hardening
 
-**Status:** Planned · **Branch:** `feature/phase-6-release-hardening` · **Base:** Phase 5 branch, ya latest `allok` jab pehle phases merge ho jaayen.
+**Status:** Implemented · manual browser smoke pass pending · **Branch:** `feature/phase-6-release-hardening` · **Base:** Phase 5 branch.
 
 ### Kya karna hai
 - Theme/company switch/delete, Tally connection, voucher export, invoice PDF aur dashboard reports ke repeatable automated checks.
@@ -186,6 +186,15 @@ git push                            # uske baad ke pushes
 - TypeScript, build, automated checks aur final manual release checklist pass hon.
 - Known issue, deployment dependency aur rollback note GitHub release/PR description mein ho.
 
+### Implementation record
+- Added one-shot stale lazy-chunk recovery with a reload-loop guard and base-aware service-worker registration.
+- Hardened the global error boundary with focus management, accessible recovery landmark, visible focus states and incident IDs.
+- Hardened offline/online announcements with a stable event subscription, timer cleanup and live-region status.
+- Added repeatable source accessibility audit, business-logic regression checks and production artifact smoke checks.
+- Added `.github/workflows/dashboard-quality.yml` to run typecheck, logic checks, accessibility audit, PWA build and release checks on feature branches and pull requests.
+- Added `RELEASE_HARDENING_CHECKLIST.md` covering core journeys, mobile/accessibility, offline/PWA, performance, deployment and rollback.
+- Automated validation passed: TypeScript, Phase 5 checks, accessibility audit, production/PWA build, release artifact check and diff check.
+
 ## Delivery log
 
 | Phase | Status | Branch | Commit / note |
@@ -195,4 +204,4 @@ git push                            # uske baad ke pushes
 | Phase 3 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`f981ea7`](https://github.com/jlsfinance/TALLYONMOB/commit/f981ea7) — guided company/connection/first-sync wizard integrated |
 | Phase 4 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`e6c9e4f`](https://github.com/jlsfinance/TALLYONMOB/commit/e6c9e4f) — additive Branded preview/PDF template and selector integrated |
 | Phase 5 | Implemented; manual reconciliation pending | `feature/phase-5-business-insights` | Design `20c3a79`; implementation and checks in current delivery commit |
-| Phase 6 | Planned | `feature/phase-6-release-hardening` | Not started |
+| Phase 6 | Implemented; manual browser smoke pass pending | `feature/phase-6-release-hardening` | Release hardening, CI quality gate and checklist added in current delivery commit |

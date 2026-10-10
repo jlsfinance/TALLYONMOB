@@ -1,0 +1,44 @@
+name: Dashboard quality gate
+
+on:
+  push:
+    branches: [allok, main, master, 'feature/**']
+    paths:
+      - 'tally-web-dashboard/**'
+      - '.github/workflows/dashboard-quality.yml'
+  pull_request:
+    paths:
+      - 'tally-web-dashboard/**'
+      - '.github/workflows/dashboard-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tally-web-dashboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tally-web-dashboard/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript check
+        run: npx tsc --noEmit --ignoreDeprecations 5.0
+      - name: Business logic checks
+        run: npm run test:business-insights
+      - name: Accessibility source audit
+        run: npm run check:accessibility
+      - name: Production build
+        run: npm run build
+      - name: Release artifact smoke check
+        run: npm run check:release

@@ -7,7 +7,10 @@
         "dev": "vite",
         "build": "vite build",
         "preview": "vite preview",
-        "test:business-insights": "node --experimental-strip-types scripts/phase5-logic-check.mjs"
+        "test:business-insights": "node --experimental-strip-types scripts/phase5-logic-check.mjs",
+        "check:accessibility": "node scripts/accessibility-check.mjs",
+        "check:release": "node scripts/release-check.mjs",
+        "check:all": "npm run test:business-insights && npm run check:accessibility && npm run build && npm run check:release"
     },
     "dependencies": {
         "@capacitor/android": "^6.2.1",
