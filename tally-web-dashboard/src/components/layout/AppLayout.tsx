@@ -314,7 +314,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
                             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                            className="fixed top-0 left-0 h-full w-[280px] z-[70] bg-white dark:bg-[#1E1E2E] border-r border-[var(--border)] md:hidden flex flex-col"
+                            className="fixed top-0 left-0 h-full w-[280px] z-[70] bg-[var(--surface)] border-r border-[var(--border)] md:hidden flex flex-col"
                         >
                             {/* Header — Branding + Close */}
                             <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--border)]">
@@ -350,6 +350,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             {selectedCompany && (
                                 <div className="mx-3 mt-2">
                                     <select
+                                        aria-label="Switch company"
                                         value={selectedCompany.id}
                                         onChange={(e) => {
                                             const company = companies.find((c: any) => c.id === e.target.value);
@@ -420,7 +421,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <aside
                 className={`
                     fixed top-0 left-0 h-full z-40 hidden md:flex flex-col
-                    bg-white dark:bg-[#1E1E2E] border-r border-[var(--border)]
+                    bg-[var(--surface)] border-r border-[var(--border)]
                     transition-all duration-200
                     ${sidebarOpen ? 'w-60' : 'w-[68px]'}
                 `}
@@ -470,6 +471,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         <div className="p-3 rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)]">
                             <div className="relative">
                                 <select
+                                    aria-label="Switch company"
                                     value={selectedCompany.id}
                                     onChange={(e) => {
                                         const company = companies.find((c: any) => c.id === e.target.value);
@@ -513,6 +515,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="px-3 py-3 border-t border-[var(--border)] space-y-1.5">
                     <button
                         onClick={toggleTheme}
+                        aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
                         className={`
                             w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)]
                             text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] text-sm font-medium
@@ -544,7 +547,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
                 {/* Mobile Header — Modern Fintech Style */}
-                <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]">
+                <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-[var(--surface)] border-b border-[var(--border)]">
                     <button onClick={() => setShowMobileMenu(true)} className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] text-[var(--on-surface)] transition-colors shrink-0">
                         <Menu size={18} />
                     </button>
@@ -578,7 +581,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </header>
 
                 {/* Desktop Header — LiveKeepings Style */}
-                <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]">
+                <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-[var(--surface)] border-b border-[var(--border)]">
                     <div className="flex items-center gap-4 flex-1">
                         <div id="header-title" className="flex items-center" />
                         <div id="header-search" className="flex-1 max-w-sm" />
@@ -621,13 +624,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </header>
 
                 {/* Page Content — NO AnimatePresence to prevent remount */}
-                <div className="px-[2px] py-1 pb-24 md:pb-6">
+                <div className="px-3 py-4 pb-24 sm:px-5 md:px-6 md:py-6 md:pb-8 xl:px-8">
                     {children}
                 </div>
             </main>
 
             {/* ===== MOBILE BOTTOM NAV — LiveKeepings Style ===== */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--surface)] border-t border-[var(--border)] safe-area-pb pb-1">
                 <div className="flex items-center justify-around h-[60px] px-2">
                     {bottomNavItems.map((item) => {
                         const isActive = location.pathname === item.to;

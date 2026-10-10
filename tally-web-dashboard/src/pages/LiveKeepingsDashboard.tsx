@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 import {
     TrendingUp, TrendingDown, Wallet, Building2, Users, Package,
@@ -70,132 +70,119 @@ function generateInvoiceMessage(v: any) {
     return `📄 *Invoice #${v.voucher_number || 'NA'}*\n👤 ${v.party_name || 'Customer'}\n💰 Amount: ${amt}\n📅 Date: ${format(new Date(v.voucher_date), 'dd MMM yyyy')}\n📝 Type: ${v.voucher_type}`;
 }
 
-const SummaryCards = memo(({ dashboard, navigate }: { dashboard: any; navigate: any }) => (
-    <div>
-        <div className="flex items-center justify-between mb-2 pl-[2px]">
-            <p className="text-sm font-bold">Summary</p>
-            <button onClick={() => navigate('/sales')} className="text-[10px] font-bold text-[var(--primary)] flex items-center gap-0.5">
-                View All <ChevronRight size={10} />
-            </button>
-        </div>
-        <div className="grid grid-cols-2 gap-[2px]">
-            <button onClick={() => navigate('/sales')} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Sales</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
+const SummaryCards = memo(({ dashboard, navigate }: { dashboard: any; navigate: any }) => {
+    const cards = [
+        { label: 'Sales', value: dashboard?.totalSales, note: `${dashboard?.salesCount || 0} invoices this FY`, path: '/sales', tone: 'blue', icon: <TrendingUp size={19} /> },
+        { label: 'Purchases', value: dashboard?.totalPurchases, note: `${dashboard?.purchaseCount || 0} bills this FY`, path: '/purchases', tone: 'violet', icon: <Package size={19} /> },
+        { label: 'Receivables', value: dashboard?.receivables, note: 'From sundry debtors', path: '/aging-report', tone: 'amber', icon: <ArrowUpRight size={19} /> },
+        { label: 'Payables', value: dashboard?.payables, note: 'Due to sundry creditors', path: '/ledgers', tone: 'emerald', icon: <Wallet size={19} /> },
+    ];
+    const tones: Record<string, string> = {
+        blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+        violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+        amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    };
+    return (
+        <section aria-labelledby="dashboard-summary-title">
+            <div className="mb-3 flex items-center justify-between">
+                <div>
+                    <h2 id="dashboard-summary-title" className="text-base font-bold tracking-tight">Business overview</h2>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">Your key numbers for the selected financial year</p>
                 </div>
-                <p className="text-base sm:text-lg font-black">{formatCompact(dashboard?.totalSales || 0)}</p>
-            </button>
-            <button onClick={() => navigate('/aging-report')} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Receivables</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
-                </div>
-                <p className="text-base sm:text-lg font-black text-amber-600">{formatCompact(dashboard?.receivables || 0)}</p>
-            </button>
-            <button onClick={() => navigate('/purchases')} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Purchase</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
-                </div>
-                <p className="text-base sm:text-lg font-black">{formatCompact(dashboard?.totalPurchases || 0)}</p>
-            </button>
-            <button onClick={() => navigate('/ledgers')} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Payables</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
-                </div>
-                <p className="text-base sm:text-lg font-black text-blue-600">{formatCompact(dashboard?.payables || 0)}</p>
-            </button>
-            <button onClick={() => navigate('/vouchers', { state: { type: 'Receipt' } })} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Receipt</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
-                </div>
-                <p className="text-base sm:text-lg font-black text-emerald-600">{formatCompact(dashboard?.totalReceipts || 0)}</p>
-            </button>
-            <button onClick={() => navigate('/vouchers', { state: { type: 'Payment' } })} className="p-2 sm:p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-left hover:scale-[1.02] transition-transform">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] sm:text-[10px] font-bold text-[var(--text-muted)] uppercase">Payment</span>
-                    <ChevronRight size={10} className="text-[var(--text-muted)]" />
-                </div>
-                <p className="text-base sm:text-lg font-black">{formatCompact(dashboard?.totalPayments || 0)}</p>
-            </button>
-        </div>
-    </div>
-));
+                <button onClick={() => navigate('/profit-loss')} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold text-[var(--primary)] transition hover:bg-[var(--primary-container)]">
+                    Reports <ChevronRight size={14} />
+                </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {cards.map((card) => (
+                    <button key={card.label} onClick={() => navigate(card.path)} className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left shadow-[var(--shadow-xs)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--primary)]/40 hover:shadow-[var(--shadow-md)] sm:p-5">
+                        <div className="flex items-start justify-between">
+                            <span className="text-sm font-medium text-[var(--on-surface-variant)]">{card.label}</span>
+                            <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${tones[card.tone]}`}>{card.icon}</span>
+                        </div>
+                        <p className="mt-4 text-2xl font-bold tracking-tight text-[var(--on-surface)] sm:text-[28px]">{formatCompact(Number(card.value) || 0)}</p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="truncate text-xs text-[var(--text-muted)]">{card.note}</span>
+                            <ChevronRight size={15} className="shrink-0 text-[var(--text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--primary)]" />
+                        </div>
+                    </button>
+                ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                    { label: 'Receipts', value: dashboard?.totalReceipts, path: '/vouchers', state: { type: 'Receipt' }, color: 'text-emerald-600 dark:text-emerald-400' },
+                    { label: 'Payments', value: dashboard?.totalPayments, path: '/vouchers', state: { type: 'Payment' }, color: 'text-rose-600 dark:text-rose-400' },
+                    { label: 'Today’s sales', value: dashboard?.todaySales, path: '/sales', color: 'text-blue-600 dark:text-blue-400' },
+                    { label: 'Transactions', value: (dashboard?.salesCount || 0) + (dashboard?.purchaseCount || 0), path: '/vouchers', count: true, color: 'text-[var(--on-surface)]' },
+                ].map((item) => (
+                    <button key={item.label} onClick={() => navigate(item.path, item.state ? { state: item.state } : undefined)} className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left transition hover:bg-[var(--surface-hover)]">
+                        <span className="text-xs font-medium text-[var(--text-muted)]">{item.label}</span>
+                        <span className={`text-sm font-bold ${item.color}`}>{item.count ? Number(item.value || 0).toLocaleString('en-IN') : formatCompact(Number(item.value) || 0)}</span>
+                    </button>
+                ))}
+            </div>
+        </section>
+    );
+});
 
 const QuickAccessGrid = memo(({ navigate }: { navigate: any }) => (
-    <div>
-        <div className="flex items-center justify-between mb-2 pl-[2px]">
-            <p className="text-sm font-bold">Quick Access</p>
-            <button onClick={() => navigate('/vouchers')} className="text-[10px] font-bold text-[var(--primary)] flex items-center gap-0.5">
-                View All <ChevronRight size={10} />
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-xs)] sm:p-5">
+        <div className="mb-4 flex items-center justify-between">
+            <div>
+                <h2 className="text-base font-bold tracking-tight">Quick actions</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">Jump straight into your day-to-day work</p>
+            </div>
+            <button onClick={() => navigate('/vouchers')} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold text-[var(--primary)] transition hover:bg-[var(--primary-container)]">
+                All activity <ChevronRight size={14} />
             </button>
         </div>
-        <div className="grid grid-cols-4 gap-[2px]">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
             {QUICK_ACCESS_ITEMS.map((item, i) => (
-                <button key={i} onClick={() => navigate(item.path)}
-                    className="flex flex-col items-center gap-0.5 p-1.5 sm:p-2 rounded-lg hover:bg-[var(--surface-container)] transition-all relative">
-                    {item.badge && (
-                        <span className="absolute top-0 right-0.5 text-[6px] font-bold text-red-500 bg-red-100 px-0.5 rounded">{item.badge}</span>
-                    )}
-                    <div className={`${item.color}`}>{item.icon}</div>
-                    <span className="text-[8px] sm:text-[9px] font-bold text-center leading-tight">{item.label}</span>
+                <button key={i} onClick={() => navigate(item.path)} className="group relative flex min-h-[100px] flex-col items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)]/70 px-2 py-3 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--primary)]/40 hover:bg-[var(--surface)] hover:shadow-[var(--shadow-sm)]">
+                    {item.badge && <span className="absolute right-2 top-2 rounded-full bg-[var(--primary-container)] px-1.5 py-0.5 text-[8px] font-bold tracking-wide text-[var(--primary)]">{item.badge}</span>}
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--surface)] shadow-[var(--shadow-xs)] transition group-hover:scale-105 ${item.color}`}>{item.icon}</span>
+                    <span className="text-xs font-semibold leading-tight text-[var(--on-surface)]">{item.label}</span>
                 </button>
             ))}
         </div>
-    </div>
+    </section>
 ));
 
 const RecentTransactions = memo(({ dashboard, navigate }: { dashboard: any; navigate: any }) => (
-    <div>
-        <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-bold">Sales {formatCompact(dashboard?.totalSales || 0)}</p>
-            <button onClick={() => navigate('/sales')} className="text-[10px] font-bold text-[var(--primary)] flex items-center gap-0.5">
-                View All <ChevronRight size={10} />
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xs)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-4 sm:px-5">
+            <div>
+                <h2 className="text-base font-bold tracking-tight">Recent transactions</h2>
+                <p className="mt-0.5 text-xs text-[var(--text-muted)]">The latest activity recorded in this company</p>
+            </div>
+            <button onClick={() => navigate('/vouchers')} className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold text-[var(--primary)] transition hover:bg-[var(--primary-container)]">
+                View all <ChevronRight size={14} />
             </button>
         </div>
-        <div className="flex gap-1 mb-2">
-            {['Latest Vouchers', 'Recent Customers', 'Sold Recently'].map((tab, i) => (
-                <button key={tab} className={`text-[9px] font-bold px-2 py-1 rounded border transition-all ${i === 0 ? 'bg-[var(--on-surface)] text-white border-[var(--on-surface)]' : 'bg-[var(--surface)] text-[var(--text-muted)] border-[var(--border)]'}`}>
-                    {tab}
-                </button>
-            ))}
-        </div>
-        <div className="space-y-[2px]">
-            {(dashboard?.recentVouchers || []).slice(0, 5).map((v: any) => {
-                const amt = Number(v.grand_total) || Number(v.total_amount) || 0;
-                const isDebit = v.voucher_type === 'Sales' || v.voucher_type === 'Purchase';
+        <div className="divide-y divide-[var(--border)] px-4 sm:px-5">
+            {(dashboard?.recentVouchers || []).slice(0, 6).map((v: any) => {
+                const amount = Number(v.grand_total) || Number(v.total_amount) || 0;
+                const isSales = v.voucher_type === 'Sales';
+                const isPurchase = v.voucher_type === 'Purchase';
+                const tone = isSales ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : isPurchase ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
                 return (
-                    <div key={v.id} className="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                        <button onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
-                            className="flex-1 min-w-0 text-left">
-                            <div className="flex items-center gap-1.5">
-                                <p className="text-[10px] font-black truncate">{v.party_name || 'CASH'}</p>
-                                {isDebit && <span className="text-[7px] font-bold text-amber-600 bg-amber-100 px-0.5 rounded">Dr</span>}
-                            </div>
-                            <p className="text-[9px] text-[var(--text-muted)]">
-                                {format(new Date(v.voucher_date), 'dd MMM yy')} | #{v.voucher_number || 'NA'}
-                            </p>
+                    <div key={v.id} className="flex items-center gap-3 py-3.5">
+                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone}`}><Receipt size={17} /></span>
+                        <button onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })} className="min-w-0 flex-1 text-left">
+                            <span className="block truncate text-sm font-semibold text-[var(--on-surface)]">{v.party_name || 'Cash transaction'}</span>
+                            <span className="mt-0.5 block truncate text-xs text-[var(--text-muted)]">{v.voucher_type || 'Voucher'} · {v.voucher_number ? `#${v.voucher_number} · ` : ''}{v.voucher_date ? format(new Date(v.voucher_date), 'dd MMM yyyy') : 'Date unavailable'}</span>
                         </button>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <p className="text-[10px] font-black whitespace-nowrap">{formatCurrency(amt)}</p>
-                            {v.voucher_type === 'Sales' && (
-                                <button onClick={(e) => {
-                                    e.stopPropagation();
-                                    shareOnWhatsApp('', generateInvoiceMessage(v));
-                                }}
-                                    className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shrink-0 active:scale-90 transition-transform">
-                                    <MessageCircle size={10} />
-                                </button>
-                            )}
+                        <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-right text-sm font-bold tabular-nums text-[var(--on-surface)]">{formatCurrency(amount)}</span>
+                            {isSales && <button aria-label="Share invoice on WhatsApp" onClick={(event) => { event.stopPropagation(); shareOnWhatsApp('', generateInvoiceMessage(v)); }} className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 transition hover:bg-emerald-500 hover:text-white dark:text-emerald-400"><MessageCircle size={15} /></button>}
                         </div>
                     </div>
                 );
             })}
+            {!(dashboard?.recentVouchers || []).length && <div className="py-10 text-center"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--surface-container)] text-[var(--text-muted)]"><Receipt size={19} /></span><p className="mt-3 text-sm font-semibold">No transactions yet</p><p className="mt-1 text-xs text-[var(--text-muted)]">Once vouchers are synced, they’ll appear here.</p></div>}
         </div>
-    </div>
+    </section>
 ));
 
 export default memo(function LiveKeepingsDashboard() {
@@ -229,7 +216,7 @@ export default memo(function LiveKeepingsDashboard() {
     }, [selectedCompany?.id]);
 
     // React Query — dashboard data (NO raw useEffect)
-    const { data: dashboard, isLoading, refetch } = useQuery({
+    const { data: dashboard, isLoading, isFetching, refetch } = useQuery({
         queryKey: ['dashboard', selectedCompany?.id, selectedFY],
         queryFn: async () => {
             if (!selectedCompany?.id) return null;
@@ -344,51 +331,31 @@ export default memo(function LiveKeepingsDashboard() {
 
     if (isLoading && !dashboard) {
         return (
-            <div className="space-y-3 pb-24">
-                {/* Skeleton — Summary */}
-                <div className="grid grid-cols-2 gap-[2px]">
-                    {[1,2,3,4].map(i => (
-                        <div key={i} className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] animate-pulse">
-                            <div className="h-2 w-16 bg-[var(--surface-container)] rounded mb-2" />
-                            <div className="h-4 w-20 bg-[var(--surface-container)] rounded" />
-                        </div>
-                    ))}
+            <div className="animate-pulse space-y-5 pb-24" aria-label="Loading dashboard">
+                <div className="h-40 rounded-3xl bg-[var(--surface-container)]" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {[1, 2, 3, 4].map(i => <div key={i} className="h-36 rounded-2xl border border-[var(--border)] bg-[var(--surface)]" />)}
                 </div>
-                {/* Skeleton — Quick Access */}
-                <div className="grid grid-cols-4 gap-[2px]">
-                    {[1,2,3,4,5,6,7,8].map(i => (
-                        <div key={i} className="flex flex-col items-center gap-1 p-2 rounded-lg animate-pulse">
-                            <div className="w-8 h-8 rounded-lg bg-[var(--surface-container)]" />
-                            <div className="h-1.5 w-10 bg-[var(--surface-container)] rounded" />
-                        </div>
-                    ))}
-                </div>
-                {/* Skeleton — Recent */}
-                <div className="space-y-1.5">
-                    {[1,2,3,4,5].map(i => (
-                        <div key={i} className="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] animate-pulse">
-                            <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded bg-[var(--surface-container)]" />
-                                <div>
-                                    <div className="h-2 w-24 bg-[var(--surface-container)] rounded mb-1" />
-                                    <div className="h-1.5 w-16 bg-[var(--surface-container)] rounded" />
-                                </div>
-                            </div>
-                            <div className="h-3 w-14 bg-[var(--surface-container)] rounded" />
-                        </div>
-                    ))}
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <div className="h-64 rounded-2xl border border-[var(--border)] bg-[var(--surface)]" />
+                    <div className="h-64 rounded-2xl border border-[var(--border)] bg-[var(--surface)]" />
                 </div>
             </div>
         );
     }
 
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const lastSync = selectedCompany?.last_sync_at ? new Date(selectedCompany.last_sync_at) : null;
+    const hasSyncTime = !!lastSync && !Number.isNaN(lastSync.getTime());
+
     return (
-        <div className="space-y-3 pb-24 animate-fade-in">
+        <div className="mx-auto max-w-[1600px] space-y-5 pb-24 animate-fade-in sm:space-y-6">
             {/* Bell in header actions */}
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-1.5">
                     <div className="relative" data-notif-panel>
-                        <button onClick={(e) => { e.stopPropagation(); setShowNotifications(!showNotifications); }}
+                        <button aria-label="Notifications" aria-expanded={showNotifications} onClick={(e) => { e.stopPropagation(); setShowNotifications(!showNotifications); }}
                             className="p-2 rounded-xl hover:bg-[var(--surface-variant)] text-[var(--text-muted)] transition-all relative">
                             <Bell size={18} />
                             {alerts.length > 0 && (
@@ -396,7 +363,7 @@ export default memo(function LiveKeepingsDashboard() {
                             )}
                         </button>
                         {showNotifications && (
-                            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-[#1E1E2E] border border-[var(--border)] rounded-2xl shadow-2xl z-50 overflow-hidden">
+                            <div className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl z-50">
                                 <div className="p-3 border-b border-[var(--border)] flex items-center justify-between">
                                     <span className="text-sm font-bold">Notifications</span>
                                     <button onClick={() => setShowNotifications(false)} className="p-1 rounded-lg hover:bg-[var(--surface-variant)]"><X size={14} /></button>
@@ -409,7 +376,7 @@ export default memo(function LiveKeepingsDashboard() {
                                         </div>
                                     ) : alerts.map(alert => (
                                         <div key={alert.id} className={`p-3 border-b border-[var(--border)] flex items-start gap-3 ${alert.type === 'error' ? 'bg-red-500/5' : alert.type === 'warning' ? 'bg-amber-500/5' : 'bg-blue-500/5'}`}>
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${alert.type === 'error' ? 'bg-red-100 text-red-600' : alert.type === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${alert.type === 'error' ? 'bg-red-500/10 text-red-600 dark:text-red-400' : alert.type === 'warning' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'}`}>
                                                 {alert.type === 'error' ? <AlertTriangle size={14} /> : alert.type === 'warning' ? <Package size={14} /> : <FileText size={14} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
@@ -432,14 +399,15 @@ export default memo(function LiveKeepingsDashboard() {
                 <div className="relative">
                     <button
                         onClick={() => setShowFYDropdown(!showFYDropdown)}
-                        className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg px-2 py-1 text-[10px] font-bold text-[var(--on-surface)]"
+                        aria-label="Select financial year"
+                        className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-semibold text-[var(--on-surface)] shadow-[var(--shadow-xs)] transition hover:border-[var(--primary)]/40"
                     >
-                        <Calendar size={10} className="text-[var(--primary)]" />
+                        <Calendar size={14} className="text-[var(--primary)]" />
                         FY {selectedFY}
-                        <ChevronDown size={8} />
+                        <ChevronDown size={13} />
                     </button>
                     {showFYDropdown && (
-                        <div className="absolute right-0 top-full mt-1 bg-white dark:bg-[#1E1E2E] border border-[var(--border)] rounded-xl shadow-lg z-50 min-w-[140px]">
+                        <div className="absolute right-0 top-full z-50 mt-2 min-w-[160px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-lg">
                             {getAvailableFYs().map(fy => (
                                 <button key={fy}
                                     onClick={() => { setSelectedFY(fy); setShowFYDropdown(false); }}
@@ -453,23 +421,42 @@ export default memo(function LiveKeepingsDashboard() {
                 </div>
             </HeaderPortal>
 
-            {/* Sync Banner — compact + working */}
-            <button onClick={() => navigate('/tally-sync')} className="w-full flex items-center justify-between p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 active:scale-[0.98] transition-transform">
-                <div className="flex items-center gap-2">
-                    <AlertTriangle size={12} className="text-amber-600" />
-                    <span className="text-[10px] font-semibold text-amber-700">Sync pending with Tally</span>
+            <section className="relative isolate overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
+                <div className="pointer-events-none absolute inset-y-0 right-0 z-0 w-2/3 opacity-80" style={{ background: 'radial-gradient(ellipse at 80% 20%, var(--primary-container), transparent 68%)' }} />
+                <div className="relative z-10 flex flex-col gap-5 p-5 sm:p-7 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+                    <div className="min-w-0">
+                        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)]/80 px-3 py-1.5 text-xs font-medium text-[var(--on-surface-variant)]">
+                            <Building2 size={14} className="text-[var(--primary)]" />
+                            <span className="max-w-[220px] truncate">{selectedCompany?.name || 'Your company'}</span>
+                            <span className="h-1 w-1 rounded-full bg-[var(--outline)]" />
+                            <span>FY {selectedFY}</span>
+                        </div>
+                        <h1 className="text-2xl font-bold tracking-tight text-[var(--on-surface)] sm:text-3xl">{greeting}, here’s your overview</h1>
+                        <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">A clear picture of your business activity, outstanding balances, and recent transactions.</p>
+                        <div className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-[var(--on-surface-variant)]">
+                            <span className={`h-2 w-2 rounded-full ${hasSyncTime ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                            {hasSyncTime ? `Last synced ${formatDistanceToNow(lastSync!, { addSuffix: true })}` : 'No sync time available'}
+                            <button onClick={() => navigate('/tally-sync')} className="ml-1 font-semibold text-[var(--primary)] hover:underline">Sync status</button>
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+                        <button onClick={() => refetch()} disabled={isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-semibold text-[var(--on-surface)] shadow-[var(--shadow-xs)] transition hover:bg-[var(--surface-hover)] disabled:cursor-wait disabled:opacity-60">
+                            <RefreshCw size={16} className={isFetching ? 'animate-spin' : ''} />
+                            Refresh
+                        </button>
+                        <button onClick={() => navigate('/create-invoice')} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--on-primary)] shadow-[var(--shadow-sm)] transition hover:brightness-110">
+                            <Plus size={17} /> New invoice
+                        </button>
+                    </div>
                 </div>
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">FIX →</span>
-            </button>
+            </section>
 
-            {/* Summary Cards — memoized */}
             <SummaryCards dashboard={dashboard} navigate={navigate} />
 
-            {/* Quick Access Grid — memoized */}
-            <QuickAccessGrid navigate={navigate} />
-
-            {/* Recent Transactions — memoized */}
-            <RecentTransactions dashboard={dashboard} navigate={navigate} />
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+                <QuickAccessGrid navigate={navigate} />
+                <RecentTransactions dashboard={dashboard} navigate={navigate} />
+            </div>
 
             {/* Smart Insights */}
             <SmartInsights />
