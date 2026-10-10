@@ -146,6 +146,7 @@ export const trialService = {
     async activate(params: {
         user_id: string;
         email: string;
+        idempotency_key?: string;
         mobile?: string;
         device_id?: string;
         device_fingerprint?: string;
@@ -155,75 +156,24 @@ export const trialService = {
         company_name?: string;
         ip_address?: string;
     }): Promise<{ success: boolean; license?: UserLicense; error?: string }> {
-        // First check eligibility
-        const check = await this.checkEligibility(params);
-        if (!check.eligible) {
-            return { success: false, error: check.reason };
-        }
-
-        // Get trial plan
-        const { data: plan } = await supabase
-            .from('subscription_plans')
-            .select('*')
-            .eq('slug', 'trial')
-            .single();
-
-        if (!plan) return { success: false, error: 'Trial plan not found' };
-
-        const trialStart = new Date();
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + plan.duration_days);
-
-        // Generate license key
-        const { data: keyData } = await supabase.rpc('generate_license_key', { plan_slug: 'trial' });
-        const licenseKey = keyData || `TOM-${new Date().getFullYear()}-TRIAL-XXXX`;
-
-        // Create trial history
-        const { error: trialErr } = await supabase.from('trial_history').insert({
-            user_id: params.user_id,
-            email: params.email,
-            mobile: params.mobile,
-            device_id: params.device_id,
-            device_fingerprint: params.device_fingerprint,
-            tally_serial: params.tally_serial,
-            company_gst: params.company_gst,
-            company_pan: params.company_pan,
-            company_name: params.company_name,
-            ip_address: params.ip_address,
-            trial_start: trialStart.toISOString(),
-            trial_end: trialEnd.toISOString(),
-            trial_used: true,
+        const idempotencyKey = params.idempotency_key || crypto.randomUUID();
+        const { data, error } = await supabase.rpc('activate_trial', {
+            p_idempotency_key: idempotencyKey,
+            p_email: params.email,
+            p_mobile: params.mobile || null,
+            p_device_id: params.device_id || null,
+            p_device_fingerprint: params.device_fingerprint || null,
+            p_tally_serial: params.tally_serial || null,
+            p_company_gst: params.company_gst || null,
+            p_company_name: params.company_name || null,
         });
-
-        if (trialErr) {
-            console.error('Trial history insert failed:', trialErr);
+        if (error) {
+            console.error('Atomic trial activation failed:', error);
+            return { success: false, error: 'TRIAL_ACTIVATION_UNAVAILABLE' };
         }
-
-        // Create license
-        const { data: license, error: licErr } = await supabase.from('user_licenses').insert({
-            user_id: params.user_id,
-            license_key: licenseKey,
-            plan_id: plan.id,
-            status: 'active',
-            activation_date: trialStart.toISOString(),
-            expiry_date: trialEnd.toISOString(),
-            activated_from_ip: params.ip_address,
-            device_fingerprint: params.device_fingerprint,
-            tally_serial: params.tally_serial,
-            company_gst: params.company_gst,
-            company_pan: params.company_pan,
-        }).select().single();
-
-        if (licErr) return { success: false, error: licErr.message };
-
-        // Log activity
-        await this.logActivity(params.user_id, 'trial_activated', 'license', license.id, licenseKey, {
-            plan: 'trial',
-            duration: plan.duration_days,
-            expiry: trialEnd.toISOString(),
-        });
-
-        return { success: true, license };
+        return data?.success
+            ? { success: true, license: data.license }
+            : { success: false, error: data?.error || 'TRIAL_ACTIVATION_FAILED' };
     },
 };
 
