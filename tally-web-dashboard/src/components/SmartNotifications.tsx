@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Bell, Clock, AlertTriangle, FileText, IndianRupee, CheckCircle2,
     Loader2, X, ChevronRight, Calendar
@@ -51,38 +52,43 @@ export default function SmartNotifications() {
 
             // Payment overdue check
             const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            const { data: overdueVouchers } = await supabase
+            const overdueVouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
-                .select('id, party_name, grand_total, voucher_date')
+                .select('id, party_name, grand_total, total_amount, voucher_date')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .eq('is_deleted', false)
                 .lt('voucher_date', thirtyDaysAgo)
-                .limit(5);
+                .order('voucher_date', { ascending: true })
+                .order('id')
+                .range(from, to));
 
-            if (overdueVouchers && overdueVouchers.length > 0) {
-                const totalOverdue = overdueVouchers.reduce((s, v) => s + Math.abs(Number(v.grand_total) || 0), 0);
+            if (overdueVouchers.length > 0) {
+                const totalOverdue = overdueVouchers.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+                const overduePartyCount = new Set(overdueVouchers.map(v => v.party_name).filter(Boolean)).size;
                 notifs.push({
                     id: 'payment-overdue',
                     type: 'payment_overdue',
-                    title: `${overdueVouchers.length} Overdue Payments`,
-                    message: `₹${(totalOverdue / 100000).toFixed(1)}L pending from ${overdueVouchers.length} parties`,
+                    title: `${overdueVouchers.length} Overdue Invoices`,
+                    message: `₹${(totalOverdue / 100000).toFixed(1)}L pending across ${overduePartyCount} parties`,
                     action: '/payment-reminders',
                     priority: 'high',
                     created_at: now.toISOString()
                 });
             }
 
-            // Low stock alerts - safe query (closing_balance may not exist yet)
+            // Low stock alert across the whole company inventory.
             let lowStock: any[] = [];
             try {
-                const res = await supabase
+                const stockRows = await fetchAllSupabaseRows((from, to) => supabase
                     .from('stock_items')
-                    .select('id, name')
+                    .select('id, name, current_stock')
                     .eq('company_id', selectedCompany.id)
-                    .limit(20);
-                lowStock = res.data || [];
-            } catch {
+                    .order('id')
+                    .range(from, to));
+                lowStock = stockRows.filter(item => Number(item.current_stock ?? 0) < 10);
+            } catch (error) {
+                console.warn('Low-stock notification query failed:', error);
                 lowStock = [];
             }
 

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TrendingUp, Search, Plus, IndianRupee, Receipt, Filter } from 'lucide-react';
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
@@ -102,25 +103,25 @@ export default function SalesPage() {
         async () => {
             if (!selectedCompany?.id) return [];
             
-            const { data: syncedData, error: syncedError } = await supabase.from('vouchers')
-                .select('*', { count: 'exact' })
+            const syncedData = await fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .eq('is_deleted', false)
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .range(0, 99999);
-            
-            if (syncedError) throw syncedError;
+                .order('id', { ascending: true })
+                .range(from, to));
 
-            const { data: pendingData, error: pendingError } = await supabase.from('pending_transactions')
+            const pendingData = await fetchAllSupabaseRows((from, to) => supabase.from('pending_transactions')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('transaction_type', 'Sales')
-                .in('status', ['pending', 'failed']);
-
-            if (pendingError) throw pendingError;
+                .in('status', ['pending', 'failed'])
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: true })
+                .range(from, to));
 
             const pendingSales = (pendingData || []).map(p => {
                 const { id, ...rest } = p.voucher_data || {};
@@ -139,7 +140,7 @@ export default function SalesPage() {
                 return date >= dateRange.start && date <= dateRange.end;
             });
 
-            return [...pendingSales, ...(syncedData || [])];
+            return [...pendingSales, ...syncedData];
         },
         {
             enabled: !!selectedCompany?.id && periodLoadedFor === selectedCompany.id,

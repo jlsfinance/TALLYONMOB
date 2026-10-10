@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { fetchAllSupabaseRows } from "./supabasePagination";
 
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
@@ -17,6 +18,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     detectSessionInUrl: true,
   },
 });
+
+const fetchAllResult = async (buildQuery) => {
+  try {
+    return { data: await fetchAllSupabaseRows(buildQuery), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+};
+
+const isMissingOptionalRelationOrColumn = (error) => {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  return ["42P01", "42703", "PGRST204", "PGRST205"].includes(code)
+    || /does not exist|could not find .* in the schema cache|relation .* not found/i.test(message);
+};
 
 // Auth compatibility layer
 const auth = supabase.auth;
@@ -220,7 +236,7 @@ const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = n
 
 // ─── Company API ───
 const companyApi = {
-  list: async () => db.from("companies").select("*").order("name"),
+  list: async () => fetchAllResult((from, to) => db.from("companies").select("*").order("name").order("id").range(from, to)),
   getById: async (id) => db.from("companies").select("*").eq("id", id).single(),
   create: async ({ name, ownerId }) => {
     const normalizedName = String(name || "").trim();
@@ -236,7 +252,7 @@ const companyApi = {
     }).select("*").single();
   },
   getAppSettings: async () => {
-    const { data, error } = await db.from("app_settings").select("*");
+    const { data, error } = await fetchAllResult((from, to) => db.from("app_settings").select("*").order("key").range(from, to));
     if (error) return { data: null, error };
     const settings = {};
     (data || []).forEach((s) => { settings[s.key] = s.value; });
@@ -246,20 +262,22 @@ const companyApi = {
     try {
       const [l, v, s] = await Promise.all([
         db.from("ledgers").select("*", { head: true, count: "exact" }).eq("company_id", companyId),
-        db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false),
+        fetchAllSupabaseRows((from, to) => db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("voucher_date", { ascending: true }).order("id", { ascending: true }).range(from, to)),
         db.from("stock_items").select("*", { head: true, count: "exact" }).eq("company_id", companyId),
       ]);
+      if (l.error) throw l.error;
+      if (s.error) throw s.error;
       let totalSales = 0, totalPurchases = 0;
-      if (v.data) {
-        v.data.forEach((vd) => {
+      if (v) {
+        v.forEach((vd) => {
           const amt = Math.abs(Number(vd.grand_total) || Number(vd.total_amount) || 0);
           if (vd.voucher_type === "Sales") totalSales += amt;
           if (vd.voucher_type === "Purchase") totalPurchases += amt;
         });
       }
-      return { ledgerCount: l.count || 0, voucherCount: v.data?.length || 0, stockCount: s.count || 0, totalSales, totalPurchases };
+      return { ledgerCount: l.count || 0, voucherCount: v.length, stockCount: s.count || 0, totalSales, totalPurchases };
     } catch (e) {
-      return { ledgerCount: 0, voucherCount: 0, stockCount: 0, totalSales: 0, totalPurchases: 0 };
+      throw e;
     }
   },
   deleteCompanyData: async (companyId) => {
@@ -286,37 +304,83 @@ const companyApi = {
 // ─── Ledger API ───
 const ledgerApi = {
   list: async (companyId, parentGroup = null) => {
-    let q = db.from("ledgers").select("*").eq("company_id", companyId).order("name");
-    if (parentGroup) q = q.eq("parent", parentGroup);
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("ledgers").select("*").eq("company_id", companyId).order("name").order("id");
+      if (parentGroup) q = q.eq("parent", parentGroup);
+      return q.range(from, to);
+    });
   },
   getById: async (id) => db.from("ledgers").select("*").eq("id", id).single(),
   getGroups: async (companyId) => {
-    const { data, error } = await db.from("ledgers").select("parent").eq("company_id", companyId);
+    const { data, error } = await fetchAllResult((from, to) => db.from("ledgers").select("parent, id").eq("company_id", companyId).order("id").range(from, to));
     if (error) return { data: [], error };
     return { data: [...new Set(data.map((l) => l.parent).filter(Boolean))], error: null };
   },
   getTransactions: async (ledgerId, fromDate, toDate) => {
-    let q = db.from("vouchers").select("*").eq("party_name", ledgerId).order("voucher_date", { ascending: false });
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("vouchers").select("*").eq("party_name", ledgerId).order("voucher_date", { ascending: false }).order("id", { ascending: true });
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      return q.range(from, to);
+    });
   },
-  getItemHistory: async (companyId, ledgerName, itemName, { fromDate, toDate, voucherTypes, sort = "desc", limit = 1e3 } = {}) => {
+  getItemHistory: async (companyId, ledgerName, itemName, { fromDate, toDate, voucherTypes, sort = "desc" } = {}) => {
     try {
       if (!companyId || !ledgerName || !itemName) return { data: [], error: null };
-      let rpcRes = { data: null, error: new Error('skip') };
-      try { rpcRes = await db.rpc("insforge_ledger_item_history", { p_company_id: companyId, p_ledger_name: ledgerName, p_item_name: itemName, p_from_date: fromDate || null, p_to_date: toDate || null, p_limit: limit, p_offset: 0 }); } catch (_) {}
-      if (!rpcRes.error && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
-        return { data: sort === "asc" ? [...rpcRes.data].reverse() : rpcRes.data, error: null };
+      let rpcRows = [];
+      try {
+        rpcRows = await fetchAllSupabaseRows((offset) => db.rpc("insforge_ledger_item_history", {
+          p_company_id: companyId,
+          p_ledger_name: ledgerName,
+          p_item_name: itemName,
+          p_from_date: fromDate || null,
+          p_to_date: toDate || null,
+          p_limit: 1000,
+          p_offset: offset,
+        }));
+      } catch (_) {}
+      if (rpcRows.length > 0) {
+        return { data: sort === "asc" ? [...rpcRows].reverse() : rpcRows, error: null };
       }
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
-      if (entriesRes.error) return entriesRes;
-      let entryRows = entriesRes.data || [];
+
+      const readOptionalRows = async (buildQuery) => {
+        try {
+          return await fetchAllSupabaseRows(buildQuery);
+        } catch (error) {
+          if (isMissingOptionalRelationOrColumn(error)) return [];
+          throw error;
+        }
+      };
+      let entryRows = await readOptionalRows((from, to) => db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to));
       if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
-        if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
+        entryRows = await readOptionalRows((from, to) => db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").order("id").range(from, to));
       }
+      const [salesRows, purchaseRows] = await Promise.all([
+        readOptionalRows((from, to) => db.from("sales_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to)),
+        readOptionalRows((from, to) => db.from("purchase_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to)),
+      ]);
+      const loadVoucherLinks = async (table, ids) => {
+        const rows = [];
+        for (const idChunk of chunkValues([...new Set(ids.filter(Boolean))], 40)) {
+          rows.push(...await readOptionalRows((from, to) => db.from(table).select("id, voucher_id").eq("company_id", companyId).in("id", idChunk).order("id").range(from, to)));
+        }
+        return rows;
+      };
+      const [sales, purchases] = await Promise.all([
+        loadVoucherLinks("sales", salesRows.map((row) => row.sale_id)),
+        loadVoucherLinks("purchases", purchaseRows.map((row) => row.purchase_id)),
+      ]);
+      const saleVoucherById = Object.fromEntries(sales.map((row) => [row.id, row.voucher_id || row.id]));
+      const purchaseVoucherById = Object.fromEntries(purchases.map((row) => [row.id, row.voucher_id || row.id]));
+      const canonicalVoucherIds = new Set(entryRows.map((row) => row.voucher_id).filter(Boolean));
+      salesRows.forEach((row) => {
+        const voucherId = saleVoucherById[row.sale_id];
+        if (voucherId && !canonicalVoucherIds.has(voucherId)) entryRows.push({ ...row, id: `sale-item:${row.id}`, voucher_id: voucherId, is_inward: false });
+      });
+      purchaseRows.forEach((row) => {
+        const voucherId = purchaseVoucherById[row.purchase_id];
+        if (voucherId && !canonicalVoucherIds.has(voucherId)) entryRows.push({ ...row, id: `purchase-item:${row.id}`, voucher_id: voucherId, is_inward: true });
+      });
       const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
       if (voucherIds.length === 0) return { data: [], error: null };
       const vouchersRes = await fetchVouchersByIds({ companyId, voucherIds, select: "id, voucher_date, voucher_type, voucher_number, party_name, total_amount, grand_total", partyName: ledgerName, partyLike: true, fromDate, toDate, voucherTypes });
@@ -342,12 +406,14 @@ const ledgerApi = {
 // ─── Voucher API ───
 const voucherApi = {
   list: async (companyId, { fromDate, toDate, type, party } = {}) => {
-    let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("voucher_date", { ascending: false });
-    if (type) q = q.eq("voucher_type", type);
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    if (party) q = q.ilike("party_name", "%" + party + "%");
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("voucher_date", { ascending: false }).order("id", { ascending: true });
+      if (type) q = q.eq("voucher_type", type);
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      if (party) q = q.ilike("party_name", "%" + party + "%");
+      return q.range(from, to);
+    });
   },
   getById: async (id) => {
     let q = await db.from("vouchers").select("*").eq("id", id).maybeSingle();
@@ -355,8 +421,8 @@ const voucherApi = {
     if (q.error || !q.data) return q;
     const lookupIds = [...new Set([q.data.id, q.data.voucher_id, id].filter(Boolean))];
     const [ledgerRes, stockRes] = await Promise.all([
-      db.from("voucher_ledger_entries").select("*").in("voucher_id", lookupIds),
-      db.from("voucher_stock_entries").select("*").in("voucher_id", lookupIds),
+      fetchAllResult((from, to) => db.from("voucher_ledger_entries").select("*").in("voucher_id", lookupIds).order("id").range(from, to)),
+      fetchAllResult((from, to) => db.from("voucher_stock_entries").select("*").in("voucher_id", lookupIds).order("id").range(from, to)),
     ]);
     return { data: { ...q.data, ledger_entries: ledgerRes.data || [], stock_entries: stockRes.data || [] }, error: q.error || ledgerRes.error || stockRes.error || null };
   },
@@ -378,9 +444,10 @@ const voucherApi = {
       }
       const [ledgerRes, vouchersRes] = await Promise.all([
         db.from("ledgers").select("id, name, opening_balance").eq("company_id", companyId).ilike("name", party).maybeSingle(),
-        db.from("vouchers").select("id, voucher_type, voucher_date, total_amount, grand_total, is_deleted").eq("company_id", companyId).eq("party_name", party).lte("voucher_date", voucher.voucher_date).eq("is_deleted", false),
+        fetchAllResult((from, to) => db.from("vouchers").select("id, voucher_type, voucher_date, total_amount, grand_total, is_deleted").eq("company_id", companyId).eq("party_name", party).lte("voucher_date", voucher.voucher_date).eq("is_deleted", false).order("voucher_date", { ascending: true }).order("id", { ascending: true }).range(from, to)),
       ]);
       const openingBalance = Number(ledgerRes?.data?.opening_balance) || 0;
+      if (vouchersRes.error) return { data: { ...voucher, context: { voucher_effect: voucherEffect, opening_balance: openingBalance, running_balance_after: null } }, error: vouchersRes.error };
       const ordered = (vouchersRes.data || []).sort(compareByVoucherDate);
       let running = openingBalance;
       let runningAtVoucher = null;
@@ -396,7 +463,7 @@ const voucherApi = {
     }
   },
   getTypes: async (companyId) => {
-    const { data, error } = await db.from("vouchers").select("voucher_type").eq("company_id", companyId);
+    const { data, error } = await fetchAllResult((from, to) => db.from("vouchers").select("id, voucher_type").eq("company_id", companyId).order("id").range(from, to));
     if (error) return { data: [], error };
     return { data: [...new Set(data.map((v) => v.voucher_type).filter(Boolean))], error: null };
   },
@@ -404,8 +471,8 @@ const voucherApi = {
 
 // ─── Master API ───
 const masterApi = {
-  getLedgers: async (companyId) => db.from("ledgers").select("*").eq("company_id", companyId).order("name"),
-  getStockItems: async (companyId) => db.from("stock_items").select("*").eq("company_id", companyId).order("name"),
+  getLedgers: async (companyId) => fetchAllResult((from, to) => db.from("ledgers").select("*").eq("company_id", companyId).order("name").order("id").range(from, to)),
+  getStockItems: async (companyId) => fetchAllResult((from, to) => db.from("stock_items").select("*").eq("company_id", companyId).order("name").order("id").range(from, to)),
 };
 
 // ─── Sales / Purchases API ───
@@ -422,17 +489,19 @@ const purchasesApi = {
 // ─── Stock API ───
 const stockApi = {
   list: async (companyId, stockGroup = null) => {
-    let q = db.from("stock_items").select("*").eq("company_id", companyId).order("name");
-    if (stockGroup) q = q.eq("stock_group", stockGroup);
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("stock_items").select("*").eq("company_id", companyId).order("name").order("id");
+      if (stockGroup) q = q.eq("stock_group", stockGroup);
+      return q.range(from, to);
+    });
   },
   getById: async (id) => db.from("stock_items").select("*").eq("id", id).single(),
   getGroups: async (companyId) => {
-    const { data, error } = await db.from("stock_items").select("stock_group").eq("company_id", companyId);
+    const { data, error } = await fetchAllResult((from, to) => db.from("stock_items").select("id, stock_group").eq("company_id", companyId).order("id").range(from, to));
     if (error) return { data: [], error };
     return { data: [...new Set(data.map((s) => s.stock_group).filter(Boolean))], error: null };
   },
-  getHistory: async (companyId, itemIdOrName, { fromDate, toDate, party, voucherTypes, sort = "desc", limit = 5e3 } = {}) => {
+  getHistory: async (companyId, itemIdOrName, { fromDate, toDate, party, voucherTypes, sort = "desc" } = {}) => {
     try {
       if (!companyId || !itemIdOrName) return { data: null, error: null };
       // The selected company + stock item id are authoritative. Name is retained
@@ -445,20 +514,24 @@ const stockApi = {
       }
       const itemName = String(item?.name || itemIdOrName).trim();
       const itemId = item?.id || (String(itemIdOrName).match(/^[0-9a-f-]{20,}$/i) ? itemIdOrName : null);
-      const read = async (query) => {
-        const result = await query;
-        return result.error ? [] : (result.data || []);
+      const readOptionalRows = async (buildQuery) => {
+        try {
+          return await fetchAllSupabaseRows(buildQuery);
+        } catch (error) {
+          if (isMissingOptionalRelationOrColumn(error)) return [];
+          throw error;
+        }
       };
 
       // Support every data shape used by the sync/import pipelines. Missing
       // optional tables/columns do not make the detail page fail.
       const [rowsById, rowsByName] = await Promise.all([
-        itemId ? read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_id", itemId).limit(limit)) : Promise.resolve([]),
-        read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit))
+        itemId ? readOptionalRows((from, to) => db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_id", itemId).order("id").range(from, to)) : Promise.resolve([]),
+        readOptionalRows((from, to) => db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to))
       ]);
       let entryRows = [...rowsById, ...rowsByName];
       if (!entryRows.length && itemName) {
-        entryRows = await read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", `%${itemName}%`).limit(limit));
+        entryRows = await readOptionalRows((from, to) => db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", `%${itemName}%`).order("id").range(from, to));
       }
       const seen = new Set();
       entryRows = entryRows.filter((entry) => {
@@ -471,14 +544,21 @@ const stockApi = {
       // Manual invoice imports can exist in sales_items/purchase_items without a
       // voucher_stock_entries row. Use them only when the same voucher is absent.
       const [salesRows, purchaseRows] = await Promise.all([
-        read(db.from("sales_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit)),
-        read(db.from("purchase_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit))
+        readOptionalRows((from, to) => db.from("sales_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to)),
+        readOptionalRows((from, to) => db.from("purchase_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).order("id").range(from, to))
       ]);
       const saleIds = salesRows.map((row) => row.sale_id).filter(Boolean);
       const purchaseIds = purchaseRows.map((row) => row.purchase_id).filter(Boolean);
+      const readLinkedRows = async (table, ids) => {
+        const rows = [];
+        for (const idChunk of chunkValues([...new Set(ids)], 40)) {
+          rows.push(...await readOptionalRows((from, to) => db.from(table).select("id, voucher_id").eq("company_id", companyId).in("id", idChunk).order("id").range(from, to)));
+        }
+        return rows;
+      };
       const [sales, purchases] = await Promise.all([
-        saleIds.length ? read(db.from("sales").select("id, voucher_id").eq("company_id", companyId).in("id", saleIds)) : Promise.resolve([]),
-        purchaseIds.length ? read(db.from("purchases").select("id, voucher_id").eq("company_id", companyId).in("id", purchaseIds)) : Promise.resolve([])
+        readLinkedRows("sales", saleIds),
+        readLinkedRows("purchases", purchaseIds)
       ]);
       const saleVoucherById = Object.fromEntries(sales.map((row) => [row.id, row.voucher_id || row.id]));
       const purchaseVoucherById = Object.fromEntries(purchases.map((row) => [row.id, row.voucher_id || row.id]));
@@ -533,10 +613,12 @@ const stockApi = {
 // ─── Reports API ───
 const reportsApi = {
   getLedgerStatement: async (companyId, ledgerName, fromDate, toDate) => {
-    let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("party_name", ledgerName).order("voucher_date", { ascending: true });
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("party_name", ledgerName).order("voucher_date", { ascending: true }).order("id", { ascending: true });
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      return q.range(from, to);
+    });
   },
   getSalesSummary: async (companyId, fromDate, toDate) => salesApi.list(companyId, { fromDate, toDate }),
   getPurchaseSummary: async (companyId, fromDate, toDate) => purchasesApi.list(companyId, { fromDate, toDate }),
@@ -594,10 +676,12 @@ const pendingTransactionApi = {
     return batchInsert;
   },
   list: async (companyId, status = null) => {
-    let q = db.from("pending_transactions").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
-    if (Array.isArray(status) && status.length > 0) q = q.in("status", status);
-    else if (status) q = q.eq("status", status);
-    return await q;
+    return fetchAllResult((from, to) => {
+      let q = db.from("pending_transactions").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).order("id", { ascending: true });
+      if (Array.isArray(status) && status.length > 0) q = q.in("status", status);
+      else if (status) q = q.eq("status", status);
+      return q.range(from, to);
+    });
   },
   getPendingCount: async (companyId) => db.from("pending_transactions").select("*", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
   createSalesInvoice: async (companyId, invoiceData) => pendingTransactionApi.create(companyId, "Sales", invoiceData),

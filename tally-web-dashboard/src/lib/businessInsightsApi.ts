@@ -1,20 +1,11 @@
 import { supabase } from './insforge';
+import { fetchAllSupabaseRows } from './supabasePagination';
 import type { BusinessPeriod } from './businessInsights';
-
-const PAGE_SIZE = 500;
 
 type QueryBuilder = (from: number, to: number) => any;
 
 async function fetchAll(buildQuery: QueryBuilder) {
-  const rows: any[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await buildQuery(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    const page = data || [];
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-  }
-  return rows;
+  return fetchAllSupabaseRows(buildQuery);
 }
 
 const activeVouchers = (query: any) => query.or('is_deleted.is.null,is_deleted.eq.false');

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import toast from 'react-hot-toast';
 import {
     RefreshCw, Plus, Calendar, Clock, Pause, Play, Trash2,
@@ -60,14 +61,14 @@ export default function RecurringInvoicesPage() {
         if (!companyId) return;
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('recurring_invoices')
                 .select('*')
                 .eq('company_id', companyId)
-                .order('next_invoice_date', { ascending: true });
-
-            if (error) throw error;
-            setInvoices(data || []);
+                .order('next_invoice_date', { ascending: true })
+                .order('id')
+                .range(from, to));
+            setInvoices(data);
         } catch (err: any) {
             // If table doesn't exist yet, use mock data
             setInvoices([]);
@@ -78,13 +79,20 @@ export default function RecurringInvoicesPage() {
 
     const loadParties = useCallback(async () => {
         if (!companyId) return;
-        const { data } = await supabase
+        try {
+        const data = await fetchAllSupabaseRows((from, to) => supabase
             .from('ledgers')
             .select('id, name, closing_balance')
             .eq('company_id', companyId)
             .in('parent_group', ['Sundry Debtors'])
-            .order('name');
-        setParties(data || []);
+            .order('name')
+            .order('id')
+            .range(from, to));
+        setParties(data);
+        } catch (error) {
+            console.error('Failed to load recurring-invoice parties:', error);
+            setParties([]);
+        }
     }, [companyId]);
 
     useEffect(() => {
@@ -558,4 +566,3 @@ export default function RecurringInvoicesPage() {
         </div>
     );
 }
-

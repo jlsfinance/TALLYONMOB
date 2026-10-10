@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Truck, FileText, Search, Filter, QrCode, Download,
     CheckCircle, AlertTriangle, Clock, ChevronRight, Loader2,
@@ -60,17 +61,18 @@ export default function EWayBillPage() {
     const loadInvoices = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .in('voucher_type', ['Sales', 'Purchase'])
                 .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
-                .limit(200);
+                .order('id')
+                .range(from, to));
 
             // Filter invoices above ₹50,000 (E-Way Bill threshold)
-            const eligible = (data || []).filter(v =>
+            const eligible = data.filter(v =>
                 Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0) >= 50000
             );
             setInvoices(eligible);
@@ -346,4 +348,3 @@ export default function EWayBillPage() {
         </div>
     );
 }
-

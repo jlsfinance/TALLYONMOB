@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 
 interface Prediction {
@@ -23,12 +24,13 @@ export default function CashFlowPrediction() {
     const generatePredictions = async () => {
         setLoading(true);
         try {
-            const { data: vouchers } = await supabase
+            const vouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
-                .select('voucher_type, amount, vch_date')
+                .select('id, voucher_type, amount, vch_date')
                 .eq('company_id', selectedCompany.id)
                 .order('vch_date', { ascending: false })
-                .limit(500);
+                .order('id')
+                .range(from, to));
 
             if (!vouchers?.length) { setPredictions([]); return; }
 
@@ -161,4 +163,3 @@ export default function CashFlowPrediction() {
         </div>
     );
 }
-

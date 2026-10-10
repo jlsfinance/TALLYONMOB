@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
 import { FREE_PLAN_LIMITS } from '@/features/automation/constants';
@@ -37,17 +38,16 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
 }
 
 async function fetchImportedInvoicesFromCloud(userId: string, clientId: string) {
-    const { data, error } = await supabase
+    const data = await fetchAllSupabaseRows((from, to) => supabase
         .from('imported_invoices')
         .select('id, gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, hsn_code, invoice_type, created_at')
         .eq('company_id', clientId)
         .eq('created_by', userId)
         .order('created_at', { ascending: false })
-        .limit(10000);
+        .order('id')
+        .range(from, to));
 
-    if (error) throw error;
-
-    return (data || []).map((item: any) => ({
+    return data.map((item: any) => ({
         $id: item?.id,
         gstin: item?.gstin,
         invoiceNumber: item?.invoice_number,
@@ -368,5 +368,4 @@ export default function GstAutomationPage() {
         </div>
     );
 }
-
 

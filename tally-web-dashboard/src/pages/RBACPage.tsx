@@ -50,6 +50,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase } from "@/lib/insforge";
+import { fetchAllSupabaseRows } from "@/lib/supabasePagination";
 
 // Types
 interface User {
@@ -1821,22 +1822,28 @@ export default function RBACPage() {
     setLoading(true);
     try {
       // Load users from user_licenses
-      const { data: licenses } = await supabase
+      const licenses = await fetchAllSupabaseRows((from, to) => supabase
         .from("user_licenses")
         .select("id, user_id, license_key, status, expiry_date, created_at")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to));
 
       // Load companies
-      const { data: comps } = await supabase
+      const comps = await fetchAllSupabaseRows((from, to) => supabase
         .from("companies")
         .select("id, name, owner_id")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to));
 
       // Load roles
-      const { data: roleData } = await supabase
+      const roleData = await fetchAllSupabaseRows((from, to) => supabase
         .from("user_roles")
         .select("*")
-        .order("name");
+        .order("name")
+        .order("id")
+        .range(from, to));
 
       // Load activity logs
       const { data: logs } = await supabase

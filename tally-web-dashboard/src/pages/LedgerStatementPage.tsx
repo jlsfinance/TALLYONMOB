@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, ledgerApi } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { ArrowLeft, Printer, MessageCircle, Calendar, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import { GlassCard, MetricCard } from '@/components/ui/GlassUI';
 import { format } from 'date-fns';
@@ -33,7 +34,7 @@ export default function LedgerStatementPage() {
             const { data: ledgerData } = await ledgerApi.getById(id!);
             setLedger(ledgerData);
 
-            const { data: vouchers } = await supabase
+            const vouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
@@ -41,14 +42,15 @@ export default function LedgerStatementPage() {
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
                 .order('voucher_date', { ascending: true })
-                .limit(5000);
+                .order('id', { ascending: true })
+                .range(from, to));
 
             let runningBalance = ledgerData?.opening_balance || 0;
             setOpeningBalance(runningBalance);
 
-            const processedTxns = (vouchers || []).map((v: any) => {
+            const processedTxns = vouchers.map((v: any) => {
                 const isDebit = ['Receipt', 'Sales', 'Debit Note'].includes(v.voucher_type);
-                const amount = Math.abs(v.total_amount || 0);
+                const amount = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
                 const debit = isDebit ? amount : 0;
                 const credit = !isDebit ? amount : 0;
                 runningBalance = runningBalance + debit - credit;

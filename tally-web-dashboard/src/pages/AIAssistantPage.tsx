@@ -2,6 +2,7 @@
 import { useAuth } from '../contexts/AuthContext';
 import { AuthContextType } from '../contexts/types';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Bot, Send, Mic, MicOff, Loader2, Sparkles, BarChart3,
     TrendingUp, Users, IndianRupee, Package, FileText,
@@ -65,36 +66,40 @@ export default function AIAssistantPage() {
     const fetchCompanyData = async () => {
         if (!selectedCompany?.id) return null;
 
-        const [salesRes, purchaseRes, ledgersRes, stockRes] = await Promise.all([
-            supabase.from('vouchers')
-                .select('voucher_date, total_amount, grand_total, party_name, voucher_number')
+        const [sales, purchases, ledgers, stock] = await Promise.all([
+            fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                .select('id, voucher_date, total_amount, grand_total, party_name, voucher_number')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
-                .limit(500),
-            supabase.from('vouchers')
-                .select('voucher_date, total_amount, grand_total, party_name')
+                .order('id')
+                .range(from, to)),
+            fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                .select('id, voucher_date, total_amount, grand_total, party_name')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: false })
-                .limit(500),
-            supabase.from('ledgers')
-                .select('name, parent, current_balance')
+                .order('id')
+                .range(from, to)),
+            fetchAllSupabaseRows((from, to) => supabase.from('ledgers')
+                .select('id, name, parent, current_balance')
                 .eq('company_id', selectedCompany.id)
-                .limit(5000),
-            supabase.from('stock_items')
-                .select('name, current_stock, unit, rate, stock_group')
+                .order('id')
+                .range(from, to)),
+            fetchAllSupabaseRows((from, to) => supabase.from('stock_items')
+                .select('id, name, current_stock, unit, rate, stock_group')
                 .eq('company_id', selectedCompany.id)
-                .limit(2000)
+                .order('id')
+                .range(from, to))
         ]);
 
         return {
-            sales: (salesRes as any)?.data || [],
-            purchases: (purchaseRes as any)?.data || [],
-            ledgers: (ledgersRes as any)?.data || [],
-            stock: (stockRes as any)?.data || [],
+            sales,
+            purchases,
+            ledgers,
+            stock,
             companyName: selectedCompany.name
         };
     };
@@ -107,14 +112,23 @@ export default function AIAssistantPage() {
         // Fallback to Gemini AI with company data context
         try {
             const { analyzeData } = await import('@/lib/GeminiService');
+            const amountOf = (row: any) => Math.abs(Number(row.grand_total) || Number(row.total_amount) || 0);
+            const debtors = data.ledgers.filter((ledger: any) => String(ledger.parent || '').toLowerCase().includes('debtor'));
+            const creditors = data.ledgers.filter((ledger: any) => String(ledger.parent || '').toLowerCase().includes('creditor'));
+            const lowStockItems = data.stock.filter((item: any) => Number(item.current_stock) >= 0 && Number(item.current_stock) < 10);
             const dataContext = {
                 companyName: data.companyName,
                 salesCount: data.sales.length,
+                salesTotal: data.sales.reduce((sum: number, row: any) => sum + amountOf(row), 0),
                 topSales: data.sales.slice(0, 30),
                 purchasesCount: data.purchases.length,
+                purchasesTotal: data.purchases.reduce((sum: number, row: any) => sum + amountOf(row), 0),
                 topPurchases: data.purchases.slice(0, 20),
                 ledgersWithBalance: data.ledgers.filter((l: any) => Math.abs(l.current_balance) > 0).slice(0, 60),
-                lowStock: data.stock.filter((s: any) => (s.current_stock || 0) < 10).slice(0, 20),
+                totalReceivable: debtors.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.current_balance) || 0), 0),
+                totalPayable: creditors.reduce((sum: number, row: any) => sum + Math.abs(Number(row.current_balance) || 0), 0),
+                lowStock: lowStockItems.slice(0, 20),
+                lowStockCount: lowStockItems.length,
                 totalLedgers: data.ledgers.length,
                 totalStock: data.stock.length
             };
@@ -533,5 +547,3 @@ export default function AIAssistantPage() {
         </div>
     );
 }
-
-

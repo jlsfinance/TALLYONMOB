@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/lib/insforge';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns';
 import {
     TrendingUp, TrendingDown, Wallet, CreditCard, FileText, Users,
@@ -98,21 +99,8 @@ export default function DashboardPage() {
         }
     };
 
-    const resolveRows = async (query: any) => {
-        const { data, error } = await query;
-        if (error) throw error;
-        return data || [];
-    };
-
-    const fetchAllRows = async (buildQuery: (fromIndex: number, toIndex: number) => any, pageSize = 1000) => {
-        const rows: any[] = [];
-        for (let fromIndex = 0; ; fromIndex += pageSize) {
-            const batch = await resolveRows(buildQuery(fromIndex, fromIndex + pageSize - 1));
-            rows.push(...batch);
-            if (batch.length < pageSize) break;
-        }
-        return rows;
-    };
+    const fetchAllRows = (buildQuery: (fromIndex: number, toIndex: number) => any) =>
+        fetchAllSupabaseRows(buildQuery);
 
     const loadDashboardData = async () => {
         if (!selectedCompany) return;
@@ -249,14 +237,12 @@ export default function DashboardPage() {
                         .order('id', { ascending: true })
                         .range(fromIndex, toIndex)
                 ),
-                resolveRows(
-                    supabase
+                supabase
                         .from('vouchers')
                         .select('*')
                         .eq('company_id', selectedCompany.id)
                         .order('voucher_date', { ascending: false })
                         .limit(6)
-                )
             ]);
 
             const sData = vSales || [];
@@ -358,7 +344,8 @@ export default function DashboardPage() {
             }
 
             setStats({ sales, purchases, receivables, payables, salesCount, purchaseCount });
-            setRecentVouchers(recent || []);
+            if (recent.error) throw recent.error;
+            setRecentVouchers(recent.data || []);
         } catch (error) {
             console.error('Dashboard load error:', error);
         }
@@ -799,4 +786,3 @@ export default function DashboardPage() {
         </div>
     );
 };
-

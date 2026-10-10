@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Bell, Send, Mail, MessageCircle, Phone, Filter, Search,
     CheckCircle, Clock, AlertTriangle, ChevronDown, ChevronRight,
@@ -56,16 +57,16 @@ export default function PaymentRemindersPage() {
         setLoading(true);
         try {
             // Get all sundry debtors (parties who owe us money)
-            const { data, error } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('ledgers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .in('parent', ['Sundry Debtors', 'sundry debtors', 'SUNDRY DEBTORS'])
                 .neq('current_balance', 0)
-                .order('current_balance', { ascending: false });
-
-            if (error) throw error;
-            setParties(data || []);
+                .order('current_balance', { ascending: false })
+                .order('id')
+                .range(from, to));
+            setParties(data);
         } catch (err: any) {
             toast.error('Failed to load outstanding parties');
         } finally {
@@ -525,4 +526,3 @@ export default function PaymentRemindersPage() {
         </div>
     );
 }
-

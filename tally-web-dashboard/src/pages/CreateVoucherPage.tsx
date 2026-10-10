@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, pendingTransactionApi } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     FileText, Plus, Search, Save, X, ChevronDown, Calendar,
     IndianRupee, Users, Package, Loader2, CheckCircle, ArrowLeft,
@@ -65,11 +66,11 @@ export default function CreateVoucherPage() {
 
     const loadMasterData = async () => {
         const [ledgers, stock] = await Promise.all([
-            supabase.from('ledgers').select('id, name, parent, closing_balance').eq('company_id', selectedCompany.id).order('name').limit(5000),
-            supabase.from('stock_items').select('id, name, current_stock, unit, rate, gst_rate, stock_group').eq('company_id', selectedCompany.id).order('name').limit(2000)
+            fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('id, name, parent, closing_balance').eq('company_id', selectedCompany.id).order('name').order('id').range(from, to)),
+            fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('id, name, current_stock, unit, rate, gst_rate, stock_group').eq('company_id', selectedCompany.id).order('name').order('id').range(from, to))
         ]);
-        setAllLedgers(ledgers.data || []);
-        setAllStockItems(stock.data || []);
+        setAllLedgers(ledgers);
+        setAllStockItems(stock);
     };
 
     const partyLedgers = useMemo(() => {
@@ -435,4 +436,3 @@ export default function CreateVoucherPage() {
         </div>
     );
 }
-

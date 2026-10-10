@@ -1,5 +1,6 @@
 import { queryClient } from './queryClient';
 import { supabase } from './supabase';
+import { fetchAllSupabaseRows } from './supabasePagination';
 
 /**
  * Prefetch dashboard data
@@ -16,31 +17,33 @@ export function prefetchDashboard(companyId: string, fyDates?: { from: string; t
             const from = fyDates?.from || `${fyStartYear}-04-01`;
             const to = fyDates?.to || `${fyStartYear + 1}-03-31`;
 
-            const [salesRes, purchaseRes, ledgerRes, stockRes] = await Promise.all([
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date')
+            const [sales, purchases, ledgers, stock] = await Promise.all([
+                fetchAllSupabaseRows((pageFrom, pageTo) => supabase.from('vouchers').select('id, grand_total, total_amount, voucher_date')
                     .eq('company_id', companyId).eq('voucher_type', 'Sales')
-                    .gte('voucher_date', from).lte('voucher_date', to),
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date')
+                    .gte('voucher_date', from).lte('voucher_date', to)
+                    .order('voucher_date', { ascending: true }).order('id').range(pageFrom, pageTo)),
+                fetchAllSupabaseRows((pageFrom, pageTo) => supabase.from('vouchers').select('id, grand_total, total_amount, voucher_date')
                     .eq('company_id', companyId).eq('voucher_type', 'Purchase')
-                    .gte('voucher_date', from).lte('voucher_date', to),
-                supabase.from('ledgers').select('current_balance, parent')
-                    .eq('company_id', companyId),
-                supabase.from('stock_items').select('current_stock, rate')
-                    .eq('company_id', companyId),
+                    .gte('voucher_date', from).lte('voucher_date', to)
+                    .order('voucher_date', { ascending: true }).order('id').range(pageFrom, pageTo)),
+                fetchAllSupabaseRows((pageFrom, pageTo) => supabase.from('ledgers').select('id, current_balance, parent')
+                    .eq('company_id', companyId).order('id').range(pageFrom, pageTo)),
+                fetchAllSupabaseRows((pageFrom, pageTo) => supabase.from('stock_items').select('id, name, current_stock, rate')
+                    .eq('company_id', companyId).order('id').range(pageFrom, pageTo)),
             ]);
 
             const toNum = (v: any) => Number(v) || 0;
-            const sales = (salesRes.data || []).reduce((s: number, v: any) => s + toNum(v.grand_total || v.total_amount), 0);
-            const purchases = (purchaseRes.data || []).reduce((s: number, v: any) => s + toNum(v.grand_total || v.total_amount), 0);
-            const debtors = (ledgerRes.data || []).filter((l: any) => String(l.parent || '').toLowerCase().includes('debtor'))
+            const salesTotal = sales.reduce((s: number, v: any) => s + toNum(v.grand_total || v.total_amount), 0);
+            const purchasesTotal = purchases.reduce((s: number, v: any) => s + toNum(v.grand_total || v.total_amount), 0);
+            const debtors = ledgers.filter((l: any) => String(l.parent || '').toLowerCase().includes('debtor'))
                 .reduce((s: number, l: any) => s + Math.abs(toNum(l.current_balance)), 0);
-            const creditors = (ledgerRes.data || []).filter((l: any) => String(l.parent || '').toLowerCase().includes('creditor'))
+            const creditors = ledgers.filter((l: any) => String(l.parent || '').toLowerCase().includes('creditor'))
                 .reduce((s: number, l: any) => s + Math.abs(toNum(l.current_balance)), 0);
-            const stockValue = (stockRes.data || []).reduce((s: number, i: any) => s + Math.abs(toNum(i.current_stock) * toNum(i.rate)), 0);
-            const lowStock = (stockRes.data || []).filter((i: any) => toNum(i.current_stock) <= 5);
+            const stockValue = stock.reduce((s: number, i: any) => s + Math.abs(toNum(i.current_stock) * toNum(i.rate)), 0);
+            const lowStock = stock.filter((i: any) => toNum(i.current_stock) <= 5);
 
             return {
-                sales, purchases, debtors, creditors, stockValue,
+                sales: salesTotal, purchases: purchasesTotal, debtors, creditors, stockValue,
                 lowStockItems: lowStock.slice(0, 3).map((s: any) => s.name),
             };
         },
@@ -80,16 +83,15 @@ export function prefetchVouchers(companyId: string, month: string, fyStart?: str
                 }
             }
 
-            const { data, error } = await supabase.from('vouchers')
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
                 .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
                 .eq('company_id', companyId)
                 .eq('is_deleted', false)
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
-                .order('voucher_date', { ascending: false });
+                .order('voucher_date', { ascending: false }).order('id').range(from, to));
 
-            if (error) throw error;
-            return (data || []).map((v: any) => ({
+            return data.map((v: any) => ({
                 ...v,
                 total_amount: Number(v.total_amount ?? v.grand_total ?? 0)
             }));
@@ -108,12 +110,10 @@ export function prefetchLedgers(companyId: string) {
     queryClient.prefetchQuery({
         queryKey: key,
         queryFn: async () => {
-            const { data, error } = await supabase.from('ledgers')
+            return await fetchAllSupabaseRows((from, to) => supabase.from('ledgers')
                 .select('*')
                 .eq('company_id', companyId)
-                .order('name');
-            if (error) throw error;
-            return data || [];
+                .order('name').order('id').range(from, to));
         },
         staleTime: 3 * 60 * 1000,
     });
@@ -129,12 +129,10 @@ export function prefetchStock(companyId: string) {
     queryClient.prefetchQuery({
         queryKey: key,
         queryFn: async () => {
-            const { data, error } = await supabase.from('stock_items')
+            return await fetchAllSupabaseRows((from, to) => supabase.from('stock_items')
                 .select('*')
                 .eq('company_id', companyId)
-                .order('name');
-            if (error) throw error;
-            return data || [];
+                .order('name').order('id').range(from, to));
         },
         staleTime: 3 * 60 * 1000,
     });
@@ -151,15 +149,13 @@ export function prefetchSales(companyId: string, start: string, end: string) {
     queryClient.prefetchQuery({
         queryKey: key,
         queryFn: async () => {
-            const { data, error } = await supabase.from('vouchers')
+            return await fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
                 .select('*')
                 .eq('company_id', companyId)
                 .eq('voucher_type', 'Sales')
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
-                .order('voucher_date', { ascending: false });
-            if (error) throw error;
-            return data || [];
+                .order('voucher_date', { ascending: false }).order('id').range(from, to));
         },
         staleTime: 3 * 60 * 1000,
     });

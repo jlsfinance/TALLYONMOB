@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
 import {
@@ -42,16 +43,14 @@ export default function AdminPanelPage() {
         queryKey: ['admin-stats'],
         queryFn: async () => {
             try {
-                const [usersRes, licensesRes, paymentsRes, trialsRes, plansRes] = await Promise.all([
+                const [usersRes, licenses, payments, trialsRes] = await Promise.all([
                     supabase.from('user_licenses').select('id, user_id', { count: 'exact', head: true }),
-                    supabase.from('user_licenses').select('id, status, expires_at, expiry_date, created_at'),
-                    supabase.from('payments').select('id, total_amount, status, created_at'),
+                    fetchAllSupabaseRows((from, to) => supabase.from('user_licenses').select('id, status, expires_at, expiry_date, created_at').order('id').range(from, to)),
+                    fetchAllSupabaseRows((from, to) => supabase.from('payments').select('id, total_amount, status, created_at').order('id').range(from, to)),
                     supabase.from('trial_history').select('id', { count: 'exact', head: true }),
-                    supabase.from('subscription_plans').select('*'),
                 ]);
-
-                const licenses = licensesRes.data || [];
-                const payments = paymentsRes.data || [];
+                if (usersRes.error) throw usersRes.error;
+                if (trialsRes.error) throw trialsRes.error;
                 const now = new Date();
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -73,7 +72,7 @@ export default function AdminPanelPage() {
                 };
             } catch (e) {
                 console.error('Admin stats error:', e);
-                return { totalUsers: 0, activeUsers: 0, expiredUsers: 0, trialUsers: 0, totalRevenue: 0, mrr: 0, arr: 0, totalLicenses: 0, totalPayments: 0 };
+                throw e;
             }
         },
         enabled: activeTab === 'dashboard',
@@ -84,21 +83,19 @@ export default function AdminPanelPage() {
     const { data: users = [] } = useQuery({
         queryKey: ['admin-users'],
         queryFn: async () => {
-            const { data: licenses, error: licErr } = await supabase.from('user_licenses')
-                .select('id, user_id, email, license_key, status, expiry_date, tally_serial, company_gst, plan_id, created_at')
-                .order('created_at', { ascending: false });
-            if (licErr) console.error('License query error:', licErr);
+            const [licenses, companyList, plansList] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase.from('user_licenses')
+                    .select('id, user_id, email, license_key, status, expiry_date, tally_serial, company_gst, plan_id, created_at')
+                    .order('created_at', { ascending: false }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('companies')
+                    .select('id, name, owner_id').order('created_at', { ascending: false }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('subscription_plans')
+                    .select('id, name, slug').order('id').range(from, to)),
+            ]);
 
-            const { data: companyList } = await supabase.from('companies')
-                .select('id, name, owner_id')
-                .order('created_at', { ascending: false });
-
-            const { data: plansList } = await supabase.from('subscription_plans')
-                .select('id, name, slug');
-
-            const plansMap = new Map((plansList || []).map((p: any) => [p.id, p]));
+            const plansMap = new Map(plansList.map((p: any) => [p.id, p]));
             const companiesByOwner = new Map<string, any[]>();
-            (companyList || []).forEach((c: any) => {
+            companyList.forEach((c: any) => {
                 if (c.owner_id) {
                     const existing = companiesByOwner.get(c.owner_id) || [];
                     existing.push(c);
@@ -106,7 +103,7 @@ export default function AdminPanelPage() {
                 }
             });
 
-            return (licenses || []).map((lic: any) => ({
+            return licenses.map((lic: any) => ({
                 ...lic,
                 plan: lic.plan_id ? plansMap.get(lic.plan_id) : null,
                 userCompanies: companiesByOwner.get(lic.user_id) || [],
@@ -119,17 +116,22 @@ export default function AdminPanelPage() {
     const { data: companies = [] } = useQuery({
         queryKey: ['admin-companies'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
-            if (error) console.error('Companies query error:', error);
-
-            const ownerIds = [...new Set((data || []).map((c: any) => c.owner_id).filter(Boolean))];
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('companies')
+                .select('*').order('created_at', { ascending: false }).order('id').range(from, to));
+            const ownerIds = [...new Set(data.map((c: any) => c.owner_id).filter(Boolean))];
             let emailMap = new Map<string, string>();
             if (ownerIds.length > 0) {
-                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', ownerIds);
-                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
+                const licenses: any[] = [];
+                for (let index = 0; index < ownerIds.length; index += 40) {
+                    const ownerChunk = ownerIds.slice(index, index + 40);
+                    licenses.push(...await fetchAllSupabaseRows((from, to) => supabase.from('user_licenses')
+                        .select('id, user_id, email, created_at').in('user_id', ownerChunk)
+                        .order('created_at', { ascending: false }).order('id').range(from, to)));
+                }
+                licenses.forEach((l: any) => { if (l.email && !emailMap.has(l.user_id)) emailMap.set(l.user_id, l.email); });
             }
 
-            return (data || []).map((c: any) => ({
+            return data.map((c: any) => ({
                 ...c,
                 _ownerEmail: emailMap.get(c.owner_id) || c.owner_id?.slice(0, 8) || 'Unknown',
             }));
@@ -141,9 +143,8 @@ export default function AdminPanelPage() {
     const { data: plans = [] } = useQuery({
         queryKey: ['admin-plans'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('subscription_plans').select('*').order('sort_order');
-            if (error) console.error('Plans query error:', error);
-            return data || [];
+            return await fetchAllSupabaseRows((from, to) => supabase.from('subscription_plans')
+                .select('*').order('sort_order').order('id').range(from, to));
         },
         enabled: activeTab === 'plans',
     });
@@ -152,8 +153,8 @@ export default function AdminPanelPage() {
     const { data: coupons = [] } = useQuery({
         queryKey: ['admin-coupons'],
         queryFn: async () => {
-            const { data } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
-            return data || [];
+            return await fetchAllSupabaseRows((from, to) => supabase.from('coupons')
+                .select('*').order('created_at', { ascending: false }).order('id').range(from, to));
         },
         enabled: activeTab === 'coupons',
     });
@@ -162,26 +163,28 @@ export default function AdminPanelPage() {
     const { data: payments = [] } = useQuery({
         queryKey: ['admin-payments'],
         queryFn: async () => {
-            const { data, error } = await supabase.from('payments')
-                .select('*')
-                .order('created_at', { ascending: false });
-            if (error) console.error('Payments query error:', error);
-
-            const userIds = [...new Set((data || []).map((p: any) => p.user_id).filter(Boolean))];
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('payments')
+                .select('*').order('created_at', { ascending: false }).order('id').range(from, to));
+            const userIds = [...new Set(data.map((p: any) => p.user_id).filter(Boolean))];
             let emailMap = new Map<string, string>();
             if (userIds.length > 0) {
-                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', userIds);
-                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
+                for (let index = 0; index < userIds.length; index += 40) {
+                    const userChunk = userIds.slice(index, index + 40);
+                    const licenses = await fetchAllSupabaseRows((from, to) => supabase.from('user_licenses')
+                        .select('id, user_id, email').in('user_id', userChunk).order('id').range(from, to));
+                    licenses.forEach((l: any) => { if (l.email && !emailMap.has(l.user_id)) emailMap.set(l.user_id, l.email); });
+                }
             }
 
-            const planSlugs = [...new Set((data || []).map((p: any) => p.plan_slug).filter(Boolean))];
+            const planSlugs = [...new Set(data.map((p: any) => p.plan_slug).filter(Boolean))];
             let planMap = new Map<string, string>();
             if (planSlugs.length > 0) {
-                const { data: plansList } = await supabase.from('subscription_plans').select('slug, name');
-                (plansList || []).forEach((pl: any) => { if (pl.name) planMap.set(pl.slug, pl.name); });
+                const plansList = await fetchAllSupabaseRows((from, to) => supabase.from('subscription_plans')
+                    .select('id, slug, name').order('id').range(from, to));
+                plansList.forEach((pl: any) => { if (pl.name) planMap.set(pl.slug, pl.name); });
             }
 
-            return (data || []).map((p: any) => ({
+            return data.map((p: any) => ({
                 ...p,
                 _email: emailMap.get(p.user_id) || p.user_id?.slice(0, 8) || 'N/A',
                 _planName: planMap.get(p.plan_slug) || p.plan_slug?.replace(/_/g, ' ') || 'N/A',
@@ -207,10 +210,8 @@ export default function AdminPanelPage() {
     const { data: leads = [] } = useQuery({
         queryKey: ['admin-leads'],
         queryFn: async () => {
-            const { data } = await supabase.from('sales_leads')
-                .select('*')
-                .order('created_at', { ascending: false });
-            return data || [];
+            return await fetchAllSupabaseRows((from, to) => supabase.from('sales_leads')
+                .select('*').order('created_at', { ascending: false }).order('id').range(from, to));
         },
         enabled: activeTab === 'leads',
     });
@@ -807,11 +808,14 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setLicense(lic);
 
-            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id').eq('owner_id', userId);
-            setCompanies(comps || []);
+            const comps = await fetchAllSupabaseRows((from, to) => supabase.from('companies')
+                .select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id')
+                .eq('owner_id', userId).order('created_at', { ascending: false }).order('id').range(from, to));
+            setCompanies(comps);
 
-            const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-            setPayments(pays || []);
+            const pays = await fetchAllSupabaseRows((from, to) => supabase.from('payments')
+                .select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id').range(from, to));
+            setPayments(pays);
 
             if (comps && comps.length > 0) {
                 let allVchs: any[] = [];
@@ -1006,10 +1010,12 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
             setLoading(true);
             const { data: comp } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
             setCompany(comp);
-            const { data: vchs } = await supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).limit(100);
-            setVouchers(vchs || []);
-            const { data: lgrs } = await supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100);
-            setLedgers(lgrs || []);
+            const [vchs, lgrs] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).order('id').range(from, to)),
+            ]);
+            setVouchers(vchs);
+            setLedgers(lgrs);
             setLoading(false);
         };
         load();
@@ -1162,8 +1168,8 @@ function AdminReportsPanel() {
         const load = async () => {
             setLoading(true);
 
-            const { data: allCompanies } = await supabase.from('companies').select('id, name, is_active, last_sync_at, owner_id');
-            const companies = allCompanies || [];
+            const companies = await fetchAllSupabaseRows((from, to) => supabase.from('companies')
+                .select('id, name, is_active, last_sync_at, owner_id').order('id').range(from, to));
             const companyIds = companies.map((c: any) => c.id);
 
             let allVouchers: any[] = [];
@@ -1171,16 +1177,15 @@ function AdminReportsPanel() {
             if (companyIds.length > 0) {
                 for (const cid of companyIds) {
                     const [vRes, sRes] = await Promise.all([
-                        supabase.from('vouchers').select('id, company_id, voucher_type, party_ledger_name, amount, vch_date').eq('company_id', cid).order('vch_date', { ascending: false }).limit(500),
-                        supabase.from('stock_items').select('id, company_id, name, rate, current_stock').eq('company_id', cid),
+                        fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, company_id, voucher_type, party_ledger_name, amount, vch_date').eq('company_id', cid).order('vch_date', { ascending: false }).order('id').range(from, to)),
+                        fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('id, company_id, name, rate, current_stock').eq('company_id', cid).order('id').range(from, to)),
                     ]);
-                    if (vRes.data) allVouchers.push(...vRes.data);
-                    if (sRes.data) allStockItems.push(...sRes.data);
+                    allVouchers.push(...vRes);
+                    allStockItems.push(...sRes);
                 }
             }
 
-            const { data: allPayments } = await supabase.from('payments').select('*');
-            const payments = allPayments || [];
+            const payments = await fetchAllSupabaseRows((from, to) => supabase.from('payments').select('*').order('id').range(from, to));
 
             // Top Products
             const prodMap = new Map<string, { name: string; totalAmount: number; totalQty: number; count: number }>();
@@ -1215,8 +1220,8 @@ function AdminReportsPanel() {
                 ex.count += 1;
                 custPayMap.set(p.user_id, ex);
             });
-            const { data: allLicenses } = await supabase.from('user_licenses').select('user_id, email');
-            const emailMap = new Map((allLicenses || []).map((l: any) => [l.user_id, l.email]));
+            const allLicenses = await fetchAllSupabaseRows((from, to) => supabase.from('user_licenses').select('id, user_id, email').order('id').range(from, to));
+            const emailMap = new Map(allLicenses.map((l: any) => [l.user_id, l.email]));
             setTopCustomersPayment(Array.from(custPayMap.values()).map(c => ({ ...c, email: emailMap.get(c.userId) || c.userId })).sort((a, b) => b.totalPaid - a.totalPaid).slice(0, 10));
 
             // Inactive Companies

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { Package, AlertTriangle, Clock, Loader2, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -27,13 +28,14 @@ export default function ReorderAlerts() {
     const loadAlerts = async () => {
         setLoading(true);
         try {
-            const { data: stockItems } = await supabase
+            const stockItems = await fetchAllSupabaseRows((from, to) => supabase
                 .from('stock')
                 .select('id, name, base_unit')
                 .eq('company_id', selectedCompany.id)
-                .limit(100);
+                .order('id')
+                .range(from, to));
 
-            if (!stockItems) { setAlerts([]); return; }
+            if (!stockItems.length) { setAlerts([]); return; }
 
             // closing_balance/outward_quantity may not exist yet — show items safely
             const reorderItems = stockItems.map(item => {
@@ -47,8 +49,6 @@ export default function ReorderAlerts() {
                         urgency: 'warning' as const
                     };
                 });
-
-            setAlerts(reorderItems.slice(0, 10));
 
             setAlerts(reorderItems);
         } catch (err) {
@@ -128,4 +128,3 @@ export default function ReorderAlerts() {
         </div>
     );
 }
-

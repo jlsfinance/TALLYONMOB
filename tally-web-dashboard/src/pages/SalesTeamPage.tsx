@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/insforge';
+import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import {
     MapPin, Clock, CheckCircle, Users, Loader2, Calendar,
     Navigation, ArrowRight, Phone, User, Target, BarChart3,
@@ -42,26 +43,29 @@ export default function SalesTeamPage() {
     }, [selectedCompany]);
 
     const loadParties = async () => {
-        const { data } = await supabase
+        const data = await fetchAllSupabaseRows((from, to) => supabase
             .from('ledgers')
             .select('id, name, phone, address')
             .eq('company_id', selectedCompany.id)
             .in('parent', ['Sundry Debtors', 'sundry debtors', 'SUNDRY DEBTORS'])
             .order('name')
-            .range(0, 99999);
-        setParties(data || []);
+            .order('id')
+            .range(from, to));
+        setParties(data);
     };
 
     const loadTodayVisits = async () => {
         const today = new Date().toISOString().split('T')[0];
         try {
-            const { data } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('sales_visits')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .gte('check_in_time', today)
-                .order('check_in_time', { ascending: false });
-            setVisits(data || []);
+                .order('check_in_time', { ascending: false })
+                .order('id')
+                .range(from, to));
+            setVisits(data);
         } catch {
             // Table may not exist
         }
@@ -312,4 +316,3 @@ export default function SalesTeamPage() {
         </div>
     );
 }
-

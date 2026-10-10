@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Search, Plus, IndianRupee, FileText, Filter, ArrowDownLeft } from 'lucide-react';
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
@@ -82,22 +83,19 @@ export default function PurchasesPage() {
         setLoading(true);
         try {
 
-            const { data, error } = await supabase.from('vouchers')
+            const purchaseData = await fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
                 .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .range(0, 99999);
-
-            if (error) throw error;
-
-            const purchaseData = data || [];
+                .order('id', { ascending: true })
+                .range(from, to));
 
             setPurchases(purchaseData);
 
-            const total = purchaseData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);
+            const total = purchaseData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             setStats({
                 total,
                 count: purchaseData.length,
@@ -231,4 +229,3 @@ export default function PurchasesPage() {
         </div>
     );
 }
-

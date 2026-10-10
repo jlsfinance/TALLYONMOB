@@ -23,6 +23,7 @@ import {
     X
 } from 'lucide-react';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import toast from 'react-hot-toast';
 import { getAdminAccessMessage, hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 
@@ -80,16 +81,18 @@ const AdminDashboardPage = () => {
         setLoading(true);
         try {
             // Load all companies (admin sees all) - including address, gstin, phone, email
-            const { data: companies } = await supabase
+            const companies = await fetchAllSupabaseRows((from, to) => supabase
                 .from('companies')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .order('id')
+                .range(from, to));
 
             setAllCompanies(companies || []);
 
             // Extract unique users from companies
             const userMap = {};
-            (companies || []).forEach(c => {
+            companies.forEach(c => {
                 if (c.owner_id) {
                     if (!userMap[c.owner_id]) {
                         userMap[c.owner_id] = {
@@ -108,12 +111,18 @@ const AdminDashboardPage = () => {
             try {
                 const ownerIds = Object.keys(userMap);
                 if (ownerIds.length > 0) {
-                    const { data: profiles } = await supabase
-                        .from('profiles')
-                        .select('id, email, full_name, phone')
-                        .in('id', ownerIds);
+                    const profiles = [];
+                    for (let index = 0; index < ownerIds.length; index += 40) {
+                        const ownerChunk = ownerIds.slice(index, index + 40);
+                        profiles.push(...await fetchAllSupabaseRows((from, to) => supabase
+                            .from('profiles')
+                            .select('id, email, full_name, phone')
+                            .in('id', ownerChunk)
+                            .order('id')
+                            .range(from, to)));
+                    }
 
-                    (profiles || []).forEach(p => {
+                    profiles.forEach(p => {
                         if (userMap[p.id]) {
                             userMap[p.id].email = p.email || userMap[p.id].email;
                             userMap[p.id].fullName = p.full_name;
@@ -154,7 +163,7 @@ const AdminDashboardPage = () => {
 
             setStats({
                 totalUsers: Object.keys(userMap).length,
-                totalCompanies: (companies || []).length,
+                totalCompanies: companies.length,
                 activeSyncsToday: syncsToday || 0,
                 pendingTransactions: pendingCount || 0
             });
@@ -185,19 +194,19 @@ const AdminDashboardPage = () => {
         setSelectedCompany(company);
 
         try {
-            // Load all related data - admin gets full access (5000 limit)
+            // Load every related row in bounded pages for complete company statistics.
             const [ledgers, vouchers, stockItems, pendingTxns] = await Promise.all([
-                supabase.from('ledgers').select('*').eq('company_id', company.id).order('name').limit(5000),
-                supabase.from('vouchers').select('*').eq('company_id', company.id).eq('is_deleted', false).order('voucher_date', { ascending: false }).limit(5000),
-                supabase.from('stock_items').select('*').eq('company_id', company.id).order('name').limit(5000),
-                supabase.from('pending_transactions').select('*').eq('company_id', company.id).order('created_at', { ascending: false }).limit(100)
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('*').eq('company_id', company.id).order('name').order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('*').eq('company_id', company.id).eq('is_deleted', false).order('voucher_date', { ascending: false }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('*').eq('company_id', company.id).order('name').order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('pending_transactions').select('*').eq('company_id', company.id).order('created_at', { ascending: false }).order('id').range(from, to))
             ]);
 
             // Calculate stats using grand_total (correct field)
-            const salesVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Sales');
-            const purchaseVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Purchase');
-            const receiptVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Receipt');
-            const paymentVouchers = (vouchers.data || []).filter(v => v.voucher_type === 'Payment');
+            const salesVouchers = vouchers.filter(v => v.voucher_type === 'Sales');
+            const purchaseVouchers = vouchers.filter(v => v.voucher_type === 'Purchase');
+            const receiptVouchers = vouchers.filter(v => v.voucher_type === 'Receipt');
+            const paymentVouchers = vouchers.filter(v => v.voucher_type === 'Payment');
 
             const totalSales = salesVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.grand_total) || parseFloat(v.total_amount) || 0), 0);
             const totalPurchase = purchaseVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.grand_total) || parseFloat(v.total_amount) || 0), 0);
@@ -205,18 +214,18 @@ const AdminDashboardPage = () => {
             const totalPayments = paymentVouchers.reduce((sum, v) => sum + Math.abs(parseFloat(v.total_amount) || 0), 0);
 
             // Stock values
-            const totalStockValue = (stockItems.data || []).reduce((sum, s) => sum + Math.abs(parseFloat(s.closing_value) || 0), 0);
+            const totalStockValue = stockItems.reduce((sum, s) => sum + Math.abs(parseFloat(s.closing_value) || 0), 0);
 
             setCompanyData({
-                ledgers: ledgers.data || [],
-                vouchers: vouchers.data || [],
-                stockItems: stockItems.data || [],
-                pendingTxns: pendingTxns.data || [],
+                ledgers,
+                vouchers,
+                stockItems,
+                pendingTxns,
                 stats: {
-                    ledgersCount: (ledgers.data || []).length,
-                    vouchersCount: (vouchers.data || []).length,
-                    stockItemsCount: (stockItems.data || []).length,
-                    pendingCount: (pendingTxns.data || []).length,
+                    ledgersCount: ledgers.length,
+                    vouchersCount: vouchers.length,
+                    stockItemsCount: stockItems.length,
+                    pendingCount: pendingTxns.length,
                     totalSales,
                     totalPurchase,
                     totalReceipts,
@@ -1226,5 +1235,3 @@ const AdminDashboardPage = () => {
 };
 
 export default AdminDashboardPage;
-
-

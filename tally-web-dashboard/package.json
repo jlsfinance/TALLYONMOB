@@ -8,10 +8,12 @@
         "build": "vite build",
         "preview": "vite preview",
         "test:business-insights": "node --experimental-strip-types scripts/phase5-logic-check.mjs",
+        "test:supabase-pagination": "node --test scripts/supabase-pagination.test.mjs",
+        "test": "npm run test:supabase-pagination && npm run test:business-insights",
         "check:accessibility": "node scripts/accessibility-check.mjs",
         "check:mobile": "node scripts/mobile-dashboard-check.mjs",
         "check:release": "node scripts/release-check.mjs",
-        "check:all": "npm run test:business-insights && npm run check:accessibility && npm run check:mobile && npm run build && npm run check:release"
+        "check:all": "npm test && npm run check:accessibility && npm run check:mobile && npm run build && npm run check:release"
     },
     "dependencies": {
         "@capacitor/android": "^6.2.1",

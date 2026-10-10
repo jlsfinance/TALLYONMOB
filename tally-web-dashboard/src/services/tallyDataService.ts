@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/insforge';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 
 export interface TallyLedger {
     id: string;
@@ -177,20 +178,22 @@ export async function fetchTallyData(params: {
 async function fetchCloudSyncedTallyData(companyId: string, fromDate: string, toDate: string): Promise<TallyDataPayload | null> {
     try {
         const [ledgerRows, voucherRows] = await Promise.all([
-            fetchAllRows((fromIndex, toIndex) => supabase
+            fetchAllSupabaseRows((fromIndex, toIndex) => supabase
                 .from('ledgers')
                 .select('*')
                 .eq('company_id', companyId)
                 .order('name', { ascending: true })
-                .range(fromIndex, toIndex), 1000),
-            fetchAllRows((fromIndex, toIndex) => supabase
+                .order('id', { ascending: true })
+                .range(fromIndex, toIndex)),
+            fetchAllSupabaseRows((fromIndex, toIndex) => supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', companyId)
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
                 .order('voucher_date', { ascending: false })
-                .range(fromIndex, toIndex), 1000, 5000),
+                .order('id', { ascending: true })
+                .range(fromIndex, toIndex)),
         ]);
 
         const voucherIds = voucherRows.map((voucher: any) => voucher.id).filter(Boolean);
@@ -233,30 +236,19 @@ async function fetchCloudSyncedTallyData(companyId: string, fromDate: string, to
     }
 }
 
-async function fetchAllRows(buildQuery: (fromIndex: number, toIndex: number) => any, pageSize = 1000, maxRows = 10000) {
-    const rows: any[] = [];
-    for (let fromIndex = 0; fromIndex < maxRows; fromIndex += pageSize) {
-        const { data, error } = await buildQuery(fromIndex, Math.min(fromIndex + pageSize - 1, maxRows - 1));
-        if (error) throw error;
-        const batch = data || [];
-        rows.push(...batch);
-        if (batch.length < pageSize) break;
-    }
-    return rows;
-}
-
 async function fetchRowsByVoucherIds(table: string, companyId: string, voucherIds: string[], select: string) {
     const rows: any[] = [];
     const chunkSize = 200;
     for (let index = 0; index < voucherIds.length; index += chunkSize) {
         const chunk = voucherIds.slice(index, index + chunkSize);
-        const { data, error } = await supabase
+        const batchRows = await fetchAllSupabaseRows((fromIndex, toIndex) => supabase
             .from(table)
             .select(select)
             .eq('company_id', companyId)
-            .in('voucher_id', chunk);
-        if (error) throw error;
-        rows.push(...(data || []));
+            .in('voucher_id', chunk)
+            .order('id', { ascending: true })
+            .range(fromIndex, toIndex));
+        rows.push(...batchRows);
     }
     return rows;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import { GlassCard, Spinner } from '@/components/ui/GlassUI';
 import {
@@ -83,19 +84,14 @@ export default function BusinessHealthPage() {
         setError(null);
 
         try {
-            const [ledgerRes, voucherRes, stockRes] = await Promise.all([
-                supabase.from('ledgers').select('*').eq('company_id', selectedCompany.id),
-                supabase.from('vouchers').select('*').eq('company_id', selectedCompany.id),
-                supabase.from('stock_items').select('*').eq('company_id', selectedCompany.id),
+            const [ledgerRows, voucherRows, stockRows] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('*').eq('company_id', selectedCompany.id).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('*').eq('company_id', selectedCompany.id).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('*').eq('company_id', selectedCompany.id).order('id').range(from, to)),
             ]);
-
-            if (ledgerRes.error) throw ledgerRes.error;
-            if (voucherRes.error) throw voucherRes.error;
-            if (stockRes.error) throw stockRes.error;
-
-            setLedgers(ledgerRes.data || []);
-            setVouchers(voucherRes.data || []);
-            setStockItems(stockRes.data || []);
+            setLedgers(ledgerRows);
+            setVouchers(voucherRows);
+            setStockItems(stockRows);
         } catch (err: any) {
             setError(err?.message || 'Unable to load business health');
         } finally {

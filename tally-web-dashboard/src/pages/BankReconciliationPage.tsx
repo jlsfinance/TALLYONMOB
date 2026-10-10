@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import {
     Building2, Search, Filter, CheckCircle2, XCircle, Clock, RefreshCw,
@@ -47,15 +48,17 @@ export default function BankReconciliationPage() {
     const loadBankLedgers = async () => {
         setLoading(true);
         try {
-            const { data: ledgers } = await supabase
+            const ledgers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('ledgers')
                 .select('id, name, parent, current_balance, opening_balance')
                 .eq('company_id', selectedCompany.id)
                 .in('parent', ['Bank Accounts', 'Bank OD A/c', 'Bank OCC A/c'])
-                .order('name');
+                .order('name')
+                .order('id')
+                .range(from, to));
 
-            setBankLedgers(ledgers || []);
-            if (ledgers && ledgers.length > 0 && !selectedBank) {
+            setBankLedgers(ledgers);
+            if (ledgers.length > 0 && !selectedBank) {
                 setSelectedBank(ledgers[0]);
             }
         } catch (error) {
@@ -69,7 +72,7 @@ export default function BankReconciliationPage() {
         setLoading(true);
         try {
             // Get Receipt vouchers for this bank
-            let query = supabase
+            const vouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('id, voucher_type, voucher_number, voucher_date, party_name, total_amount, grand_total, narration')
                 .eq('company_id', selectedCompany.id)
@@ -78,26 +81,33 @@ export default function BankReconciliationPage() {
                 .lte('voucher_date', dateRange.to)
                 .in('voucher_type', ['Receipt', 'Payment', 'Contra', 'Journal'])
                 .order('voucher_date', { ascending: false })
-                .limit(5000);
+                .order('id')
+                .range(from, to));
 
-            const { data: vouchers } = await query;
-
-            // Also try to get ledger entries to find entries involving this bank
-            const { data: ledgerEntries } = await supabase
-                .from('voucher_ledger_entries')
-                .select('voucher_id, ledger_name, amount, is_debit')
-                .eq('company_id', selectedCompany.id)
-                .eq('ledger_name', selectedBank.name)
-                .limit(5000);
+            // Restrict child-entry fetches to the already date-filtered vouchers.
+            const voucherIds = [...new Set(vouchers.map((voucher: any) => voucher.id).filter(Boolean))];
+            const ledgerEntries: any[] = [];
+            const voucherIdChunkSize = 40;
+            for (let index = 0; index < voucherIds.length; index += voucherIdChunkSize) {
+                const voucherIdChunk = voucherIds.slice(index, index + voucherIdChunkSize);
+                ledgerEntries.push(...await fetchAllSupabaseRows((from, to) => supabase
+                    .from('voucher_ledger_entries')
+                    .select('id, voucher_id, ledger_name, amount, is_debit')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('ledger_name', selectedBank.name)
+                    .in('voucher_id', voucherIdChunk)
+                    .order('id')
+                    .range(from, to)));
+            }
 
             // Match vouchers with ledger entries for this bank
             const entryMap = new Map<string, any>();
-            (ledgerEntries || []).forEach(e => {
+            ledgerEntries.forEach(e => {
                 entryMap.set(e.voucher_id, e);
             });
 
             // Filter vouchers that have entries for this bank
-            let bankTxns = (vouchers || []).map(v => {
+            let bankTxns = vouchers.map(v => {
                 const entry = entryMap.get(v.id);
                 const amount = Number(v.grand_total) || Number(v.total_amount) || 0;
                 return {
@@ -109,7 +119,7 @@ export default function BankReconciliationPage() {
             });
 
             // If no ledger entries found, use all receipts/payments as bank transactions
-            if (ledgerEntries?.length === 0) {
+            if (ledgerEntries.length === 0) {
                 bankTxns = (vouchers || []).map(v => ({
                     ...v,
                     bankAmount: Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0),

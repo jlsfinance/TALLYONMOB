@@ -12,6 +12,7 @@
  */
 
 import { supabase } from './insforge';
+import { DEFAULT_SUPABASE_PAGE_SIZE, fetchAllSupabaseRows } from './supabasePagination';
 
 // ============================================================
 // TYPES
@@ -238,17 +239,17 @@ export class IncrementalSyncEngine {
     ): Promise<{ records: any[]; maxAlterId: number }> {
         const table = MODULE_TABLES[module];
 
-        const { data, error } = await supabase
+        const records = await fetchAllSupabaseRows((from, to) => supabase
             .from(table)
             .select('*')
             .eq('company_id', this.companyId)
             .gt('alter_id', lastAlterId)
             .order('alter_id', { ascending: true })
-            .limit(limit);
-
-        if (error) throw new Error(`Fetch failed for ${module}: ${error.message}`);
-
-        const records = data || [];
+            .order('id', { ascending: true })
+            .range(from, to), {
+            pageSize: Math.min(limit, DEFAULT_SUPABASE_PAGE_SIZE),
+            maxRows: limit,
+        });
         const maxAlterId = records.length > 0
             ? Math.max(...records.map((r: any) => r.alter_id || 0))
             : lastAlterId;

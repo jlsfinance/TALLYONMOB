@@ -2,6 +2,7 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
@@ -10,6 +11,22 @@ import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
 } from 'lucide-react';
 import '../styles/Material3.css';
+
+const isMissingOptionalRelationOrColumn = (error) => {
+    const code = String(error?.code || '');
+    const message = String(error?.message || '');
+    return ['42P01', '42703', 'PGRST204', 'PGRST205'].includes(code)
+        || /does not exist|could not find .* in the schema cache|relation .* not found/i.test(message);
+};
+
+const fetchOptionalRows = async (buildQuery) => {
+    try {
+        return await fetchAllSupabaseRows(buildQuery);
+    } catch (error) {
+        if (isMissingOptionalRelationOrColumn(error)) return [];
+        throw error;
+    }
+};
 
 const toNumber = (value) => {
     const parsed = Number(value);
@@ -184,6 +201,7 @@ export default function InvoicePDFPage() {
             const { data: primaryVoucher } = await supabase
                 .from('vouchers')
                 .select('*')
+                .eq('company_id', navigationVoucher?.company_id || selectedCompany?.id)
                 .eq('id', decodedId)
                 .maybeSingle();
 
@@ -195,6 +213,7 @@ export default function InvoicePDFPage() {
                 const { data: fallback } = await supabase
                     .from('vouchers')
                     .select('*')
+                    .eq('company_id', navigationVoucher?.company_id || selectedCompany?.id)
                     .eq('voucher_id', decodedId)
                     .maybeSingle();
                 voucherData = fallback;
@@ -207,10 +226,11 @@ export default function InvoicePDFPage() {
                 const companyName = baseCompanyInfo?.name || voucherData.company_name || '';
                 const partyQuery = voucherData.party_ledger_id
                     ? withOptionalLedgerState(
-                        (fields) => supabase
-                            .from('ledgers')
-                            .select(fields)
-                            .eq('id', voucherData.party_ledger_id)
+                            (fields) => supabase
+                                .from('ledgers')
+                                .select(fields)
+                                .eq('company_id', voucherData.company_id)
+                                .eq('id', voucherData.party_ledger_id)
                             .maybeSingle(),
                         'id, address, gstin, state, email, phone',
                         'id, address, gstin, email, phone'
@@ -296,22 +316,11 @@ export default function InvoicePDFPage() {
                 // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
                 const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, decodedId].filter(Boolean)));
 
-                // Fetch stock entries, ledger entries, and stock items in PARALLEL
-                const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
-                    supabase.from('voucher_stock_entries').select('*').in('voucher_id', voucherLookupIds),
-                    supabase.from('voucher_ledger_entries').select('*').in('voucher_id', voucherLookupIds),
-                    supabase.from('stock_items').select('id, name, hsn_code, unit, gst_rate').eq('company_id', voucherData.company_id)
+                // Fetch every line record in bounded pages.
+                const [stockEntries, ledgerEntries] = await Promise.all([
+                    fetchOptionalRows((from, to) => supabase.from('voucher_stock_entries').select('*').eq('company_id', voucherData.company_id).in('voucher_id', voucherLookupIds).order('id').range(from, to)),
+                    fetchOptionalRows((from, to) => supabase.from('voucher_ledger_entries').select('*').eq('company_id', voucherData.company_id).in('voucher_id', voucherLookupIds).order('id').range(from, to)),
                 ]);
-
-                const stockEntries = stockResult.data;
-                const ledgerEntries = ledgerResult.data;
-                const stockItems = stockItemsResult.data;
-
-                const stockLookup = {};
-                stockItems?.forEach(item => {
-                    stockLookup[item.name] = item;
-                    stockLookup[String(item.name || '').toLowerCase()] = item;
-                });
 
                 // Robust item detection: voucher_stock_entries -> raw_data -> inventory_entries
                 let inventoryItems = stockEntries || [];
@@ -348,24 +357,55 @@ export default function InvoicePDFPage() {
                             const childFK = isSales ? 'sale_id' : 'purchase_id';
 
                             // Try lookup by voucher lookup IDs in parent table first
-                            const { data: parents } = await supabase
+                            const parents = await fetchOptionalRows((from, to) => supabase
                                 .from(parentTable)
                                 .select('id')
-                                .in('voucher_id', voucherLookupIds);
+                                .eq('company_id', voucherData.company_id)
+                                .in('voucher_id', voucherLookupIds)
+                                .order('id')
+                                .range(from, to));
 
-                            const parentIdList = (parents || []).map(p => p.id);
+                            const parentIdList = parents.map(p => p.id).filter(Boolean);
                             if (parentIdList.length > 0) {
-                                const { data: relatedItems } = await supabase
-                                    .from(childTable)
-                                    .select('*')
-                                    .in(childFK, parentIdList);
-                                if (relatedItems?.length > 0) inventoryItems = relatedItems;
+                                const relatedItems = [];
+                                for (let index = 0; index < parentIdList.length; index += 40) {
+                                    const parentIdChunk = parentIdList.slice(index, index + 40);
+                                    relatedItems.push(...await fetchOptionalRows((from, to) => supabase
+                                        .from(childTable)
+                                        .select('*')
+                                        .eq('company_id', voucherData.company_id)
+                                        .in(childFK, parentIdChunk)
+                                        .order('id')
+                                        .range(from, to)));
+                                }
+                                if (relatedItems.length > 0) inventoryItems = relatedItems;
                             }
                         } catch (e) {
                             console.error('Error fetching related items:', e);
                         }
                     }
                 }
+
+                const itemNames = [...new Set(inventoryItems
+                    .map(item => item.item_name || item.stock_item_name || item.item_label || item.StockItemName)
+                    .filter(Boolean)
+                    .map(name => String(name).trim()))];
+                const stockItems = [];
+                for (let index = 0; index < itemNames.length; index += 40) {
+                    const itemNameChunk = itemNames.slice(index, index + 40);
+                    stockItems.push(...await fetchOptionalRows((from, to) => supabase
+                        .from('stock_items')
+                        .select('id, name, hsn_code, unit, gst_rate')
+                        .eq('company_id', voucherData.company_id)
+                        .in('name', itemNameChunk)
+                        .order('id')
+                        .range(from, to)));
+                }
+                const stockLookup = {};
+                stockItems.forEach(item => {
+                    stockLookup[item.name] = item;
+                    stockLookup[String(item.name || '').toLowerCase()] = item;
+                });
 
                 // Detect if this voucher has CGST/SGST (intra-state) or IGST (inter-state)
                 // This is critical: Tally's RATEOFTAXCALCULATION stores the per-component rate
@@ -1899,4 +1939,3 @@ export default function InvoicePDFPage() {
         </div>
     );
 }
-

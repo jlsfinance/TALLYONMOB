@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { callGemini } from '@/lib/GeminiService';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
@@ -96,14 +97,13 @@ async function extractRowsFromDocumentWithGemini(file: File): Promise<BankTransa
 // Ledger mappings are saved locally first and synced to cloud when available
 
 async function fetchCloudLedgers(clientId: string): Promise<Array<{ id?: string; name: string }>> {
-    const { data, error } = await supabase
+    const data = await fetchAllSupabaseRows((from, to) => supabase
         .from('ledgers')
         .select('id, name')
         .eq('company_id', clientId)
         .order('name')
-        .limit(5000);
-
-    if (error) throw error;
+        .order('id')
+        .range(from, to));
 
     return (data || [])
         .map((item: any) => ({
@@ -114,15 +114,14 @@ async function fetchCloudLedgers(clientId: string): Promise<Array<{ id?: string;
 }
 
 async function fetchCloudLedgerMappings(clientId: string, userId: string): Promise<LedgerMappingRecord[]> {
-    const { data, error } = await supabase
+    const data = await fetchAllSupabaseRows((from, to) => supabase
         .from('bank_ledger_mappings')
-        .select('normalized_keyword, ledger_name, created_at')
+        .select('id, normalized_keyword, ledger_name, created_at')
         .eq('company_id', clientId)
         .eq('created_by', userId)
         .order('created_at', { ascending: false })
-        .limit(5000);
-
-    if (error) throw error;
+        .order('id')
+        .range(from, to));
 
     return (data || [])
         .map((item: any) => {
@@ -833,7 +832,6 @@ export default function BankAutomationPage() {
         </div>
     );
 }
-
 
 
 

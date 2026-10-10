@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/insforge';
 import { getUserGeminiApiKey } from '@/lib/userGeminiKey';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 
 // Gemini text-embedding-004 outputs 768-dimensional vectors
 const EMBEDDING_MODEL = 'text-embedding-004';
@@ -111,26 +112,12 @@ function ledgerToChunkText(ledger: any): string {
  * Fetch all rows from a table for a given company
  */
 async function fetchAllSourceRows(table: string, companyId: string): Promise<any[]> {
-    const rows: any[] = [];
-    const PAGE_SIZE = 1000;
-    let offset = 0;
-
-    while (true) {
-        const { data, error } = await supabase
-            .from(table)
-            .select('*')
-            .eq('company_id', companyId)
-            .range(offset, offset + PAGE_SIZE - 1);
-
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-
-        rows.push(...data);
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-    }
-
-    return rows;
+    return await fetchAllSupabaseRows((from, to) => supabase
+        .from(table)
+        .select('*')
+        .eq('company_id', companyId)
+        .order('id')
+        .range(from, to));
 }
 
 /**

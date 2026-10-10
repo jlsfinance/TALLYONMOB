@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import type { AuthContextType } from '../contexts/types';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { motion } from 'framer-motion';
 import {
@@ -71,17 +72,16 @@ export default function UserAnalyticsPage() {
     if (!selectedCompany?.id) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const data = await fetchAllSupabaseRows((from, to) => supabase
         .from('user_activity_logs')
         .select('*')
         .eq('company_id', selectedCompany.id)
         .gte('created_at', dateRange.start.toISOString())
         .lte('created_at', dateRange.end.toISOString())
         .order('created_at', { ascending: false })
-        .range(0, 49999);
-
-      if (error) throw error;
-      setLogs(data || []);
+        .order('id', { ascending: true })
+        .range(from, to));
+      setLogs(data);
     } catch (err: any) {
       console.error('Failed to load activity logs:', err);
     } finally {

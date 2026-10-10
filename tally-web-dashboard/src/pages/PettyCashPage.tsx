@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/insforge';
+import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import {
@@ -38,10 +39,10 @@ export default function PettyCashPage() {
     const loadEntries = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase.from('petty_cash_entries')
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('petty_cash_entries')
                 .select('*').eq('company_id', selectedCompany.id)
-                .order('date', { ascending: false }).limit(500);
-            const rows = (data || []) as PettyCashEntry[];
+                .order('date', { ascending: false }).order('id').range(from, to));
+            const rows = data as PettyCashEntry[];
             setEntries(rows);
             const total = rows.reduce((s, e) => s + (e.amount || 0), 0);
             setBalance(total);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, ArrowRight, TrendingUp, TrendingDown, Wallet, ChevronRight, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -40,18 +41,17 @@ export default function MultiCompanyDashboard() {
 
             const results = await Promise.all(
                 companies.map(async (company: any) => {
-                    const [vouchersRes, ledgersRes] = await Promise.all([
-                        supabase.from('vouchers')
-                            .select('voucher_type, grand_total, total_amount, voucher_date')
+                    const [vouchers, ledgers] = await Promise.all([
+                        fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                            .select('id, voucher_type, grand_total, total_amount, voucher_date')
                             .eq('company_id', company.id).eq('is_deleted', false)
-                            .gte('voucher_date', fyFrom).lte('voucher_date', fyTo),
-                        supabase.from('ledgers')
-                            .select('current_balance, parent')
-                            .eq('company_id', company.id),
+                            .gte('voucher_date', fyFrom).lte('voucher_date', fyTo)
+                            .order('voucher_date', { ascending: true }).order('id').range(from, to)),
+                        fetchAllSupabaseRows((from, to) => supabase.from('ledgers')
+                            .select('id, current_balance, parent')
+                            .eq('company_id', company.id)
+                            .order('id').range(from, to)),
                     ]);
-
-                    const vouchers = vouchersRes.data || [];
-                    const ledgers = ledgersRes.data || [];
 
                     const sales = vouchers.filter((v: any) => v.voucher_type === 'Sales');
                     const purchases = vouchers.filter((v: any) => v.voucher_type === 'Purchase');

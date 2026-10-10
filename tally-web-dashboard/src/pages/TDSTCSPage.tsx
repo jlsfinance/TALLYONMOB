@@ -29,7 +29,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, differenceInDays, parseISO } from "date-fns";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/insforge";
+import { supabase } from '@/lib/insforge';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -498,39 +499,40 @@ export default function TDSTCSPage() {
     try {
       const { from, to } = getFYDateRange(selectedFY);
 
-      const [voucherRes, tdsTcsRes] = await Promise.all([
-        supabase
+      const [allVouchers, filedEntries] = await Promise.all([
+        fetchAllSupabaseRows((pageFrom, pageTo) => supabase
           .from("vouchers")
           .select("id, company_id, voucher_type, voucher_number, voucher_date, party_name, grand_total, total_amount, is_deleted")
           .eq("company_id", selectedCompany.id)
           .eq("is_deleted", false)
           .gte("voucher_date", from)
-          .lte("voucher_date", to),
-        supabase
+          .lte("voucher_date", to)
+          .order("voucher_date", { ascending: true })
+          .order("id")
+          .range(pageFrom, pageTo)),
+        fetchAllSupabaseRows((pageFrom, pageTo) => supabase
           .from("tds_tcs_entries")
           .select("*")
           .eq("company_id", selectedCompany.id)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(pageFrom, pageTo)).catch((error) => {
+            const errMsg = String(error?.message || '');
+            const isMissingTable = error?.code === '42P01' || errMsg.includes('does not exist') || errMsg.includes('PGRST205');
+            if (isMissingTable) return [];
+            throw error;
+          }),
       ]);
-
-      if (voucherRes.error) throw voucherRes.error;
-      // tds_tcs_entries table might not exist yet — handle gracefully
-      if (tdsTcsRes.error) {
-        const errMsg = String(tdsTcsRes.error.message || '');
-        const isMissingTable = tdsTcsRes.error.code === '42P01' || errMsg.includes('does not exist') || errMsg.includes('PGRST205');
-        if (!isMissingTable) throw tdsTcsRes.error;
-        console.warn('tds_tcs_entries table not found — running without filed entries');
-      }
-
-      const allVouchers: VoucherRow[] = voucherRes.data || [];
-      setVouchers(allVouchers);
+      const vouchersForReport: VoucherRow[] = allVouchers;
+      setVouchers(vouchersForReport);
 
       // Separate filed entries from tds_tcs_entries table
+      const tdsTcsEntries = filedEntries;
       const filedTDSEntries: DeducteeEntry[] = [];
       const filedNonResidentEntries: NonResidentEntry[] = [];
       const filedTCSEntries: TCSEntry[] = [];
 
-      for (const row of tdsTcsRes.data || []) {
+      for (const row of tdsTcsEntries) {
         if (row.entry_type === "tcs") {
           filedTCSEntries.push({
             id: row.id,

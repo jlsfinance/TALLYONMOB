@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Database, Download, Upload, Clock, FileJson, FileSpreadsheet,
     Cloud, RefreshCcw, Loader2, CheckCircle, AlertTriangle,
@@ -53,8 +54,8 @@ export default function BackupRestorePage() {
             let totalSize = 0;
 
             for (const table of selectedTables) {
-                const { data } = await supabase.from(table).select('*').eq('company_id', selectedCompany.id).limit(50000);
-                backupData[table] = data || [];
+                const data = await fetchAllSupabaseRows((from, to) => supabase.from(table).select('*').eq('company_id', selectedCompany.id).order('id', { ascending: true }).range(from, to));
+                backupData[table] = data;
                 totalSize += JSON.stringify(data).length;
             }
 
@@ -278,4 +279,3 @@ export default function BackupRestorePage() {
         </div>
     );
 }
-

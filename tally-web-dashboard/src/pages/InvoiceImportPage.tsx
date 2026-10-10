@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import AutomationModeSelector from '@/components/automation/AutomationModeSelector';
 import type { InvoiceDraft } from '@/features/automation/types';
@@ -76,17 +77,16 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
 }
 
 async function fetchImportedInvoicesFromCloud(clientId: string, userId: string): Promise<LocalInvoiceRecord[]> {
-    const { data, error } = await supabase
+    const data = await fetchAllSupabaseRows((from, to) => supabase
         .from('imported_invoices')
         .select('id, gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, hsn_code, created_at, invoice_type')
         .eq('company_id', clientId)
         .eq('created_by', userId)
         .order('created_at', { ascending: false })
-        .limit(5000);
+        .order('id')
+        .range(from, to));
 
-    if (error) throw error;
-
-    return (data || []).map((item: any) => normalizeInvoiceRecord({
+    return data.map((item: any) => normalizeInvoiceRecord({
         $id: item?.id,
         gstin: item?.gstin,
         invoiceNumber: item?.invoice_number,

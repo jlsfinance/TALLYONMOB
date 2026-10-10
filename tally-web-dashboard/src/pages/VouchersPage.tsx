@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FixedSizeList as List } from 'react-window';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, pendingTransactionApi } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, isWithinInterval, subMonths, parseISO } from 'date-fns';
 import { AnimatePresence } from 'framer-motion';
@@ -164,17 +165,17 @@ export default function VouchersPage() {
             const companyId = selectedCompany?.id;
             if (!companyId || !selectedFy) return [];
             const { start, end } = getFyRange(selectedFy);
-            const { data, error } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
-                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total, narration, created_at', { count: 'exact' })
+                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total, narration, created_at')
                 .eq('company_id', companyId)
                 .eq('is_deleted', false)
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
                 .order('voucher_date', { ascending: false })
-                .range(0, 99999);
-            if (error) throw error;
-            return (data || []).map((v: any) => ({
+                .order('id', { ascending: true })
+                .range(from, to));
+            return data.map((v: any) => ({
                 ...v,
                 total_amount: Number(v.total_amount ?? v.grand_total ?? 0),
                 sync_status: 'synced',

@@ -53,6 +53,7 @@ import { format, formatDistanceToNow, addDays } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1503,31 +1504,21 @@ const EmailInvoicePage: React.FC = () => {
   const fetchData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-
-    const [emailRes, ledgerRes, voucherRes] = await Promise.all([
-      supabase
-        .from('email_queue')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('ledgers')
-        .select('id, name, email, phone, company_id, parent, current_balance')
-        .eq('company_id', companyId)
-        .order('name'),
-      supabase
-        .from('vouchers')
-        .select('id, company_id, voucher_type, voucher_date, voucher_number, party_name, grand_total, total_amount')
-        .eq('company_id', companyId)
-        .eq('is_deleted', false)
-        .order('voucher_date', { ascending: false }),
-    ]);
-
-    if (!emailRes.error && emailRes.data) setEmails(emailRes.data as EmailRecord[]);
-    if (!ledgerRes.error && ledgerRes.data) setLedgers(ledgerRes.data as Ledger[]);
-    if (!voucherRes.error && voucherRes.data) setVouchers(voucherRes.data as Voucher[]);
-
-    setLoading(false);
+    try {
+      const [emailRows, ledgerRows, voucherRows] = await Promise.all([
+        fetchAllSupabaseRows((from, to) => supabase.from('email_queue').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).order('id').range(from, to)),
+        fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('id, name, email, phone, company_id, parent, current_balance').eq('company_id', companyId).order('name').order('id').range(from, to)),
+        fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, company_id, voucher_type, voucher_date, voucher_number, party_name, grand_total, total_amount').eq('company_id', companyId).eq('is_deleted', false).order('voucher_date', { ascending: false }).order('id').range(from, to)),
+      ]);
+      setEmails(emailRows as EmailRecord[]);
+      setLedgers(ledgerRows as Ledger[]);
+      setVouchers(voucherRows as Voucher[]);
+    } catch (error) {
+      console.error('Email invoice data load failed:', error);
+      toast.error('Failed to load email invoice data');
+    } finally {
+      setLoading(false);
+    }
   }, [companyId]);
 
   useEffect(() => {

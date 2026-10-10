@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     CreditCard, Link2, Copy, Check, Send, Search, ExternalLink,
     IndianRupee, MessageCircle, Mail, Loader2, QrCode, Clock,
@@ -39,26 +40,30 @@ export default function PaymentLinksPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase
+            const data = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('id, voucher_number, party_name, grand_total, total_amount, voucher_date')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .eq('is_deleted', false)
                 .order('voucher_date', { ascending: false })
-                .limit(100);
-            setInvoices(data || []);
+                .order('id')
+                .range(from, to));
+            setInvoices(data);
 
             // Load existing payment links
             try {
-                const { data: linkData, error: linkErr } = await supabase
+                const linkData = await fetchAllSupabaseRows((from, to) => supabase
                     .from('payment_links')
                     .select('*')
                     .eq('company_id', selectedCompany.id)
-                    .order('created_at', { ascending: false });
-                if (linkErr && linkErr.code !== '42P01') console.warn('payment_links:', linkErr.message);
-                setLinks(linkData || []);
-            } catch { /* Table may not exist */ }
+                    .order('created_at', { ascending: false })
+                    .order('id')
+                    .range(from, to));
+                setLinks(linkData);
+            } catch (error) {
+                console.warn('payment_links:', error);
+            }
         } catch {
             toast.error('Failed to load data');
         } finally {
@@ -311,4 +316,3 @@ export default function PaymentLinksPage() {
         </div>
     );
 }
-

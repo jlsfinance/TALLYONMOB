@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, pendingTransactionApi } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { useAuth } from '@/contexts/AuthContext';
 import {
     ArrowLeft, Save, Trash2, Plus, X, Calendar,
@@ -60,23 +61,25 @@ export default function EditVoucherPage() {
 
     const loadSuggestions = async () => {
         // Load party ledgers
-        const { data: ledgers } = await supabase
+        const ledgers = await fetchAllSupabaseRows((from, to) => supabase
             .from('ledgers')
             .select('name')
             .eq('company_id', selectedCompany.id)
             .in('parent', ['Sundry Debtors', 'Sundry Creditors'])
             .order('name')
-            .limit(500);
-        setLedgerSuggestions((ledgers || []).map(l => l.name));
+            .order('id')
+            .range(from, to));
+        setLedgerSuggestions(ledgers.map(l => l.name));
 
         // Load stock items for autocomplete
-        const { data: stocks } = await supabase
+        const stocks = await fetchAllSupabaseRows((from, to) => supabase
             .from('stock_items')
-            .select('name, hsn_code, unit, rate')
+            .select('id, name, hsn_code, unit, rate')
             .eq('company_id', selectedCompany.id)
             .order('name')
-            .limit(500);
-        setStockSuggestions(stocks || []);
+            .order('id')
+            .range(from, to));
+        setStockSuggestions(stocks);
     };
 
     const loadVoucher = async () => {
@@ -88,6 +91,7 @@ export default function EditVoucherPage() {
             const { data: vData, error: vError } = await supabase
                 .from('vouchers')
                 .select('*')
+                .eq('company_id', selectedCompany.id)
                 .eq('id', decodedId)
                 .single();
 
@@ -100,12 +104,15 @@ export default function EditVoucherPage() {
                 setNarration(vData.narration || '');
 
                 // Load stock entries
-                const { data: stockEntries } = await supabase
+                const stockEntries = await fetchAllSupabaseRows((from, to) => supabase
                     .from('voucher_stock_entries')
                     .select('*')
-                    .eq('voucher_id', vData.id);
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_id', vData.id)
+                    .order('id')
+                    .range(from, to));
 
-                let inventoryItems = stockEntries || [];
+                let inventoryItems = stockEntries;
 
                 // Fallback to raw_data
                 if (inventoryItems.length === 0 && vData.raw_data?.inventory_entries) {
@@ -129,6 +136,7 @@ export default function EditVoucherPage() {
                 const { data: pData, error: pError } = await supabase
                     .from('pending_transactions')
                     .select('*')
+                    .eq('company_id', selectedCompany.id)
                     .eq('id', decodedId)
                     .single();
 
@@ -652,5 +660,4 @@ export default function EditVoucherPage() {
         </div>
     );
 }
-
 

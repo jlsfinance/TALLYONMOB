@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { GlassCard, KPICard, ProgressRing, BarChart3D } from '../components/3d';
 import TopAnalyticsSection from '../components/TopAnalyticsSection';
@@ -60,29 +61,32 @@ export default function Dashboard3DPage() {
                 receiptsRes
             ] = await Promise.all([
                 // 1. FY Sales
-                supabase.from('vouchers')
-                    .select('total_amount, grand_total, voucher_date')
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                    .select('id, total_amount, grand_total, voucher_date')
                     .eq('company_id', selectedCompany.id)
                     .eq('voucher_type', 'Sales')
                     .gte('vch_date', fyStartStr)
-                    .eq('is_deleted', false),
+                    .eq('is_deleted', false)
+                    .order('id').range(from, to)),
                 // 2. FY Purchases
-                supabase.from('vouchers')
-                    .select('total_amount, grand_total')
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                    .select('id, total_amount, grand_total')
                     .eq('company_id', selectedCompany.id)
                     .eq('voucher_type', 'Purchase')
                     .gte('vch_date', fyStartStr)
-                    .eq('is_deleted', false),
+                    .eq('is_deleted', false)
+                    .order('id').range(from, to)),
                 // 3. Outstanding receivables
-                supabase.from('ledgers')
-                    .select('current_balance, parent')
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers')
+                    .select('id, current_balance, parent')
                     .eq('company_id', selectedCompany.id)
-                    .eq('parent', 'Sundry Debtors'),
+                    .eq('parent', 'Sundry Debtors')
+                    .order('id').range(from, to)),
                 // 4. Recent vouchers
                 supabase.from('vouchers')
                     .select('id, voucher_number, party_name, voucher_type, total_amount, grand_total')
                     .eq('company_id', selectedCompany.id)
-                    .order('vch_date', { ascending: false })
+                    .order('vch_date', { ascending: false }).order('id')
                     .limit(5),
                 // 5. Pending count
                 supabase.from('pending_transactions')
@@ -90,27 +94,29 @@ export default function Dashboard3DPage() {
                     .eq('company_id', selectedCompany.id)
                     .eq('status', 'pending'),
                 // 6. Today's sales
-                supabase.from('vouchers')
-                    .select('total_amount, grand_total')
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                    .select('id, total_amount, grand_total')
                     .eq('company_id', selectedCompany.id)
                     .eq('voucher_type', 'Sales')
                     .eq('vch_date', todayStr)
-                    .eq('is_deleted', false),
+                    .eq('is_deleted', false)
+                    .order('id').range(from, to)),
                 // 7. Receipts for collection %
-                supabase.from('vouchers')
-                    .select('total_amount')
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers')
+                    .select('id, total_amount')
                     .eq('company_id', selectedCompany.id)
                     .eq('voucher_type', 'Receipt')
                     .gte('vch_date', fyStartStr)
                     .lte('vch_date', todayStr)
+                    .order('id').range(from, to))
             ]);
 
-            const sales = salesRes.data || [];
-            const purchases = purchasesRes.data || [];
-            const ledgers = ledgersRes.data || [];
+            const sales = salesRes || [];
+            const purchases = purchasesRes || [];
+            const ledgers = ledgersRes || [];
             const vouchers = vouchersRes.data || [];
-            const tSales = todaySalesRes.data || [];
-            const receipts = receiptsRes.data || [];
+            const tSales = todaySalesRes || [];
+            const receipts = receiptsRes || [];
 
             // ── Process sales ────────────────────────────────────
             const totalSales = sales.reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
@@ -370,4 +376,3 @@ export default function Dashboard3DPage() {
         </div>
     );
 }
-

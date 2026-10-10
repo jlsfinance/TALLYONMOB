@@ -11,7 +11,8 @@ import {
     IndianRupee, ArrowUpRight, ArrowDownLeft, X, CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/insforge';
+import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import SmartInsights from '@/components/SmartInsights';
 import MultiCompanyDashboard from '@/components/MultiCompanyDashboard';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
@@ -235,36 +236,36 @@ export default memo(function LiveKeepingsDashboard() {
             if (!selectedCompany?.id) return null;
             const today = format(new Date(), 'yyyy-MM-dd');
 
-            const [salesRes, purchasesRes, receiptsRes, paymentsRes, ledgersRes, recentRes, stockRes] = await Promise.all([
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
+            const [sales, purchases, receipts, payments, ledgers, recentRes, stockItems] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Sales').eq('is_deleted', false)
-                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
+                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
+                    .order('voucher_date', { ascending: true }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Purchase').eq('is_deleted', false)
-                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount')
+                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
+                    .order('voucher_date', { ascending: true }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, grand_total, total_amount')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Receipt').eq('is_deleted', false)
-                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount')
+                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
+                    .order('voucher_date', { ascending: true }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, grand_total, total_amount')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Payment').eq('is_deleted', false)
-                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('ledgers').select('name, current_balance, parent')
-                    .eq('company_id', selectedCompany.id),
+                    .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
+                    .order('voucher_date', { ascending: true }).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('name, current_balance, parent, id')
+                    .eq('company_id', selectedCompany.id).order('id').range(from, to)),
                 supabase.from('vouchers').select('id, voucher_type, voucher_number, party_name, grand_total, total_amount, voucher_date')
                     .eq('company_id', selectedCompany.id).eq('is_deleted', false)
-                    .order('voucher_date', { ascending: false }).limit(15),
-                supabase.from('stock_items').select('id, name, current_stock, opening_stock, stock_group')
-                    .eq('company_id', selectedCompany.id),
+                    .order('voucher_date', { ascending: false }).order('id').limit(15),
+                fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('id, name, current_stock, opening_stock, stock_group')
+                    .eq('company_id', selectedCompany.id).order('id').range(from, to)),
             ]);
-
-            const sales = salesRes.data || [];
-            const purchases = purchasesRes.data || [];
-            const ledgers = ledgersRes.data || [];
 
             const totalSales = sales.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             const totalPurchases = purchases.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const totalReceipts = (receiptsRes.data || []).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const totalPayments = (paymentsRes.data || []).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+            const totalReceipts = receipts.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+            const totalPayments = payments.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             const todaySales = sales.filter(v => v.voucher_date === today).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
 
             const debtors = ledgers.filter(l => l.parent === 'Sundry Debtors');
@@ -275,7 +276,6 @@ export default memo(function LiveKeepingsDashboard() {
             const overdueParties = debtors.filter(d => (Number(d.current_balance) || 0) > 0)
                 .sort((a, b) => Number(b.current_balance) - Number(a.current_balance));
 
-            const stockItems = stockRes.data || [];
             const lowStock = stockItems.filter(s => {
                 const stock = Number(s.current_stock) || Number(s.opening_stock) || 0;
                 return stock <= 5 && stock > 0;

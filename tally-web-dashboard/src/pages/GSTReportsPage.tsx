@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { FileText, Download, Building2, User, Package, Receipt, Calendar, ShieldCheck, PieChart, Activity } from 'lucide-react';
 import { GlassCard, MetricCard, Badge, Spinner } from '@/components/ui/GlassUI';
@@ -286,26 +287,31 @@ export default function GSTReportsPage() {
         try {
             const { start, end } = getDateRange();
             const gstVoucherTypes = [...SALE_VOUCHER_TYPES, ...PURCHASE_VOUCHER_TYPES];
-            const { data: vouchersData, error: vouchersError } = await supabase
+            const vouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .in('voucher_type', gstVoucherTypes)
                 .gte('voucher_date', start)
                 .lte('voucher_date', end)
-                .or('is_deleted.is.null,is_deleted.eq.false');
-            if (vouchersError) throw vouchersError;
-            const vouchers = vouchersData || [];
+                .or('is_deleted.is.null,is_deleted.eq.false')
+                .order('voucher_date', { ascending: true })
+                .order('id')
+                .range(from, to));
             const voucherIds = vouchers.map((v: any) => v.id).filter(Boolean);
             let stockEntries: any[] = [];
             let ledgerEntries: any[] = [];
             if (voucherIds.length > 0) {
-                const [{ data: seData }, { data: leData }] = await Promise.all([
-                    supabase.from('voucher_stock_entries').select('*').in('voucher_id', voucherIds),
-                    supabase.from('voucher_ledger_entries').select('*').in('voucher_id', voucherIds)
-                ]);
-                stockEntries = seData || [];
-                ledgerEntries = leData || [];
+                const voucherChunkSize = 40;
+                for (let index = 0; index < voucherIds.length; index += voucherChunkSize) {
+                    const voucherChunk = voucherIds.slice(index, index + voucherChunkSize);
+                    const [stockChunk, ledgerChunk] = await Promise.all([
+                        fetchAllSupabaseRows((from, to) => supabase.from('voucher_stock_entries').select('*').eq('company_id', selectedCompany.id).in('voucher_id', voucherChunk).order('id').range(from, to)),
+                        fetchAllSupabaseRows((from, to) => supabase.from('voucher_ledger_entries').select('*').eq('company_id', selectedCompany.id).in('voucher_id', voucherChunk).order('id').range(from, to)),
+                    ]);
+                    stockEntries.push(...stockChunk);
+                    ledgerEntries.push(...ledgerChunk);
+                }
             }
             const stockByVoucher = (stockEntries || []).reduce((acc: any, entry: any) => {
                 if (!acc[entry.voucher_id]) acc[entry.voucher_id] = [];

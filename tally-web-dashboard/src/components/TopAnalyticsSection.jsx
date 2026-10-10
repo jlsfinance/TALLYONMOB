@@ -12,6 +12,7 @@ import {
     IndianRupee
 } from 'lucide-react';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import { useAuth } from '../contexts/AuthContext';
 
 const TopAnalyticsSection = () => {
@@ -60,22 +61,26 @@ const TopAnalyticsSection = () => {
 
         try {
             // Build base query for vouchers
-            let vouchersQuery = supabase
+            const vouchers = await fetchAllSupabaseRows((from, to) => {
+                let vouchersQuery = supabase
                 .from('vouchers')
-                .select('party_name, voucher_type, net_amount, invoice_date')
-                .eq('company_id', selectedCompany.id);
+                .select('id, party_name, voucher_type, net_amount, invoice_date')
+                .eq('company_id', selectedCompany.id)
+                .order('invoice_date', { ascending: false })
+                .order('id');
 
-            if (dateFilter) {
-                vouchersQuery = vouchersQuery.gte('invoice_date', dateFilter);
-            }
+                if (dateFilter) {
+                    vouchersQuery = vouchersQuery.gte('invoice_date', dateFilter);
+                }
 
-            const { data: vouchers } = await vouchersQuery;
+                return vouchersQuery.range(from, to);
+            });
 
             // Process Top Customers (Sales)
             const customerMap = {};
             const supplierMap = {};
 
-            (vouchers || []).forEach(v => {
+            vouchers.forEach(v => {
                 if (!v.party_name) return;
 
                 const amount = parseFloat(v.net_amount) || 0;
@@ -448,4 +453,3 @@ const TopAnalyticsSection = () => {
 };
 
 export default TopAnalyticsSection;
-

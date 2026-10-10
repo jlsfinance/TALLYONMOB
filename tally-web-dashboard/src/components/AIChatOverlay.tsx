@@ -4,6 +4,7 @@ import { Bot, X, Send, Loader2, Copy, Check } from 'lucide-react';
 import { analyzeData } from '@/lib/GeminiService';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { getUserGeminiApiKey } from '@/lib/userGeminiKey';
 
 interface Message {
@@ -46,31 +47,55 @@ export default function AIChatOverlay({ isOpen, onClose }: { isOpen: boolean; on
         if (!selectedCompany?.id) return {};
 
         try {
-            const [sales, ledgers, stock] = await Promise.all([
-                supabase
+            const [salesRows, ledgerRows, stockRows] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase
                     .from('vouchers')
-                    .select('voucher_date, total_amount, grand_total, party_name')
+                    .select('id, voucher_date, total_amount, grand_total, party_name')
                     .eq('company_id', selectedCompany.id)
                     .eq('voucher_type', 'Sales')
                     .order('voucher_date', { ascending: false })
-                    .limit(2000),
-                supabase
+                    .order('id')
+                    .range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase
                     .from('ledgers')
-                    .select('name, closing_balance, parent, current_balance')
+                    .select('id, name, closing_balance, parent, current_balance')
                     .eq('company_id', selectedCompany.id)
-                    .limit(5000),
-                supabase
+                    .order('id')
+                    .range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase
                     .from('stock_items')
-                    .select('name, current_stock, unit')
+                    .select('id, name, current_stock, unit')
                     .eq('company_id', selectedCompany.id)
-                    .limit(2000)
+                    .order('id')
+                    .range(from, to))
             ]);
+
+            const amountOf = (row: any) => Math.abs(Number(row.grand_total) || Number(row.total_amount) || 0);
+            const topCustomers = new Map<string, number>();
+            for (const row of salesRows) {
+                if (row.party_name) topCustomers.set(row.party_name, (topCustomers.get(row.party_name) || 0) + amountOf(row));
+            }
+            const debtors = ledgerRows.filter((row: any) => String(row.parent || '').toLowerCase().includes('debtor'));
+            const creditors = ledgerRows.filter((row: any) => String(row.parent || '').toLowerCase().includes('creditor'));
+            const lowStock = stockRows.filter((row: any) => Number(row.current_stock) >= 0 && Number(row.current_stock) < 10)
+                .sort((a: any, b: any) => Number(a.current_stock) - Number(b.current_stock));
 
             return {
                 company: selectedCompany.name,
-                sales: (sales as any)?.data || [],
-                ledgers: (ledgers as any)?.data || [],
-                stock: (stock as any)?.data || []
+                sales: salesRows.slice(0, 50),
+                salesSummary: {
+                    invoiceCount: salesRows.length,
+                    totalSales: salesRows.reduce((sum: number, row: any) => sum + amountOf(row), 0),
+                    topCustomers: [...topCustomers.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([name, amount]) => ({ name, amount })),
+                },
+                ledgers: [...ledgerRows].sort((a: any, b: any) => Math.abs(Number(b.current_balance ?? b.closing_balance) || 0) - Math.abs(Number(a.current_balance ?? a.closing_balance) || 0)).slice(0, 100),
+                ledgerSummary: {
+                    ledgerCount: ledgerRows.length,
+                    totalReceivable: debtors.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.current_balance ?? row.closing_balance) || 0), 0),
+                    totalPayable: creditors.reduce((sum: number, row: any) => sum + Math.abs(Number(row.current_balance ?? row.closing_balance) || 0), 0),
+                },
+                stock: lowStock.slice(0, 50),
+                stockSummary: { stockItemCount: stockRows.length, lowStockCount: lowStock.length },
             };
         } catch (error) {
             return { error: 'Failed to fetch context data', details: String(error) };
@@ -245,4 +270,3 @@ const MarkdownRenderer = ({ content }: { content: string }) => {
         </div>
     );
 };
-

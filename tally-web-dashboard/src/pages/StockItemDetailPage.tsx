@@ -153,8 +153,7 @@ export default function StockItemDetailPage() {
                 toDate: historyFilters.toDate || undefined,
                 party: historyFilters.party?.trim() || undefined,
                 voucherTypes,
-                sort: 'desc',
-                limit: 5000
+                sort: 'desc'
             } as any);
 
             if (error) throw error;
@@ -197,10 +196,7 @@ export default function StockItemDetailPage() {
             const { data: allHistory, error: allHistoryError } = await stockApi.getHistory(
                 selectedCompany.id,
                 itemData.id || itemData.name,
-                {
-                    sort: 'desc',
-                    limit: 10000
-                } as any
+                { sort: 'desc' } as any
             );
             if (allHistoryError) throw allHistoryError;
             const rows = allHistory?.rows || [];
@@ -730,4 +726,3 @@ export default function StockItemDetailPage() {
         </div>
     );
 }
-

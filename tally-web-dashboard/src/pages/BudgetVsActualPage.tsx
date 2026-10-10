@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     PieChart, Target, TrendingUp, TrendingDown, Plus, Edit2, Trash2, Loader2
 } from 'lucide-react';
@@ -35,7 +36,7 @@ export default function BudgetVsActualPage() {
     const [newCategory, setNewCategory] = useState('');
     const [newAmount, setNewAmount] = useState('');
     const [newNotes, setNewNotes] = useState('');
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = String(new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1);
 
     useEffect(() => {
         if (selectedCompany?.id) loadBudgets();
@@ -44,30 +45,30 @@ export default function BudgetVsActualPage() {
     const loadBudgets = async () => {
         setLoading(true);
         try {
-            const { data: budgetData, error } = await supabase
-                .from('budgets')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
-                .eq('fiscal_year', currentYear)
-                .order('category');
+            const [budgetData, vouchers] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase
+                    .from('budgets')
+                    .select('*')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('fiscal_year', currentYear)
+                    .order('category')
+                    .order('id')
+                    .range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase
+                    .from('vouchers')
+                    .select('id, grand_total, total_amount')
+                    .eq('company_id', selectedCompany.id)
+                    .eq('voucher_type', 'Payment')
+                    .eq('is_deleted', false)
+                    .gte('voucher_date', `${currentYear}-04-01`)
+                    .lte('voucher_date', `${Number(currentYear) + 1}-03-31`)
+                    .order('voucher_date', { ascending: true })
+                    .order('id')
+                    .range(from, to)),
+            ]);
 
-            if (error) throw error;
-
-            const enriched = await Promise.all(
-                (budgetData || []).map(async (b) => {
-                    const { data: vouchers } = await supabase
-                        .from('vouchers')
-                        .select('grand_total')
-                        .eq('company_id', selectedCompany.id)
-                        .eq('voucher_type', 'Payment')
-                        .eq('is_deleted', false)
-                        .gte('voucher_date', `${currentYear}-04-01`)
-                        .lte('voucher_date', `${currentYear}-03-31`);
-
-                    const total = (vouchers || []).reduce((s, v) => s + Math.abs(Number(v.grand_total) || 0), 0);
-                    return { ...b, actual_amount: total };
-                })
-            );
+            const total = vouchers.reduce((sum, voucher) => sum + Math.abs(Number(voucher.grand_total) || Number(voucher.total_amount) || 0), 0);
+            const enriched = budgetData.map((budget) => ({ ...budget, actual_amount: total }));
 
             setBudgets(enriched);
         } catch (err) {

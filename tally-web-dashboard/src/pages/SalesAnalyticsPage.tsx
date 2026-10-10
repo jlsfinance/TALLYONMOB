@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { format, subMonths, startOfMonth, endOfMonth, subDays, eachMonthOfInterval } from 'date-fns';
 import {
     TrendingUp, TrendingDown, BarChart3, Users, Package, Calendar,
@@ -64,7 +65,7 @@ export default function SalesAnalyticsPage() {
 
         try {
             // Fetch all sales vouchers for this period
-            const { data: sales } = await supabase
+            const sales = await fetchAllSupabaseRows((pageFrom, pageTo) => supabase
                 .from('vouchers')
                 .select('id, voucher_date, party_name, total_amount, grand_total, voucher_number')
                 .eq('company_id', selectedCompany.id)
@@ -73,25 +74,29 @@ export default function SalesAnalyticsPage() {
                 .gte('voucher_date', from)
                 .lte('voucher_date', to)
                 .order('voucher_date', { ascending: false })
-                .limit(50000);
+                .order('id', { ascending: true })
+                .range(pageFrom, pageTo));
 
             // Fetch purchases
-            const { data: purchases } = await supabase
+            const purchases = await fetchAllSupabaseRows((pageFrom, pageTo) => supabase
                 .from('vouchers')
-                .select('voucher_date, total_amount, grand_total')
+                .select('id, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .eq('is_deleted', false)
                 .gte('voucher_date', from)
                 .lte('voucher_date', to)
-                .limit(50000);
+                .order('voucher_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(pageFrom, pageTo));
 
             // Fetch stock entries from vouchers for product analysis
-            const { data: stockEntries } = await supabase
+            const stockEntries = await fetchAllSupabaseRows((pageFrom, pageTo) => supabase
                 .from('voucher_stock_entries')
-                .select('stock_item_name, quantity, amount')
+                .select('id, stock_item_name, quantity, amount')
                 .eq('company_id', selectedCompany.id)
-                .limit(10000);
+                .order('id', { ascending: true })
+                .range(pageFrom, pageTo));
 
             const sData = sales || [];
             const pData = purchases || [];
@@ -104,15 +109,17 @@ export default function SalesAnalyticsPage() {
 
             // Previous period for growth calc
             const prevFrom = format(subMonths(new Date(from), period === 'month' ? 1 : period === 'quarter' ? 3 : 12), 'yyyy-MM-dd');
-            const { data: prevSales } = await supabase
+            const prevSales = await fetchAllSupabaseRows((pageFrom, pageTo) => supabase
                 .from('vouchers')
-                .select('grand_total, total_amount')
+                .select('id, grand_total, total_amount')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
                 .eq('is_deleted', false)
                 .gte('voucher_date', prevFrom)
                 .lt('voucher_date', from)
-                .limit(50000);
+                .order('voucher_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(pageFrom, pageTo));
 
             const prevTotal = (prevSales || []).reduce((sum, v) => sum + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             const growth = prevTotal > 0 ? ((totalSales - prevTotal) / prevTotal) * 100 : 0;

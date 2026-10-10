@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase as insforgeClient, ledgerApi } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import {
     ArrowLeft, Phone, Plus, Share2, Bell, FileText, Receipt,
     MessageCircle, Calendar, Printer, TrendingUp, TrendingDown,
@@ -150,12 +151,12 @@ export default function LedgerDetailPage() {
         }
 
         try {
-            const { data: stockItems, error: stockItemsError } = await supabase
+            const stockItems = await fetchAllSupabaseRows((from, to) => supabase
                 .from('stock_items')
                 .select('id, name')
-                .eq('company_id', selectedCompany.id);
-
-            if (stockItemsError) throw stockItemsError;
+                .eq('company_id', selectedCompany.id)
+                .order('id')
+                .range(from, to));
 
             const chunkSize = 40;
             const chunkArray = <T,>(arr: T[], size: number) => {
@@ -168,14 +169,14 @@ export default function LedgerDetailPage() {
 
             const stockEntries: any[] = [];
             for (const voucherIdChunk of chunkArray(voucherIds, chunkSize)) {
-                const { data: entryBatch, error: entryBatchError } = await supabase
+                const entryBatch = await fetchAllSupabaseRows((from, to) => supabase
                     .from('voucher_stock_entries')
                     .select('*')
                     .eq('company_id', selectedCompany.id)
-                    .in('voucher_id', voucherIdChunk);
-
-                if (entryBatchError) throw entryBatchError;
-                stockEntries.push(...(entryBatch || []));
+                    .in('voucher_id', voucherIdChunk)
+                    .order('id')
+                    .range(from, to));
+                stockEntries.push(...entryBatch);
             }
             const vouchers = voucherRows || [];
             const voucherMap: Record<string, any> = {};
@@ -221,23 +222,23 @@ export default function LedgerDetailPage() {
 
                 for (const voucherIdChunk of chunkArray(voucherIds, chunkSize)) {
                     const [salesRes, purchasesRes] = await Promise.all([
-                        supabase
+                        fetchAllSupabaseRows((from, to) => supabase
                             .from('sales')
                             .select('id, voucher_id')
                             .eq('company_id', selectedCompany.id)
-                            .in('voucher_id', voucherIdChunk),
-                        supabase
+                            .in('voucher_id', voucherIdChunk)
+                            .order('id')
+                            .range(from, to)),
+                        fetchAllSupabaseRows((from, to) => supabase
                             .from('purchases')
                             .select('id, voucher_id')
                             .eq('company_id', selectedCompany.id)
                             .in('voucher_id', voucherIdChunk)
+                            .order('id')
+                            .range(from, to))
                     ]);
-
-                    if (salesRes.error) throw salesRes.error;
-                    if (purchasesRes.error) throw purchasesRes.error;
-
-                    salesRows.push(...(salesRes.data || []));
-                    purchaseRows.push(...(purchasesRes.data || []));
+                    salesRows.push(...salesRes);
+                    purchaseRows.push(...purchasesRes);
                 }
                 const saleMap: Record<string, string> = {};
                 const purchaseMap: Record<string, string> = {};
@@ -256,23 +257,25 @@ export default function LedgerDetailPage() {
                 const purchaseIds = purchaseRows.map((p: any) => p.id).filter(Boolean);
 
                 for (const saleIdChunk of chunkArray(saleIds, chunkSize)) {
-                    const { data: salesItemsBatch, error: salesItemsError } = await supabase
+                    const salesItemsBatch = await fetchAllSupabaseRows((from, to) => supabase
                         .from('sales_items')
                         .select('*')
-                        .in('sale_id', saleIdChunk);
-
-                    if (salesItemsError) throw salesItemsError;
-                    salesItems.push(...(salesItemsBatch || []));
+                        .eq('company_id', selectedCompany.id)
+                        .in('sale_id', saleIdChunk)
+                        .order('id')
+                        .range(from, to));
+                    salesItems.push(...salesItemsBatch);
                 }
 
                 for (const purchaseIdChunk of chunkArray(purchaseIds, chunkSize)) {
-                    const { data: purchaseItemsBatch, error: purchaseItemsError } = await supabase
+                    const purchaseItemsBatch = await fetchAllSupabaseRows((from, to) => supabase
                         .from('purchase_items')
                         .select('*')
-                        .in('purchase_id', purchaseIdChunk);
-
-                    if (purchaseItemsError) throw purchaseItemsError;
-                    purchaseItems.push(...(purchaseItemsBatch || []));
+                        .eq('company_id', selectedCompany.id)
+                        .in('purchase_id', purchaseIdChunk)
+                        .order('id')
+                        .range(from, to));
+                    purchaseItems.push(...purchaseItemsBatch);
                 }
 
                 salesItems.forEach((entry: any) => {
@@ -312,6 +315,7 @@ export default function LedgerDetailPage() {
             const { data: ledgerData } = await supabase
                 .from('ledgers')
                 .select('*')
+                .eq('company_id', selectedCompany.id)
                 .eq('id', id)
                 .single();
 
@@ -319,17 +323,20 @@ export default function LedgerDetailPage() {
             setLedger(ledgerData);
 
             // 2. Calculate Dynamic Opening Balance
-            const { data: beforeVouchers } = await supabase
+            const beforeVouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
-                .select('voucher_type, total_amount')
+                .select('id, voucher_type, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('party_name', ledgerData.name)
-                .lt('voucher_date', fromDate);
+                .lt('voucher_date', fromDate)
+                .order('voucher_date', { ascending: true })
+                .order('id', { ascending: true })
+                .range(from, to));
 
             let dynamicOpening = Number(ledgerData.opening_balance) || 0;
 
-            (beforeVouchers || []).forEach(v => {
-                const amount = Math.abs(Number(v.total_amount) || 0);
+            beforeVouchers.forEach(v => {
+                const amount = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
                 const vType = v.voucher_type;
                 const isDebit = ['Sales', 'Payment', 'Debit Note'].includes(vType);
                 const isCredit = ['Purchase', 'Receipt', 'Credit Note'].includes(vType);
@@ -341,14 +348,16 @@ export default function LedgerDetailPage() {
             setOpeningBalance(dynamicOpening);
 
             // 3. Fetch Transactions in Range
-            const { data: rangeVouchers } = await supabase
+            const rangeVouchers = await fetchAllSupabaseRows((from, to) => supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .eq('party_name', ledgerData.name)
                 .gte('voucher_date', fromDate)
                 .lte('voucher_date', toDate)
-                .order('voucher_date', { ascending: false });
+                .order('voucher_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(from, to));
 
             // 4. Process Running Balance & Voucher Summary
             let running = dynamicOpening;
@@ -356,8 +365,8 @@ export default function LedgerDetailPage() {
             let totalCr = 0;
             const voucherTotals: Record<string, number> = {};
 
-            const processed = (rangeVouchers || []).map(v => {
-                const amount = Math.abs(Number(v.total_amount) || 0);
+            const processed = rangeVouchers.map(v => {
+                const amount = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
                 const isDebit = ['Sales', 'Payment', 'Debit Note'].includes(v.voucher_type);
                 const isCredit = ['Purchase', 'Receipt', 'Credit Note'].includes(v.voucher_type);
 
@@ -388,7 +397,7 @@ export default function LedgerDetailPage() {
                 count: processed.length
             });
             // 5. Load items summary in background so ledger data renders immediately
-            loadItemsSummary(rangeVouchers || []);
+            loadItemsSummary(rangeVouchers);
 
 
         } catch (error: any) {
@@ -412,8 +421,7 @@ export default function LedgerDetailPage() {
             const { data, error } = await ledgerApi.getItemHistory(selectedCompany.id, ledger.name, itemName, {
                 fromDate,
                 toDate,
-                sort: 'desc',
-                limit: 2000
+                sort: 'desc'
             } as any);
 
             if (error) throw error;

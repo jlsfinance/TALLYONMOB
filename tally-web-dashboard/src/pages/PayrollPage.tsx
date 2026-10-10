@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/insforge';
+import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import {
@@ -61,20 +62,20 @@ export default function PayrollPage() {
     const loadEmployees = async () => {
         setLoading(true);
         try {
-            const { data } = await supabase.from('employees')
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('employees')
                 .select('*').eq('company_id', selectedCompany.id).eq('is_active', true)
-                .order('name');
-            setEmployees((data || []) as Employee[]);
+                .order('name').order('id').range(from, to));
+            setEmployees(data as Employee[]);
         } catch { }
         setLoading(false);
     };
 
     const loadPayslips = async () => {
         try {
-            const { data } = await supabase.from('payslips')
+            const data = await fetchAllSupabaseRows((from, to) => supabase.from('payslips')
                 .select('*').eq('company_id', selectedCompany.id).eq('month', selectedMonth)
-                .order('employee_name');
-            setPayslips((data || []) as Payslip[]);
+                .order('employee_name').order('id').range(from, to));
+            setPayslips(data as Payslip[]);
         } catch { }
     };
 

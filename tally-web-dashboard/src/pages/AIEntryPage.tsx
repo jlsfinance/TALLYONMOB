@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, type ChangeEvent } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabaseRows } from '@/lib/supabasePagination';
 import { format } from 'date-fns';
 import {
     Sparkles, Send, Mic, MicOff, FileText, Plus, Calendar,
@@ -283,41 +284,23 @@ export default function AIEntryPage() {
         );
     };
 
-    const resolveRows = async (query: any, optionalRelation?: string) => {
-        const { data, error } = await query;
-        if (error) {
-            if (optionalRelation && isMissingRelationError(error, optionalRelation)) {
-                return [];
-            }
-            throw error;
-        }
-        return data || [];
-    };
-
     const fetchAllRows = async (
         buildQuery: (fromIndex: number, toIndex: number) => any,
-        options: { pageSize?: number; optionalRelation?: string; maxRows?: number } = {}
+        options: { pageSize?: number; optionalRelation?: string } = {}
     ) => {
-        const { pageSize = 1000, optionalRelation, maxRows = Number.POSITIVE_INFINITY } = options;
-        const rows: any[] = [];
-
-        for (let fromIndex = 0; ; fromIndex += pageSize) {
-            const remaining = Number.isFinite(maxRows) ? Math.max(maxRows - rows.length, 0) : pageSize;
-            if (remaining <= 0) break;
-
-            const batchSize = Number.isFinite(maxRows) ? Math.min(pageSize, remaining) : pageSize;
-            const batch = await resolveRows(buildQuery(fromIndex, fromIndex + batchSize - 1), optionalRelation);
-            rows.push(...batch);
-            if (batch.length < batchSize) break;
+        const { pageSize = 1000, optionalRelation } = options;
+        try {
+            return await fetchAllSupabaseRows(buildQuery, { pageSize });
+        } catch (error) {
+            if (optionalRelation && isMissingRelationError(error, optionalRelation)) return [];
+            throw error;
         }
-
-        return rows;
     };
 
     const fetchRowsBestEffort = async (
         label: string,
         buildQuery: (fromIndex: number, toIndex: number) => any,
-        options: { pageSize?: number; optionalRelation?: string; maxRows?: number } = {}
+        options: { pageSize?: number; optionalRelation?: string } = {}
     ) => {
         try {
             return await fetchAllRows(buildQuery, options);
@@ -438,7 +421,7 @@ export default function AIEntryPage() {
                     .eq('company_id', companyId)
                     .order('id', { ascending: true })
                     .range(fromIndex, toIndex),
-                { optionalRelation: 'stock_items', pageSize: 500, maxRows: 2000 }
+                { optionalRelation: 'stock_items', pageSize: 500 }
             );
         } catch (error) {
             if (isMissingRelationError(error, 'stock_items')) {
@@ -458,7 +441,7 @@ export default function AIEntryPage() {
                     .eq('company_id', companyId)
                     .order('id', { ascending: true })
                     .range(fromIndex, toIndex),
-                { optionalRelation: 'voucher_stock_entries', pageSize: 500, maxRows: 2500 }
+                { optionalRelation: 'voucher_stock_entries', pageSize: 500 }
             );
         } catch (error) {
             if (isMissingRelationError(error, 'voucher_stock_entries')) {
@@ -539,7 +522,7 @@ export default function AIEntryPage() {
                     .eq('company_id', companyId)
                     .order('id', { ascending: true })
                     .range(fromIndex, toIndex),
-                { pageSize: 500, maxRows: 2500 }
+                { pageSize: 500 }
             );
 
             const voucherPartyRows = await fetchRowsBestEffort('voucher parties', (fromIndex, toIndex) =>
@@ -550,7 +533,7 @@ export default function AIEntryPage() {
                     .not('party_name', 'is', null)
                     .order('id', { ascending: true })
                     .range(fromIndex, toIndex),
-                { pageSize: 500, maxRows: 2000 }
+                { pageSize: 500 }
             );
 
             const stockItemRows = await fetchStockItemRows(companyId);
@@ -563,7 +546,7 @@ export default function AIEntryPage() {
                     .not('voucher_data', 'is', null)
                     .order('created_at', { ascending: false })
                     .range(fromIndex, toIndex),
-                { optionalRelation: 'pending_transactions', pageSize: 200, maxRows: 600 }
+                { optionalRelation: 'pending_transactions', pageSize: 200 }
             );
             const pendingItemRows = extractPendingItemRows(pendingVoucherRows);
 
@@ -2579,7 +2562,6 @@ export default function AIEntryPage() {
         </div>
     );
 }
-
 
 
 

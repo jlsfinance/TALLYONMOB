@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
+import { fetchAllSupabaseRows } from '../lib/supabasePagination';
 import {
     Sparkles, TrendingUp, AlertTriangle, IndianRupee, Users,
     ArrowRight, Loader2, BarChart3, ShieldAlert, Activity
@@ -28,17 +29,12 @@ export default function SmartInsights() {
     const generateInsights = async () => {
         setLoading(true);
         try {
-            const [salesRes, purchasesRes, ledgersRes, stockRes] = await Promise.all([
-                supabase.from('vouchers').select('grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Sales').eq('is_deleted', false),
-                supabase.from('vouchers').select('grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Purchase').eq('is_deleted', false),
-                supabase.from('ledgers').select('name, current_balance, parent').eq('company_id', selectedCompany.id),
-                supabase.from('stock_items').select('name, id').eq('company_id', selectedCompany.id)
+            const [sales, purchases, ledgers, stocks] = await Promise.all([
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Sales').eq('is_deleted', false).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('vouchers').select('id, grand_total').eq('company_id', selectedCompany.id).eq('voucher_type', 'Purchase').eq('is_deleted', false).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('ledgers').select('id, name, current_balance, parent').eq('company_id', selectedCompany.id).order('id').range(from, to)),
+                fetchAllSupabaseRows((from, to) => supabase.from('stock_items').select('id, name').eq('company_id', selectedCompany.id).order('id').range(from, to))
             ]);
-
-            const sales = salesRes.data || [];
-            const purchases = purchasesRes.data || [];
-            const ledgers = ledgersRes.data || [];
-            const stocks = stockRes.data || [];
 
             const totalSales = sales.reduce((s, v) => s + (Math.abs(Number(v.grand_total)) || 0), 0);
             const totalPurchases = purchases.reduce((s, v) => s + (Math.abs(Number(v.grand_total)) || 0), 0);
