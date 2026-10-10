@@ -51,7 +51,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 1 — Core experience foundation
 
-**Status:** Complete · **Branch:** `feature/professional-roadmap-phases` · **Delivery:** [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7)
+**Status:** Complete · **Branch:** `feature/professional-roadmap-phases` · **Delivery:** [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7), dashboard restore [`b448d76`](https://github.com/jlsfinance/TALLYONMOB/commit/b448d76)
 
 ### Kya deliver hua
 - Light/dark/system theme switching aur initial page theme ko consistent kiya.
@@ -180,7 +180,7 @@ git push                            # uske baad ke pushes
 
 | Phase | Status | Branch | Commit / note |
 |---|---|---|---|
-| Phase 1 | Complete | `feature/professional-roadmap-phases` | [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7) |
+| Phase 1 | Complete | `feature/professional-roadmap-phases` | [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7), dashboard restore [`b448d76`](https://github.com/jlsfinance/TALLYONMOB/commit/b448d76) |
 | Phase 2 | Complete | `feature/professional-roadmap-phases` | [`6a2c33d`](https://github.com/jlsfinance/TALLYONMOB/commit/6a2c33d) |
 | Phase 3 | Planned | `feature/phase-3-guided-onboarding` | Not started |
 | Phase 4 | Planned | `feature/phase-4-branded-invoices` | Not started |
