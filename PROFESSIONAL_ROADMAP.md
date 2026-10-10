@@ -139,7 +139,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 5 — Business insights aur report experience
 
-**Status:** Planned · **Branch:** `feature/phase-5-business-insights` · **Base:** Phase 4 branch, jab tak preceding work merge na hua ho; merge ke baad latest `allok`.
+**Status:** In progress · **Branch:** `feature/phase-5-business-insights` · **Base:** current branch containing Phase 1–4 work.
 
 ### Kya banana hai
 - Selected financial year ke sales/purchase trends aur pichhle period se comparison.
@@ -185,5 +185,5 @@ git push                            # uske baad ke pushes
 | Phase 2 | Complete | `feature/professional-roadmap-phases` | [`6a2c33d`](https://github.com/jlsfinance/TALLYONMOB/commit/6a2c33d) |
 | Phase 3 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`f981ea7`](https://github.com/jlsfinance/TALLYONMOB/commit/f981ea7) — guided company/connection/first-sync wizard integrated |
 | Phase 4 | Implemented; validation pending | `feature/stock-item-tabs-rebuild` | [`e6c9e4f`](https://github.com/jlsfinance/TALLYONMOB/commit/e6c9e4f) — additive Branded preview/PDF template and selector integrated |
-| Phase 5 | Planned | `feature/phase-5-business-insights` | Not started |
+| Phase 5 | In progress | `feature/phase-5-business-insights` | Detailed design: `PHASE_5_BUSINESS_INSIGHTS_DESIGN.md`; implementation slices 5.1–5.5 pending |
 | Phase 6 | Planned | `feature/phase-6-release-hardening` | Not started |
