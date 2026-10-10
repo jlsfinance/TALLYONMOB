@@ -10,6 +10,9 @@ const entitlement = fs.readFileSync(path.join(root, 'src/services/entitlementSer
 const syncService = fs.readFileSync(path.join(root, 'src/services/syncService.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'migrations/20261009_sync_control_plane.sql'), 'utf8');
 const phase3Migration = fs.readFileSync(path.join(root, 'migrations/20261009_incremental_sync_performance.sql'), 'utf8');
+const windowsRlsMigration = fs.readFileSync(path.join(root, 'migrations/20261011_windows_direct_write_rls.sql'), 'utf8');
+const windowsApiClient = fs.readFileSync(path.join(root, '..', 'tally-windows-sync/Services/ApiClient.cs'), 'utf8');
+const windowsSyncManager = fs.readFileSync(path.join(root, '..', 'tally-windows-sync/Services/SyncManager.cs'), 'utf8');
 
 const requiredRoutes = [
   "router.post('/device/register'",
@@ -87,6 +90,20 @@ test('Phase 4 protected writes fail closed on server-side entitlement checks', (
   assert.match(entitlement, /trial_history/);
   assert.match(entitlement, /subscription_plans/);
   assert.doesNotMatch(entitlement, /features = \[planSlug === 'trial'/);
+});
+
+test('Windows direct writes are company-scoped and license mutation is removed', () => {
+  assert.match(windowsRlsMigration, /sync_user_can_access_company/);
+  assert.match(windowsRlsMigration, /sync_user_can_write_company/);
+  assert.match(windowsRlsMigration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(windowsRlsMigration, /company_users/);
+  assert.match(windowsRlsMigration, /can_sync/);
+  assert.match(windowsRlsMigration, /REVOKE INSERT, UPDATE, DELETE/);
+  for (const table of ['ledgers', 'vouchers', 'sales', 'purchases', 'stock_items', 'deleted_records', 'pending_transactions', 'sync_history', 'sync_metadata', 'sync_state']) {
+    assert.match(windowsRlsMigration, new RegExp(`'${table}'`));
+  }
+  assert.doesNotMatch(windowsApiClient, /rest\/v1\/licenses\?user_id=eq/);
+  assert.doesNotMatch(windowsSyncManager, /UpdateUserTallySerialAsync\(/);
 });
 
 test('Live endpoint integration is opt-in and clearly reported', async (t) => {

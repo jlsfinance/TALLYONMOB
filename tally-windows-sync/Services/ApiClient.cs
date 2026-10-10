@@ -2326,50 +2326,6 @@ namespace TallySyncApp.Services
             }
         }
 
-        /// <summary>
-        /// Update user's Tally serial number in the licenses table
-        /// </summary>
-        public async Task<bool> UpdateUserTallySerialAsync(string userId, string serial)
-        {
-            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(serial)) return false;
-
-            try
-            {
-                AddAuthHeader();
-                var payload = new Dictionary<string, object>
-                {
-                    ["tally_serial"] = serial,
-                    ["updated_at"] = DateTime.UtcNow.ToString("o")
-                };
-
-                var json = JsonConvert.SerializeObject(payload);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                // Update the licenses table where user_id matches
-                var url = $"{_supabaseUrl}/rest/v1/licenses?user_id=eq.{userId}";
-                
-                // FIX: Use per-request Prefer header instead of polluting DefaultRequestHeaders
-                var request = new HttpRequestMessage(HttpMethod.Patch, url)
-                {
-                    Content = content
-                };
-                request.Headers.Add("Prefer", "return=representation");
-
-                var response = await _httpClient.SendAsync(request);
-                if (!response.IsSuccessStatusCode)
-                {
-                    var body = await response.Content.ReadAsStringAsync();
-                    SyncLogger.Log($"UpdatePendingTransactionStatusAsync failed ({response.StatusCode}): {body}");
-                }
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                SyncLogger.Log($"ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Failed to update Tally Serial: {ex.Message}");
-                return false;
-            }
-        }
-
         public async Task SendTelegramNotificationAsync(string chatId, string message)
         {
             try
@@ -2405,8 +2361,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
-
 
 
 
