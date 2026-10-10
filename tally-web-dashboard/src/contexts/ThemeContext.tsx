@@ -40,11 +40,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         localStorage.setItem('theme', theme);
         const root = document.documentElement;
-        if (effectiveTheme === 'dark') {
-            root.classList.add('dark');
-        } else {
-            root.classList.remove('dark');
-        }
+        root.classList.toggle('dark', effectiveTheme === 'dark');
+        root.dataset.theme = effectiveTheme;
+        root.style.colorScheme = effectiveTheme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute(
+            'content',
+            effectiveTheme === 'dark' ? '#0D1117' : '#F5F7FA'
+        );
     }, [theme, effectiveTheme]);
 
     const toggleTheme = () => {

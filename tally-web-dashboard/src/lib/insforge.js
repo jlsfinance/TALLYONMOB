@@ -250,7 +250,33 @@ const companyApi = {
     }
   },
   deleteCompanyData: async (companyId) => {
-    return { success: true, error: "Not implemented in direct sdk safely" };
+    if (!companyId) return { success: false, error: "Company id is required" };
+    const companyTables = [
+      "voucher_stock_entries", "voucher_ledger_entries", "pending_transactions",
+      "sync_history", "sync_state", "sync_queue", "deleted_records", "approval_items",
+      "payment_links", "email_queue", "reminder_logs", "tds_tcs_entries", "sales_items",
+      "bill_allocations", "bank_allocations", "device_tokens", "notifications",
+      "notification_logs", "notification_templates", "notification_settings", "user_devices",
+      "user_activity_logs", "user_activity_stats", "user_sessions", "recurring_invoices",
+      "sales_visits", "team_members", "company_users", "company_members", "company_settings",
+      "app_settings", "employees", "payslips", "petty_cash_entries", "bank_ledger_mappings",
+      "budgets", "eway_bills", "gst_automation_runs", "ledgers", "stock_items", "vouchers",
+      "sales", "purchases", "ledger_groups", "cost_centres", "stock_groups", "stock_categories",
+      "voucher_types"
+    ];
+    try {
+      for (const table of companyTables) {
+        const { error } = await db.from(table).delete().eq("company_id", companyId);
+        if (error && !["42P01", "PGRST204", "PGRST205"].includes(error.code)) {
+          return { success: false, error: `Could not delete ${table}: ${error.message}` };
+        }
+      }
+      const { error } = await db.from("companies").delete().eq("id", companyId);
+      if (error) return { success: false, error: error.message };
+      return { success: true, error: null };
+    } catch (error) {
+      return { success: false, error: error?.message || "Failed to delete company data" };
+    }
   },
 };
 

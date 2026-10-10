@@ -69,57 +69,57 @@ export default function SelectCompanyPage() {
         .sort((a: any, b: any) => new Date(b.last_sync_at || 0).getTime() - new Date(a.last_sync_at || 0).getTime()), [companies, query]);
 
     return (
-        <div className="min-h-screen bg-white text-black transition-colors duration-300">
+        <div className="min-h-screen bg-[var(--background)] text-[var(--on-background)] transition-colors duration-300">
             <div className="mx-auto w-full max-w-4xl px-4 pb-10 pt-5 sm:px-6">
                 <header className="mb-5 flex min-h-12 items-center gap-3">
                     <button
                         type="button"
                         onClick={handleBack}
                         aria-label="Back to module selection"
-                        className="rounded-full p-1.5 text-black transition-colors hover:bg-gray-100"
+                        className="rounded-full p-1.5 text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]"
                     >
                         <ArrowLeft size={28} strokeWidth={2.2} />
                     </button>
                     {searchOpen ? (
-                        <div className="flex min-w-0 flex-1 items-center border-b border-gray-300">
+                        <div className="flex min-w-0 flex-1 items-center border-b border-[var(--border)]">
                             <input
                                 autoFocus
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
                                 placeholder="Search companies"
                                 aria-label="Search companies"
-                                className="w-full bg-transparent px-1 py-2 text-lg text-black outline-none placeholder:text-gray-500"
+                                className="w-full bg-transparent px-1 py-2 text-lg text-[var(--on-surface)] outline-none placeholder:text-[var(--text-muted)]"
                             />
                             <button
                                 type="button"
                                 aria-label="Close search"
                                 onClick={() => { setQuery(''); setSearchOpen(false); }}
-                                className="p-2 text-gray-600 hover:text-black"
+                                className="p-2 text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]"
                             >
                                 <X size={21} />
                             </button>
                         </div>
                     ) : (
-                        <h1 className="min-w-0 flex-1 text-xl font-bold text-black">Select Company</h1>
+                        <h1 className="min-w-0 flex-1 text-xl font-bold text-[var(--on-surface)]">Select Company</h1>
                     )}
                     {!searchOpen && (
                         <button
                             type="button"
                             aria-label="Search companies"
                             onClick={() => setSearchOpen(true)}
-                            className="rounded-full p-2 text-black transition-colors hover:bg-gray-100"
+                            className="rounded-full p-2 text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]"
                         >
                             <Search size={28} strokeWidth={2} />
                         </button>
                     )}
                 </header>
 
-                <div className="-mx-4 flex min-h-[52px] items-center justify-between bg-[#eeeeee] px-6 sm:-mx-6">
-                    <h2 className="text-lg font-semibold text-black">My Companies</h2>
+                <div className="-mx-4 flex min-h-[52px] items-center justify-between border-y border-[var(--border)] bg-[var(--surface-container)] px-6 sm:-mx-6">
+                    <h2 className="text-lg font-semibold text-[var(--on-surface)]">My Companies</h2>
                     <button
                         type="button"
                         onClick={() => navigate('/onboarding')}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5"
+                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--on-surface-variant)] transition-colors hover:bg-[var(--surface-hover)]"
                     >
                         <Plus size={17} />
                         Add Company
@@ -129,13 +129,13 @@ export default function SelectCompanyPage() {
                 {visibleCompanies.length === 0 ? (
                     <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-5 text-center">
                         <Building2 size={42} className="text-gray-400" />
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-[var(--on-surface-variant)]">
                             {companies.length === 0 ? 'No companies found. Add a company or sync data from Tally.' : 'No companies match your search.'}
                         </p>
-                        {companies.length > 0 && <button type="button" onClick={() => setQuery('')} className="text-sm font-medium text-blue-700">Clear search</button>}
+                        {companies.length > 0 && <button type="button" onClick={() => setQuery('')} className="text-sm font-medium text-[var(--primary)]">Clear search</button>}
                     </div>
                 ) : (
-                    <ul className="divide-y divide-[#e5e5e5]">
+                    <ul className="divide-y divide-[var(--border)]">
                         {visibleCompanies.map((company: any) => {
                             const sync = getSyncStatus(company);
                             return (
@@ -144,9 +144,9 @@ export default function SelectCompanyPage() {
                                         <button
                                             type="button"
                                             onClick={() => handleSelect(company)}
-                                            className="flex min-w-0 flex-1 flex-col items-start justify-center px-3 py-4 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600"
+                                            className="flex min-w-0 flex-1 flex-col items-start justify-center px-3 py-4 text-left transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]"
                                         >
-                                            <span className="max-w-full break-words text-lg font-normal leading-7 text-black">{company.name}</span>
+                                            <span className="max-w-full break-words text-lg font-normal leading-7 text-[var(--on-surface)]">{company.name}</span>
                                             <span className={`mt-0.5 text-sm italic ${sync.tone}`}>{sync.label}</span>
                                         </button>
                                         <button
@@ -154,16 +154,16 @@ export default function SelectCompanyPage() {
                                             aria-label={`Options for ${company.name}`}
                                             aria-expanded={openMenu === company.id}
                                             onClick={() => setOpenMenu((current) => current === company.id ? null : company.id)}
-                                            className="mr-2 rounded-full p-2 text-black transition-colors hover:bg-gray-100"
+                                            className="mr-2 rounded-full p-2 text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]"
                                         >
                                             <MoreVertical size={25} />
                                         </button>
                                     </div>
                                     {openMenu === company.id && (
-                                        <div className="absolute right-2 top-14 z-10 min-w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                                            <button type="button" onClick={() => handleSelect(company)} className="w-full px-4 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50">Open company</button>
-                                            <button type="button" onClick={() => { selectCompany(company); setOpenMenu(null); navigate('/device-management'); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"><ShieldCheck size={15} /> Sync health</button>
-                                            <button type="button" onClick={(event) => handleDelete(event, company.id)} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50">Delete company</button>
+                                        <div className="absolute right-2 top-14 z-10 min-w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                                            <button type="button" onClick={() => handleSelect(company)} className="w-full px-4 py-2.5 text-left text-sm text-[var(--on-surface)] hover:bg-[var(--surface-hover)]">Open company</button>
+                                            <button type="button" onClick={() => { selectCompany(company); setOpenMenu(null); navigate('/device-management'); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[var(--on-surface)] hover:bg-[var(--surface-hover)]"><ShieldCheck size={15} /> Sync health</button>
+                                            <button type="button" onClick={(event) => handleDelete(event, company.id)} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-500/10">Delete company</button>
                                         </div>
                                     )}
                                 </li>
