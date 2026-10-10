@@ -23,6 +23,7 @@ import { toast } from 'react-hot-toast';
 import { sendEodReport } from '../lib/whatsapp';
 import SafeLink from '../components/common/SafeLink';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
+import { getStoredDashboardPeriod, getStoredFyYear, saveDashboardPeriod, saveDashboardFyYear, type DashboardPeriod } from '../lib/dashboardPeriod';
 
 const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
@@ -33,7 +34,7 @@ export default function DashboardPage() {
     const { navigate } = useSafeNavigate();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [period, setPeriod] = useState('year');
+    const [period, setPeriod] = useState<DashboardPeriod>(() => getStoredDashboardPeriod());
     const [stats, setStats] = useState({
         sales: 0, purchases: 0, receivables: 0, payables: 0, salesCount: 0, purchaseCount: 0
     });
@@ -49,15 +50,18 @@ export default function DashboardPage() {
     const currentYear = now.getFullYear();
     const defaultFyStartYear = currentMonth < 3 ? currentYear - 1 : currentYear;
     const [fyYear, setFyYear] = useState(() => {
-        const saved = localStorage.getItem('dashboard_fy_year');
-        return saved ? Number(saved) : defaultFyStartYear;
+        return getStoredFyYear(defaultFyStartYear);
     });
 
     useEffect(() => {
-        localStorage.setItem('dashboard_fy_year', String(fyYear));
+        saveDashboardFyYear(fyYear);
     }, [fyYear]);
 
-    const periodFilters = [
+    useEffect(() => {
+        saveDashboardPeriod(period);
+    }, [period]);
+
+    const periodFilters: { key: DashboardPeriod; label: string; icon: JSX.Element }[] = [
         { key: 'today', label: 'Today', icon: <Clock size={12} /> },
         { key: 'month', label: 'Month', icon: <Calendar size={12} /> },
         { key: '30days', label: '30 Days', icon: <Activity size={12} /> },

@@ -3,7 +3,7 @@ name: Deploy TallyOnMobile dashboard to GitHub Pages
 on:
   push:
     branches:
-      - feature/stock-item-tabs-rebuild
+      - feature/web-dashboard-full-pagination
   workflow_dispatch:
 
 permissions:

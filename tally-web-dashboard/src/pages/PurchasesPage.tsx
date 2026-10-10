@@ -10,6 +10,7 @@ import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
 import TransactionCard from '@/components/shared/TransactionCard';
 import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import { getStoredFyYear } from '@/lib/dashboardPeriod';
 
 export default function PurchasesPage() {
     const { selectedCompany } = useAuth() as any;
@@ -28,6 +29,19 @@ export default function PurchasesPage() {
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>(() => format(new Date(), 'yyyy-MM'));
+    const [periodLoadedFor, setPeriodLoadedFor] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!selectedCompany?.id) return;
+        const now = new Date();
+        const defaultStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        const sharedPeriod = localStorage.getItem('dashboard_period');
+        const sharedStartYear = getStoredFyYear(defaultStartYear);
+        const sharedFy = `FY ${sharedStartYear}-${String(sharedStartYear + 1).slice(-2)}`;
+        setSelectedFy(sharedPeriod ? sharedFy : getCurrentFy());
+        setSelectedMonth(sharedPeriod === 'year' ? 'all' : format(now, 'yyyy-MM'));
+        setPeriodLoadedFor(selectedCompany.id);
+    }, [selectedCompany?.id]);
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -76,8 +90,8 @@ export default function PurchasesPage() {
     const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
 
     useEffect(() => {
-        if (selectedCompany) loadPurchases();
-    }, [selectedCompany, dateRange]); // Dependency on dateRange object
+        if (selectedCompany && periodLoadedFor === selectedCompany.id) loadPurchases();
+    }, [selectedCompany, periodLoadedFor, dateRange]); // Dependency on dateRange object
 
     const loadPurchases = async () => {
         setLoading(true);

@@ -490,7 +490,9 @@ const purchasesApi = {
 const stockApi = {
   list: async (companyId, stockGroup = null) => {
     return fetchAllResult((from, to) => {
-      let q = db.from("stock_items").select("*").eq("company_id", companyId).order("name").order("id");
+      // Inventory cards do not need the large metadata columns. Fetch full
+      // details only after a user opens one SKU.
+      let q = db.from("stock_items").select("id, name, stock_group, opening_stock, current_stock, rate, standard_rate, closing_value, unit, status").eq("company_id", companyId).order("name").order("id");
       if (stockGroup) q = q.eq("stock_group", stockGroup);
       return q.range(from, to);
     });

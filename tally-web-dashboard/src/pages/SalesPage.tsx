@@ -13,6 +13,7 @@ import { SkeletonTable } from '@/components/ui/Skeleton';
 import TransactionCard from '@/components/shared/TransactionCard';
 import FinancialPeriodSelector from '@/components/shared/FinancialPeriodSelector';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import { getStoredFyYear } from '@/lib/dashboardPeriod';
 
 export default function SalesPage() {
     const { selectedCompany } = useAuth() as any;
@@ -38,8 +39,16 @@ export default function SalesPage() {
         const key = `sales-period:${selectedCompany.id}`;
         try {
             const saved = JSON.parse(localStorage.getItem(key) || 'null');
-            setSelectedFy(typeof saved?.fy === 'string' ? saved.fy : getCurrentFy());
-            setSelectedMonth(typeof saved?.month === 'string' ? saved.month : 'all');
+            const sharedPeriod = localStorage.getItem('dashboard_period');
+            const now = new Date();
+            const defaultStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+            const sharedStartYear = getStoredFyYear(defaultStartYear);
+            const sharedFy = `FY ${sharedStartYear}-${String(sharedStartYear + 1).slice(-2)}`;
+            const sharedMonth = sharedPeriod === 'month' || sharedPeriod === 'today' || sharedPeriod === '30days'
+                ? format(now, 'yyyy-MM')
+                : 'all';
+            setSelectedFy(sharedPeriod ? sharedFy : (typeof saved?.fy === 'string' ? saved.fy : getCurrentFy()));
+            setSelectedMonth(sharedPeriod ? sharedMonth : (typeof saved?.month === 'string' ? saved.month : 'all'));
         } catch {
             setSelectedFy(getCurrentFy());
             setSelectedMonth('all');

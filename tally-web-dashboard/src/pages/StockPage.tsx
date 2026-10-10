@@ -52,22 +52,14 @@ export default function StockPage() {
         };
     }, [stockItems]);
 
-    const { data: groupsData } = useQuery(
-        ['stockGroups', selectedCompany?.id],
-        async () => {
-            if (!selectedCompany?.id) return [];
-            const { data, error } = await stockApi.getGroups(selectedCompany.id);
-            if (error) throw error;
-            return data || [];
-        },
-        {
-            enabled: !!selectedCompany?.id,
-            staleTime: 5 * 60 * 1000,
-            refetchOnWindowFocus: false,
-        }
+    // Derive groups from the already cached SKU response instead of making a
+    // second full-table request just to populate the filter dropdown.
+    const groups = useMemo<string[]>(
+        () => Array.from(new Set(stockItems
+            .map((item: any) => String(item.stock_group || ''))
+            .filter(Boolean) as string[])).sort(),
+        [stockItems],
     );
-
-    const groups = groupsData || [];
 
     const loadAnalysis = async () => {
         setAnalysisLoading(true);
