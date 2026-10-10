@@ -65,13 +65,13 @@ export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) =>
     return (
         <>
             {target && createPortal(
-                <div className="hidden md:flex items-center gap-2 min-w-0 overflow-hidden">
+                <div className="hidden md:flex items-center gap-2 min-w-0 overflow-visible">
                     {children}
                 </div>,
                 target
             )}
             {mobileTarget && createPortal(
-                <div className="md:hidden flex items-center gap-1 min-w-0 overflow-hidden">
+                <div className="md:hidden flex items-center gap-1 min-w-0 overflow-visible">
                     {children}
                 </div>,
                 mobileTarget
