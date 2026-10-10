@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase as insforgeClient, stockApi } from '@/lib/supabase';
@@ -56,6 +56,8 @@ export default function StockItemDetailPage() {
 
     const [customers, setCustomers] = useState<any[]>([]);
     const [suppliers, setSuppliers] = useState<any[]>([]);
+    const [customerBillIndex, setCustomerBillIndex] = useState<Record<string, number>>({});
+    const customerTouchStart = useRef<Record<string, number>>({});
 
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyRows, setHistoryRows] = useState<any[]>([]);
@@ -74,6 +76,26 @@ export default function StockItemDetailPage() {
         party: '',
         voucherType: 'All'
     });
+
+    const handleCustomerTouchStart = (customerKey: string, event: React.TouchEvent<HTMLDivElement>) => {
+        customerTouchStart.current[customerKey] = event.touches[0]?.clientX || 0;
+    };
+
+    const handleCustomerTouchEnd = (customerKey: string, totalBills: number, event: React.TouchEvent<HTMLDivElement>) => {
+        const startX = customerTouchStart.current[customerKey] || 0;
+        const endX = event.changedTouches[0]?.clientX || startX;
+        const distance = endX - startX;
+        if (Math.abs(distance) >= 40) moveCustomerBill(customerKey, totalBills, distance < 0 ? 1 : -1);
+        delete customerTouchStart.current[customerKey];
+    };
+
+    const moveCustomerBill = (customerKey: string, totalBills: number, direction: number) => {
+        if (totalBills <= 1) return;
+        setCustomerBillIndex((previous) => {
+            const current = previous[customerKey] || 0;
+            return { ...previous, [customerKey]: (current + direction + totalBills) % totalBills };
+        });
+    };
 
     const openVoucher = (voucher: any) => {
         const targetId = voucher?.id || voucher?.voucher_id;
@@ -205,11 +227,29 @@ export default function StockItemDetailPage() {
                         lastSPrice = rate;
                     }
                     if (!custMap[party]) {
-                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null };
+                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null, billsByVoucher: {} };
                     }
                     custMap[party].qty += outwardQty;
                     custMap[party].val += amount;
                     custMap[party].rates.push(rate);
+                    const billKey = String(row.voucher_id || row.id || `${date || ''}-${row.voucher_number || ''}`);
+                    const existingBill = custMap[party].billsByVoucher[billKey];
+                    if (existingBill) {
+                        existingBill.qty += outwardQty;
+                        existingBill.amount += amount;
+                        existingBill.rate = existingBill.qty ? existingBill.amount / existingBill.qty : rate;
+                    } else {
+                        custMap[party].billsByVoucher[billKey] = {
+                            id: billKey,
+                            voucher_id: row.voucher_id || row.id,
+                            voucher_number: row.voucher_number || row.voucher_id || 'Bill',
+                            voucher_type: row.voucher_type || 'Sales',
+                            date,
+                            qty: outwardQty,
+                            amount,
+                            rate
+                        };
+                    }
                     if (date && (!custMap[party].lastDate || new Date(date).getTime() > new Date(custMap[party].lastDate).getTime())) {
                         custMap[party].lastDate = date;
                     }
@@ -238,7 +278,12 @@ export default function StockItemDetailPage() {
                 avgSalePrice: sQty > 0 ? sVal / sQty : 0,
                 maxGstRate
             });
-            setCustomers(Object.values(custMap).sort((a, b) => b.val - a.val));
+            setCustomers(Object.values(custMap)
+                .map((customer: any) => ({
+                    ...customer,
+                    bills: Object.values(customer.billsByVoucher || {}).sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                }))
+                .sort((a, b) => b.val - a.val));
             setSuppliers(Object.values(suppMap).sort((a, b) => b.val - a.val));
         } catch (error: any) {
             console.error('Error loading item details:', error);
@@ -529,49 +574,90 @@ export default function StockItemDetailPage() {
                             initial={{ opacity: 0, x: 10 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -10 }}
-                            className="space-y-3"
+                            className="space-y-4"
                         >
                             {customers.length === 0 ? (
                                 <EmptyState icon={<Users size={40} />} title="No Buyers" description="This item has not been sold to any customer yet." />
                             ) : (
-                                customers.map((c, i) => (
-                                    <Card
-                                        key={i}
-                                        hover
-                                        padding="none"
-                                        className="overflow-hidden group"
-                                        onClick={() => c.id ? navigate(`/ledgers/${c.id}`) : navigate(`/ledgers?party=${encodeURIComponent(c.name)}`)}
-                                    >
-                                        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-xl bg-[var(--surface-variant)] flex items-center justify-center text-[var(--primary)] font-black text-sm">
-                                                    {c.name.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-sm font-black text-[var(--on-surface)] uppercase group-hover:text-[var(--primary)] transition-colors">{c.name}</h4>
-                                                    <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase mt-0.5">
-                                                        Last Transaction: {c.lastDate && !isNaN(new Date(c.lastDate).getTime()) ? format(new Date(c.lastDate), 'dd MMM yyyy') : '---'}
-                                                    </p>
+                                customers.map((c, i) => {
+                                    const customerKey = String(c.id || c.name || i);
+                                    const bills = c.bills || [];
+                                    const activeIndex = bills.length ? Math.min(customerBillIndex[customerKey] || 0, bills.length - 1) : 0;
+                                    const bill = bills[activeIndex];
+                                    return (
+                                        <Card key={customerKey} padding="none" className="overflow-hidden group border-[var(--border)]">
+                                            <div className="p-4 flex items-center justify-between gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => c.id ? navigate(`/ledgers/${c.id}`) : navigate(`/ledgers?party=${encodeURIComponent(c.name)}`)}
+                                                    className="min-w-0 flex items-center gap-3 text-left"
+                                                >
+                                                    <div className="w-10 h-10 shrink-0 rounded-xl bg-[var(--surface-variant)] flex items-center justify-center text-[var(--primary)] font-black text-sm">
+                                                        {c.name.charAt(0)}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="text-sm font-black text-[var(--on-surface)] uppercase truncate group-hover:text-[var(--primary)] transition-colors">{c.name}</h4>
+                                                        <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase mt-0.5">
+                                                            {bills.length} {bills.length === 1 ? 'Bill' : 'Bills'} · Last {c.lastDate && !isNaN(new Date(c.lastDate).getTime()) ? format(new Date(c.lastDate), 'dd MMM yyyy') : '---'}
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                                <div className="flex items-center gap-2 shrink-0 text-right">
+                                                    <div>
+                                                        <p className="text-base font-black text-[var(--primary)]">{formatCurrency(c.val)}</p>
+                                                        <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">SKU Revenue</p>
+                                                    </div>
+                                                    <ChevronRight size={16} className="text-[var(--text-muted)] hidden sm:block" />
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-6 text-right bg-[var(--surface-variant)] md:bg-transparent p-3 md:p-0 rounded-xl">
-                                                <div className="hidden sm:block">
-                                                    <p className="text-xs font-black text-[var(--on-surface)]">₹{(c.val / (c.qty || 1)).toFixed(2)}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Avg Rate</p>
+
+                                            {bill && (
+                                                <div className="border-t border-[var(--border)] bg-[var(--surface-variant)]/35 p-3">
+                                                    <div className="flex items-center justify-between mb-2 px-1">
+                                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-[1.5px]">Bill-wise SKU Sales</p>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] font-black text-[var(--text-muted)]">{activeIndex + 1}/{bills.length}</span>
+                                                            <button type="button" aria-label="Previous bill" disabled={bills.length <= 1} onClick={() => moveCustomerBill(customerKey, bills.length, -1)} className="w-7 h-7 rounded-lg border border-[var(--border)] text-[var(--on-surface-variant)] hover:text-[var(--primary)] disabled:opacity-30">‹</button>
+                                                            <button type="button" aria-label="Next bill" disabled={bills.length <= 1} onClick={() => moveCustomerBill(customerKey, bills.length, 1)} className="w-7 h-7 rounded-lg border border-[var(--border)] text-[var(--on-surface-variant)] hover:text-[var(--primary)] disabled:opacity-30">›</button>
+                                                        </div>
+                                                    </div>
+                                                    <div
+                                                        className="overflow-hidden rounded-xl touch-pan-y"
+                                                        onTouchStart={(event) => handleCustomerTouchStart(customerKey, event)}
+                                                        onTouchEnd={(event) => handleCustomerTouchEnd(customerKey, bills.length, event)}
+                                                    >
+                                                        <AnimatePresence mode="wait" initial={false}>
+                                                            <motion.button
+                                                                key={bill.id}
+                                                                type="button"
+                                                                initial={{ opacity: 0, x: 28 }}
+                                                                animate={{ opacity: 1, x: 0 }}
+                                                                exit={{ opacity: 0, x: -28 }}
+                                                                transition={{ duration: 0.18 }}
+                                                                onClick={() => openVoucher({ ...bill, id: bill.voucher_id })}
+                                                                className="w-full text-left rounded-xl bg-[var(--surface)] border border-[var(--border)] p-3 hover:border-[var(--primary)] transition-colors"
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-black text-[var(--on-surface)] uppercase truncate">{bill.voucher_number}</p>
+                                                                        <p className="text-[9px] font-bold text-[var(--text-muted)] uppercase mt-1">{bill.voucher_type} · {bill.date && !isNaN(new Date(bill.date).getTime()) ? format(new Date(bill.date), 'dd MMM yyyy') : '---'}</p>
+                                                                    </div>
+                                                                    <p className="text-sm font-black text-emerald-500 shrink-0">+{formatCurrency(bill.amount)}</p>
+                                                                </div>
+                                                                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-[var(--border)]">
+                                                                    <div><p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Qty</p><p className="text-xs font-black text-[var(--on-surface)]">{Number(bill.qty || 0).toFixed(2)} {item.unit}</p></div>
+                                                                    <div><p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Rate</p><p className="text-xs font-black text-[var(--on-surface)]">₹{Number(bill.rate || 0).toFixed(2)}</p></div>
+                                                                    <div className="text-right"><p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Qty × Rate</p><p className="text-xs font-black text-emerald-500">{formatCurrency(Number(bill.qty || 0) * Number(bill.rate || 0))}</p></div>
+                                                                </div>
+                                                            </motion.button>
+                                                        </AnimatePresence>
+                                                    </div>
+                                                    <p className="text-[8px] text-center text-[var(--text-muted)] font-bold uppercase tracking-wider mt-2">Swipe or use arrows to view other bills</p>
                                                 </div>
-                                                <div>
-                                                    <p className="text-xs font-black text-[var(--on-surface)]">{c.qty} {item.unit}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Total Qty</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-black text-[var(--primary)]">{formatCurrency(c.val)}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Revenue</p>
-                                                </div>
-                                                <ChevronRight size={16} className="text-[var(--text-muted)] hidden md:block" />
-                                            </div>
-                                        </div>
-                                    </Card>
-                                ))
+                                            )}
+                                        </Card>
+                                    );
+                                })
                             )}
                         </motion.div>
                     )}
