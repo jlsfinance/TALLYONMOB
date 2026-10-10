@@ -8,9 +8,10 @@ import {
     Phone, MessageCircle, ArrowUpRight, ArrowDownLeft
 } from 'lucide-react';
 import { format, differenceInDays, parseISO } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import { calculateAgeing } from '@/lib/businessInsights';
 
 const formatCurrency = (amount: number) => {
     return '₹' + new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.abs(amount || 0));
@@ -28,10 +29,11 @@ const AGE_BUCKETS = [
 export default function AgeingReportPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [loading, setLoading] = useState(true);
-    const [reportType, setReportType] = useState<'receivable' | 'payable'>('receivable');
+    const [reportType, setReportType] = useState<'receivable' | 'payable'>(searchParams.get('type') === 'payable' ? 'payable' : 'receivable');
     const [parties, setParties] = useState<any[]>([]);
-    const [asOnDate, setAsOnDate] = useState(new Date().toISOString().split('T')[0]);
+    const [asOnDate, setAsOnDate] = useState(searchParams.get('asOn') || new Date().toISOString().split('T')[0]);
 
     useEffect(() => {
         if (selectedCompany?.id) loadAgeingData();
@@ -40,109 +42,20 @@ export default function AgeingReportPage() {
     const loadAgeingData = async () => {
         setLoading(true);
         try {
-            // Fetch all parties (Sundry Debtors for Receivable, Sundry Creditors for Payable)
-            const groupName = reportType === 'receivable' ? 'Sundry Debtors' : 'Sundry Creditors';
-
             const { data: ledgers } = await supabase
                 .from('ledgers')
                 .select('id, name, phone, opening_balance, parent')
-                .eq('company_id', selectedCompany.id)
-                .in('parent', [groupName, groupName.toLowerCase(), groupName.toUpperCase()]);
-
-            // Fetch all vouchers for these parties
-            const partyNames = (ledgers || []).map(l => l.name);
+                .eq('company_id', selectedCompany.id);
 
             const { data: vouchers } = await supabase
                 .from('vouchers')
-                .select('id, party_name, voucher_type, voucher_date, total_amount, voucher_number')
+                .select('id, company_id, party_name, voucher_type, voucher_date, total_amount, grand_total, voucher_number, is_deleted')
                 .eq('company_id', selectedCompany.id)
-                .in('party_name', partyNames)
                 .lte('voucher_date', asOnDate)
+                .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('voucher_date', { ascending: true });
-
-            // Calculate outstanding for each party with age buckets
-            const partyData: any[] = [];
-            const today = new Date(asOnDate);
-
-            for (const ledger of (ledgers || [])) {
-                const partyVouchers = (vouchers || []).filter(v => v.party_name === ledger.name);
-
-                // Calculate running balance for each voucher
-                let openingBal = Number(ledger.opening_balance) || 0;
-                const buckets: Record<string, number> = {
-                    current: 0,
-                    '31-60': 0,
-                    '61-90': 0,
-                    '91-120': 0,
-                    '120+': 0
-                };
-
-                // For Receivable: Sales add, Receipt subtract
-                // For Payable: Purchase add, Payment subtract
-                const unpaidVouchers: any[] = [];
-
-                partyVouchers.forEach(v => {
-                    const amount = Math.abs(Number(v.total_amount) || 0);
-                    const vType = v.voucher_type;
-                    const vDate = new Date(v.voucher_date);
-                    const age = differenceInDays(today, vDate);
-
-                    if (reportType === 'receivable') {
-                        if (vType === 'Sales' || vType === 'Debit Note') {
-                            unpaidVouchers.push({ ...v, amount, age });
-                        } else if (vType === 'Receipt' || vType === 'Credit Note') {
-                            // Knock off oldest vouchers first
-                            let remaining = amount;
-                            for (const uv of unpaidVouchers) {
-                                if (remaining <= 0) break;
-                                const knockOff = Math.min(uv.amount, remaining);
-                                uv.amount -= knockOff;
-                                remaining -= knockOff;
-                            }
-                        }
-                    } else {
-                        if (vType === 'Purchase' || vType === 'Credit Note') {
-                            unpaidVouchers.push({ ...v, amount, age });
-                        } else if (vType === 'Payment' || vType === 'Debit Note') {
-                            let remaining = amount;
-                            for (const uv of unpaidVouchers) {
-                                if (remaining <= 0) break;
-                                const knockOff = Math.min(uv.amount, remaining);
-                                uv.amount -= knockOff;
-                                remaining -= knockOff;
-                            }
-                        }
-                    }
-                });
-
-                // Distribute remaining amounts to age buckets
-                unpaidVouchers.filter(v => v.amount > 0).forEach(v => {
-                    const bucket = AGE_BUCKETS.find(b => v.age >= b.min && v.age <= b.max);
-                    if (bucket) {
-                        buckets[bucket.id] += v.amount;
-                    }
-                });
-
-                // Add opening balance to oldest bucket if positive
-                if (openingBal > 0) {
-                    buckets['120+'] += openingBal;
-                }
-
-                const total = Object.values(buckets).reduce((sum, val) => sum + val, 0);
-
-                if (total > 0) {
-                    partyData.push({
-                        ...ledger,
-                        buckets,
-                        total,
-                        unpaidVouchers: unpaidVouchers.filter(v => v.amount > 0)
-                    });
-                }
-            }
-
-            // Sort by total descending
-            partyData.sort((a, b) => b.total - a.total);
-            setParties(partyData);
+            const result = calculateAgeing(vouchers || [], ledgers || [], asOnDate, reportType);
+            setParties(result.parties);
 
         } catch (error) {
             console.error('Error loading ageing data:', error);

@@ -90,9 +90,11 @@ export default function VouchersPage() {
 
     // ── Additional Filters ──
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-    const [dateRange, setDateRange] = useState('all');
-    const [customStart, setCustomStart] = useState('');
-    const [customEnd, setCustomEnd] = useState('');
+    const initialFrom = searchParams.get('from') || '';
+    const initialTo = searchParams.get('to') || '';
+    const [dateRange, setDateRange] = useState(initialFrom && initialTo ? 'custom' : 'all');
+    const [customStart, setCustomStart] = useState(initialFrom);
+    const [customEnd, setCustomEnd] = useState(initialTo);
     const [minAmount, setMinAmount] = useState('');
     const [maxAmount, setMaxAmount] = useState('');
     const [syncStatus, setSyncStatus] = useState('all');
