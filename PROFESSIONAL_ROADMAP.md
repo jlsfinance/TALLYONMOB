@@ -41,6 +41,6 @@
 
 | Phase | Status | GitHub delivery |
 |---|---|---|
-| Phase 1 | Complete | `feature/professional-roadmap-phases` — `46a7ee7` |
-| Phase 2 | Complete | `feature/professional-roadmap-phases` — Tally Sync Center update |
+| Phase 1 | Complete | `feature/professional-roadmap-phases` — [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7) |
+| Phase 2 | Complete | `feature/professional-roadmap-phases` — [`6a2c33d`](https://github.com/jlsfinance/TALLYONMOB/commit/6a2c33d) |
 | Phase 3 | Planned | Not started |
