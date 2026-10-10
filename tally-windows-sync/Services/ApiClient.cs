@@ -999,8 +999,10 @@ namespace TallySyncApp.Services
                 AddAuthHeader();
                 string companyUuid = ResolveCompanyUuid(companyId);
                 
-                // Fetch from sync_state table
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/rest/v1/sync_state?company_id=eq.{companyUuid}&data_type=eq.{dataType}&select=last_sync_at,last_alter_id,is_initial_sync_complete");
+                // Fetch from the durable cursor schema: module + last_alter_id.
+                // Older code queried data_type/legacy camelCase columns, which always
+                // returned an empty cursor against the current migration.
+                var request = new HttpRequestMessage(HttpMethod.Get, $"{_supabaseUrl}/rest/v1/sync_state?company_id=eq.{companyUuid}&module=eq.{Uri.EscapeDataString(dataType)}&select=last_sync_time,last_alter_id,status&limit=1");
                 var response = await _httpClient.SendAsync(request);
                 
                 if (!response.IsSuccessStatusCode) return null;
@@ -1012,6 +1014,39 @@ namespace TallySyncApp.Services
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Persist the last source AlterID only after the corresponding upload succeeds.
+        /// The unique company_id + module key makes this safe to retry after restart.
+        /// </summary>
+        public async Task<bool> UpdateSyncCursorAsync(string companyId, string module, long lastAlterId, int recordsSynced)
+        {
+            try
+            {
+                if (lastAlterId < 0) return false;
+                var companyUuid = ResolveCompanyUuid(companyId);
+                var payload = new Dictionary<string, object?>
+                {
+                    ["company_id"] = companyUuid,
+                    ["module"] = module,
+                    ["last_alter_id"] = lastAlterId,
+                    ["last_sync_time"] = DateTime.UtcNow.ToString("o"),
+                    ["total_records_synced"] = recordsSynced,
+                    ["status"] = "idle"
+                };
+                var result = await UpsertAsync<object>("sync_state", new[] { payload }, "company_id,module");
+                if (!result.Success)
+                {
+                    SyncLogger.Log($"[WARN] Durable cursor update failed for {module}: {result.Error}");
+                }
+                return result.Success;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"[WARN] Durable cursor update error for {module}: {ex.Message}");
+                return false;
             }
         }
 
@@ -2178,8 +2213,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
-
 
 
 

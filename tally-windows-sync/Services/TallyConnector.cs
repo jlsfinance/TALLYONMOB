@@ -917,54 +917,23 @@ namespace TallySyncApp.Services
             SyncLogger.Log($"Ã°Å¸â€Â Incremental Sync: Checking vouchers with ALTERID > {afterAlterId}");
             
             // ===== PHASE 1: Lightweight Scout Fetch =====
-            // Chunking backward in 1-year intervals to prevent Tally Memory Crash
-            // Tally evaluates Formula on the entire period's vouchers. If unbounded, 500k vouchers = Instant Crash.
-            
-            DateTime currentEnd = DateTime.Today;
-            // Smart limit: First sync = 2 years, Incremental = 3 months
-            bool isFirstSync = afterAlterId == 0;
-            DateTime absoluteStart = isFirstSync 
-                ? DateTime.Today.AddYears(-2)      // First sync: max 2 years back
-                : DateTime.Today.AddMonths(-3);    // Incremental: 3 months (backdated edits rare)
-            
+            // AlterID is the source-of-truth for new/edited vouchers. Do not restrict
+            // this scan by voucher date: a backdated voucher can be edited today.
+            // The scout fetch contains only MASTERID + ALTERID, keeping the response
+            // much smaller for low-end PCs than a full voucher export.
             var allAlterIds = new List<long>();
-            long minScoutAlterId = long.MaxValue;
-            long maxScoutAlterId = 0;
-            
-            int chunksRun = 0;
-            int MAX_CHUNKS = isFirstSync ? 8 : 3;  // Hard cap on API calls
-            
-            // SAFETY CAP: If scout returns too many IDs, Tally's AlterID filter is broken (returns ALL vouchers).
-            // In that case, cap and only fetch the most recent ones.
-            const int INCREMENTAL_SCOUT_CAP = 200;
-            
-            while (currentEnd > absoluteStart && chunksRun < MAX_CHUNKS)
+            var scoutResult = await ScoutModifiedVouchersAsync(companyName, afterAlterId, null, null);
+            if (scoutResult.Count > 0)
             {
-                DateTime currentStart = currentEnd.AddMonths(isFirstSync ? -3 : -1);
-                if (currentStart < absoluteStart) currentStart = absoluteStart;
-                
-                chunksRun++;
-                var scoutResult = await ScoutModifiedVouchersAsync(companyName, afterAlterId, currentStart, currentEnd);
-                
-                if (scoutResult.Count > 0)
-                {
-                    allAlterIds.AddRange(scoutResult.AlterIds);
-                    if (scoutResult.MinAlterId < minScoutAlterId) minScoutAlterId = scoutResult.MinAlterId;
-                    if (scoutResult.MaxAlterId > maxScoutAlterId) maxScoutAlterId = scoutResult.MaxAlterId;
-                }
-                
-                // SAFETY: If we collected too many IDs during incremental sync, stop scanning further back.
-                // Tally's AlterID filter is unreliable - it returns ALL vouchers, not just modified ones.
-                if (!isFirstSync && allAlterIds.Count > INCREMENTAL_SCOUT_CAP)
-                {
-                    SyncLogger.Log($"⚠️ Scout safety cap hit: {allAlterIds.Count} IDs collected (expected < {INCREMENTAL_SCOUT_CAP}). Tally AlterID filter may be broken. Capping to most recent {INCREMENTAL_SCOUT_CAP}.");
-                    allAlterIds = allAlterIds.OrderByDescending(id => id).Take(INCREMENTAL_SCOUT_CAP).ToList();
-                    break;
-                }
-                
-                await Task.Delay(300);
-                currentEnd = currentStart.AddDays(-1);
+                allAlterIds.AddRange(scoutResult.AlterIds);
             }
+            allAlterIds = allAlterIds
+                .Where(id => id > afterAlterId)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
+            SyncLogger.Log($"🔎 AlterID scout found {allAlterIds.Count} voucher(s) after {afterAlterId}; date window is intentionally unrestricted.");
+
             // ===== PHASE 2: Batched Full Fetch with exact IDs =====
             int BATCH_SIZE = GetAdaptiveVoucherBatchSize(100);
             SyncLogger.Log($"📦 Phase 2: Fetching {allAlterIds.Count} vouchers in batches of {BATCH_SIZE}");
@@ -984,6 +953,7 @@ namespace TallySyncApp.Services
                 
                 string rangeLabel = $"Batch {batchNumber}/{totalBatches} (AlterID {batchMinAlterId}-{batchMaxAlterId})";
                 SyncLogger.Log($"📦 Fetching {rangeLabel} ({batchIds.Count} vouchers)");
+                var dateVariables = string.Empty; // exact AlterID filter is sufficient
                 
                 // EXACT match on AlterIDs to prevent evaluating > / < formulae on entire database
                 string orConditions = string.Join(" OR ", batchIds.Select(id => $"($ALTERID = {id})"));
@@ -1001,8 +971,7 @@ namespace TallySyncApp.Services
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
-        <SVFROMDATE>{absoluteStart:yyyyMMdd}</SVFROMDATE>
-        <SVTODATE>{DateTime.Today.AddDays(1):yyyyMMdd}</SVTODATE>
+        {dateVariables}
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1051,10 +1020,14 @@ namespace TallySyncApp.Services
         
         /// <summary>
         /// Phase 1: Lightweight scout - fetch only MASTERID + ALTERID
-        /// Supported by date chunking to prevent out of memory constraint when evaluating AlterID filter on full database
+        /// Date variables are optional; normal incremental mode intentionally scans
+        /// all voucher dates because AlterID tracks backdated edits.
         /// </summary>
-        private async Task<ScoutResult> ScoutModifiedVouchersAsync(string companyName, long afterAlterId, DateTime fromDate, DateTime toDate)
+        private async Task<ScoutResult> ScoutModifiedVouchersAsync(string companyName, long afterAlterId, DateTime? fromDate, DateTime? toDate)
         {
+            var scoutDateVariables = fromDate.HasValue && toDate.HasValue
+                ? $"<SVFROMDATE>{fromDate:yyyyMMdd}</SVFROMDATE><SVTODATE>{toDate:yyyyMMdd}</SVTODATE>"
+                : string.Empty;
             var request = $@"
 <ENVELOPE>
   <HEADER>
@@ -1068,8 +1041,7 @@ namespace TallySyncApp.Services
       <STATICVARIABLES>
 <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
 <SVCURRENTCOMPANY>{XmlEscape(companyName)}</SVCURRENTCOMPANY>
-<SVFROMDATE>{fromDate:yyyyMMdd}</SVFROMDATE>
-<SVTODATE>{toDate:yyyyMMdd}</SVTODATE>
+{scoutDateVariables}
       </STATICVARIABLES>
       <TDL>
 <TDLMESSAGE>

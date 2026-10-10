@@ -1067,6 +1067,14 @@ namespace TallySyncApp.Services
                                     {
                                         vouchersSynced += allVouchers.Count;
                                         AddLog($"Synced {allVouchers.Count} vouchers");
+                                        long uploadedMaxAlterId = 0;
+                                        foreach (var voucher in allVouchers)
+                                        {
+                                            if (long.TryParse(voucher.AlterId, out var alterId))
+                                                uploadedMaxAlterId = Math.Max(uploadedMaxAlterId, alterId);
+                                        }
+                                        if (uploadedMaxAlterId > 0)
+                                            await _apiClient.UpdateSyncCursorAsync(company.Id, "vouchers", uploadedMaxAlterId, allVouchers.Count);
                                     
                                     // 2. Sync voucher line items only when present
                                     var vouchersWithEntries = allVouchers.Where(v => (v.LedgerEntries?.Count ?? 0) > 0 || (v.InventoryEntries?.Count ?? 0) > 0).ToList();
@@ -1312,6 +1320,14 @@ namespace TallySyncApp.Services
                                 {
                                     vouchersSynced += finalVouchers.Count;
                                     AddLog($"Synced {finalVouchers.Count} modified vouchers");
+                                    long uploadedMaxAlterId = 0;
+                                    foreach (var voucher in finalVouchers)
+                                    {
+                                        if (long.TryParse(voucher.AlterId, out var alterId))
+                                            uploadedMaxAlterId = Math.Max(uploadedMaxAlterId, alterId);
+                                    }
+                                    if (uploadedMaxAlterId > 0)
+                                        await _apiClient.UpdateSyncCursorAsync(company.Id, "vouchers", uploadedMaxAlterId, finalVouchers.Count);
                                 
                                 // Sync voucher line items only when present
                                 var finalVouchersWithEntries = finalVouchers.Where(v => (v.LedgerEntries?.Count ?? 0) > 0 || (v.InventoryEntries?.Count ?? 0) > 0).ToList();

@@ -248,15 +248,17 @@ namespace TallySyncApp.Models
     /// </summary>
     public class SyncStateInfo
     {
-        [JsonProperty("isInitialSyncComplete")]
+        [JsonProperty("is_initial_sync_complete")]
         public bool IsInitialSyncComplete { get; set; }
 
-        [JsonProperty("lastSyncAt")]
+        [JsonProperty("last_sync_time")]
         public DateTime? LastSyncAt { get; set; }
 
-        [JsonProperty("lastAlterId")]
+        [JsonProperty("last_alter_id")]
         public string? LastAlterId { get; set; }
+
+        [JsonProperty("status")]
+        public string? Status { get; set; }
     }
 }
-
 
