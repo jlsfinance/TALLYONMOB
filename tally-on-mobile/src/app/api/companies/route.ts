@@ -1,33 +1,7 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
-import { success, error, serverError } from '@/lib/api-response';
-
-interface CompanyWithSyncHistory {
-  id: string;
-  name: string;
-  gstin: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  pincode: string | null;
-  phone: string | null;
-  email: string | null;
-  financialYearStart: Date | null;
-  booksBeginDate: Date | null;
-  tallyGuid: string | null;
-  tallyCompany: string | null;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  _count: { ledgers: number; vouchers: number; stockItems: number };
-  syncHistory: Array<{ completedAt: Date | null }>;
-}
-
-interface CompanyUserWithSyncHistory {
-  role: string;
-  company: CompanyWithSyncHistory;
-}
+import { requireAuth, canAccessCompany } from '@/lib/auth';
+import { success, error, serverError, forbidden } from '@/lib/api-response';
 
 export async function GET() {
   try {
@@ -44,26 +18,16 @@ export async function GET() {
                 stockItems: true,
               },
             },
-            syncHistory: {
-              where: { status: 'COMPLETED', completedAt: { not: null } },
-              orderBy: { completedAt: 'desc' },
-              take: 1,
-              select: { completedAt: true },
-            },
           },
         },
       },
     });
 
-    const companies = (companyUsers as unknown as CompanyUserWithSyncHistory[]).map(({ company, role }) => {
-      const { syncHistory, _count, ...companyData } = company;
-      return {
-        ...companyData,
-        role,
-        counts: _count,
-        lastSyncedAt: syncHistory[0]?.completedAt ?? null,
-      };
-    });
+    const companies = companyUsers.map((cu: any) => ({
+      ...cu.company,
+      role: cu.role,
+      counts: cu.company._count,
+    }));
 
     return success(companies);
   } catch (e: unknown) {
