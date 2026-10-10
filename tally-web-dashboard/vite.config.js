@@ -29,7 +29,8 @@ export default defineConfig(({ mode }) => {
     // If you still need to proxy specific backend endpoints, add them here.
 
     return {
-        base: './',
+        // Rooted chunk URLs remain valid on direct navigations such as /select-mode.
+        base: '/',
         plugins: [
             tallyApiDevPlugin(),
             react(),

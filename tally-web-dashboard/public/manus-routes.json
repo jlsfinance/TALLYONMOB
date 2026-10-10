@@ -1,0 +1,29 @@
+{
+  "routes": [
+    { "path": "/", "title": "Home" },
+    { "path": "/login", "title": "Login" },
+    { "path": "/auth/callback", "title": "Authentication callback" },
+    { "path": "/onboarding", "title": "Onboarding" },
+    { "path": "/admin", "title": "Admin" },
+    { "path": "/admin-panel", "title": "Admin panel" },
+    { "path": "/saas-admin", "title": "SaaS admin" },
+    { "path": "/subscription", "title": "Subscription" },
+    { "path": "/select-mode", "title": "Select mode" },
+    { "path": "/select-company", "title": "Select company" },
+    { "path": "/billing-launch", "title": "Billing" },
+    { "path": "/privacy", "title": "Privacy policy" },
+    { "path": "/terms", "title": "Terms" },
+    { "path": "/refund", "title": "Refund policy" },
+    { "path": "/support", "title": "Support" },
+    { "path": "/security", "title": "Security" },
+    { "path": "/account-deletion", "title": "Account deletion" },
+    { "path": "/trust-center", "title": "Trust center" },
+    { "path": "/contact", "title": "Contact" },
+    { "path": "/about", "title": "About" },
+    { "path": "/pricing", "title": "Pricing" },
+    { "path": "/legal/:slug", "title": "Legal" },
+    { "path": "/portal/view", "title": "Customer portal" },
+    { "path": "/portal/invoice/:id", "title": "Portal invoice" },
+    { "path": "/*", "title": "Dashboard" }
+  ]
+}

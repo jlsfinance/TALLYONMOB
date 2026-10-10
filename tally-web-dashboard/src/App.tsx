@@ -44,6 +44,31 @@ function isRenderableComponent(candidate: unknown): boolean {
     return false;
 }
 
+function isStaleAssetError(error: unknown): boolean {
+    const message = stringifyLazyError(error).toLowerCase();
+    return message.includes('dynamically imported module')
+        || message.includes('failed to fetch')
+        || message.includes('mime type')
+        || message.includes('loading chunk');
+}
+
+async function recoverFromStaleAsset() {
+    if (typeof window === 'undefined') return;
+    const recoveryKey = '__tallyon_stale_asset_recovery__';
+    if (window.sessionStorage.getItem(recoveryKey) === '1') return;
+    window.sessionStorage.setItem(recoveryKey, '1');
+    try {
+        const registrations = await navigator.serviceWorker?.getRegistrations?.() || [];
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+        const cacheKeys = await window.caches?.keys?.() || [];
+        await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+    } catch (recoveryError) {
+        console.warn('Unable to clear stale dashboard assets before reload', recoveryError);
+    } finally {
+        window.location.reload();
+    }
+}
+
 function lazyPage<TModule extends { default: unknown }>(
     pageName: string,
     loader: () => Promise<TModule>
@@ -61,6 +86,9 @@ function lazyPage<TModule extends { default: unknown }>(
 
             return mod as any;
         } catch (error) {
+            if (isStaleAssetError(error)) {
+                await recoverFromStaleAsset();
+            }
             const detail = stringifyLazyError(error);
             throw new Error(`[LazyPage:${pageName}] ${detail}`);
         }
@@ -480,7 +508,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

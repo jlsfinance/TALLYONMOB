@@ -1,12 +1,23 @@
 {
-    "rewrites": [
+    "routes": [
         {
-            "source": "/api/(.*)",
-            "destination": "/api/$1"
+            "src": "/api/(.*)",
+            "dest": "/api/$1"
         },
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
+            "handle": "filesystem"
+        },
+        {
+            "src": "/assets/(.*)",
+            "status": 404,
+            "headers": {
+                "content-type": "text/plain; charset=utf-8",
+                "cache-control": "no-store"
+            }
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
         }
     ]
 }
