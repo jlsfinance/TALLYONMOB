@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
     const rawSupabaseUrl = String(env.VITE_SUPABASE_URL || '').trim()
     const server = {
         port: 3000,
+        allowedHosts: true,
         proxy: {},
     }
 
