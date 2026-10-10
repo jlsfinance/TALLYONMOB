@@ -153,8 +153,12 @@ export default function StockItemDetailPage() {
             const { data: itemData, error: itemError } = await supabase
                 .from('stock_items')
                 .select('*')
+                .eq('company_id', selectedCompany.id)
                 .eq('id', id)
-                .single();
+                .maybeSingle();
+            if (!itemData && !itemError) {
+                throw new Error('Stock item was not found in the selected company');
+            }
             if (itemError) throw itemError;
             setItem(itemData);
             const { data: allHistory, error: allHistoryError } = await stockApi.getHistory(
@@ -179,6 +183,7 @@ export default function StockItemDetailPage() {
             const suppMap: Record<string, any> = {};
             rows.forEach((row: any) => {
                 const type = String(row.voucher_type || '').trim();
+                const normalizedType = type.toLowerCase();
                 const party = String(row.party_name || '').trim() || 'Unknown Party';
                 const date = row.voucher_date || row.created_at || null;
                 const qtyAbs = Math.abs(Number(row.quantity) || 0);
@@ -191,7 +196,7 @@ export default function StockItemDetailPage() {
                 const rate = Math.abs(Number(row.rate) || 0) || (qtyAbs > 0 ? amount / qtyAbs : 0);
                 const gstRate = Number(row.tax_rate ?? row.gst_rate ?? 0) || 0;
                 if (gstRate > maxGstRate) maxGstRate = gstRate;
-                if (SALES_TYPES.has(type)) {
+                if (SALES_TYPES.has(type) || normalizedType === 'sales invoice' || normalizedType === 'sales') {
                     sQty += outwardQty;
                     sVal += amount;
                     if (row.voucher_id) saleVoucherSet.add(String(row.voucher_id));
@@ -200,7 +205,7 @@ export default function StockItemDetailPage() {
                         lastSPrice = rate;
                     }
                     if (!custMap[party]) {
-                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
+                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null };
                     }
                     custMap[party].qty += outwardQty;
                     custMap[party].val += amount;
@@ -208,11 +213,11 @@ export default function StockItemDetailPage() {
                     if (date && (!custMap[party].lastDate || new Date(date).getTime() > new Date(custMap[party].lastDate).getTime())) {
                         custMap[party].lastDate = date;
                     }
-                } else if (PURCHASE_TYPES.has(type)) {
+                } else if (PURCHASE_TYPES.has(type) || normalizedType === 'purchase invoice' || normalizedType === 'purchase') {
                     pQty += inwardQty;
                     pVal += amount;
                     if (!suppMap[party]) {
-                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
+                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null };
                     }
                     suppMap[party].qty += inwardQty;
                     suppMap[party].val += amount;
@@ -235,7 +240,6 @@ export default function StockItemDetailPage() {
             });
             setCustomers(Object.values(custMap).sort((a, b) => b.val - a.val));
             setSuppliers(Object.values(suppMap).sort((a, b) => b.val - a.val));
-            await loadStockHistory(itemData);
         } catch (error: any) {
             console.error('Error loading item details:', error);
         } finally {
