@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const SyncService = require('../services/syncService');
 const CompanyService = require('../services/companyService');
@@ -12,6 +13,7 @@ const { body, validationResult } = require('express-validator');
 const { SYNC_DATA_TYPES } = require('../config/constants');
 const TelegramService = require('../services/telegramService');
 const SyncControlService = require('../services/syncControlService');
+const EntitlementService = require('../services/entitlementService');
 
 // Validation middleware for sync requests
 const validateSync = [
@@ -31,7 +33,7 @@ const validateCompanySync = [
 // must prove an active, non-revoked device before touching sync data.
 router.use(async (req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/device/register' || (req.path.startsWith('/device/') && req.path.endsWith('/revoke'))) return next();
-    const companyId = req.body?.companyId || req.params?.companyId;
+    const companyId = req.body?.companyId || req.body?.company?.id || req.params?.companyId;
     const deviceId = req.body?.deviceId || req.headers['x-device-id'];
     const deviceToken = req.headers['x-device-token'];
     if (!companyId || !deviceId) return res.status(401).json({ success: false, error: 'DEVICE_REQUIRED' });
@@ -41,6 +43,28 @@ router.use(async (req, res, next) => {
     } catch (error) {
         const status = ['DEVICE_REQUIRED', 'DEVICE_NOT_REGISTERED', 'DEVICE_TOKEN_REQUIRED', 'DEVICE_TOKEN_INVALID'].includes(error.code) ? 401 : 403;
         return res.status(status).json({ success: false, error: error.code || 'DEVICE_NOT_AUTHORIZED' });
+    }
+});
+
+// Device proof is necessary but not sufficient: license, trial, company
+// allowance, serial, feature, quota, and version are checked before handlers.
+router.use(async (req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || (req.path.startsWith('/device/') && req.path.endsWith('/revoke'))) return next();
+    const companyId = req.body?.companyId || req.body?.company?.id || req.params?.companyId;
+    const dataType = req.body?.dataType || (req.path.includes('/sync/data/') ? req.params?.dataType : undefined);
+    const recordCount = Array.isArray(req.body?.data) ? req.body.data.length : Array.isArray(req.body?.batches) ? req.body.batches.reduce((sum, batch) => sum + (Array.isArray(batch.data) ? batch.data.length : 0), 0) : 0;
+    try {
+        req.entitlement = await EntitlementService.authorizeSyncWrite({
+            companyId, dataType, recordCount,
+            tallySerial: req.body?.tallySerial || req.headers['x-tally-serial'],
+            appVersion: req.headers['x-sync-app-version'],
+        });
+        res.setHeader('x-correlation-id', req.entitlement.correlationId);
+        return next();
+    } catch (error) {
+        const correlationId = error.correlationId || crypto.randomUUID();
+        res.setHeader('x-correlation-id', correlationId);
+        return res.status(error.retryable ? 503 : 403).json({ success: false, error: error.code || 'ENTITLEMENT_DENIED', retryable: Boolean(error.retryable), correlationId });
     }
 });
 

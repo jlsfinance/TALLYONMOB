@@ -6,6 +6,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const routes = fs.readFileSync(path.join(root, 'src/routes/syncRoutes.js'), 'utf8');
 const service = fs.readFileSync(path.join(root, 'src/services/syncControlService.js'), 'utf8');
+const entitlement = fs.readFileSync(path.join(root, 'src/services/entitlementService.js'), 'utf8');
 const syncService = fs.readFileSync(path.join(root, 'src/services/syncService.js'), 'utf8');
 const migration = fs.readFileSync(path.join(root, 'migrations/20261009_sync_control_plane.sql'), 'utf8');
 const phase3Migration = fs.readFileSync(path.join(root, 'migrations/20261009_incremental_sync_performance.sql'), 'utf8');
@@ -71,6 +72,21 @@ test('Device security never reactivates revoked devices and stores only token ha
   assert.match(migration, /WITH CHECK \(status = 'revoked'\)/);
   assert.match(routes, /x-device-token/);
   assert.match(routes, /GLOBAL_CONTROL_KEY_REQUIRED/);
+});
+
+test('Phase 4 protected writes fail closed on server-side entitlement checks', () => {
+  assert.match(routes, /EntitlementService\.authorizeSyncWrite/);
+  assert.match(routes, /x-tally-serial/);
+  assert.match(routes, /x-sync-app-version/);
+  assert.match(routes, /x-correlation-id/);
+  for (const code of ['COMPANY_NOT_ALLOWED', 'LICENSE_SUSPENDED', 'LICENSE_EXPIRED', 'NO_LICENSE', 'SERIAL_MISMATCH', 'FEATURE_NOT_INCLUDED', 'APP_VERSION_UNSUPPORTED', 'QUOTA_EXCEEDED']) {
+    assert.match(entitlement, new RegExp(code));
+  }
+  assert.match(entitlement, /company_users/);
+  assert.match(entitlement, /user_licenses/);
+  assert.match(entitlement, /trial_history/);
+  assert.match(entitlement, /subscription_plans/);
+  assert.doesNotMatch(entitlement, /features = \[planSlug === 'trial'/);
 });
 
 test('Live endpoint integration is opt-in and clearly reported', async (t) => {
