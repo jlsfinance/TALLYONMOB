@@ -112,6 +112,16 @@ USING (EXISTS (
     SELECT 1 FROM company_users cu WHERE cu.company_id = sync_devices.company_id AND cu.user_id = auth.uid()
 ));
 
+DROP POLICY IF EXISTS "Company admins can revoke sync devices" ON sync_devices;
+CREATE POLICY "Company admins can revoke sync devices" ON sync_devices FOR UPDATE TO authenticated
+USING (EXISTS (
+    SELECT 1 FROM company_users cu
+    WHERE cu.company_id = sync_devices.company_id
+      AND cu.user_id = auth.uid()
+      AND cu.role IN ('owner', 'admin')
+))
+WITH CHECK (status = 'revoked');
+
 DROP POLICY IF EXISTS "Users can view company sync runs" ON sync_runs;
 CREATE POLICY "Users can view company sync runs" ON sync_runs FOR SELECT TO authenticated
 USING (EXISTS (

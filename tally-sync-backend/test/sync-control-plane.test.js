@@ -66,6 +66,9 @@ test('Device security never reactivates revoked devices and stores only token ha
   assert.match(migration, /token_revoked_at TIMESTAMPTZ/);
   assert.match(migration, /enforce_sync_device_revocation/);
   assert.match(migration, /OLD\.status = 'revoked' AND NEW\.status = 'active'/);
+  assert.match(migration, /Company admins can revoke sync devices/);
+  assert.match(migration, /cu\.role IN \('owner', 'admin'\)/);
+  assert.match(migration, /WITH CHECK \(status = 'revoked'\)/);
   assert.match(routes, /x-device-token/);
   assert.match(routes, /GLOBAL_CONTROL_KEY_REQUIRED/);
 });
