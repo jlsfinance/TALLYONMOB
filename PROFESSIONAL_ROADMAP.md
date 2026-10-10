@@ -17,7 +17,7 @@
 
 ## Phase 2 — Tally Sync Center
 
-**Status:** Planned — starts after the Phase 1 push
+**Status:** In progress
 
 - Show one clear connection state: checking, connected, offline, or unavailable, with a useful retry action.
 - Make the port setting safe and persistent so a refresh does not lose the user's configuration.
@@ -41,6 +41,6 @@
 
 | Phase | Status | GitHub delivery |
 |---|---|---|
-| Phase 1 | Complete | `feature/professional-roadmap-phases` — first phase commit |
-| Phase 2 | Planned | Starts after Phase 1 is pushed |
+| Phase 1 | Complete | `feature/professional-roadmap-phases` — `46a7ee7` |
+| Phase 2 | In progress | Sync Center usability and reliability |
 | Phase 3 | Planned | Not started |
