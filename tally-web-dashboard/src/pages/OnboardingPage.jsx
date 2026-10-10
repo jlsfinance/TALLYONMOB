@@ -1,512 +1,270 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import toast from 'react-hot-toast';
 import {
-    Download,
-    Monitor,
-    RefreshCw,
-    CheckCircle,
-    ArrowRight,
-    Smartphone,
-    Cloud,
-    Settings,
-    Zap,
-    FileText,
-    Package,
-    BookOpen,
-    Sparkles,
-    Receipt,
-    ChevronRight,
-    Play
+    ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, ChevronRight,
+    Cloud, Loader2, LogOut, Plus, RefreshCw, Server, Wifi, WifiOff, X
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { companyApi } from '../lib/insforge';
-import { motion, AnimatePresence } from 'framer-motion';
+import { fetchTallyData } from '../services/tallyDataService';
 
-const OnboardingPage = () => {
-    const { user, signOut } = useAuth();
+const STEPS = [
+    { id: 'company', label: 'Company', hint: 'Choose a workspace' },
+    { id: 'connection', label: 'Connection', hint: 'Verify Tally' },
+    { id: 'sync', label: 'First sync', hint: 'Bring in your data' },
+    { id: 'done', label: 'Ready', hint: 'Open dashboard' },
+];
+const STORAGE_PREFIX = 'tallyonmobile:onboarding:v1';
+
+function getStorageKey(userId, companyId = 'new') {
+    return `${STORAGE_PREFIX}:${userId || 'anonymous'}:${companyId || 'new'}`;
+}
+
+function readProgress(userId, companyId) {
+    try {
+        const raw = window.localStorage.getItem(getStorageKey(userId, companyId));
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function writeProgress(userId, companyId, value) {
+    try {
+        window.localStorage.setItem(getStorageKey(userId, companyId), JSON.stringify(value));
+    } catch {
+        // The wizard still works for the current session when storage is unavailable.
+    }
+}
+
+function defaultFromDate() {
+    const now = new Date();
+    return `${now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1}-04-01`;
+}
+
+function isValidPort(value) {
+    const port = Number(value);
+    return Number.isInteger(port) && port >= 1 && port <= 65535 && String(value).trim() !== '';
+}
+
+export default function OnboardingPage() {
+    const { user, companies, selectedCompany, selectCompany, refreshCompanies, setAppMode, signOut } = useAuth();
     const navigate = useNavigate();
-    const [currentStep, setCurrentStep] = useState(1);
-    const [companies, setCompanies] = useState([]);
-    const [isChecking, setIsChecking] = useState(false);
-    const [downloadUrl, setDownloadUrl] = useState('/TallyLinkSetup.exe');
-    const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
+    const [step, setStep] = useState('company');
+    const [companyName, setCompanyName] = useState('');
+    const [showCreate, setShowCreate] = useState(false);
+    const [working, setWorking] = useState(false);
+    const [error, setError] = useState('');
+    const [port, setPort] = useState(() => window.localStorage.getItem('tallyPort') || '9000');
+    const [connection, setConnection] = useState('unchecked');
+    const [connectionMessage, setConnectionMessage] = useState('');
+    const [syncState, setSyncState] = useState('idle');
+    const [syncProgress, setSyncProgress] = useState(null);
+    const [syncSummary, setSyncSummary] = useState(null);
+
+    const activeCompany = selectedCompany;
+    const currentIndex = Math.max(0, STEPS.findIndex(item => item.id === step));
+    const existingCompanies = useMemo(() => companies || [], [companies]);
 
     useEffect(() => {
-        checkForCompanies();
-        loadSettings();
+        setAppMode?.('tally');
+        void refreshCompanies?.();
     }, []);
 
-    const loadSettings = async () => {
-        try {
-            const { data } = await companyApi.getAppSettings?.() || {};
-            if (data?.windows_app_download_url) {
-                setDownloadUrl(data.windows_app_download_url);
-            }
-        } catch (error) {
-            console.error('Error loading settings:', error);
-        }
-    };
-
-    const checkForCompanies = async () => {
-        setIsChecking(true);
-        try {
-            const { data } = await companyApi.list();
-            const companyList = data || [];
-            setCompanies(companyList);
-
-            // If user has companies, redirect to select-company after a short delay
-            if (companyList.length > 0) {
-                if (currentStep === 3) {
-                    setTimeout(() => navigate('/'), 2000);
-                } else {
-                    // Start of the flow: if user already has companies, they shouldn't be here
-                    // unless they explicitly clicked 'Download' to add another.
-                    // But if they just landed here after login, redirect them to select-company.
-                    toast.success('You already have companies synced!');
-                    setTimeout(() => navigate('/select-company'), 1500);
-                }
-            }
-        } catch (error) {
-            console.error('Error checking companies:', error);
-        } finally {
-            setIsChecking(false);
-        }
-    };
-
-    // Auto-download when reaching step 1 if no companies
     useEffect(() => {
-        if (currentStep === 1 && !hasAutoDownloaded && companies.length === 0 && !isChecking) {
-            // Boom experience: Download starts when you land on step 1
-            handleDownload();
-            setHasAutoDownloaded(true);
+        const progress = readProgress(user?.id, activeCompany?.id);
+        if (progress.completed) {
+            setStep('done');
+            setSyncSummary(progress.syncSummary || null);
+        } else if (activeCompany?.id && progress.step) {
+            setStep(progress.step);
+            setConnection(progress.connection || 'unchecked');
+        } else if (activeCompany?.id) {
+            setStep('connection');
         }
-    }, [currentStep, companies, isChecking]);
+    }, [user?.id, activeCompany?.id]);
 
-    const handleDownload = () => {
-        window.open(downloadUrl, '_blank');
-        setTimeout(() => setCurrentStep(2), 500);
+    useEffect(() => {
+        if (!user?.id) return;
+        writeProgress(user.id, activeCompany?.id, {
+            ...readProgress(user.id, activeCompany?.id), step, connection,
+            syncSummary,
+        });
+    }, [user?.id, activeCompany?.id, step, connection, syncSummary]);
+
+    const chooseCompany = (company) => {
+        selectCompany(company);
+        setError('');
+        setConnection('unchecked');
+        setSyncState('idle');
+        setSyncSummary(null);
+        setStep('connection');
     };
 
-    const handleCheckStatus = () => {
-        checkForCompanies();
+    const createCompany = async (event) => {
+        event.preventDefault();
+        const normalized = companyName.trim();
+        if (!normalized) {
+            setError('Enter your company name to continue.');
+            return;
+        }
+        const duplicate = existingCompanies.find(company => company.name?.trim().toLowerCase() === normalized.toLowerCase());
+        if (duplicate) {
+            chooseCompany(duplicate);
+            toast.success('That company already exists, so we selected it for you.');
+            return;
+        }
+        setWorking(true);
+        setError('');
+        try {
+            const result = await companyApi.create({ name: normalized, ownerId: user?.id });
+            if (result.error || !result.data) throw result.error || new Error('Could not create the company.');
+            selectCompany(result.data);
+            await refreshCompanies?.();
+            setCompanyName('');
+            setShowCreate(false);
+            setStep('connection');
+            toast.success('Company created. Now verify your Tally connection.');
+        } catch (createError) {
+            setError(createError?.message || 'Could not create the company. Please try again.');
+        } finally {
+            setWorking(false);
+        }
     };
 
-    const handleGoToDashboard = () => {
-        navigate('/');
+    const verifyConnection = async () => {
+        if (!isValidPort(port)) {
+            setConnection('offline');
+            setConnectionMessage('Enter a valid port between 1 and 65535.');
+            return false;
+        }
+        setWorking(true);
+        setConnection('checking');
+        setConnectionMessage('Checking the local Tally HTTP/XML service…');
+        try {
+            window.localStorage.setItem('tallyPort', String(port));
+            const response = await fetch(`http://localhost:${Number(port)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/xml' },
+                body: '<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>',
+                signal: AbortSignal.timeout(3000),
+            });
+            if (!response.ok) throw new Error(`Tally responded with HTTP ${response.status}.`);
+            setConnection('connected');
+            setConnectionMessage(`Tally is responding on port ${port}.`);
+            setStep('sync');
+            return true;
+        } catch (connectionError) {
+            setConnection('offline');
+            setConnectionMessage(connectionError?.message || `Tally did not respond on port ${port}. Open Tally and retry.`);
+            return false;
+        } finally {
+            setWorking(false);
+        }
     };
 
-    const handleGoToBilling = () => {
-        navigate('/create-invoice');
+    const runFirstSync = async () => {
+        if (!activeCompany?.id || connection !== 'connected') return;
+        setWorking(true);
+        setSyncState('syncing');
+        setSyncProgress('Reading your first company snapshot from Tally…');
+        setError('');
+        try {
+            const result = await fetchTallyData({
+                fromDate: defaultFromDate(),
+                toDate: new Date().toISOString().slice(0, 10),
+                companyId: activeCompany.id,
+                companyName: activeCompany.name,
+            });
+            if (!result.data) throw new Error(result.error || 'First sync did not return data.');
+            const summary = {
+                ledgers: result.data.ledgers?.length || 0,
+                vouchers: result.data.vouchers?.length || 0,
+                fromCache: result.fromCache,
+            };
+            setSyncSummary(summary);
+            setSyncState('complete');
+            setStep('done');
+            writeProgress(user.id, activeCompany.id, { step: 'done', completed: true, connection: 'connected', syncSummary: summary });
+            toast.success('First sync complete. Your workspace is ready.');
+        } catch (syncError) {
+            setSyncState('error');
+            setError(syncError?.message || 'First sync failed. Check Tally and retry.');
+        } finally {
+            setWorking(false);
+            setSyncProgress(null);
+        }
+    };
+
+    const skip = () => {
+        writeProgress(user?.id, activeCompany?.id, { step, skipped: true, connection });
+        if (activeCompany?.id) navigate('/dashboard');
+        else if (existingCompanies.length) navigate('/select-company');
+        else navigate('/select-mode');
+    };
+
+    const goBack = () => {
+        if (step === 'connection') setStep('company');
+        if (step === 'sync') setStep('connection');
+        if (step === 'done') setStep('sync');
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-cyan-950 to-slate-950 relative overflow-hidden">
-            {/* Animated Background */}
-            <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" />
-                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-violet-500/20 rounded-full blur-3xl animate-pulse delay-700" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-cyan-500/10 to-violet-500/10 rounded-full blur-3xl" />
-            </div>
-
-            {/* Grid Pattern */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px]" />
-
-            {/* Content */}
-            <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-6">
-                {/* Top Right Buttons */}
-                <div className="absolute top-6 right-6 flex items-center gap-3">
-                    <motion.button
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        onClick={() => navigate('/select-company')}
-                        className="px-6 py-3 bg-blue-500/20 backdrop-blur-sm border border-blue-500/30 rounded-2xl font-bold text-blue-400 hover:bg-blue-500/30 transition-all"
-                    >
-                        Select Company
-                    </motion.button>
-                    <motion.button
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 }}
-                        onClick={() => navigate('/')}
-                        className="px-6 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl font-bold text-white hover:bg-white/20 transition-all"
-                    >
-                        Skip for now →
-                    </motion.button>
-                    <motion.button
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 }}
-                        onClick={async () => {
-                            await signOut();
-                            navigate('/login');
-                        }}
-                        className="px-6 py-3 bg-red-500/10 backdrop-blur-sm border border-red-500/20 rounded-2xl font-bold text-red-400 hover:bg-red-500/20 transition-all"
-                    >
-                        Logout
-                    </motion.button>
-                </div>
-
-                {/* Logo & Header */}
-                <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-center mb-12"
-                >
-                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-cyan-500 to-blue-600 mb-6 shadow-2xl shadow-cyan-500/50">
-                        <Sparkles className="w-10 h-10 text-white" />
+        <main className="min-h-screen bg-[var(--background)] px-4 py-5 text-[var(--on-background)] sm:px-6 sm:py-8">
+            <div className="mx-auto w-full max-w-4xl">
+                <header className="mb-7 flex items-start justify-between gap-4">
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--primary)]">TallyOnMobile setup</p>
+                        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Get your workspace ready</h1>
+                        <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">A short guided setup. You can skip now and resume later without creating duplicates.</p>
                     </div>
-                    <h1 className="text-5xl md:text-6xl font-black text-white mb-4 tracking-tight">
-                        Welcome to <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">SYNCORA TallyOnMobile</span>
-                    </h1>
-                    <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-                        Sync your Tally data to the cloud and access it anywhere, anytime
-                    </p>
-                </motion.div>
-
-                {/* Progress Steps */}
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="flex items-center gap-4 mb-12"
-                >
-                    {[1, 2, 3].map((step) => (
-                        <React.Fragment key={step}>
-                            <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl transition-all duration-500 ${currentStep >= step
-                                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/50'
-                                : 'bg-white/5 backdrop-blur-sm border border-white/10'
-                                }`}>
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition-all ${currentStep >= step ? 'bg-white text-cyan-600' : 'bg-white/10 text-gray-400'
-                                    }`}>
-                                    {currentStep > step ? <CheckCircle className="w-5 h-5" /> : step}
-                                </div>
-                                <span className={`font-bold text-sm ${currentStep >= step ? 'text-white' : 'text-gray-500'
-                                    }`}>
-                                    {step === 1 && 'Download'}
-                                    {step === 2 && 'Connect'}
-                                    {step === 3 && 'Success'}
-                                </span>
-                            </div>
-                            {step < 3 && (
-                                <ChevronRight className={`w-5 h-5 transition-colors ${currentStep > step ? 'text-blue-400' : 'text-gray-600'
-                                    }`} />
-                            )}
-                        </React.Fragment>
-                    ))}
-                </motion.div>
-
-                {/* Main Content Card */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="w-full max-w-5xl"
-                >
-                    <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-12 shadow-2xl">
-                        <AnimatePresence mode="wait">
-                            {/* Step 1: Download */}
-                            {currentStep === 1 && (
-                                <motion.div
-                                    key="step1"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    className="space-y-8"
-                                >
-                                    <div className="text-center mb-8">
-                                        <h2 className="text-3xl font-black text-white mb-3">Download Windows Sync App</h2>
-                                        <p className="text-gray-400">Install our desktop app to connect your Tally data</p>
-
-                                        {/* Show if user already has companies */}
-                                        {companies.length > 0 && (
-                                            <div className="mt-6 bg-green-500/10 border border-green-500/20 rounded-2xl p-4 max-w-md mx-auto">
-                                                <p className="text-green-400 font-bold mb-2">
-                                                    ✓ You already have {companies.length} {companies.length === 1 ? 'company' : 'companies'} synced
-                                                </p>
-                                                <button
-                                                    onClick={() => navigate('/')}
-                                                    className="px-6 py-2 bg-green-500 text-white rounded-xl font-bold hover:bg-green-600 transition-all"
-                                                >
-                                                    Go to Dashboard →
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Flow Diagram */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                                        {[
-                                            { icon: Smartphone, label: 'Mobile', color: 'from-green-500 to-emerald-600' },
-                                            { icon: Cloud, label: 'Cloud Sync', color: 'from-blue-500 to-cyan-600' },
-                                            { icon: Monitor, label: 'Windows App', color: 'from-purple-500 to-pink-600' },
-                                            { icon: FileText, label: 'Tally Data', color: 'from-orange-500 to-red-600' }
-                                        ].map((item, idx) => (
-                                            <motion.div
-                                                key={idx}
-                                                initial={{ opacity: 0, scale: 0.8 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                transition={{ delay: 0.4 + idx * 0.1 }}
-                                                className="relative group"
-                                            >
-                                                <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 text-center hover:bg-white/10 transition-all duration-300 hover:scale-105">
-                                                    <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br ${item.color} flex items-center justify-center shadow-lg`}>
-                                                        <item.icon className="w-8 h-8 text-white" />
-                                                    </div>
-                                                    <p className="text-sm font-bold text-white">{item.label}</p>
-                                                </div>
-                                                {idx < 3 && (
-                                                    <div className="hidden md:block absolute top-1/2 -right-2 transform translate-x-full -translate-y-1/2 z-10">
-                                                        <ChevronRight className="w-6 h-6 text-blue-400" />
-                                                    </div>
-                                                )}
-                                            </motion.div>
-                                        ))}
-                                    </div>
-
-                                    {/* Download Button */}
-                                    <div className="flex flex-col items-center gap-4">
-                                        <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={handleDownload}
-                                            className="group relative px-12 py-5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl font-black text-lg text-white shadow-2xl shadow-blue-500/50 hover:shadow-blue-500/70 transition-all overflow-hidden"
-                                        >
-                                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            <div className="relative flex items-center gap-3">
-                                                <Download className="w-6 h-6" />
-                                                <span>Download for Windows</span>
-                                                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                                            </div>
-                                        </motion.button>
-
-                                        {/* System Requirements */}
-                                        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 max-w-md">
-                                            <p className="text-xs text-gray-400 text-center">
-                                                <span className="font-bold text-white">System Requirements:</span> Windows 10/11, Tally Prime/ERP 9
-                                            </p>
-                                        </div>
-
-                                        {/* Select Company Button - Only if has companies */}
-                                        {companies.length > 0 && (
-                                            <motion.button
-                                                whileHover={{ scale: 1.05 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                onClick={() => navigate('/select-company')}
-                                                className="px-10 py-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl font-black text-white shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 transition-all"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <CheckCircle className="w-5 h-5" />
-                                                    <span>Select Existing Company</span>
-                                                    <ArrowRight className="w-5 h-5" />
-                                                </div>
-                                            </motion.button>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* Step 2: Connect */}
-                            {currentStep === 2 && (
-                                <motion.div
-                                    key="step2"
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    className="space-y-8"
-                                >
-                                    <div className="text-center mb-8">
-                                        <h2 className="text-3xl font-black text-white mb-3">Setup Instructions</h2>
-                                        <p className="text-gray-400">Follow these simple steps to connect your Tally</p>
-                                    </div>
-
-                                    {/* Instruction Cards */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {[
-                                            {
-                                                step: '1',
-                                                icon: Monitor,
-                                                title: 'Open Tally',
-                                                desc: 'Launch Tally Prime or ERP 9 on your computer',
-                                                color: 'from-blue-500 to-cyan-600'
-                                            },
-                                            {
-                                                step: '2',
-                                                icon: Settings,
-                                                title: 'Enable ODBC',
-                                                desc: 'Go to Gateway → F12 → Advanced Config → Enable ODBC Server',
-                                                color: 'from-purple-500 to-pink-600'
-                                            },
-                                            {
-                                                step: '3',
-                                                icon: Cloud,
-                                                title: 'Sign In with Google',
-                                                desc: 'Open the Windows app and sign in with your Google account',
-                                                color: 'from-green-500 to-emerald-600'
-                                            },
-                                            {
-                                                step: '4',
-                                                icon: Zap,
-                                                title: 'Start Sync',
-                                                desc: 'Select your company and click "Start Sync" to begin',
-                                                color: 'from-orange-500 to-red-600'
-                                            }
-                                        ].map((item, idx) => (
-                                            <motion.div
-                                                key={idx}
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: 0.1 * idx }}
-                                                className="group relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 hover:border-white/20 transition-all duration-300 hover:scale-105"
-                                            >
-                                                <div className="flex items-start gap-4">
-                                                    <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${item.color} flex items-center justify-center shadow-lg flex-shrink-0`}>
-                                                        <item.icon className="w-7 h-7 text-white" />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <span className="text-xs font-black text-gray-400">STEP {item.step}</span>
-                                                        </div>
-                                                        <h3 className="text-lg font-black text-white mb-2">{item.title}</h3>
-                                                        <p className="text-sm text-gray-400">{item.desc}</p>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                    </div>
-
-                                    {/* Check Status Button */}
-                                    <div className="flex flex-col items-center gap-4 pt-6">
-                                        <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={handleCheckStatus}
-                                            disabled={isChecking}
-                                            className="px-10 py-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl font-black text-white shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                {isChecking ? (
-                                                    <>
-                                                        <RefreshCw className="w-5 h-5 animate-spin" />
-                                                        <span>Checking...</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckCircle className="w-5 h-5" />
-                                                        <span>Check Sync Status</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </motion.button>
-
-                                        {companies.length === 0 && !isChecking && (
-                                            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 max-w-md">
-                                                <p className="text-sm text-amber-400 text-center">
-                                                    <span className="font-bold">Waiting for first sync...</span> Make sure the Windows app is running
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {/* Step 3: Success */}
-                            {currentStep === 3 && (
-                                <motion.div
-                                    key="step3"
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.9 }}
-                                    className="text-center space-y-8"
-                                >
-                                    {/* Success Animation */}
-                                    <motion.div
-                                        initial={{ scale: 0 }}
-                                        animate={{ scale: 1 }}
-                                        transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                                        className="inline-flex items-center justify-center w-32 h-32 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 shadow-2xl shadow-green-500/50 mb-6"
-                                    >
-                                        <CheckCircle className="w-16 h-16 text-white" />
-                                    </motion.div>
-
-                                    <div>
-                                        <h2 className="text-4xl font-black text-white mb-4">
-                                            🎉 Setup Complete!
-                                        </h2>
-                                        <p className="text-xl text-gray-400 mb-8">
-                                            Your Tally data is now synced to the cloud
-                                        </p>
-                                    </div>
-
-                                    {/* Feature Highlights */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                                        {[
-                                            { icon: FileText, label: 'View Reports', desc: 'Access all your reports' },
-                                            { icon: Package, label: 'Manage Stock', desc: 'Track inventory live' },
-                                            { icon: Receipt, label: 'Create Bills', desc: 'Generate invoices' }
-                                        ].map((item, idx) => (
-                                            <motion.div
-                                                key={idx}
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: 0.2 + idx * 0.1 }}
-                                                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all"
-                                            >
-                                                <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                                                    <item.icon className="w-6 h-6 text-white" />
-                                                </div>
-                                                <h3 className="font-bold text-white mb-1">{item.label}</h3>
-                                                <p className="text-sm text-gray-400">{item.desc}</p>
-                                            </motion.div>
-                                        ))}
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                                        <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={handleGoToBilling}
-                                            className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl font-black text-white shadow-2xl shadow-purple-500/50 hover:shadow-purple-500/70 transition-all"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <Receipt className="w-5 h-5" />
-                                                <span>Create Invoice</span>
-                                            </div>
-                                        </motion.button>
-
-                                        <motion.button
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
-                                            onClick={handleGoToDashboard}
-                                            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl font-black text-white shadow-2xl shadow-blue-500/50 hover:shadow-blue-500/70 transition-all"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <Play className="w-5 h-5" />
-                                                <span>Go to Dashboard</span>
-                                            </div>
-                                        </motion.button>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                    <div className="flex shrink-0 items-center gap-2">
+                        <button type="button" onClick={skip} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm font-semibold text-[var(--on-surface)] hover:bg-[var(--surface-hover)]">Skip for now</button>
+                        <button type="button" onClick={async () => { await signOut(); navigate('/login'); }} aria-label="Sign out" className="rounded-xl p-2 text-[var(--text-muted)] hover:bg-[var(--surface-hover)]"><LogOut size={19} /></button>
                     </div>
-                </motion.div>
+                </header>
 
-                {/* Footer */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="mt-12 text-center"
-                >
-                    <p className="text-sm text-gray-500">
-                        Need help? <a href="#" className="text-blue-400 hover:text-blue-300 font-semibold">Contact Support</a>
-                    </p>
-                </motion.div>
+                <nav aria-label="Onboarding progress" className="mb-7 grid grid-cols-4 gap-2">
+                    {STEPS.map((item, index) => {
+                        const active = index === currentIndex;
+                        const complete = index < currentIndex;
+                        return <div key={item.id} className={`rounded-xl border p-2.5 sm:p-3 ${active ? 'border-[var(--primary)] bg-[var(--primary-container)]' : 'border-[var(--border)] bg-[var(--surface)]'}`}>
+                            <div className="flex items-center gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${complete ? 'bg-[var(--success)] text-white' : active ? 'bg-[var(--primary)] text-[var(--on-primary)]' : 'bg-[var(--surface-container)] text-[var(--text-muted)]'}`}>{complete ? <Check size={14} /> : index + 1}</span><span className="hidden text-xs font-bold sm:inline">{item.label}</span></div>
+                            <p className="mt-1 hidden text-[11px] text-[var(--text-muted)] sm:block">{item.hint}</p>
+                        </div>;
+                    })}
+                </nav>
+
+                <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow-md)] sm:p-8" aria-live="polite">
+                    {error && <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300"><X size={17} className="mt-0.5 shrink-0" />{error}</div>}
+
+                    {step === 'company' && <div>
+                        <div className="mb-6 flex items-start gap-3"><span className="rounded-xl bg-[var(--primary-container)] p-3 text-[var(--primary)]"><Building2 size={22} /></span><div><h2 className="text-xl font-bold">Choose or create a company</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Use an existing workspace, or create one once. We check names before creating anything new.</p></div></div>
+                        {existingCompanies.length > 0 && <div className="grid gap-3 sm:grid-cols-2">{existingCompanies.map(company => <button key={company.id} type="button" onClick={() => chooseCompany(company)} className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-4 text-left transition hover:border-[var(--primary)] hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary-container)] font-bold text-[var(--primary)]">{company.name?.charAt(0)?.toUpperCase() || 'C'}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{company.name}</span><span className="text-xs text-[var(--text-muted)]">{company.last_sync_at ? 'Previously synced' : 'Not synced yet'}</span></span><ChevronRight size={18} className="text-[var(--text-muted)]" /></button>)}</div>}
+                        <button type="button" onClick={() => setShowCreate(value => !value)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-[var(--primary)] px-4 py-3 text-sm font-semibold text-[var(--primary)] hover:bg-[var(--primary-container)]"><Plus size={18} /> Create a new company</button>
+                        {showCreate && <form onSubmit={createCompany} className="mt-5 rounded-xl bg-[var(--surface-container)] p-4"><label htmlFor="company-name" className="text-sm font-semibold">Company name</label><input id="company-name" autoFocus value={companyName} onChange={event => setCompanyName(event.target.value)} placeholder="e.g. Sharma Traders" className="input mt-2" /><button type="submit" disabled={working} className="btn btn-primary mt-3 w-full sm:w-auto">{working ? <Loader2 size={17} className="animate-spin" /> : <Plus size={17} />} Create company</button></form>}
+                        {existingCompanies.length === 0 && !showCreate && <p className="mt-5 text-sm text-[var(--text-muted)]">No workspace yet? Create one above to begin your first sync.</p>}
+                    </div>}
+
+                    {step === 'connection' && <div>
+                        <div className="mb-6 flex items-start gap-3"><span className={`rounded-xl p-3 ${connection === 'connected' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-[var(--primary-container)] text-[var(--primary)]'}`}>{connection === 'connected' ? <Wifi size={22} /> : <Server size={22} />}</span><div><h2 className="text-xl font-bold">Connect Tally on this device</h2><p className="mt-1 text-sm text-[var(--text-muted)]">Open TallyPrime/Tally ERP, enable its HTTP/XML interface, then verify the local connection.</p></div></div>
+                        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-container)] p-4"><p className="text-sm font-semibold">Selected company</p><p className="mt-1 text-lg font-bold">{activeCompany?.name || 'No company selected'}</p><label htmlFor="tally-port" className="mt-5 block text-sm font-semibold">Tally port</label><input id="tally-port" inputMode="numeric" value={port} onChange={event => { setPort(event.target.value); setConnection('unchecked'); }} className="input mt-2 max-w-xs" />{connectionMessage && <p className={`mt-3 flex items-center gap-2 text-sm ${connection === 'connected' ? 'text-emerald-600 dark:text-emerald-400' : connection === 'offline' ? 'text-rose-600 dark:text-rose-400' : 'text-[var(--text-muted)]'}`}>{connection === 'connected' ? <CheckCircle2 size={16} /> : connection === 'offline' ? <WifiOff size={16} /> : <RefreshCw size={16} className={connection === 'checking' ? 'animate-spin' : ''} />}{connectionMessage}</p>}</div>
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button type="button" onClick={goBack} className="btn btn-secondary">Back</button><button type="button" onClick={verifyConnection} disabled={working || !activeCompany} className="btn btn-primary">{working ? <Loader2 size={17} className="animate-spin" /> : <Wifi size={17} />} Verify connection <ArrowRight size={17} /></button></div>
+                    </div>}
+
+                    {step === 'sync' && <div>
+                        <div className="mb-6 flex items-start gap-3"><span className="rounded-xl bg-[var(--primary-container)] p-3 text-[var(--primary)]"><Cloud size={22} /></span><div><h2 className="text-xl font-bold">Run your first sync</h2><p className="mt-1 text-sm text-[var(--text-muted)]">This is explicit and safe: nothing is exported or changed in Tally until you choose an action elsewhere.</p></div></div>
+                        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4"><p className="font-semibold text-emerald-700 dark:text-emerald-300">Tally connection verified</p><p className="mt-1 text-sm text-[var(--text-muted)]">{activeCompany?.name} · port {port}</p></div>
+                        {syncProgress && <p className="mt-5 flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 size={17} className="animate-spin" />{syncProgress}</p>}
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><button type="button" onClick={goBack} disabled={working} className="btn btn-secondary">Back</button><button type="button" onClick={runFirstSync} disabled={working || syncState === 'complete'} className="btn btn-primary">{working ? <Loader2 size={17} className="animate-spin" /> : <Cloud size={17} />} Start first sync</button></div>
+                    </div>}
+
+                    {step === 'done' && <div className="text-center"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><CheckCircle2 size={34} /></span><h2 className="mt-5 text-2xl font-bold">Your workspace is ready</h2><p className="mx-auto mt-2 max-w-lg text-sm text-[var(--text-muted)]">{activeCompany?.name || 'Your company'} is selected. You can revisit this setup anytime from the company selector.</p>{syncSummary && <div className="mx-auto mt-5 grid max-w-sm grid-cols-2 gap-3 text-left"><div className="rounded-xl bg-[var(--surface-container)] p-3"><p className="text-xs text-[var(--text-muted)]">Ledgers</p><p className="mt-1 text-lg font-bold">{syncSummary.ledgers}</p></div><div className="rounded-xl bg-[var(--surface-container)] p-3"><p className="text-xs text-[var(--text-muted)]">Vouchers</p><p className="mt-1 text-lg font-bold">{syncSummary.vouchers}</p></div></div>}<div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><button type="button" onClick={() => navigate('/dashboard')} className="btn btn-primary">Open dashboard <ArrowRight size={17} /></button><button type="button" onClick={() => navigate('/tally-sync')} className="btn btn-secondary">Open Tally Sync</button></div></div>}
+                </section>
+
+                <footer className="mt-5 flex items-center justify-between text-xs text-[var(--text-muted)]"><span>Signed in as {user?.email || 'your account'}</span><span>Step {currentIndex + 1} of {STEPS.length}</span></footer>
             </div>
-        </div>
+        </main>
     );
-};
-
-export default OnboardingPage;
-
+}

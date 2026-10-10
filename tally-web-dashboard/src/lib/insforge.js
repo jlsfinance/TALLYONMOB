@@ -222,6 +222,19 @@ const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = n
 const companyApi = {
   list: async () => db.from("companies").select("*").order("name"),
   getById: async (id) => db.from("companies").select("*").eq("id", id).single(),
+  create: async ({ name, ownerId }) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) return { data: null, error: new Error("Company name is required") };
+    if (!ownerId) return { data: null, error: new Error("Signed-in user is required") };
+    return db.from("companies").insert({
+      name: normalizedName,
+      formal_name: normalizedName,
+      owner_id: ownerId,
+      status: "pending",
+      is_active: true,
+      is_deleted: false,
+    }).select("*").single();
+  },
   getAppSettings: async () => {
     const { data, error } = await db.from("app_settings").select("*");
     if (error) return { data: null, error };
@@ -251,28 +264,18 @@ const companyApi = {
   },
   deleteCompanyData: async (companyId) => {
     if (!companyId) return { success: false, error: "Company id is required" };
-    const companyTables = [
-      "voucher_stock_entries", "voucher_ledger_entries", "pending_transactions",
-      "sync_history", "sync_state", "sync_queue", "deleted_records", "approval_items",
-      "payment_links", "email_queue", "reminder_logs", "tds_tcs_entries", "sales_items",
-      "bill_allocations", "bank_allocations", "device_tokens", "notifications",
-      "notification_logs", "notification_templates", "notification_settings", "user_devices",
-      "user_activity_logs", "user_activity_stats", "user_sessions", "recurring_invoices",
-      "sales_visits", "team_members", "company_users", "company_members", "company_settings",
-      "app_settings", "employees", "payslips", "petty_cash_entries", "bank_ledger_mappings",
-      "budgets", "eway_bills", "gst_automation_runs", "ledgers", "stock_items", "vouchers",
-      "sales", "purchases", "ledger_groups", "cost_centres", "stock_groups", "stock_categories",
-      "voucher_types"
-    ];
     try {
-      for (const table of companyTables) {
-        const { error } = await db.from(table).delete().eq("company_id", companyId);
-        if (error && !["42P01", "PGRST204", "PGRST205"].includes(error.code)) {
-          return { success: false, error: `Could not delete ${table}: ${error.message}` };
-        }
+      const { data: deleted, error } = await db.rpc("delete_company_data", { p_company_id: companyId });
+      if (error) {
+        const missingFunction = error.code === "PGRST202" || error.code === "42883";
+        return {
+          success: false,
+          error: missingFunction
+            ? "Company deletion is not enabled on the database yet. Apply the latest Supabase migration and try again."
+            : error.message,
+        };
       }
-      const { error } = await db.from("companies").delete().eq("id", companyId);
-      if (error) return { success: false, error: error.message };
+      if (deleted !== true) return { success: false, error: "Company was not deleted. Check that you own this company and have delete permission." };
       return { success: true, error: null };
     } catch (error) {
       return { success: false, error: error?.message || "Failed to delete company data" };
@@ -441,13 +444,25 @@ const stockApi = {
         item = itemByNameRes.data || null;
         if (item?.name) itemName = item.name;
       }
-      const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
-      if (entriesRes.error) return entriesRes;
-      let entryRows = entriesRes.data || [];
+      const fetchEntries = async (column, operator = "eq") => {
+        const value = operator === "ilike" ? `%${String(itemName).trim()}%` : itemName;
+        const query = db.from("voucher_stock_entries").select("*").eq("company_id", companyId);
+        return operator === "ilike" ? query.ilike(column, value).limit(limit) : query.eq(column, value).limit(limit);
+      };
+      // Older sync batches used stock_item_name while newer/legacy imports may use item_name.
+      // Try each supported field independently so one missing optional column does not block the tab.
+      const entryAttempts = [];
+      for (const column of ["stock_item_name", "item_name"]) {
+        const result = await fetchEntries(column);
+        if (!result.error && Array.isArray(result.data)) entryAttempts.push(...result.data);
+      }
+      let entryRows = [...new Map(entryAttempts.map((entry) => [entry.id || `${entry.voucher_id}:${entry.stock_item_name || entry.item_name}:${entry.quantity}`, entry])).values()];
       if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
-        if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
+        for (const column of ["stock_item_name", "item_name"]) {
+          const result = await fetchEntries(column, "ilike");
+          if (!result.error && Array.isArray(result.data)) entryRows.push(...result.data);
+        }
+        entryRows = [...new Map(entryRows.map((entry) => [entry.id || `${entry.voucher_id}:${entry.stock_item_name || entry.item_name}:${entry.quantity}`, entry])).values()];
       }
       const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
       if (voucherIds.length === 0) {
@@ -463,7 +478,8 @@ const stockApi = {
         const quantity = Math.abs(Number(entry.quantity) || 0);
         const amount = Math.abs(Number(entry.amount) || 0);
         const rate = Math.abs(Number(entry.rate) || 0);
-        const isInward = entry.is_inward === true || ["Purchase", "Purchase Invoice"].includes(voucher.voucher_type);
+        const voucherType = String(voucher.voucher_type || '').trim();
+        const isInward = entry.is_inward === true || ["purchase", "purchase invoice"].includes(voucherType.toLowerCase());
         return { id: entry.id, voucher_id: voucher.id || entry.voucher_id, voucher_type: voucher.voucher_type, voucher_date: voucher.voucher_date, voucher_number: voucher.voucher_number, party_name: voucher.party_name, quantity, rate, amount, tax_rate: Number(entry.tax_rate ?? entry.gst_rate ?? 0), qty_in: isInward ? quantity : 0, qty_out: isInward ? 0 : quantity, qty_delta: isInward ? quantity : -quantity, raw: entry };
       }).filter(Boolean).sort(compareByVoucherDate);
       let runningQty = Number(item?.opening_stock || item?.opening_balance || 0);

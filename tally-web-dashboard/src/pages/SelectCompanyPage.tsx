@@ -2,16 +2,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowLeft, Building2, Clock, MoreVertical, Plus, Search, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, Building2, Clock, MoreVertical, Moon, Plus, Search, ShieldCheck, Sun, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function SelectCompanyPage() {
-    const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
+    const { user, companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
+    const { isDark, toggleTheme } = useTheme();
     const { navigate } = useSafeNavigate();
     const [query, setQuery] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
     const [openMenu, setOpenMenu] = useState<string | null>(null);
+    const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(null);
 
     useEffect(() => {
         refreshCompanies();
@@ -30,15 +33,19 @@ export default function SelectCompanyPage() {
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         setOpenMenu(null);
+        if (deletingCompanyId) return;
         if (!confirm('Are you sure you want to delete this company? This action cannot be undone.')) return;
 
+        setDeletingCompanyId(id);
         try {
             const { success, error } = await deleteCompany(id);
             if (success) toast.success('Company deleted');
             else toast.error(error || 'Failed to delete');
         } catch (err) {
             console.error(err);
-            toast.error('Failed to delete company');
+            toast.error(err instanceof Error ? err.message : 'Failed to delete company');
+        } finally {
+            setDeletingCompanyId(null);
         }
     };
 
@@ -49,9 +56,9 @@ export default function SelectCompanyPage() {
     };
 
     const getSyncStatus = (company: any) => {
-        if (!company.last_sync_at) return { label: 'Not synced yet', tone: 'text-gray-500' };
+        if (!company.last_sync_at) return { label: 'Not synced yet', tone: 'text-[var(--text-muted)]' };
         const syncedAt = new Date(company.last_sync_at);
-        if (Number.isNaN(syncedAt.getTime())) return { label: 'Sync status unavailable', tone: 'text-gray-500' };
+        if (Number.isNaN(syncedAt.getTime())) return { label: 'Sync status unavailable', tone: 'text-[var(--text-muted)]' };
         const age = Math.max(0, Date.now() - syncedAt.getTime());
         if (age < 24 * 60 * 60 * 1000) {
             if (age < 60 * 1000) return { label: 'Synced just now', tone: 'text-green-600' };
@@ -70,8 +77,8 @@ export default function SelectCompanyPage() {
 
     return (
         <div className="min-h-screen bg-[var(--background)] text-[var(--on-background)] transition-colors duration-300">
-            <div className="mx-auto w-full max-w-4xl px-4 pb-10 pt-5 sm:px-6">
-                <header className="mb-5 flex min-h-12 items-center gap-3">
+            <div className="mx-auto w-full max-w-5xl px-4 pb-10 pt-5 sm:px-6 sm:pt-8">
+                <header className="mb-7 flex min-h-12 items-center gap-3">
                     <button
                         type="button"
                         onClick={handleBack}
@@ -100,7 +107,10 @@ export default function SelectCompanyPage() {
                             </button>
                         </div>
                     ) : (
-                        <h1 className="min-w-0 flex-1 text-xl font-bold text-[var(--on-surface)]">Select Company</h1>
+                        <div className="min-w-0 flex-1">
+                            <h1 className="text-xl font-bold tracking-tight text-[var(--on-surface)] sm:text-2xl">Select a company</h1>
+                            <p className="mt-0.5 hidden text-sm text-[var(--text-muted)] sm:block">Choose which business workspace you want to open.</p>
+                        </div>
                     )}
                     {!searchOpen && (
                         <button
@@ -112,14 +122,23 @@ export default function SelectCompanyPage() {
                             <Search size={28} strokeWidth={2} />
                         </button>
                     )}
+                    <button type="button" onClick={toggleTheme} aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`} title={`Switch to ${isDark ? 'light' : 'dark'} mode`} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2.5 text-[var(--on-surface-variant)] shadow-[var(--shadow-xs)] transition hover:bg-[var(--surface-hover)]">
+                        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                    </button>
                 </header>
 
-                <div className="-mx-4 flex min-h-[52px] items-center justify-between border-y border-[var(--border)] bg-[var(--surface-container)] px-6 sm:-mx-6">
-                    <h2 className="text-lg font-semibold text-[var(--on-surface)]">My Companies</h2>
+                <div className="mb-4 flex min-h-[68px] items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 shadow-[var(--shadow-xs)] sm:px-5">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-container)] text-[var(--primary)]"><Building2 size={19} /></span>
+                        <div className="min-w-0">
+                            <h2 className="text-sm font-bold text-[var(--on-surface)] sm:text-base">My companies</h2>
+                            <p className="text-xs text-[var(--text-muted)]">{companies.length} {companies.length === 1 ? 'workspace' : 'workspaces'}</p>
+                        </div>
+                    </div>
                     <button
                         type="button"
                         onClick={() => navigate('/onboarding')}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--on-surface-variant)] transition-colors hover:bg-[var(--surface-hover)]"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[var(--primary)] px-3 py-2.5 text-xs font-semibold text-[var(--on-primary)] shadow-[var(--shadow-xs)] transition hover:brightness-110 sm:px-4 sm:text-sm"
                     >
                         <Plus size={17} />
                         Add Company
@@ -128,42 +147,47 @@ export default function SelectCompanyPage() {
 
                 {visibleCompanies.length === 0 ? (
                     <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-5 text-center">
-                        <Building2 size={42} className="text-gray-400" />
+                        <Building2 size={42} className="text-[var(--text-muted)]" />
                         <p className="text-sm text-[var(--on-surface-variant)]">
                             {companies.length === 0 ? 'No companies found. Add a company or sync data from Tally.' : 'No companies match your search.'}
                         </p>
                         {companies.length > 0 && <button type="button" onClick={() => setQuery('')} className="text-sm font-medium text-[var(--primary)]">Clear search</button>}
                     </div>
                 ) : (
-                    <ul className="divide-y divide-[var(--border)]">
+                    <ul className="grid gap-3 sm:grid-cols-2">
                         {visibleCompanies.map((company: any) => {
                             const sync = getSyncStatus(company);
                             return (
-                                <li key={company.id} className="relative">
-                                    <div className="flex min-h-[94px] items-center">
+                                <li key={company.id} className="relative rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xs)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--primary)]/30 hover:shadow-[var(--shadow-md)]">
+                                    <div className="flex min-h-[112px] items-center rounded-2xl">
                                         <button
                                             type="button"
                                             onClick={() => handleSelect(company)}
-                                            className="flex min-w-0 flex-1 flex-col items-start justify-center px-3 py-4 text-left transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]"
+                                            className="flex min-w-0 flex-1 items-center gap-3 self-stretch px-4 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]"
                                         >
-                                            <span className="max-w-full break-words text-lg font-normal leading-7 text-[var(--on-surface)]">{company.name}</span>
-                                            <span className={`mt-0.5 text-sm italic ${sync.tone}`}>{sync.label}</span>
+                                            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white ${getInitialColor(company.name)}`}>{company.name?.trim()?.charAt(0)?.toUpperCase() || 'C'}</span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block break-words text-sm font-semibold leading-5 text-[var(--on-surface)] sm:text-base">{company.name}</span>
+                                                <span className={`mt-1 flex items-center gap-1.5 text-xs ${sync.tone}`}><Clock size={12} />{sync.label}</span>
+                                            </span>
+                                            <span className={`hidden rounded-lg px-2.5 py-1.5 text-xs font-semibold sm:inline-flex ${deletingCompanyId === company.id ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'bg-[var(--primary-container)] text-[var(--primary)]'}`}>{deletingCompanyId === company.id ? 'Deleting…' : 'Open'}</span>
                                         </button>
                                         <button
                                             type="button"
                                             aria-label={`Options for ${company.name}`}
                                             aria-expanded={openMenu === company.id}
+                                            disabled={deletingCompanyId === company.id}
                                             onClick={() => setOpenMenu((current) => current === company.id ? null : company.id)}
-                                            className="mr-2 rounded-full p-2 text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]"
+                                            className="mr-3 rounded-xl p-2.5 text-[var(--on-surface-variant)] transition-colors hover:bg-[var(--surface-container)] hover:text-[var(--on-surface)]"
                                         >
                                             <MoreVertical size={25} />
                                         </button>
                                     </div>
                                     {openMenu === company.id && (
-                                        <div className="absolute right-2 top-14 z-10 min-w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-lg">
+                                        <div className="absolute right-3 top-14 z-10 min-w-48 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] py-1 shadow-xl">
                                             <button type="button" onClick={() => handleSelect(company)} className="w-full px-4 py-2.5 text-left text-sm text-[var(--on-surface)] hover:bg-[var(--surface-hover)]">Open company</button>
                                             <button type="button" onClick={() => { selectCompany(company); setOpenMenu(null); navigate('/device-management'); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-[var(--on-surface)] hover:bg-[var(--surface-hover)]"><ShieldCheck size={15} /> Sync health</button>
-                                            <button type="button" onClick={(event) => handleDelete(event, company.id)} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-500/10">Delete company</button>
+                                            {company.owner_id === user?.id && <button type="button" disabled={!!deletingCompanyId} onClick={(event) => handleDelete(event, company.id)} className="w-full px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-500/10 disabled:cursor-wait disabled:opacity-60">{deletingCompanyId === company.id ? 'Deleting…' : 'Delete company'}</button>}
                                         </div>
                                     )}
                                 </li>

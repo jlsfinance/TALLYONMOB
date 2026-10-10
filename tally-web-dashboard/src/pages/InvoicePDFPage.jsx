@@ -804,8 +804,100 @@ export default function InvoicePDFPage() {
         }
     };
 
+    const normalizedVoucherType = String(invoice?.voucher_type || '').trim().toLowerCase();
+    const isReceiptVoucher = normalizedVoucherType === 'receipt';
+    const isPaymentVoucher = normalizedVoucherType === 'payment';
+    const isAccountingVoucher = isReceiptVoucher || isPaymentVoucher;
+    const accountingTitle = isReceiptVoucher ? 'RECEIPT' : isPaymentVoucher ? 'PAYMENT VOUCHER' : '';
+    const accountingPartyLabel = isReceiptVoucher ? 'RECEIVED FROM' : 'PAID TO';
+    const accountingVerb = isReceiptVoucher ? 'Received' : 'Paid';
+
     // Generate Professional PDF using jsPDF
     const generatePDF = async (action = 'download') => {
+        if (isAccountingVoucher) {
+            setGeneratingPdf(true);
+            try {
+                const doc = new jsPDF('p', 'mm', 'a4');
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 18;
+                const contentWidth = pageWidth - margin * 2;
+                const amount = absNumber(invoice?.net_amount || invoice?.total_amount || invoice?.grand_total);
+                let y = 20;
+
+                doc.setDrawColor(15, 23, 42);
+                doc.setLineWidth(0.5);
+                doc.rect(margin, y, contentWidth, pageHeight - 40);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(18);
+                doc.text(companyInfo?.name || 'Company Name', margin + 8, y + 12);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                const companyMeta = [companyInfo?.address, companyInfo?.gstin ? `GSTIN: ${companyInfo.gstin}` : '', companyInfo?.phone ? `Phone: ${companyInfo.phone}` : ''].filter(Boolean).join('  |  ');
+                if (companyMeta) doc.text(doc.splitTextToSize(companyMeta, contentWidth * 0.58), margin + 8, y + 18);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(16);
+                doc.text(accountingTitle, pageWidth - margin - 8, y + 12, { align: 'right' });
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.text(`No: ${invoice?.invoice_number || '-'}`, pageWidth - margin - 8, y + 18, { align: 'right' });
+                doc.text(`Date: ${formatDate(invoice?.invoice_date)}`, pageWidth - margin - 8, y + 23, { align: 'right' });
+                y += 35;
+                doc.line(margin, y, pageWidth - margin, y);
+                y += 15;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.text(accountingPartyLabel, margin + 8, y);
+                doc.setFontSize(15);
+                doc.text(invoice?.party_ledger_name || 'Cash', margin + 8, y + 9);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                if (invoice?.party_address) doc.text(doc.splitTextToSize(invoice.party_address, contentWidth - 16), margin + 8, y + 16);
+                y += 38;
+                doc.setFillColor(248, 250, 252);
+                doc.roundedRect(margin + 8, y, contentWidth - 16, 30, 3, 3, 'F');
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.text(`${accountingVerb} Amount`, margin + 16, y + 10);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(22);
+                doc.text(`INR ${formatNumber(amount)}`, pageWidth - margin - 16, y + 14, { align: 'right' });
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(10);
+                doc.text(numberToWords(amount), margin + 16, y + 24);
+                y += 45;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.text(`Payment mode: ${invoice?.payment_mode || 'Cash / Bank'}`, margin + 8, y);
+                if (invoice?.party_gstin) doc.text(`GSTIN: ${invoice.party_gstin}`, pageWidth - margin - 8, y, { align: 'right' });
+                y += 12;
+                if (invoice?.narration) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Narration / Notes', margin + 8, y);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(doc.splitTextToSize(invoice.narration, contentWidth - 16), margin + 8, y + 7);
+                }
+                const signatureY = pageHeight - 48;
+                doc.line(pageWidth - margin - 70, signatureY, pageWidth - margin - 8, signatureY);
+                doc.setFontSize(9);
+                doc.text('Authorized Signatory', pageWidth - margin - 8, signatureY + 6, { align: 'right' });
+                const filename = `${isReceiptVoucher ? 'Receipt' : 'Payment'}_${invoice?.invoice_number || 'Voucher'}.pdf`;
+                if (action === 'share') {
+                    const blob = doc.output('blob');
+                    const file = new File([blob], filename, { type: 'application/pdf' });
+                    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                        await navigator.share({ files: [file], title: filename, text: `${accountingTitle} from ${companyInfo?.name || ''}` });
+                    } else {
+                        doc.save(filename);
+                    }
+                } else {
+                    doc.save(filename);
+                }
+            } finally {
+                setGeneratingPdf(false);
+            }
+            return;
+        }
         const doc = new jsPDF('p', 'mm', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -1356,7 +1448,7 @@ export default function InvoicePDFPage() {
                                     {/* Mobile: All-in-one compact row */}
                                     <div className="md:hidden">
                                         <div className="flex items-center justify-between p-1 border-b border-black bg-gray-50">
-                                            <span className="text-[8px] font-bold uppercase">Tax Invoice</span>
+                                            <span className="text-[8px] font-bold uppercase">{isAccountingVoucher ? accountingTitle : invoice?.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}</span>
                                             <span className="text-[7px] font-bold">#{invoice.invoice_number}</span>
                                             <span className="text-[7px]">{formatDate(invoice.invoice_date)}</span>
                                         </div>
@@ -1405,7 +1497,7 @@ export default function InvoicePDFPage() {
                                         <div className="flex flex-col">
                                             <div className="p-2 border-b-2 border-black text-center bg-gray-50">
                                                 <h2 className="text-base font-bold uppercase tracking-wider">
-                                                    {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
+                                                    {isAccountingVoucher ? accountingTitle : invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
                                                 </h2>
                                             </div>
                                             <div className="flex-grow text-xs">
@@ -1465,7 +1557,7 @@ export default function InvoicePDFPage() {
                                     {/* Mobile: Compact single-line buyer */}
                                     <div className="md:hidden flex items-center justify-between p-1 bg-gray-100 border-b border-black">
                                         <div className="min-w-0 flex-1">
-                                            <span className="text-[7px] font-bold uppercase">Buyer: </span>
+                                            <span className="text-[7px] font-bold uppercase">{isAccountingVoucher ? `${accountingPartyLabel}: ` : 'Buyer: '}</span>
                                             <span className="text-[8px] font-black uppercase truncate">{invoice.party_ledger_name}</span>
                                             {invoice.party_gstin && <span className="text-[7px] ml-1">GSTIN: {invoice.party_gstin}</span>}
                                         </div>
@@ -1475,7 +1567,7 @@ export default function InvoicePDFPage() {
                                     </div>
                                     {/* Desktop: Full buyer details */}
                                     <div className="hidden md:block">
-                                        <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold border-b border-black uppercase">Buyer (Bill to)</div>
+                                        <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold border-b border-black uppercase">{isAccountingVoucher ? accountingPartyLabel : 'Buyer (Bill to)'}</div>
                                         <div className="p-2 text-[10px]">
                                             <p
                                                 className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
@@ -1494,7 +1586,28 @@ export default function InvoicePDFPage() {
                                     </div>
                                 </div>
 
-                                {/* Items Table - Tally Style: only show columns that have data */}
+                                {isAccountingVoucher ? (
+                                    <div className="flex-grow border-b-2 border-black p-3 md:p-6">
+                                        <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 md:p-6">
+                                            <div className="flex items-center justify-between gap-4 border-b border-slate-300 pb-4">
+                                                <div>
+                                                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{accountingVerb} Amount</p>
+                                                    <p className="mt-1 text-xl md:text-3xl font-black tabular-nums">INR {formatNumber(invoice.net_amount)}</p>
+                                                </div>
+                                                <div className="text-right text-[9px] md:text-[10px]">
+                                                    <p className="font-semibold text-slate-500">Payment Mode</p>
+                                                    <p className="mt-1 font-bold">{invoice.payment_mode || 'Cash / Bank'}</p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4 pt-4 text-[9px] md:text-[10px]">
+                                                <div><p className="font-semibold text-slate-500">Voucher No.</p><p className="mt-1 font-bold">{invoice.invoice_number || '-'}</p></div>
+                                                <div className="text-right"><p className="font-semibold text-slate-500">Date</p><p className="mt-1 font-bold">{formatDate(invoice.invoice_date)}</p></div>
+                                            </div>
+                                            {invoice.narration && <div className="mt-5 border-t border-slate-300 pt-4 text-[9px] md:text-[10px]"><p className="font-semibold text-slate-500">Narration / Notes</p><p className="mt-1 whitespace-pre-wrap">{invoice.narration}</p></div>}
+                                        </div>
+                                    </div>
+                                ) : (
+                                /* Items Table - Tally Style: only show columns that have data */
                                 <div className="flex-grow flex flex-col border-b-2 border-black relative overflow-x-auto">
                                     {/* Table Header */}
                                     <div className={`flex text-[7px] md:text-[10px] font-bold border-b border-black text-center bg-gray-50 ${isMobile ? 'overflow-x-auto' : 'min-w-[400px]'}`}>
@@ -1553,16 +1666,18 @@ export default function InvoicePDFPage() {
                                         <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
                                     </div>
                                 </div>
+                                )}
 
                                 {/* Bottom Section: Words & Tax Breakdown */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-black text-[8px] md:text-[10px]">
+                                <div className={`grid grid-cols-1 ${isAccountingVoucher ? '' : 'md:grid-cols-2'} border-b-2 border-black text-[8px] md:text-[10px]`}>
                                     {/* Left: Amount in Words */}
-                                    <div className="p-1 md:p-2 border-r-0 md:border-r-2 border-black">
+                                    <div className={`p-1 md:p-2 ${isAccountingVoucher ? '' : 'border-r-0 md:border-r-2'} border-black`}>
                                         <p className="text-[7px] md:text-[10px] text-gray-500 mb-0.5">Amount Chargeable (in words)</p>
                                         <p className="font-bold italic text-[9px] md:text-sm">{numberToWords(invoice.net_amount)}</p>
                                     </div>
 
                                     {/* Right: Tax Amounts */}
+                                    {!isAccountingVoucher && (
                                     <div className="text-right">
                                         {invoice.cgst_amount > 0 && (
                                             <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
@@ -1593,9 +1708,10 @@ export default function InvoicePDFPage() {
                                             <span>INR {formatNumber(invoice.net_amount)}</span>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                                 {/* HSN/SAC Summary (If GST) */}
-                                {columnVisibility.hasGST && (
+                                {!isAccountingVoucher && columnVisibility.hasGST && (
                                     <div className="border-b-2 border-black p-1 md:p-2">
                                         <p className="text-[7px] md:text-[10px] font-bold underline mb-1">Tax Analysis:</p>
                                         <div className="overflow-x-auto">
@@ -1752,4 +1868,3 @@ export default function InvoicePDFPage() {
         </div>
     );
 }
-
