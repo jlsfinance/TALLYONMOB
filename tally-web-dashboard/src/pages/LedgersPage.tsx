@@ -384,7 +384,7 @@ export default function LedgersPage() {
                                     const transactions = partyTransactions[ledger.name] || [];
 
                                     return (
-                                        <div style={style} className="pr-[1px] pb-1.5">
+                                        <div style={style} className="pr-[1px] pb-1">
                                             <motion.div
                                                 key={ledger.id || index}
                                                 initial={{ opacity: 0, y: 6 }}
@@ -408,7 +408,7 @@ export default function LedgersPage() {
                                                 {/* Transaction slider */}
                                                 {transactions.length > 0 && (
                                                     <div className="border-t border-zinc-800/30 -mt-0.5">
-                                                        <div className="flex gap-1.5 overflow-x-auto px-[2px] py-2 scrollbar-hide">
+                                                        <div className="flex gap-1 overflow-x-auto overscroll-x-contain px-1 py-1 scrollbar-hide touch-pan-x snap-x snap-mandatory">
                                                             {transactions.slice(0, 8).map((v: any, j: number) => {
                                                                 const amt = Math.abs(Number(v.grand_total || v.total_amount || 0));
                                                                 const isCredit = v.voucher_type === 'Sales' || v.voucher_type === 'Receipt';
@@ -420,13 +420,13 @@ export default function LedgersPage() {
                                                                             const tid = v.id || v.voucher_id;
                                                                             if (tid) navigate(`/invoice/${encodeURIComponent(tid)}`);
                                                                         }}
-                                                                        className="flex-shrink-0 bg-zinc-800/40 rounded-lg px-2 py-1.5 min-w-[120px] cursor-pointer hover:bg-zinc-800/60 transition-colors"
+                                                                        className="flex-shrink-0 snap-start w-[104px] bg-zinc-800/40 rounded-md px-1.5 py-1 cursor-pointer hover:bg-zinc-800/60 active:bg-zinc-800/80 transition-colors"
                                                                     >
-                                                                        <div className="flex items-center justify-between mb-0.5">
-                                                                            <span className="text-[8px] font-bold text-zinc-600 uppercase">{v.voucher_type}</span>
-                                                                            <span className="text-[7px] text-zinc-600">{v.voucher_date ? new Date(v.voucher_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
+                                                                        <div className="flex items-center justify-between gap-1 mb-0.5 leading-none">
+                                                                            <span className="min-w-0 truncate text-[7px] font-bold text-zinc-500 uppercase">{v.voucher_type || 'Voucher'}</span>
+                                                                            <span className="shrink-0 text-[7px] text-zinc-600">{v.voucher_date ? new Date(v.voucher_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-'}</span>
                                                                         </div>
-                                                                        <p className={`text-[10px] font-black tabular-nums ${isCredit ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                        <p className={`text-[9px] font-black leading-none tabular-nums ${isCredit ? 'text-emerald-400' : 'text-red-400'}`}>
                                                                             {isCredit ? '+' : '-'}₹{amt.toLocaleString('en-IN')}
                                                                         </p>
                                                                     </div>
