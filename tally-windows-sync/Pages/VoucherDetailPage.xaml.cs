@@ -5,14 +5,19 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using TallySyncApp.Models;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
+using WpfPoint = System.Windows.Point;
+using WpfUserControl = System.Windows.Controls.UserControl;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
 
 namespace TallySyncApp.Pages
 {
-    public partial class VoucherDetailPage : UserControl
+    public partial class VoucherDetailPage : WpfUserControl
     {
         private List<Voucher> _vouchers = new();
         private int _currentIndex = 0;
-        private Point _dragStart;
+        private WpfPoint _dragStart;
         private bool _isDragging = false;
 
         public event Action? OnBack;
@@ -181,7 +186,7 @@ namespace TallySyncApp.Pages
             }
         }
 
-        private void OnMouseMove(object sender, MouseEventArgs e)
+        private void OnMouseMove(object sender, WpfMouseEventArgs e)
         {
         }
 

@@ -6,10 +6,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using TallySyncApp.Models;
+using WpfUserControl = System.Windows.Controls.UserControl;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
 
 namespace TallySyncApp.Pages
 {
-    public partial class PartyDetailPage : UserControl
+    public partial class PartyDetailPage : WpfUserControl
     {
         private List<Voucher> _allVouchers = new();
         private string _partyName = "";

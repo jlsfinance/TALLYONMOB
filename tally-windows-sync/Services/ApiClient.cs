@@ -1146,7 +1146,8 @@ namespace TallySyncApp.Services
                 {
                     SyncLogger.Log($"DEBUG UPLOAD COMPANY: {json}");
                 }
-                return await UpsertViaRawSqlAsync<T>(table, normalizedPayload, onConflict);
+                var rows = new JArray(ToObjectRows(normalizedPayload));
+                return await UpsertChunkWithFallbackAsync<T>(table, rows, onConflict);
             }
             catch (Exception ex)
             {
@@ -1156,6 +1157,65 @@ namespace TallySyncApp.Services
                     Error = $"Request failed: {ex.Message}"
                 };
             }
+        }
+
+        /// <summary>
+        /// Phase 10 fallback: retry a failed chunk as 50-row chunks, then 25-row
+        /// chunks, and finally quarantine/log individual rows. Every HTTP request
+        /// remains bounded by MaxRowsPerRequest (100).
+        /// </summary>
+        private async Task<ApiResponse<T>> UpsertChunkWithFallbackAsync<T>(
+            string table, JArray rows, string onConflict)
+        {
+            var directResult = await UpsertViaRawSqlAsync<T>(table, rows, onConflict);
+            if (directResult.Success || rows.Count == 0)
+                return directResult;
+
+            var fallbackSize = rows.Count > 50 ? 50 : 25;
+            if (rows.Count <= 25)
+            {
+                var individual = await UpsertRowsIndividuallyAsync(table, rows, onConflict);
+                return new ApiResponse<T>
+                {
+                    Success = individual.Success,
+                    Message = individual.Message,
+                    Error = individual.Error
+                };
+            }
+
+            var failures = new List<string>();
+            var recovered = 0;
+            for (var offset = 0; offset < rows.Count; offset += fallbackSize)
+            {
+                var childRows = new JArray(rows.Skip(offset).Take(fallbackSize));
+                var childResult = await UpsertChunkWithFallbackAsync<T>(table, childRows, onConflict);
+                if (childResult.Success)
+                {
+                    recovered += childRows.Count;
+                }
+                else
+                {
+                    failures.Add(childResult.Error ?? $"rows {offset + 1}-{offset + childRows.Count} failed");
+                }
+            }
+
+            if (failures.Count == 0)
+            {
+                SyncLogger.Log($"[INFO] Retry fallback recovered '{table}' in {fallbackSize}-row chunks ({recovered}/{rows.Count}).");
+                return new ApiResponse<T>
+                {
+                    Success = true,
+                    Message = $"Recovered {recovered} rows for '{table}' using {fallbackSize}-row fallback chunks."
+                };
+            }
+
+            var preview = string.Join(" | ", failures.Take(3));
+            SyncLogger.Log($"[WARN] [QUARANTINE] '{table}' fallback incomplete. Recovered={recovered}, failed={rows.Count - recovered}. {preview}");
+            return new ApiResponse<T>
+            {
+                Success = false,
+                Error = $"[QUARANTINE] '{table}' failed after 100→50→25→row fallback: {preview}"
+            };
         }
 
         private async Task<ApiResponse<T>> UpsertViaRawSqlAsync<T>(string table, object normalizedPayload, string onConflict)
@@ -2326,7 +2386,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
 
 
 

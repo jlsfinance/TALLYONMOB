@@ -7,6 +7,8 @@ using System.Windows.Media;
 using TallySyncApp.Services;
 using TallySyncApp.Models;
 using TallySyncApp.Pages;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
 
 namespace TallySyncApp
 {

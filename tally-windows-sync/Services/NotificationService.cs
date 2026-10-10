@@ -1,5 +1,3 @@
-extern alias WinForms;
-
 using System;
 using System.Media;
 using System.Windows;
@@ -20,7 +18,7 @@ namespace TallySyncApp.Services
             var title = "Sync Completed";
             var message = $"{companyName}: {recordsProcessed} records synced in {duration.TotalSeconds:F0}s";
 
-            _trayService?.ShowNotification(title, message, WinForms::System.Windows.Forms.ToolTipIcon.Info);
+            _trayService?.ShowNotification(title, message, System.Windows.Forms.ToolTipIcon.Info);
 
             try { SystemSounds.Asterisk.Play(); } catch { }
         }
@@ -30,7 +28,7 @@ namespace TallySyncApp.Services
             var title = "Sync Failed";
             var message = $"{companyName}: {error}";
 
-            _trayService?.ShowNotification(title, message, WinForms::System.Windows.Forms.ToolTipIcon.Error);
+            _trayService?.ShowNotification(title, message, System.Windows.Forms.ToolTipIcon.Error);
 
             try { SystemSounds.Exclamation.Play(); } catch { }
         }
@@ -52,7 +50,7 @@ namespace TallySyncApp.Services
                 _trayService?.ShowNotification(
                     "Sync Overdue",
                     $"Last sync was {hoursSinceLastSync / 24} day(s) ago. Please sync your data.",
-                    WinForms::System.Windows.Forms.ToolTipIcon.Warning);
+                    System.Windows.Forms.ToolTipIcon.Warning);
             }
         }
     }
