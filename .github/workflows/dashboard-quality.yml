@@ -11,6 +11,12 @@ on:
       - 'tally-web-dashboard/**'
       - '.github/workflows/dashboard-quality.yml'
   workflow_dispatch:
+    inputs:
+      build_pc:
+        description: 'Build the Windows PC app artifact'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -42,3 +48,31 @@ jobs:
         run: npm run build
       - name: Release artifact smoke check
         run: npm run check:release
+
+  pc-build:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_pc == true
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore dependencies
+        shell: pwsh
+        run: |
+          dotnet nuget locals all --clear
+          dotnet restore tally-windows-sync/TallySyncApp.csproj --force
+      - name: Publish self-contained Windows app
+        shell: pwsh
+        run: dotnet publish tally-windows-sync/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+      - name: Package PC artifact
+        shell: pwsh
+        run: Compress-Archive -Path PublishOutput\* -DestinationPath TallyLink-PC-win-x64.zip -Force
+      - name: Upload PC build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TallyLink-PC-win-x64
+          path: TallyLink-PC-win-x64.zip
+          retention-days: 14
