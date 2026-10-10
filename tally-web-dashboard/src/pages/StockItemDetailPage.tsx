@@ -32,6 +32,17 @@ const getFYStart = () => {
 
 const SALES_TYPES = new Set(['Sales', 'Sales Invoice']);
 const PURCHASE_TYPES = new Set(['Purchase', 'Purchase Invoice']);
+const STANDARD_GST_RATES = [3, 5, 12, 18, 28];
+
+const normalizeGstRate = (value: unknown) => {
+    const raw = Math.abs(Number(value) || 0);
+    if (!raw) return 0;
+    const rounded = Math.round(raw * 100) / 100;
+    if (STANDARD_GST_RATES.some((rate) => Math.abs(rate - rounded) < 0.01)) return rounded;
+    const doubled = Math.round(rounded * 2 * 100) / 100;
+    if (STANDARD_GST_RATES.some((rate) => Math.abs(rate - doubled) < 0.01)) return doubled;
+    return rounded;
+};
 
 export default function StockItemDetailPage() {
     const { id } = useParams();
@@ -216,7 +227,7 @@ export default function StockItemDetailPage() {
                 const outwardQty = qtyOut > 0 ? qtyOut : qtyAbs;
                 const amount = Math.abs(Number(row.amount) || 0);
                 const rate = Math.abs(Number(row.rate) || 0) || (qtyAbs > 0 ? amount / qtyAbs : 0);
-                const gstRate = Number(row.tax_rate ?? row.gst_rate ?? 0) || 0;
+                const gstRate = normalizeGstRate(row.gst_rate ?? row.tax_rate ?? 0);
                 if (gstRate > maxGstRate) maxGstRate = gstRate;
                 if (SALES_TYPES.has(type) || normalizedType === 'sales invoice' || normalizedType === 'sales') {
                     sQty += outwardQty;
@@ -401,7 +412,7 @@ export default function StockItemDetailPage() {
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Tax Category</span>
-                                            <Badge variant="primary">{item.gst_rate || stats.maxGstRate || 0}% GST</Badge>
+                                            <Badge variant="primary">{normalizeGstRate(item.gst_rate) || stats.maxGstRate || 0}% GST</Badge>
                                         </div>
                                         <div className="flex justify-between p-4">
                                             <span className="text-xs font-bold text-[var(--text-muted)] uppercase">Stock Group</span>
