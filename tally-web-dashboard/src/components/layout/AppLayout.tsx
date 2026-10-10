@@ -624,7 +624,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </header>
 
                 {/* Page Content — NO AnimatePresence to prevent remount */}
-                <div className="px-3 py-4 pb-24 sm:px-5 md:px-6 md:py-6 md:pb-8 xl:px-8">
+                <div className="px-[2px] py-1 pb-24 md:pb-6">
                     {children}
                 </div>
             </main>

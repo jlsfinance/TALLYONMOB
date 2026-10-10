@@ -55,12 +55,12 @@ git push                            # uske baad ke pushes
 
 ### Kya deliver hua
 - Light/dark/system theme switching aur initial page theme ko consistent kiya.
-- Company selector aur dashboard ko responsive banaya; loading, empty aur action states ko polish kiya.
+- Company selector polish retain ki; dashboard page aur shell spacing ko user feedback ke baad pre-redesign baseline par restore kiya.
 - Company deletion ko owner-verified, atomic RPC ke peeche rakha; false success ke bajay clear result dene ka flow banaya.
 - Database migration `20261010050343_delete_company_data_rpc` apply karke live function verify kiya. Migration apply se koi company delete nahi hui.
 
 ### Kaise implement hua
-- Theme provider, app shell aur page-level theme tokens ko aligned rakha.
+- Theme provider, initial page theme aur app-shell surface tokens aligned rakhe; dashboard content ko pre-redesign snapshot se restore kiya.
 - Company cleanup ke liye allow-listed tables aur FK order ke saath database function use kiya; `companies.id` ke live `text` type ke saath match kiya.
 - Company selector/Auth state ko successful deletion ke baad reset/refresh kiya.
 
