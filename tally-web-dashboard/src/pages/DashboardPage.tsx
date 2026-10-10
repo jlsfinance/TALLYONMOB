@@ -499,13 +499,13 @@ export default function DashboardPage() {
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <div className="hidden md:flex max-w-full overflow-x-auto bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-95 md:scale-100 origin-right [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex max-w-full overflow-visible bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-95 md:scale-100 origin-right [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {periodFilters.map((filter) => (
                         <button
                             key={filter.key}
                             onClick={() => setPeriod(filter.key)}
                             className={`
-                                flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
+                                hidden md:flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
                                 ${period === filter.key
                                     ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)] scale-105'
                                     : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
@@ -628,21 +628,6 @@ export default function DashboardPage() {
                                 {filter.label}
                             </button>
                         ))}
-                        {/* Mobile FY Selector */}
-                        <div className="relative">
-                            <select
-                                value={fyYear}
-                                onChange={(e) => setFyYear(Number(e.target.value))}
-                                className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase bg-sky-500/10 text-sky-500 border border-sky-500/20 appearance-none cursor-pointer"
-                            >
-                                {fyOptions.map((year) => (
-                                    <option key={year} value={year}>
-                                        FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
-                                    </option>
-                                ))}
-                            </select>
-                            <TrendingUp size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-sky-500" />
-                        </div>
                     </div>
 
                     {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}
