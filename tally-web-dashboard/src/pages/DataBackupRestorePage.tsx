@@ -811,7 +811,7 @@ export default function DataBackupRestorePage() {
           <BackupDashboardSection backups={backups} autoConfig={autoConfig} />
           <ManualBackupSection onBackupStart={handleBackupStart} isBackingUp={isBackingUp} backupProgress={backupProgress} />
           <AutoBackupSettingsSection config={autoConfig} onChange={setAutoConfig} />
-          <BackupHistorySection backups={backups} onDownload={handleDownload} onRestore={handleRestore} onDelete={handleDelete} onViewDetails={handleViewDetails} />
+          <BackupHistorySection backups={backups} onDownload={handleDownload} onRestore={(id) => handleRestore(id, 'merge', 'all')} onDelete={handleDelete} onViewDetails={handleViewDetails} />
           <RestoreOptionsSection backups={backups} onRestore={handleRestore} selectedBackupId={selectedRestoreBackupId} onSelectBackup={setSelectedRestoreBackupId} />
           <ImportExportSection />
         </div>

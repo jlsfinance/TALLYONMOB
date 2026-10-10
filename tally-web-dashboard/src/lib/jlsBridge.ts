@@ -66,11 +66,11 @@ export const buildBillingLaunchContext = async (selectedCompany?: {
     gstin?: string;
     gst?: string;
 } | null): Promise<BillingLaunchContext> => {
-    const { data } = await auth.getCurrentSession();
+    const { data } = await auth.getSession();
     const session = data?.session || null;
     const user = session?.user || null;
 
-    if (!user?.id || !(session?.accessToken || session?.access_token)) {
+    if (!user?.id || !session?.access_token) {
         emitLog('error', 'billing_handoff_missing_session');
         throw new Error('No active InsForge session found. Please sign in again.');
     }
@@ -92,9 +92,9 @@ export const createBillingHandoff = async (selectedCompany?: {
     gstin?: string;
     gst?: string;
 } | null): Promise<HandoffCreateResponse> => {
-    const { data } = await auth.getCurrentSession();
+    const { data } = await auth.getSession();
     const session = data?.session || null;
-    const accessToken = session?.accessToken || session?.access_token;
+    const accessToken = session?.access_token;
 
     if (!accessToken) {
         emitLog('error', 'billing_handoff_missing_access_token');

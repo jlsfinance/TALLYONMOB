@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ledgerApi, masterApi, pendingTransactionApi } from '@/lib/supabase';
 import { checkCreditLimit } from '@/lib/creditLimit';
@@ -213,7 +214,7 @@ export default function CreateInvoicePage() {
         if (items.some(i => !i.productId)) return alert('Some items have no product selected');
 
         // Credit limit check
-        if (paymentMode === 'Credit') {
+        if (paymentMode === 'CREDIT') {
             const customer = ledgers.find(l => l.id === selectedCustomerId);
             const currentBal = Math.abs(Number(customer?.closing_balance || customer?.current_balance || 0));
             const creditCheck = checkCreditLimit(selectedCustomerId, currentBal, total);
@@ -855,5 +856,4 @@ export default function CreateInvoicePage() {
         </div >
     );
 }
-
 

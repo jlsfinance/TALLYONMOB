@@ -15,7 +15,7 @@ const FloatingCard = () => {
     });
 
     return (
-        <group perspective={1000}>
+        <group>
             <mesh ref={meshRef} castShadow receiveShadow>
                 <boxGeometry args={[4.5, 2.8, 0.1]} />
                 <meshPhysicalMaterial

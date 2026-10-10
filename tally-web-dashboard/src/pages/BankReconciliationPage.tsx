@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { GlassCard, Spinner } from '@/components/ui/GlassUI';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const formatCurrency = (amount: number) => {
     const absAmount = Math.abs(amount || 0);

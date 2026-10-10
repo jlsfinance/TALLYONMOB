@@ -112,7 +112,7 @@ export default function StockPage() {
         item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleDownloadPDF = async () => {
+    const generatePDF = async () => {
         const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
             import('jspdf'),
             import('jspdf-autotable')
@@ -141,6 +141,11 @@ export default function StockPage() {
             headStyles: { fillColor: [41, 128, 185] }
         });
 
+        return doc;
+    };
+
+    const handleDownloadPDF = async () => {
+        const doc = await generatePDF();
         doc.save(`Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
     };
 
@@ -166,7 +171,7 @@ export default function StockPage() {
 
     const handleSharePDF = async () => {
         try {
-            const doc = generatePDF();
+            const doc = await generatePDF();
             const pdfBlob = doc.output('blob');
             const file = new File([pdfBlob], `Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`, { type: 'application/pdf' });
 

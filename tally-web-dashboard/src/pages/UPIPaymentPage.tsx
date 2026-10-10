@@ -35,6 +35,7 @@ import {
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AuthContextType } from '@/contexts/types';
 import supabase from '@/lib/insforge';
 
 type TransactionStatus = 'success' | 'pending' | 'failed' | 'refunded';
@@ -86,7 +87,7 @@ const itemVariants = {
 };
 
 const UPIPaymentPage: React.FC = () => {
-  const { selectedCompany } = useAuth();
+  const { selectedCompany } = useAuth() as AuthContextType;
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);

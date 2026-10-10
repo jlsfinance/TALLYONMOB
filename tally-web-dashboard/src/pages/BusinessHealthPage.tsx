@@ -221,7 +221,7 @@ export default function BusinessHealthPage() {
 
     return (
         <div className="min-h-screen pb-24">
-            <HeaderPortal>
+            <HeaderPortal type="title">
                 <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-500/10 text-emerald-500">
                         <Activity size={20} />

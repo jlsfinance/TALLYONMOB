@@ -116,6 +116,8 @@ export default function ProfitLossPage() {
                 purchaseAccounts: { total: 0, ledgers: [] as any[] },
                 directExpenses: { total: 0, ledgers: [] as any[] },
                 grossProfitCo: 0,
+                grossLossCo: 0,
+                grossLossBf: 0,
                 indirectExpenses: { total: 0, ledgers: [] as any[] },
                 nettProfit: 0,
                 salesAccounts: { total: 0, ledgers: [] as any[] },

@@ -52,15 +52,22 @@ export default function SubscriptionPage() {
     const [payments, setPayments] = useState<any[]>([]);
 
     useEffect(() => {
-        if (user?.id) {
-            supabase.from('payments')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(5)
-                .then(({ data }) => setPayments(data || []))
-                .catch(() => setPayments([]));
-        }
+        if (!user?.id) return;
+
+        const loadPayments = async () => {
+            try {
+                const { data } = await supabase.from('payments')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+                setPayments(data || []);
+            } catch {
+                setPayments([]);
+            }
+        };
+
+        void loadPayments();
     }, [user?.id]);
 
     const handlePurchase = async () => {
@@ -134,12 +141,17 @@ export default function SubscriptionPage() {
         setLoading(true);
         try {
             // Check if trial already used
-            const { data: existing } = await supabase
-                .from('trial_history')
-                .select('id')
-                .eq('user_id', user.id)
-                .limit(1)
-                .catch(() => ({ data: [] }));
+            let existing: Array<{ id: string }> = [];
+            try {
+                const { data } = await supabase
+                    .from('trial_history')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .limit(1);
+                existing = data || [];
+            } catch {
+                existing = [];
+            }
 
             if (existing && existing.length > 0) {
                 toast.error('Free trial already used. Please purchase a plan.');

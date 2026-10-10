@@ -41,8 +41,13 @@ export default function DocumentScannerPage() {
 
             const prompt = `Analyze this document image and extract structured data. Return JSON with: type (invoice/receipt/expense), vendor, date (YYYY-MM-DD), amount, gst, items (array with name/qty/rate/amount), payment_method, reference, confidence (0-100). Be precise with numbers.`;
 
-            const response = await callGemini(prompt, [{ inlineData: { mimeType: file.type, data: base64 } }], apiKey);
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            const response = await callGemini({
+                userPrompt: prompt,
+                attachments: [{ mimeType: file.type, dataBase64: base64 }],
+                apiKey,
+                expectJson: true,
+            });
+            const jsonMatch = response.text.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 const data = JSON.parse(jsonMatch[0]);
                 setResult({ ...data, confidence: data.confidence || 85 });

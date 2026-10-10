@@ -79,7 +79,7 @@ const VOUCHER_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function DayBookPage() {
-  const { user, selectedCompany } = useAuth();
+  const { selectedCompany } = useAuth() as { selectedCompany?: { id?: string } | null };
   const navigate = useNavigate();
 
   const [selectedDate, setSelectedDate] = useState(new Date());

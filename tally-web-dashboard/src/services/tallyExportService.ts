@@ -1,5 +1,3 @@
-import { supabase } from './insforge';
-
 /**
  * Generate Tally XML voucher import string.
  * Creates XML that can be imported into Tally ERP via XML feed.

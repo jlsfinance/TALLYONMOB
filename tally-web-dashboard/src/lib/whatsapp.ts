@@ -1,6 +1,20 @@
 import { supabase } from './insforge';
 import { format, subDays } from 'date-fns';
 
+interface EodVoucher {
+    voucher_type?: string | null;
+    total_amount?: number | string | null;
+    grand_total?: number | string | null;
+    party_name?: string | null;
+}
+
+interface EodStats {
+    sales: number;
+    receipts: number;
+    payments: number;
+    purchases: number;
+}
+
 export async function sendEodReport(companyId: string, phone: string, companyName: string) {
     const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -11,7 +25,8 @@ export async function sendEodReport(companyId: string, phone: string, companyNam
         .eq('voucher_date', today)
         .eq('is_deleted', false);
 
-    const stats = (vouchers || []).reduce((acc: any, v: any) => {
+    const voucherRows: EodVoucher[] = vouchers || [];
+    const stats = voucherRows.reduce((acc: EodStats, v: EodVoucher) => {
         const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
         if (v.voucher_type === 'Sales' || v.voucher_type === 'Sales Invoice') acc.sales += amt;
         else if (v.voucher_type === 'Receipt') acc.receipts += amt;
@@ -20,9 +35,9 @@ export async function sendEodReport(companyId: string, phone: string, companyNam
         return acc;
     }, { sales: 0, receipts: 0, payments: 0, purchases: 0 });
 
-    const topParty = (vouchers || [])
-        .filter((v: any) => v.voucher_type === 'Sales' && v.party_name)
-        .reduce((acc: any, v: any) => {
+    const topParty = voucherRows
+        .filter((v: EodVoucher) => v.voucher_type === 'Sales' && v.party_name)
+        .reduce((acc: Record<string, number>, v: EodVoucher) => {
             acc[v.party_name] = (acc[v.party_name] || 0) + Math.abs(Number(v.grand_total) || 0);
             return acc;
         }, {} as Record<string, number>);

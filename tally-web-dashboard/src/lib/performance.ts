@@ -213,9 +213,9 @@ interface LazyLoadOptions {
   onError?: (error: Error) => void;
 }
 
-interface LazyComponent extends React.ComponentType<any> {
+type LazyComponent<P> = React.LazyExoticComponent<React.ComponentType<P>> & {
   preload: () => Promise<void>;
-}
+};
 
 /**
  * Creates a lazily-loaded component with built-in loading state and error handling.
@@ -241,13 +241,13 @@ interface LazyComponent extends React.ComponentType<any> {
  * <Link onMouseEnter={() => LazyDashboard.preload()} to="/dashboard">
  * ```
  */
-export function lazyLoad(
-  importFn: () => Promise<{ default: React.ComponentType<any> }>,
+export function lazyLoad<P>(
+  importFn: () => Promise<{ default: React.ComponentType<P> }>,
   options: LazyLoadOptions = {},
-): LazyComponent {
+): LazyComponent<P> {
   const { onError } = options;
 
-  let cachedPromise: Promise<{ default: React.ComponentType<any> }> | null = null;
+  let cachedPromise: Promise<{ default: React.ComponentType<P> }> | null = null;
 
   const loadComponent = () => {
     if (!cachedPromise) {
@@ -262,11 +262,11 @@ export function lazyLoad(
     return cachedPromise;
   };
 
-  const LazyComponent = React.lazy(loadComponent) as LazyComponent;
-
-  LazyComponent.preload = async () => {
-    await loadComponent();
-  };
+  const LazyComponent = Object.assign(React.lazy(loadComponent), {
+    preload: async () => {
+      await loadComponent();
+    },
+  });
 
   return LazyComponent;
 }
@@ -870,7 +870,13 @@ interface WebVitalMetric {
   value: number;
   rating: string;
 }
-
+interface LayoutShiftEntry extends PerformanceEntry {
+  readonly hadRecentInput: boolean;
+  readonly value: number;
+}
+interface InteractionEntry extends PerformanceEntry {
+  readonly interactionId: number;
+}
 type WebVitalCallback = (metric: WebVitalMetric) => void;
 
 const VITAL_THRESHOLDS = {
@@ -968,7 +974,7 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
       const entries = list.getEntries();
       entries.forEach((entry) => {
         if ('hadRecentInput' in entry) {
-          const clsEntry = entry as LayoutShift;
+          const clsEntry = entry as LayoutShiftEntry;
           if (!clsEntry.hadRecentInput) {
             sessionValue += clsEntry.value;
             sessionEntries.push(clsEntry.value);
@@ -1030,7 +1036,7 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
       const entries = list.getEntries();
       entries.forEach((entry) => {
         if ('interactionId' in entry) {
-          const inpEntry = entry as PerformanceEventTiming;
+          const inpEntry = entry as InteractionEntry;
           const duration = inpEntry.duration;
           const metric: WebVitalMetric = {
             name: 'INP',
@@ -1041,7 +1047,12 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
         }
       });
     });
-    inpObserver.observe({ type: 'event', buffered: true, durationThreshold: 40 });
+    const inpObserverOptions: PerformanceObserverInit & { durationThreshold: number } = {
+      type: 'event',
+      buffered: true,
+      durationThreshold: 40,
+    };
+    inpObserver.observe(inpObserverOptions);
     observers.push(inpObserver);
   } catch {
     // INP not supported
@@ -1071,8 +1082,8 @@ export function onLayoutShift(
   try {
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
-        if ('hadRecentInput' in entry && !(entry as LayoutShift).hadRecentInput) {
-          clsValue += (entry as LayoutShift).value;
+        if ('hadRecentInput' in entry && !(entry as LayoutShiftEntry).hadRecentInput) {
+          clsValue += (entry as LayoutShiftEntry).value;
           callback(clsValue);
         }
       }

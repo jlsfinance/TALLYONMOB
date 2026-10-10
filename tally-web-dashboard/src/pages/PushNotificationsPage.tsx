@@ -46,6 +46,7 @@ import {
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AuthContextType } from '@/contexts/types';
 import { supabase } from '@/lib/insforge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1480,7 +1481,7 @@ const SettingsTab: React.FC<{
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function PushNotificationsPage() {
-  const { selectedCompany } = useAuth();
+  const { selectedCompany } = useAuth() as AuthContextType;
   const companyId = selectedCompany?.id ?? null;
 
   const [activeTab, setActiveTab] = useState<TabType>('compose');

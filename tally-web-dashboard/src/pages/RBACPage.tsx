@@ -652,10 +652,12 @@ function UsersManagement({
   users,
   setUsers,
   roles,
+  companies,
 }: {
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   roles: Role[];
+  companies: Company[];
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("all");
@@ -1627,9 +1629,11 @@ function AccessLog({ accessLog }: { accessLog: AccessLogEntry[] }) {
 function CompanyAccess({
   users,
   setUsers,
+  companies,
 }: {
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
+  companies: Company[];
 }) {
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
 
@@ -2000,7 +2004,7 @@ export default function RBACPage() {
             {activeTab === "users" && (
               <div className="space-y-6">
                 <UsersDashboard users={users} accessLog={accessLog} />
-                <UsersManagement users={users} setUsers={setUsers} roles={roles} />
+                <UsersManagement users={users} setUsers={setUsers} roles={roles} companies={companies} />
               </div>
             )}
             {activeTab === "roles" && (
@@ -2008,7 +2012,7 @@ export default function RBACPage() {
             )}
             {activeTab === "log" && <AccessLog accessLog={accessLog} />}
             {activeTab === "companies" && (
-              <CompanyAccess users={users} setUsers={setUsers} />
+              <CompanyAccess users={users} setUsers={setUsers} companies={companies} />
             )}
           </motion.div>
         </AnimatePresence>

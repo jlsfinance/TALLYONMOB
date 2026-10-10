@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import type { AuthContextType } from '../contexts/types';
 import { supabase } from '../lib/insforge';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { motion } from 'framer-motion';
@@ -24,6 +25,7 @@ interface ActivityLog {
   metadata: any;
   device_info: any;
   duration_ms: number;
+  session_id?: string | null;
   created_at: string;
 }
 
@@ -48,7 +50,7 @@ const TIME_RANGES = [
 ];
 
 export default function UserAnalyticsPage() {
-  const { selectedCompany } = useAuth() as any;
+  const { selectedCompany } = useAuth() as AuthContextType;
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('7d');
@@ -172,7 +174,7 @@ export default function UserAnalyticsPage() {
 
   return (
     <div className="space-y-4 pb-24 max-w-7xl mx-auto">
-      <HeaderPortal>
+      <HeaderPortal type="actions">
         <div className="flex items-center gap-2">
           <button onClick={handleRefresh} className="p-2 rounded-lg hover:bg-[var(--surface-variant)]" disabled={refreshing}>
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />

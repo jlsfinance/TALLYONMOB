@@ -17,6 +17,7 @@ function toNumber(value: unknown, fallback = 0) {
 
 function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): LocalInvoiceRecord {
     const gstin = String(raw?.gstin || '').trim().toUpperCase();
+    const invoiceType = String(raw?.invoiceType || raw?.invoice_type || (gstin ? 'B2B' : 'B2C')).toUpperCase() === 'B2B' ? 'B2B' : 'B2C';
 
     return {
         $id: raw?.$id,
@@ -30,7 +31,7 @@ function normalizeInvoiceRecord(raw: any, userId: string, clientId: string): Loc
         sgst: toNumber(raw?.sgst, 0),
         igst: toNumber(raw?.igst, 0),
         hsn: String(raw?.hsn || raw?.hsnCode || raw?.hsn_code || '').trim(),
-        invoiceType: String(raw?.invoiceType || raw?.invoice_type || (gstin ? 'B2B' : 'B2C')).toUpperCase(),
+        invoiceType,
         createdAt: String(raw?.createdAt || raw?.$createdAt || new Date().toISOString())
     };
 }
@@ -178,7 +179,7 @@ export default function GstAutomationPage() {
 
             if (cloudAllowed && user?.id) {
                 try {
-                    const sourceMode: 'local' | 'cloud' = mode === 'local' ? 'local' : 'cloud';
+                    const sourceMode: 'local' | 'cloud' = 'cloud';
                     await saveGstAutomationRunToCloud({
                         userId: user.id,
                         clientId,
@@ -367,6 +368,5 @@ export default function GstAutomationPage() {
         </div>
     );
 }
-
 
 

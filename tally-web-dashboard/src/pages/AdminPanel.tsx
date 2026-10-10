@@ -18,12 +18,12 @@ export default function AdminPanel() {
         setLoading(true);
         try {
             // Get auth token
-            const { data: { session } } = await supabase.auth.getCurrentSession();
+            const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
                 alert('Please login first');
                 return;
             }
-            const authToken = session.accessToken || session.access_token;
+            const authToken = session.access_token;
             if (!authToken) {
                 alert('Session token not available');
                 return;
@@ -73,7 +73,7 @@ export default function AdminPanel() {
 
     const executeAdminAction = async (action, targetEmail, days = null) => {
         try {
-            const { data: { session } } = await supabase.auth.getCurrentSession();
+            const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
                 alert('Please login first');
                 return;
@@ -82,7 +82,7 @@ export default function AdminPanel() {
             const body: any = { action, target_email: targetEmail };
             if (days) body.days = days;
 
-            const authToken = session.accessToken || session.access_token;
+            const authToken = session.access_token;
             if (!authToken) {
                 alert('Session token not available');
                 return;
@@ -394,7 +394,4 @@ const actionBtnStyle = (color: string) => ({
     cursor: 'pointer' as const,
     whiteSpace: 'nowrap' as const,
 });
-
-
-
 
