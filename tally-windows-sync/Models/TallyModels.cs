@@ -208,6 +208,57 @@ namespace TallySyncApp.Models
 
         [JsonProperty("taxability")]
         public string? Taxability { get; set; }
+
+        [JsonProperty("billed_quantity")]
+        public decimal BilledQuantity { get; set; }
+
+        [JsonProperty("actual_quantity")]
+        public decimal ActualQuantity { get; set; }
+
+        [JsonProperty("billed_unit")]
+        public string? BilledUnit { get; set; }
+
+        [JsonProperty("actual_unit")]
+        public string? ActualUnit { get; set; }
+
+        [JsonProperty("godown_name")]
+        public string? GodownName { get; set; }
+
+        [JsonProperty("batch_name")]
+        public string? BatchName { get; set; }
+
+        [JsonProperty("cost_centre")]
+        public string? CostCentre { get; set; }
+
+        [JsonProperty("cgst_rate")]
+        public decimal? CgstRate { get; set; }
+
+        [JsonProperty("cgst_amount")]
+        public decimal? CgstAmount { get; set; }
+
+        [JsonProperty("sgst_rate")]
+        public decimal? SgstRate { get; set; }
+
+        [JsonProperty("sgst_amount")]
+        public decimal? SgstAmount { get; set; }
+
+        [JsonProperty("igst_rate")]
+        public decimal? IgstRate { get; set; }
+
+        [JsonProperty("igst_amount")]
+        public decimal? IgstAmount { get; set; }
+
+        [JsonProperty("cess_rate")]
+        public decimal? CessRate { get; set; }
+
+        [JsonProperty("cess_amount")]
+        public decimal? CessAmount { get; set; }
+
+        [JsonProperty("gst_details")]
+        public object? GstDetails { get; set; }
+
+        [JsonProperty("raw_data")]
+        public object? RawData { get; set; }
     }
 
     /// <summary>
@@ -489,6 +540,15 @@ namespace TallySyncApp.Models
         [JsonProperty("base_unit")]
         public string? BaseUnit { get; set; }
 
+        [JsonProperty("additional_unit")]
+        public string? AdditionalUnit { get; set; }
+
+        [JsonProperty("alternate_unit_conversion")]
+        public decimal? AlternateUnitConversion { get; set; }
+
+        [JsonProperty("alternate_units")]
+        public object? AlternateUnits { get; set; }
+
         [JsonProperty("opening_balance")]
         public decimal OpeningBalance { get; set; }
 
@@ -496,16 +556,16 @@ namespace TallySyncApp.Models
         public decimal OpeningValue { get; set; }
 
         [JsonProperty("inward_quantity")]
-        public decimal InwardQuantity { get; set; }
+        public decimal? InwardQuantity { get; set; }
 
         [JsonProperty("inward_value")]
-        public decimal InwardValue { get; set; }
+        public decimal? InwardValue { get; set; }
 
         [JsonProperty("outward_quantity")]
-        public decimal OutwardQuantity { get; set; }
+        public decimal? OutwardQuantity { get; set; }
 
         [JsonProperty("outward_value")]
-        public decimal OutwardValue { get; set; }
+        public decimal? OutwardValue { get; set; }
 
         [JsonProperty("closing_balance")]
         public decimal ClosingBalance { get; set; }
@@ -521,6 +581,18 @@ namespace TallySyncApp.Models
 
         [JsonProperty("gst_rate")]
         public decimal GstRate { get; set; }
+
+        [JsonProperty("gst_applicable")]
+        public string? GstApplicable { get; set; }
+
+        [JsonProperty("taxability")]
+        public string? Taxability { get; set; }
+
+        [JsonProperty("gst_details")]
+        public object? GstDetails { get; set; }
+
+        [JsonProperty("raw_data")]
+        public object? RawData { get; set; }
 
         [JsonProperty("master_id")]
         public string? MasterId { get; set; }
@@ -1146,7 +1218,6 @@ namespace TallySyncApp.Models
         public string? AlterId { get; set; }
     }
 }
-
 
 
 

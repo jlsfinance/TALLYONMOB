@@ -6,15 +6,16 @@
 
 - **Phase 8 — Sync foundation:** implemented and retained. Upload paths enforce the maximum 100-row request contract.
 - **Phase 9 — Durable cursors/all-FY scan:** implemented. Voucher incremental discovery uses ALTERID and durable `sync_state` checkpoints.
-- **Phase 10 — Parent/child reconciliation:** completed. Child ledger/stock upload failures return an explicit completeness result and produce `[PARTIAL]` PC logs. Failed upload chunks now retry `100 → 50 → 25 → row`, with unrecovered rows logged as `[QUARANTINE]`. The Windows project builds successfully with .NET SDK 9.0.318 using Windows targeting; only platform-analysis warnings remain.
+- **Phase 10 — Parent/child reconciliation:** implemented and reverified. Child ledger/stock upload failures return an explicit completeness result and produce `[PARTIAL]` PC logs. Failed upload chunks retry `100 → 50 → 25 → row`; re-verification fixed missing auth on row retries, null-field clearing on fallback retries, and added per-row `[QUARANTINE]` identity logs. Backend contract tests pass; Windows build succeeds with .NET SDK 9.0.318 (128 platform-analysis warnings on the initial build; clean incremental build).
 - **Phase 11 — Delete propagation:** implemented on branch `feature/phase-11-delete-propagation`, commit `28138a4`, and applied through Supabase MCP. Live schema now has soft-delete columns, tombstone uniqueness, and resurrection-prevention triggers.
+- **Phase 12 — Stock/source fields:** implementation and additive Supabase schema migration are applied on `feature/phase-12-complete-source-fields`. `stock_items` is selected as canonical; portal alias lookup now targets it. The sync model/parser now carries alias/category, alternate units, available stock movements, tax metadata, quantity/unit distinctions, GST components, bounded batch/godown/cost-centre allocations, and compact source audit metadata. Before/after live row counts and per-company counts match exactly (2,954 masters; 23,935 voucher lines); backend tests pass and the Windows build succeeds. See `tally-sync-backend/PHASE12_RECONCILIATION.md`. Source-value acceptance against a real Tally test voucher remains pending.
 
 ### Current next work
 
-- **Next:** Phase 12 — canonical stock model and complete source fields.
-- Before claiming Phase 12 complete, reconcile SKU Summary/History/Customers/Suppliers against real Tally voucher lines, including GST, quantity and rate.
+- **Blocking Phase 12 acceptance:** reconcile SKU Summary/History/Customers/Suppliers against real Tally voucher lines, including GST, quantity/unit and rate. The current sandbox has no live Tally connection or test-company voucher sample.
 - The live Tally deletion scenario still needs an operator test: delete one voucher, ledger and stock item in Tally, run sync, then verify cloud soft-delete/tombstone and retry behavior.
-- Phase 10 still needs a live failure-injection test against Tally/Supabase to observe the fallback and quarantine logs end-to-end.
+- Phase 10 still needs a live failure-injection test against Tally/Supabase to observe the fallback and quarantine logs end-to-end; automated contract checks were added to backend `npm test`.
+- Do not begin Phase 13 until Phase 12's source-value acceptance check is complete and this branch is committed/pushed.
 
 ## Non-negotiable contract
 

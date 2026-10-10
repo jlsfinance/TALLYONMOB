@@ -194,14 +194,14 @@ router.get('/invoice/:id', async (req, res) => {
 
         if (iError) throw iError;
 
-        // 4. Fetch Aliases from tally_stock
+        // 4. Resolve aliases from the canonical stock_items master.
         // Get unique item names
         const itemNames = [...new Set(items ? items.map(i => i.stock_item_name) : [])];
         let aliasesMap = {};
 
         if (itemNames.length > 0) {
             const { data: stockData, error: sError } = await supabase
-                .from('tally_stock')
+                .from('stock_items')
                 .select('name, alias')
                 .in('name', itemNames)
                 .eq('company_id', voucher.company_id);

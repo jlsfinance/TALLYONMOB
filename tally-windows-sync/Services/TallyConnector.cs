@@ -33,7 +33,7 @@ namespace TallySyncApp.Services
         private const int CIRCUIT_BREAKER_RESET_SECONDS = 60;    // Wait 60s before retrying after circuit break
         private const int MAX_RETRY_TIMEOUT_SECONDS = 600;       // Max 10 minutes per request
         private const int SAFE_RECORD_LIMIT = 5000;              // Max records to fetch in one Tally request
-        private const string VoucherCollectionFetchFields = "MASTERID, ALTERID, GUID, DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, AMOUNT, NARRATION, STATENAME, PLACEOFSUPPLY, ISOPTIONAL, ISINVOICE, PERSISTEDVIEW, OBJVIEW, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME, ALLLEDGERENTRIES.LIST, ALLLEDGERENTRIES.LIST.LEDGERNAME, ALLLEDGERENTRIES.LIST.AMOUNT, LEDGERENTRIES.LIST, LEDGERENTRIES.LIST.LEDGERNAME, LEDGERENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST, ALLINVENTORYENTRIES.LIST.STOCKITEMNAME, ALLINVENTORYENTRIES.LIST.DSPVCHITEMNAME, ALLINVENTORYENTRIES.LIST.ITEMNAME, ALLINVENTORYENTRIES.LIST.BILLEDQTY, ALLINVENTORYENTRIES.LIST.ACTUALQTY, ALLINVENTORYENTRIES.LIST.DSPVCHQTY, ALLINVENTORYENTRIES.LIST.QTY, ALLINVENTORYENTRIES.LIST.RATE, ALLINVENTORYENTRIES.LIST.DSPVCHRATE, ALLINVENTORYENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, ALLINVENTORYENTRIES.LIST.DISCOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHDISCOUNT, ALLINVENTORYENTRIES.LIST.HSNCODE, ALLINVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, ALLINVENTORYENTRIES.LIST.GSTRATE, ALLINVENTORYENTRIES.LIST.IGSTRATE, ALLINVENTORYENTRIES.LIST.TAXABILITY, INVENTORYENTRIES.LIST, INVENTORYENTRIES.LIST.STOCKITEMNAME, INVENTORYENTRIES.LIST.DSPVCHITEMNAME, INVENTORYENTRIES.LIST.ITEMNAME, INVENTORYENTRIES.LIST.BILLEDQTY, INVENTORYENTRIES.LIST.ACTUALQTY, INVENTORYENTRIES.LIST.DSPVCHQTY, INVENTORYENTRIES.LIST.QTY, INVENTORYENTRIES.LIST.RATE, INVENTORYENTRIES.LIST.DSPVCHRATE, INVENTORYENTRIES.LIST.AMOUNT, INVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, INVENTORYENTRIES.LIST.DISCOUNT, INVENTORYENTRIES.LIST.DSPVCHDISCOUNT, INVENTORYENTRIES.LIST.HSNCODE, INVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, INVENTORYENTRIES.LIST.GSTRATE, INVENTORYENTRIES.LIST.IGSTRATE, INVENTORYENTRIES.LIST.TAXABILITY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY";
+        private const string VoucherCollectionFetchFields = "MASTERID, ALTERID, GUID, DATE, VOUCHERTYPENAME, VOUCHERNUMBER, PARTYLEDGERNAME, PARTYGSTIN, PARTYMAILINGNAME, AMOUNT, NARRATION, STATENAME, PLACEOFSUPPLY, ISOPTIONAL, ISINVOICE, PERSISTEDVIEW, OBJVIEW, BASICBUYERNAME, BASICBUYERGSTIN, CONSIGNEEMAILINGNAME, CONSIGNEESTATENAME, ALLLEDGERENTRIES.LIST, ALLLEDGERENTRIES.LIST.LEDGERNAME, ALLLEDGERENTRIES.LIST.AMOUNT, LEDGERENTRIES.LIST, LEDGERENTRIES.LIST.LEDGERNAME, LEDGERENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST, ALLINVENTORYENTRIES.LIST.STOCKITEMNAME, ALLINVENTORYENTRIES.LIST.DSPVCHITEMNAME, ALLINVENTORYENTRIES.LIST.ITEMNAME, ALLINVENTORYENTRIES.LIST.BILLEDQTY, ALLINVENTORYENTRIES.LIST.ACTUALQTY, ALLINVENTORYENTRIES.LIST.DSPVCHQTY, ALLINVENTORYENTRIES.LIST.QTY, ALLINVENTORYENTRIES.LIST.RATE, ALLINVENTORYENTRIES.LIST.DSPVCHRATE, ALLINVENTORYENTRIES.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, ALLINVENTORYENTRIES.LIST.DISCOUNT, ALLINVENTORYENTRIES.LIST.DSPVCHDISCOUNT, ALLINVENTORYENTRIES.LIST.HSNCODE, ALLINVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, ALLINVENTORYENTRIES.LIST.GSTRATE, ALLINVENTORYENTRIES.LIST.IGSTRATE, ALLINVENTORYENTRIES.LIST.TAXABILITY, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.GODOWNNAME, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.BATCHNAME, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.BILLEDQTY, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.ACTUALQTY, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.RATE, ALLINVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST.GODOWNNAME, ALLINVENTORYENTRIES.LIST.COSTCENTRENAME, ALLINVENTORYENTRIES.LIST.COSTCENTREALLOCATIONS.LIST.NAME, ALLINVENTORYENTRIES.LIST.COSTCENTREALLOCATIONS.LIST.AMOUNT, ALLINVENTORYENTRIES.LIST.CGSTRATE, ALLINVENTORYENTRIES.LIST.CGSTAMOUNT, ALLINVENTORYENTRIES.LIST.SGSTRATE, ALLINVENTORYENTRIES.LIST.SGSTAMOUNT, ALLINVENTORYENTRIES.LIST.IGSTRATE, ALLINVENTORYENTRIES.LIST.IGSTAMOUNT, ALLINVENTORYENTRIES.LIST.CESSRATE, ALLINVENTORYENTRIES.LIST.CESSAMOUNT, INVENTORYENTRIES.LIST, INVENTORYENTRIES.LIST.STOCKITEMNAME, INVENTORYENTRIES.LIST.DSPVCHITEMNAME, INVENTORYENTRIES.LIST.ITEMNAME, INVENTORYENTRIES.LIST.BILLEDQTY, INVENTORYENTRIES.LIST.ACTUALQTY, INVENTORYENTRIES.LIST.DSPVCHQTY, INVENTORYENTRIES.LIST.QTY, INVENTORYENTRIES.LIST.RATE, INVENTORYENTRIES.LIST.DSPVCHRATE, INVENTORYENTRIES.LIST.AMOUNT, INVENTORYENTRIES.LIST.DSPVCHITEMAMOUNT, INVENTORYENTRIES.LIST.DISCOUNT, INVENTORYENTRIES.LIST.DSPVCHDISCOUNT, INVENTORYENTRIES.LIST.HSNCODE, INVENTORYENTRIES.LIST.RATEOFTAXCALCULATION, INVENTORYENTRIES.LIST.GSTRATE, INVENTORYENTRIES.LIST.IGSTRATE, INVENTORYENTRIES.LIST.TAXABILITY, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.GODOWNNAME, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.BATCHNAME, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.BILLEDQTY, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.ACTUALQTY, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.RATE, INVENTORYENTRIES.LIST.BATCHALLOCATIONS.LIST.AMOUNT, INVENTORYENTRIES.LIST.GODOWNNAME, INVENTORYENTRIES.LIST.COSTCENTRENAME, INVENTORYENTRIES.LIST.COSTCENTREALLOCATIONS.LIST.NAME, INVENTORYENTRIES.LIST.COSTCENTREALLOCATIONS.LIST.AMOUNT, INVENTORYENTRIES.LIST.CGSTRATE, INVENTORYENTRIES.LIST.CGSTAMOUNT, INVENTORYENTRIES.LIST.SGSTRATE, INVENTORYENTRIES.LIST.SGSTAMOUNT, INVENTORYENTRIES.LIST.IGSTRATE, INVENTORYENTRIES.LIST.IGSTAMOUNT, INVENTORYENTRIES.LIST.CESSRATE, INVENTORYENTRIES.LIST.CESSAMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.GODOWNNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.BATCHNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.BILLEDQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.ACTUALQTY, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.RATE, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.AMOUNT, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GODOWNNAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTRENAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTREALLOCATIONS.LIST.NAME, ALLLEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTREALLOCATIONS.LIST.AMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.STOCKITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ITEMNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BILLEDQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.ACTUALQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.QTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.AMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHITEMAMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.DSPVCHDISCOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.HSNCODE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.RATEOFTAXCALCULATION, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.IGSTRATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.TAXABILITY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.GODOWNNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.BATCHNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.BILLEDQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.ACTUALQTY, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.RATE, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.BATCHALLOCATIONS.LIST.AMOUNT, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.GODOWNNAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTRENAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTREALLOCATIONS.LIST.NAME, LEDGERENTRIES.LIST.INVENTORYALLOCATIONS.LIST.COSTCENTREALLOCATIONS.LIST.AMOUNT";
 
         // Circuit breaker state
         private int _consecutiveFailures = 0;
@@ -1708,13 +1708,60 @@ namespace TallySyncApp.Services
                         {
                             StockItemName = itemName,
                             Quantity = qty,
+                            BilledQuantity = ParseDecimal(GetElementValue(iNode, "BILLEDQTY")),
+                            ActualQuantity = ParseDecimal(GetElementValue(iNode, "ACTUALQTY")),
                             Unit = unit,
+                            BilledUnit = GetElementValue(iNode, "BILLEDQTY")?.Split(' ').LastOrDefault(),
+                            ActualUnit = GetElementValue(iNode, "ACTUALQTY")?.Split(' ').LastOrDefault(),
                             Rate = rate,
                             Amount = amount,
                             DiscountPercent = discountPercent,
                             HsnCode = hsnCode,
                             TaxRate = taxRate,
-                            Taxability = taxability
+                            Taxability = taxability,
+                            GodownName = GetElementValue(iNode, "GODOWNNAME"),
+                            BatchName = GetElementValue(iNode, "BATCHNAME"),
+                            CostCentre = GetElementValue(iNode, "COSTCENTRENAME") ?? GetElementValue(iNode, "COSTCENTRE"),
+                            CgstRate = ParseOptionalDecimal(GetElementValue(iNode, "CGSTRATE")),
+                            CgstAmount = ParseOptionalDecimal(GetElementValue(iNode, "CGSTAMOUNT")),
+                            SgstRate = ParseOptionalDecimal(GetElementValue(iNode, "SGSTRATE")),
+                            SgstAmount = ParseOptionalDecimal(GetElementValue(iNode, "SGSTAMOUNT")),
+                            IgstRate = ParseOptionalDecimal(GetElementValue(iNode, "IGSTRATE")),
+                            IgstAmount = ParseOptionalDecimal(GetElementValue(iNode, "IGSTAMOUNT")),
+                            CessRate = ParseOptionalDecimal(GetElementValue(iNode, "CESSRATE")),
+                            CessAmount = ParseOptionalDecimal(GetElementValue(iNode, "CESSAMOUNT")),
+                            GstDetails = new Dictionary<string, object?>
+                            {
+                                ["tax_rate"] = taxRate, ["taxability"] = taxability,
+                                ["cgst_rate"] = ParseOptionalDecimal(GetElementValue(iNode, "CGSTRATE")), ["cgst_amount"] = ParseOptionalDecimal(GetElementValue(iNode, "CGSTAMOUNT")),
+                                ["sgst_rate"] = ParseOptionalDecimal(GetElementValue(iNode, "SGSTRATE")), ["sgst_amount"] = ParseOptionalDecimal(GetElementValue(iNode, "SGSTAMOUNT")),
+                                ["igst_rate"] = ParseOptionalDecimal(GetElementValue(iNode, "IGSTRATE")), ["igst_amount"] = ParseOptionalDecimal(GetElementValue(iNode, "IGSTAMOUNT")),
+                                ["cess_rate"] = ParseOptionalDecimal(GetElementValue(iNode, "CESSRATE")), ["cess_amount"] = ParseOptionalDecimal(GetElementValue(iNode, "CESSAMOUNT")),
+                                ["rate_details"] = iNode.Descendants().Where(x => x.Name.LocalName.Equals("RATEDETAILS.LIST", StringComparison.OrdinalIgnoreCase)).Take(100).Select(x => new Dictionary<string, object?>
+                                {
+                                    ["tax_rate"] = GetElementValue(x, "GSTRATE") ?? GetElementValue(x, "RATEOFTAXCALCULATION"),
+                                    ["component"] = GetElementValue(x, "GSTCOMPONENT"), ["ledger"] = GetElementValue(x, "GSTLEDGERNAME"),
+                                    ["rate_type"] = GetElementValue(x, "RATETYPE")
+                                }).ToList()
+                            },
+                            RawData = new Dictionary<string, object?>
+                            {
+                                ["source"] = "Tally XML", ["source_element"] = iNode.Name.LocalName,
+                                ["billed_quantity_raw"] = GetElementValue(iNode, "BILLEDQTY"), ["actual_quantity_raw"] = GetElementValue(iNode, "ACTUALQTY"),
+                                ["rate_raw"] = GetElementValue(iNode, "RATE"), ["amount_raw"] = GetElementValue(iNode, "AMOUNT"),
+                                ["discount_raw"] = GetElementValue(iNode, "DISCOUNT"), ["godown_raw"] = GetElementValue(iNode, "GODOWNNAME"),
+                                ["batch_raw"] = GetElementValue(iNode, "BATCHNAME"), ["cost_centre_raw"] = GetElementValue(iNode, "COSTCENTRENAME"),
+                                ["batch_allocations"] = iNode.Descendants().Where(x => x.Name.LocalName.Equals("BATCHALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)).Take(100).Select(x => new Dictionary<string, object?>
+                                {
+                                    ["batch_name"] = GetElementValue(x, "BATCHNAME"), ["godown_name"] = GetElementValue(x, "GODOWNNAME"),
+                                    ["billed_quantity"] = GetElementValue(x, "BILLEDQTY"), ["actual_quantity"] = GetElementValue(x, "ACTUALQTY"),
+                                    ["rate"] = GetElementValue(x, "RATE"), ["amount"] = GetElementValue(x, "AMOUNT")
+                                }).ToList(),
+                                ["cost_centre_allocations"] = iNode.Descendants().Where(x => x.Name.LocalName.Equals("COSTCENTREALLOCATIONS.LIST", StringComparison.OrdinalIgnoreCase)).Take(100).Select(x => new Dictionary<string, object?>
+                                {
+                                    ["cost_centre"] = GetElementValue(x, "NAME") ?? GetElementValue(x, "COSTCENTRENAME"), ["amount"] = GetElementValue(x, "AMOUNT")
+                                }).ToList()
+                            }
                         });
                     }
 
@@ -1726,7 +1773,12 @@ namespace TallySyncApp.Services
                             Math.Abs(entry.Rate).ToString("0.###", CultureInfo.InvariantCulture),
                             Math.Abs(entry.Amount).ToString("0.###", CultureInfo.InvariantCulture),
                             (entry.HsnCode ?? string.Empty).Trim().ToUpperInvariant(),
-                            entry.TaxRate.HasValue ? Math.Abs(entry.TaxRate.Value).ToString("0.##", CultureInfo.InvariantCulture) : string.Empty))
+                            entry.TaxRate.HasValue ? Math.Abs(entry.TaxRate.Value).ToString("0.##", CultureInfo.InvariantCulture) : string.Empty,
+                            entry.GodownName ?? string.Empty,
+                            entry.BatchName ?? string.Empty,
+                            entry.CostCentre ?? string.Empty,
+                            entry.BilledUnit ?? string.Empty,
+                            entry.ActualUnit ?? string.Empty))
                         .Select(group => group.First())
                         .ToList();
 
@@ -2218,7 +2270,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""StockItemCollection"" ISMODIFY=""No"">
             <TYPE>Stock Item</TYPE>
-            <FETCH>NAME, GUID, PARENT, BASEUNITS, ADDITIONALUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
+            <FETCH>NAME, ALIAS, GUID, PARENT, CATEGORY, BASEUNITS, ADDITIONALUNITS, CONVERSION, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, INWARDQUANTITY, INWARDVALUE, OUTWARDQUANTITY, OUTWARDVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTAPPLICABLE, TAXABILITY, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -2270,10 +2322,19 @@ namespace TallySyncApp.Services
                     {
                         Id = GetAttribute(itemElement, "GUID") ?? GetElementValue(itemElement, "GUID") ?? Guid.NewGuid().ToString(),
                         Name = GetAttribute(itemElement, "NAME") ?? GetElementValue(itemElement, "NAME") ?? "Unknown",
+                        Alias = GetElementValue(itemElement, "ALIAS"),
                         StockGroup = GetElementValue(itemElement, "PARENT"),
+                        StockCategory = GetElementValue(itemElement, "CATEGORY"),
                         BaseUnit = GetElementValue(itemElement, "BASEUNITS") ?? GetElementValue(itemElement, "ADDITIONALUNITS"),
+                        AdditionalUnit = GetElementValue(itemElement, "ADDITIONALUNITS"),
+                        AlternateUnitConversion = ParseOptionalDecimal(GetElementValue(itemElement, "CONVERSION")),
+                        AlternateUnits = new Dictionary<string, object?> { ["additional_unit"] = GetElementValue(itemElement, "ADDITIONALUNITS"), ["conversion"] = ParseOptionalDecimal(GetElementValue(itemElement, "CONVERSION")) },
                         OpeningBalance = ParseDecimal(GetElementValue(itemElement, "OPENINGBALANCE")),
                         OpeningValue = ParseDecimal(GetElementValue(itemElement, "OPENINGVALUE")),
+                        InwardQuantity = ParseOptionalDecimal(GetElementValue(itemElement, "INWARDQUANTITY")),
+                        InwardValue = ParseOptionalDecimal(GetElementValue(itemElement, "INWARDVALUE")),
+                        OutwardQuantity = ParseOptionalDecimal(GetElementValue(itemElement, "OUTWARDQUANTITY")),
+                        OutwardValue = ParseOptionalDecimal(GetElementValue(itemElement, "OUTWARDVALUE")),
                         ClosingBalance = ParseDecimal(GetElementValue(itemElement, "CLOSINGBALANCE")),
                         ClosingValue = ParseDecimal(GetElementValue(itemElement, "CLOSINGVALUE")),
                         Rate = ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) > 0 
@@ -2281,6 +2342,17 @@ namespace TallySyncApp.Services
                             : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
                         GstRate = gstRate,
+                        GstApplicable = GetElementValue(itemElement, "GSTAPPLICABLE") ?? GetElementValue(itemElement, "ISGSTAPPLICABLE"),
+                        Taxability = GetElementValue(itemElement, "TAXABILITY") ?? GetElementValue(itemElement, "GSTDETAILS.LIST.TAXABILITY"),
+                        GstDetails = new Dictionary<string, object?> { ["gst_applicable"] = GetElementValue(itemElement, "GSTAPPLICABLE") ?? GetElementValue(itemElement, "ISGSTAPPLICABLE"), ["taxability"] = GetElementValue(itemElement, "TAXABILITY"), ["gst_rate"] = gstRate, ["hsn_code"] = hsnCode },
+                        RawData = new Dictionary<string, object?>
+                        {
+                            ["source"] = "Tally XML", ["source_element"] = "STOCKITEM",
+                            ["master_id_raw"] = GetElementValue(itemElement, "MASTERID"), ["alter_id_raw"] = GetElementValue(itemElement, "ALTERID"),
+                            ["base_unit_raw"] = GetElementValue(itemElement, "BASEUNITS"), ["additional_unit_raw"] = GetElementValue(itemElement, "ADDITIONALUNITS"),
+                            ["opening_balance_raw"] = GetElementValue(itemElement, "OPENINGBALANCE"), ["closing_balance_raw"] = GetElementValue(itemElement, "CLOSINGBALANCE"),
+                            ["hsn_code_raw"] = hsnCode
+                        },
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });
@@ -2324,7 +2396,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""ModifiedStockItems"">
             <TYPE>Stock Item</TYPE>
-            <FETCH>NAME, GUID, PARENT, BASEUNITS, ADDITIONALUNITS, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
+            <FETCH>NAME, ALIAS, GUID, PARENT, CATEGORY, BASEUNITS, ADDITIONALUNITS, CONVERSION, OPENINGBALANCE, CLOSINGBALANCE, OPENINGVALUE, CLOSINGVALUE, INWARDQUANTITY, INWARDVALUE, OUTWARDQUANTITY, OUTWARDVALUE, OPENINGRATE, CLOSINGRATE, MASTERID, ALTERID, HSNCODE, GSTAPPLICABLE, TAXABILITY, GSTDETAILS.LIST, HSNDETAILS.LIST</FETCH>
             <FILTER>ModifiedAfter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
@@ -2368,10 +2440,19 @@ namespace TallySyncApp.Services
                     {
                         Id = GetAttribute(itemElement, "GUID") ?? GetElementValue(itemElement, "GUID") ?? Guid.NewGuid().ToString(),
                         Name = GetAttribute(itemElement, "NAME") ?? GetElementValue(itemElement, "NAME") ?? "Unknown",
+                        Alias = GetElementValue(itemElement, "ALIAS"),
                         StockGroup = GetElementValue(itemElement, "PARENT"),
+                        StockCategory = GetElementValue(itemElement, "CATEGORY"),
                         BaseUnit = GetElementValue(itemElement, "BASEUNITS") ?? GetElementValue(itemElement, "ADDITIONALUNITS"),
+                        AdditionalUnit = GetElementValue(itemElement, "ADDITIONALUNITS"),
+                        AlternateUnitConversion = ParseOptionalDecimal(GetElementValue(itemElement, "CONVERSION")),
+                        AlternateUnits = new Dictionary<string, object?> { ["additional_unit"] = GetElementValue(itemElement, "ADDITIONALUNITS"), ["conversion"] = ParseOptionalDecimal(GetElementValue(itemElement, "CONVERSION")) },
                         OpeningBalance = ParseDecimal(GetElementValue(itemElement, "OPENINGBALANCE")),
                         OpeningValue = ParseDecimal(GetElementValue(itemElement, "OPENINGVALUE")),
+                        InwardQuantity = ParseOptionalDecimal(GetElementValue(itemElement, "INWARDQUANTITY")),
+                        InwardValue = ParseOptionalDecimal(GetElementValue(itemElement, "INWARDVALUE")),
+                        OutwardQuantity = ParseOptionalDecimal(GetElementValue(itemElement, "OUTWARDQUANTITY")),
+                        OutwardValue = ParseOptionalDecimal(GetElementValue(itemElement, "OUTWARDVALUE")),
                         ClosingBalance = ParseDecimal(GetElementValue(itemElement, "CLOSINGBALANCE")),
                         ClosingValue = ParseDecimal(GetElementValue(itemElement, "CLOSINGVALUE")),
                         Rate = ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) > 0 
@@ -2379,6 +2460,17 @@ namespace TallySyncApp.Services
                             : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
                         GstRate = gstRate,
+                        GstApplicable = GetElementValue(itemElement, "GSTAPPLICABLE") ?? GetElementValue(itemElement, "ISGSTAPPLICABLE"),
+                        Taxability = GetElementValue(itemElement, "TAXABILITY") ?? GetElementValue(itemElement, "GSTDETAILS.LIST.TAXABILITY"),
+                        GstDetails = new Dictionary<string, object?> { ["gst_applicable"] = GetElementValue(itemElement, "GSTAPPLICABLE") ?? GetElementValue(itemElement, "ISGSTAPPLICABLE"), ["taxability"] = GetElementValue(itemElement, "TAXABILITY"), ["gst_rate"] = gstRate, ["hsn_code"] = hsnCode },
+                        RawData = new Dictionary<string, object?>
+                        {
+                            ["source"] = "Tally XML", ["source_element"] = "STOCKITEM",
+                            ["master_id_raw"] = GetElementValue(itemElement, "MASTERID"), ["alter_id_raw"] = GetElementValue(itemElement, "ALTERID"),
+                            ["base_unit_raw"] = GetElementValue(itemElement, "BASEUNITS"), ["additional_unit_raw"] = GetElementValue(itemElement, "ADDITIONALUNITS"),
+                            ["opening_balance_raw"] = GetElementValue(itemElement, "OPENINGBALANCE"), ["closing_balance_raw"] = GetElementValue(itemElement, "CLOSINGBALANCE"),
+                            ["hsn_code_raw"] = hsnCode
+                        },
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });
@@ -2442,6 +2534,11 @@ namespace TallySyncApp.Services
         }
 
         #region Helper Methods
+
+        private static decimal? ParseOptionalDecimal(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? (decimal?)null : ParseDecimal(value);
+        }
 
         private static string? GetElementValue(XElement element, string name)
         {

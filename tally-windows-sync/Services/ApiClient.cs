@@ -612,13 +612,7 @@ namespace TallySyncApp.Services
                             }
                         }
                         
-                        // Remove unsupported columns (but keep opening_value, closing_value!)
-                        dict.Remove("alias");
-                        dict.Remove("stock_category");
-                        dict.Remove("inward_quantity");
-                        dict.Remove("inward_value");
-                        dict.Remove("outward_quantity");
-                        dict.Remove("outward_value");
+                        // Phase 12: keep complete source fields now present in the canonical stock_items schema.
                     }
                     // =============================================
                     // NEW MASTER DATA TABLES
@@ -823,7 +817,25 @@ namespace TallySyncApp.Services
                                 ["hsn_code"] = entry.HsnCode ?? "",
                                 ["is_inward"] = isInward,
                                 ["discount_percent"] = entry.DiscountPercent,
-                                ["tax_rate"] = entry.TaxRate ?? 0m
+                                ["tax_rate"] = entry.TaxRate ?? 0m,
+                                ["taxability"] = entry.Taxability ?? "",
+                                ["billed_quantity"] = entry.BilledQuantity,
+                                ["actual_quantity"] = entry.ActualQuantity,
+                                ["billed_unit"] = entry.BilledUnit ?? "",
+                                ["actual_unit"] = entry.ActualUnit ?? "",
+                                ["godown_name"] = entry.GodownName ?? "",
+                                ["batch_name"] = entry.BatchName ?? "",
+                                ["cost_centre"] = entry.CostCentre ?? "",
+                                ["cgst_rate"] = entry.CgstRate,
+                                ["cgst_amount"] = entry.CgstAmount,
+                                ["sgst_rate"] = entry.SgstRate,
+                                ["sgst_amount"] = entry.SgstAmount,
+                                ["igst_rate"] = entry.IgstRate,
+                                ["igst_amount"] = entry.IgstAmount,
+                                ["cess_rate"] = entry.CessRate,
+                                ["cess_amount"] = entry.CessAmount,
+                                ["gst_details"] = entry.GstDetails ?? new Dictionary<string, object>(),
+                                ["raw_data"] = entry.RawData ?? new Dictionary<string, object>()
                             };
                             
                             if (!string.IsNullOrEmpty(ownerId) && stockOwnerSupported)
@@ -1469,13 +1481,17 @@ namespace TallySyncApp.Services
 
             for (int i = 0; i < rows.Count; i++)
             {
+                AddAuthHeader();
                 if (rows[i] is not JObject row)
                 {
                     failedRows.Add($"row#{i + 1}: invalid JSON object");
                     continue;
                 }
 
-                var singlePayload = new JArray(row);
+                var rowWithoutNulls = (JObject)row.DeepClone();
+                foreach (var property in rowWithoutNulls.Properties().Where(property => property.Value.Type == JTokenType.Null).ToList())
+                    property.Remove();
+                var singlePayload = new JArray(rowWithoutNulls);
                 var content = new StringContent(singlePayload.ToString(Formatting.None), Encoding.UTF8, "application/json");
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/{table}?on_conflict={onConflict}")
                 {
@@ -1493,7 +1509,10 @@ namespace TallySyncApp.Services
                 var responseContent = await response.Content.ReadAsStringAsync();
                 var parsed = ParseDatabaseError(responseContent);
                 var error = BuildDatabaseErrorMessage(table, (int)response.StatusCode, parsed, responseContent);
-                failedRows.Add($"row#{i + 1}: {error}");
+                var rowId = row["id"]?.ToString() ?? row["name"]?.ToString() ?? $"row#{i + 1}";
+                var failure = $"{rowId}: {error}";
+                failedRows.Add(failure);
+                SyncLogger.Log($"[WARN] [QUARANTINE] '{table}' row '{rowId}' failed after single-row retry: {error}");
             }
 
             if (failedRows.Count == 0)
@@ -2386,10 +2405,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
-
-
-
 
 
 
