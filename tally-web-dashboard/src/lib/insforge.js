@@ -444,13 +444,25 @@ const stockApi = {
         item = itemByNameRes.data || null;
         if (item?.name) itemName = item.name;
       }
-      const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
-      if (entriesRes.error) return entriesRes;
-      let entryRows = entriesRes.data || [];
+      const fetchEntries = async (column, operator = "eq") => {
+        const value = operator === "ilike" ? `%${String(itemName).trim()}%` : itemName;
+        const query = db.from("voucher_stock_entries").select("*").eq("company_id", companyId);
+        return operator === "ilike" ? query.ilike(column, value).limit(limit) : query.eq(column, value).limit(limit);
+      };
+      // Older sync batches used stock_item_name while newer/legacy imports may use item_name.
+      // Try each supported field independently so one missing optional column does not block the tab.
+      const entryAttempts = [];
+      for (const column of ["stock_item_name", "item_name"]) {
+        const result = await fetchEntries(column);
+        if (!result.error && Array.isArray(result.data)) entryAttempts.push(...result.data);
+      }
+      let entryRows = [...new Map(entryAttempts.map((entry) => [entry.id || `${entry.voucher_id}:${entry.stock_item_name || entry.item_name}:${entry.quantity}`, entry])).values()];
       if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
-        if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
+        for (const column of ["stock_item_name", "item_name"]) {
+          const result = await fetchEntries(column, "ilike");
+          if (!result.error && Array.isArray(result.data)) entryRows.push(...result.data);
+        }
+        entryRows = [...new Map(entryRows.map((entry) => [entry.id || `${entry.voucher_id}:${entry.stock_item_name || entry.item_name}:${entry.quantity}`, entry])).values()];
       }
       const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
       if (voucherIds.length === 0) {
@@ -466,7 +478,8 @@ const stockApi = {
         const quantity = Math.abs(Number(entry.quantity) || 0);
         const amount = Math.abs(Number(entry.amount) || 0);
         const rate = Math.abs(Number(entry.rate) || 0);
-        const isInward = entry.is_inward === true || ["Purchase", "Purchase Invoice"].includes(voucher.voucher_type);
+        const voucherType = String(voucher.voucher_type || '').trim();
+        const isInward = entry.is_inward === true || ["purchase", "purchase invoice"].includes(voucherType.toLowerCase());
         return { id: entry.id, voucher_id: voucher.id || entry.voucher_id, voucher_type: voucher.voucher_type, voucher_date: voucher.voucher_date, voucher_number: voucher.voucher_number, party_name: voucher.party_name, quantity, rate, amount, tax_rate: Number(entry.tax_rate ?? entry.gst_rate ?? 0), qty_in: isInward ? quantity : 0, qty_out: isInward ? 0 : quantity, qty_delta: isInward ? quantity : -quantity, raw: entry };
       }).filter(Boolean).sort(compareByVoucherDate);
       let runningQty = Number(item?.opening_stock || item?.opening_balance || 0);

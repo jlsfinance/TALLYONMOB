@@ -179,6 +179,7 @@ export default function StockItemDetailPage() {
             const suppMap: Record<string, any> = {};
             rows.forEach((row: any) => {
                 const type = String(row.voucher_type || '').trim();
+                const normalizedType = type.toLowerCase();
                 const party = String(row.party_name || '').trim() || 'Unknown Party';
                 const date = row.voucher_date || row.created_at || null;
                 const qtyAbs = Math.abs(Number(row.quantity) || 0);
@@ -191,7 +192,7 @@ export default function StockItemDetailPage() {
                 const rate = Math.abs(Number(row.rate) || 0) || (qtyAbs > 0 ? amount / qtyAbs : 0);
                 const gstRate = Number(row.tax_rate ?? row.gst_rate ?? 0) || 0;
                 if (gstRate > maxGstRate) maxGstRate = gstRate;
-                if (SALES_TYPES.has(type)) {
+                if (SALES_TYPES.has(type) || normalizedType === 'sales invoice') {
                     sQty += outwardQty;
                     sVal += amount;
                     if (row.voucher_id) saleVoucherSet.add(String(row.voucher_id));
@@ -200,7 +201,7 @@ export default function StockItemDetailPage() {
                         lastSPrice = rate;
                     }
                     if (!custMap[party]) {
-                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
+                        custMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null };
                     }
                     custMap[party].qty += outwardQty;
                     custMap[party].val += amount;
@@ -208,11 +209,11 @@ export default function StockItemDetailPage() {
                     if (date && (!custMap[party].lastDate || new Date(date).getTime() > new Date(custMap[party].lastDate).getTime())) {
                         custMap[party].lastDate = date;
                     }
-                } else if (PURCHASE_TYPES.has(type)) {
+                } else if (PURCHASE_TYPES.has(type) || normalizedType === 'purchase invoice') {
                     pQty += inwardQty;
                     pVal += amount;
                     if (!suppMap[party]) {
-                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: null };
+                        suppMap[party] = { name: party, lastDate: date, qty: 0, val: 0, rates: [], id: row.party_ledger_id || row.party_id || null };
                     }
                     suppMap[party].qty += inwardQty;
                     suppMap[party].val += amount;
@@ -305,7 +306,7 @@ export default function StockItemDetailPage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-[var(--border)] bg-[var(--surface)] sticky top-[72px] md:top-[88px] z-30">
+            <div className="flex overflow-x-auto border-b border-[var(--border)] bg-[var(--surface)] sticky top-[72px] md:top-[88px] z-30">
                 {[
                     { id: 'summary', label: 'Summary', icon: <Info size={14} /> },
                     { id: 'history', label: 'History', icon: <Clock size={14} /> },
@@ -315,7 +316,7 @@ export default function StockItemDetailPage() {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-4 text-[11px] font-black uppercase tracking-widest transition-all relative
+                        className={`min-w-[132px] flex-1 flex items-center justify-center gap-2 py-4 text-[11px] font-black uppercase tracking-widest transition-all relative whitespace-nowrap
                             ${activeTab === tab.id ? 'text-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}
                         `}
                     >
@@ -629,4 +630,3 @@ export default function StockItemDetailPage() {
         </div>
     );
 }
-
