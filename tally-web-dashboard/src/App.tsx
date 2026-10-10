@@ -86,6 +86,7 @@ const VouchersPage = lazyPage('VouchersPage', () => import('./pages/VouchersPage
 const VoucherDetailPage = lazyPage('VoucherDetailPage', () => import('./pages/VoucherDetailPage'));
 const StockPage = lazyPage('StockPage', () => import('./pages/StockPage'));
 const SyncHistoryPage = lazyPage('SyncHistoryPage', () => import('./pages/SyncHistoryPage'));
+const DeviceManagementPage = lazyPage('DeviceManagementPage', () => import('./pages/DeviceManagementPage'));
 const GSTReportsPage = lazyPage('GSTReportsPage', () => import('./pages/GSTReportsPage'));
 const LedgerStatementPage = lazyPage('LedgerStatementPage', () => import('./pages/LedgerStatementPage'));
 const AgingReportPage = lazyPage('AgingReportPage', () => import('./pages/AgingReportPage'));
@@ -370,6 +371,7 @@ function AppContent() {
                                     <Route path="/stock" element={<StockPage />} />
                                     <Route path="/stock/:id" element={<StockItemDetailPage />} />
                                     <Route path="/sync-history" element={<SyncHistoryPage />} />
+                                    <Route path="/device-management" element={<DeviceManagementPage />} />
                                     <Route path="/gst-reports" element={<GSTReportsPage />} />
                                     <Route path="/ledger-statement/:id" element={<LedgerStatementPage />} />
                                     <Route path="/aging-report" element={<AgingReportPage />} />
@@ -478,7 +480,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

@@ -1,15 +1,16 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Plus, Trash2, Building2, ArrowRight, RefreshCw, ArrowLeft, Clock, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Building2, ArrowRight, ArrowLeft, Clock, Search, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 
 export default function SelectCompanyPage() {
     const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
     const { navigate } = useSafeNavigate();
+    const [query, setQuery] = useState('');
 
     useEffect(() => {
         refreshCompanies();
@@ -49,6 +50,17 @@ export default function SelectCompanyPage() {
         const index = name.charCodeAt(0) % colors.length;
         return colors[index];
     };
+
+    const getSyncStatus = (company: any) => {
+        if (!company.last_sync_at) return { label: 'Never synced', tone: 'text-amber-600 bg-amber-500/10' };
+        const age = Date.now() - new Date(company.last_sync_at).getTime();
+        if (age < 15 * 60 * 1000) return { label: `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-emerald-600 bg-emerald-500/10' };
+        if (age < 24 * 60 * 60 * 1000) return { label: `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-blue-600 bg-blue-500/10' };
+        return { label: `Stale · ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-red-600 bg-red-500/10' };
+    };
+    const visibleCompanies = useMemo(() => companies
+        .filter((company: any) => company.name?.toLowerCase().includes(query.toLowerCase()))
+        .sort((a: any, b: any) => new Date(b.last_sync_at || 0).getTime() - new Date(a.last_sync_at || 0).getTime()), [companies, query]);
 
     return (
         <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-6 transition-colors duration-300">
@@ -95,6 +107,10 @@ export default function SelectCompanyPage() {
                     >
                         Choose a Tally company to manage, or connect a new one.
                     </motion.p>
+                    <div className="relative max-w-sm mt-5">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies" className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-sm text-[var(--on-surface)] outline-none focus:border-[var(--primary)]" />
+                    </div>
                 </div>
 
                 {/* Grid */}
@@ -114,7 +130,7 @@ export default function SelectCompanyPage() {
                     </div>
 
                     {/* Company Cards */}
-                    {companies.map((company, index) => (
+                    {visibleCompanies.map((company) => (
                         <div
                             key={company.id}
                             onClick={() => handleSelect(company)}
@@ -142,11 +158,10 @@ export default function SelectCompanyPage() {
 
                                     <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] mt-2">
                                         <Clock size={12} />
-                                        <span>
-                                            {company.last_sync_at
-                                                ? `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`
-                                                : 'Not synced yet'}
-                                        </span>
+                                        <span>{getSyncStatus(company).label}</span>
+                                    </div>
+                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold mt-2 ${getSyncStatus(company).tone}`}>
+                                        <ShieldCheck size={11} /> {company.last_sync_at ? 'Sync health' : 'Action needed'}
                                     </div>
                                 </div>
 
@@ -154,9 +169,10 @@ export default function SelectCompanyPage() {
                                     <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider">
                                         {company.id.substring(0, 8)}
                                     </span>
-                                    <span className="flex items-center gap-1 text-xs font-medium text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity">
-                                        Open <ArrowRight size={12} />
-                                    </span>
+                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); selectCompany(company); navigate('/device-management'); }} className="text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--primary)]">Manage</button>
+                                        <span className="flex items-center gap-1 text-xs font-medium text-[var(--primary)]">Open <ArrowRight size={12} /></span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -166,5 +182,3 @@ export default function SelectCompanyPage() {
         </div>
     );
 }
-
-
