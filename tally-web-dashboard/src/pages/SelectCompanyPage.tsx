@@ -1,9 +1,8 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
-import { motion } from 'framer-motion';
-import { Plus, Trash2, Building2, ArrowRight, ArrowLeft, Clock, Search, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Building2, Clock, MoreVertical, Plus, Search, ShieldCheck, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 
@@ -11,6 +10,8 @@ export default function SelectCompanyPage() {
     const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
     const { navigate } = useSafeNavigate();
     const [query, setQuery] = useState('');
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [openMenu, setOpenMenu] = useState<string | null>(null);
 
     useEffect(() => {
         refreshCompanies();
@@ -28,156 +29,148 @@ export default function SelectCompanyPage() {
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
+        setOpenMenu(null);
         if (!confirm('Are you sure you want to delete this company? This action cannot be undone.')) return;
 
         try {
             const { success, error } = await deleteCompany(id);
-            if (success) {
-                toast.success('Company deleted');
-            } else {
-                toast.error(error || 'Failed to delete');
-            }
+            if (success) toast.success('Company deleted');
+            else toast.error(error || 'Failed to delete');
         } catch (err) {
             console.error(err);
+            toast.error('Failed to delete company');
         }
     };
 
     const getInitialColor = (name: string) => {
-        const colors = [
-            'bg-blue-600', 'bg-emerald-600', 'bg-amber-600',
-            'bg-rose-600', 'bg-indigo-600', 'bg-teal-600',
-        ];
-        const index = name.charCodeAt(0) % colors.length;
+        const colors = ['bg-blue-600', 'bg-emerald-600', 'bg-amber-600', 'bg-rose-600', 'bg-indigo-600', 'bg-teal-600'];
+        const index = name ? name.charCodeAt(0) % colors.length : 0;
         return colors[index];
     };
 
     const getSyncStatus = (company: any) => {
-        if (!company.last_sync_at) return { label: 'Never synced', tone: 'text-amber-600 bg-amber-500/10' };
-        const age = Date.now() - new Date(company.last_sync_at).getTime();
-        if (age < 15 * 60 * 1000) return { label: `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-emerald-600 bg-emerald-500/10' };
-        if (age < 24 * 60 * 60 * 1000) return { label: `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-blue-600 bg-blue-500/10' };
-        return { label: `Stale · ${formatDistanceToNow(new Date(company.last_sync_at))} ago`, tone: 'text-red-600 bg-red-500/10' };
+        if (!company.last_sync_at) return { label: 'Not synced yet', tone: 'text-gray-500' };
+        const syncedAt = new Date(company.last_sync_at);
+        if (Number.isNaN(syncedAt.getTime())) return { label: 'Sync status unavailable', tone: 'text-gray-500' };
+        const age = Math.max(0, Date.now() - syncedAt.getTime());
+        if (age < 24 * 60 * 60 * 1000) {
+            if (age < 60 * 1000) return { label: 'Synced just now', tone: 'text-green-600' };
+            if (age < 60 * 60 * 1000) return { label: `Synced ${Math.floor(age / 60000)} minutes ago`, tone: 'text-green-600' };
+            return { label: `Synced today at ${syncedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`, tone: 'text-green-600' };
+        }
+        return {
+            label: `Synced ${formatDistanceToNow(syncedAt)} ago`,
+            tone: age >= 30 * 24 * 60 * 60 * 1000 ? 'text-red-600' : 'text-amber-600',
+        };
     };
+
     const visibleCompanies = useMemo(() => companies
-        .filter((company: any) => company.name?.toLowerCase().includes(query.toLowerCase()))
+        .filter((company: any) => company.name?.toLowerCase().includes(query.trim().toLowerCase()))
         .sort((a: any, b: any) => new Date(b.last_sync_at || 0).getTime() - new Date(a.last_sync_at || 0).getTime()), [companies, query]);
 
     return (
-        <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-6 transition-colors duration-300">
-
-            <div className="w-full max-w-4xl">
-                {/* Back Button */}
-                <motion.button
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    onClick={handleBack}
-                    className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors mb-8 group"
-                >
-                    <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-                    <span className="text-sm font-medium">Change Module</span>
-                </motion.button>
-
-                {/* Header */}
-                <div className="mb-10">
-                    <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-2.5 mb-3"
+        <div className="min-h-screen bg-white text-black transition-colors duration-300">
+            <div className="mx-auto w-full max-w-4xl px-4 pb-10 pt-5 sm:px-6">
+                <header className="mb-5 flex min-h-12 items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={handleBack}
+                        aria-label="Back to module selection"
+                        className="rounded-full p-1.5 text-black transition-colors hover:bg-gray-100"
                     >
-                        <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--primary-container)] flex items-center justify-center text-[var(--primary)]">
-                            <Building2 size={16} />
+                        <ArrowLeft size={28} strokeWidth={2.2} />
+                    </button>
+                    {searchOpen ? (
+                        <div className="flex min-w-0 flex-1 items-center border-b border-gray-300">
+                            <input
+                                autoFocus
+                                value={query}
+                                onChange={(event) => setQuery(event.target.value)}
+                                placeholder="Search companies"
+                                aria-label="Search companies"
+                                className="w-full bg-transparent px-1 py-2 text-lg text-black outline-none placeholder:text-gray-500"
+                            />
+                            <button
+                                type="button"
+                                aria-label="Close search"
+                                onClick={() => { setQuery(''); setSearchOpen(false); }}
+                                className="p-2 text-gray-600 hover:text-black"
+                            >
+                                <X size={21} />
+                            </button>
                         </div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Workspace Selection</span>
-                    </motion.div>
+                    ) : (
+                        <h1 className="min-w-0 flex-1 text-xl font-bold text-black">Select Company</h1>
+                    )}
+                    {!searchOpen && (
+                        <button
+                            type="button"
+                            aria-label="Search companies"
+                            onClick={() => setSearchOpen(true)}
+                            className="rounded-full p-2 text-black transition-colors hover:bg-gray-100"
+                        >
+                            <Search size={28} strokeWidth={2} />
+                        </button>
+                    )}
+                </header>
 
-                    <motion.h1
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.05 }}
-                        className="text-2xl md:text-3xl font-bold text-[var(--on-surface)] tracking-tight"
+                <div className="-mx-4 flex min-h-[52px] items-center justify-between bg-[#eeeeee] px-6 sm:-mx-6">
+                    <h2 className="text-lg font-semibold text-black">My Companies</h2>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/onboarding')}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5"
                     >
-                        Select a company
-                    </motion.h1>
-
-                    <motion.p
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-[var(--text-muted)] mt-1.5 text-sm"
-                    >
-                        Choose a Tally company to manage, or connect a new one.
-                    </motion.p>
-                    <div className="relative max-w-sm mt-5">
-                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies" className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-sm text-[var(--on-surface)] outline-none focus:border-[var(--primary)]" />
-                    </div>
+                        <Plus size={17} />
+                        Add Company
+                    </button>
                 </div>
 
-                {/* Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
-                    {/* Add New Card */}
-                    <div
-                        onClick={() => navigate('/onboarding')}
-                        className="cursor-pointer group"
-                    >
-                        <div className="h-48 bg-[var(--surface)] border-2 border-dashed border-[var(--outline-variant)] rounded-[var(--radius-lg)] p-6 flex flex-col items-center justify-center text-center hover:border-[var(--primary)] hover:bg-[var(--primary-glow)] transition-all duration-200">
-                            <div className="w-12 h-12 rounded-[var(--radius-md)] bg-[var(--primary-container)] flex items-center justify-center text-[var(--primary)] mb-3 group-hover:scale-105 transition-transform">
-                                <Plus size={24} />
-                            </div>
-                            <h3 className="font-semibold text-[var(--on-surface)] text-sm">Add Company</h3>
-                            <p className="text-xs text-[var(--text-muted)] mt-1">Download Sync App</p>
-                        </div>
+                {visibleCompanies.length === 0 ? (
+                    <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-5 text-center">
+                        <Building2 size={42} className="text-gray-400" />
+                        <p className="text-sm text-gray-600">
+                            {companies.length === 0 ? 'No companies found. Add a company or sync data from Tally.' : 'No companies match your search.'}
+                        </p>
+                        {companies.length > 0 && <button type="button" onClick={() => setQuery('')} className="text-sm font-medium text-blue-700">Clear search</button>}
                     </div>
-
-                    {/* Company Cards */}
-                    {visibleCompanies.map((company) => (
-                        <div
-                            key={company.id}
-                            onClick={() => handleSelect(company)}
-                            className="cursor-pointer group"
-                        >
-                            <div className="h-48 bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 flex flex-col justify-between hover:border-[var(--outline)] hover:shadow-[var(--shadow-md)] transition-all duration-200 relative overflow-hidden">
-
-                                <div>
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className={`w-10 h-10 rounded-[var(--radius-md)] ${getInitialColor(company.name)} flex items-center justify-center text-white font-bold text-sm`}>
-                                            {company.name.charAt(0)}
-                                        </div>
+                ) : (
+                    <ul className="divide-y divide-[#e5e5e5]">
+                        {visibleCompanies.map((company: any) => {
+                            const sync = getSyncStatus(company);
+                            return (
+                                <li key={company.id} className="relative">
+                                    <div className="flex min-h-[94px] items-center">
                                         <button
-                                            onClick={(e) => handleDelete(e, company.id)}
-                                            className="p-1.5 rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error-bg)] transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Delete"
+                                            type="button"
+                                            onClick={() => handleSelect(company)}
+                                            className="flex min-w-0 flex-1 flex-col items-start justify-center px-3 py-4 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600"
                                         >
-                                            <Trash2 size={14} />
+                                            <span className="max-w-full break-words text-lg font-normal leading-7 text-black">{company.name}</span>
+                                            <span className={`mt-0.5 text-sm italic ${sync.tone}`}>{sync.label}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={`Options for ${company.name}`}
+                                            aria-expanded={openMenu === company.id}
+                                            onClick={() => setOpenMenu((current) => current === company.id ? null : company.id)}
+                                            className="mr-2 rounded-full p-2 text-black transition-colors hover:bg-gray-100"
+                                        >
+                                            <MoreVertical size={25} />
                                         </button>
                                     </div>
-
-                                    <h3 className="font-semibold text-[var(--on-surface)] text-base truncate group-hover:text-[var(--primary)] transition-colors">
-                                        {company.name}
-                                    </h3>
-
-                                    <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] mt-2">
-                                        <Clock size={12} />
-                                        <span>{getSyncStatus(company).label}</span>
-                                    </div>
-                                    <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold mt-2 ${getSyncStatus(company).tone}`}>
-                                        <ShieldCheck size={11} /> {company.last_sync_at ? 'Sync health' : 'Action needed'}
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
-                                    <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider">
-                                        {company.id.substring(0, 8)}
-                                    </span>
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={(e) => { e.stopPropagation(); selectCompany(company); navigate('/device-management'); }} className="text-[10px] font-semibold text-[var(--text-muted)] hover:text-[var(--primary)]">Manage</button>
-                                        <span className="flex items-center gap-1 text-xs font-medium text-[var(--primary)]">Open <ArrowRight size={12} /></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                                    {openMenu === company.id && (
+                                        <div className="absolute right-2 top-14 z-10 min-w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                            <button type="button" onClick={() => handleSelect(company)} className="w-full px-4 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50">Open company</button>
+                                            <button type="button" onClick={() => { selectCompany(company); setOpenMenu(null); navigate('/device-management'); }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"><ShieldCheck size={15} /> Sync health</button>
+                                            <button type="button" onClick={(event) => handleDelete(event, company.id)} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50">Delete company</button>
+                                        </div>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
             </div>
         </div>
     );
