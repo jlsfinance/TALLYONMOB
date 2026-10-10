@@ -553,14 +553,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </button>
 
                     {/* Title — left of center, truncatable */}
-                    <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-hidden">
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-visible">
                         <div id="header-title-mobile" className="flex items-center min-w-0 shrink" />
                         <div className="default-header-content contents">
                             <h2 className="text-[13px] font-bold text-[var(--on-surface)] truncate leading-none whitespace-nowrap">
                                 {selectedCompany?.name || 'Dashboard'}
                             </h2>
                         </div>
-                        <div id="header-filters-mobile" className="flex items-center shrink-0" />
+                        <div id="header-filters-mobile" className="relative z-[80] flex items-center shrink-0 overflow-visible" />
                     </div>
 
                     {/* Actions — right, no shrink */}
@@ -601,7 +601,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 <Command size={8} />K
                             </kbd>
                         </button>
-                        <div id="header-filters" className="flex items-center gap-2" />
+                        <div id="header-filters" className="relative z-[80] flex items-center gap-2 overflow-visible" />
                         <div id="header-actions" className="flex items-center gap-2" />
 
                         {location.pathname === '/' && (

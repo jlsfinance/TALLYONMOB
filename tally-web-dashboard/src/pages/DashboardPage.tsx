@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -43,7 +43,6 @@ export default function DashboardPage() {
     const [salesTrend, setSalesTrend] = useState({ value: 0, direction: 'neutral' });
     const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
-    const [dataFyStart, setDataFyStart] = useState<string | null>(null);
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -52,27 +51,10 @@ export default function DashboardPage() {
         const saved = localStorage.getItem('dashboard_fy_year');
         return saved ? Number(saved) : defaultFyStartYear;
     });
-    const fyButtonRef = useRef<HTMLButtonElement>(null);
-    const [showFyDropdown, setShowFyDropdown] = useState(false);
-    const [fyDropdownStyle, setFyDropdownStyle] = useState<React.CSSProperties>({});
-    const fyOptions = Array.from({ length: 10 }, (_, i) => defaultFyStartYear - i);
 
     useEffect(() => {
         localStorage.setItem('dashboard_fy_year', String(fyYear));
     }, [fyYear]);
-
-    const toggleFyDropdown = () => {
-        if (!showFyDropdown && fyButtonRef.current) {
-            const rect = fyButtonRef.current.getBoundingClientRect();
-            setFyDropdownStyle({
-                position: 'fixed',
-                top: rect.bottom + 4,
-                left: rect.left,
-                zIndex: 9999,
-            });
-        }
-        setShowFyDropdown(prev => !prev);
-    };
 
     const periodFilters = [
         { key: 'today', label: 'Today', icon: <Clock size={12} /> },
@@ -92,44 +74,8 @@ export default function DashboardPage() {
     };
 
     useEffect(() => {
-        if (selectedCompany) detectDataFy();
-    }, [selectedCompany]);
-
-    useEffect(() => {
         if (selectedCompany) loadDashboardData();
-    }, [selectedCompany, period, dataFyStart, fyYear]);
-
-    const detectDataFy = async () => {
-        if (!selectedCompany) return;
-        try {
-            const { data } = await supabase
-                .from('vouchers')
-                .select('voucher_date')
-                .eq('company_id', selectedCompany.id)
-                .eq('is_deleted', false)
-                .order('voucher_date', { ascending: false })
-                .limit(1);
-            if (data && data.length > 0 && data[0].voucher_date) {
-                const latestDate = new Date(data[0].voucher_date);
-                const month = latestDate.getMonth();
-                const year = latestDate.getFullYear();
-                const fyStartYear = month >= 3 ? year : year - 1;
-                const fyStart = `${fyStartYear}-04-01`;
-                const currentFyStart = (() => {
-                    const now = new Date();
-                    const cm = now.getMonth();
-                    const cy = now.getFullYear();
-                    const sy = cm < 3 ? cy - 1 : cy;
-                    return `${sy}-04-01`;
-                })();
-                if (fyStart !== currentFyStart) {
-                    setDataFyStart(fyStart);
-                }
-            }
-        } catch (e) {
-            console.error('FY detection failed', e);
-        }
-    };
+    }, [selectedCompany, period, fyYear]);
 
     useEffect(() => {
         const handleGlobalRefresh = () => { handleRefresh(); };
@@ -522,14 +468,19 @@ export default function DashboardPage() {
                 </div>
             </HeaderPortal>
 
-            <FinancialPeriodSelector
-                className="mb-3"
-                selectedFy={`FY ${fyYear}-${String(fyYear + 1).slice(2)}`}
-                onFyChange={(fy) => {
-                    const match = fy.match(/(20\d{2})/);
-                    if (match) setFyYear(Number(match[1]));
-                }}
-            />
+            <HeaderPortal type="filters">
+                <FinancialPeriodSelector
+                    className="relative z-[80] shrink-0 pointer-events-auto"
+                    selectedFy={`FY ${fyYear}-${String(fyYear + 1).slice(2)}`}
+                    onFyChange={(fy) => {
+                        const match = fy.match(/(20\d{2})/);
+                        if (!match) return;
+                        const nextFyYear = Number(match[1]);
+                        setFyYear(nextFyYear);
+                        localStorage.setItem('dashboard_fy_year', String(nextFyYear));
+                    }}
+                />
+            </HeaderPortal>
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-3">
@@ -848,7 +799,4 @@ export default function DashboardPage() {
         </div>
     );
 };
-
-
-
 

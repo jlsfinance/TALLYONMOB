@@ -61,14 +61,16 @@ export default function FinancialPeriodSelector({
   };
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`} data-financial-period-selector>
-      <label className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 shadow-sm">
+    <div className={`relative z-[80] flex flex-wrap items-center gap-2 isolate pointer-events-auto ${className}`} data-financial-period-selector>
+      <label className="relative z-[81] flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 shadow-sm pointer-events-auto">
         <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)]">Financial Year</span>
         <select
           aria-label="Financial year"
           value={selectedValue}
           onChange={handleYearChange}
-          className="min-w-[118px] cursor-pointer bg-transparent text-[11px] font-black text-[var(--on-surface)] outline-none"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          className="relative z-[82] min-w-[118px] cursor-pointer touch-manipulation bg-transparent text-[11px] font-black text-[var(--on-surface)] outline-none pointer-events-auto"
         >
           {years.map((year) => <option key={year.value} value={year.value}>{year.label}</option>)}
         </select>
