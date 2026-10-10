@@ -222,6 +222,19 @@ const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = n
 const companyApi = {
   list: async () => db.from("companies").select("*").order("name"),
   getById: async (id) => db.from("companies").select("*").eq("id", id).single(),
+  create: async ({ name, ownerId }) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) return { data: null, error: new Error("Company name is required") };
+    if (!ownerId) return { data: null, error: new Error("Signed-in user is required") };
+    return db.from("companies").insert({
+      name: normalizedName,
+      formal_name: normalizedName,
+      owner_id: ownerId,
+      status: "pending",
+      is_active: true,
+      is_deleted: false,
+    }).select("*").single();
+  },
   getAppSettings: async () => {
     const { data, error } = await db.from("app_settings").select("*");
     if (error) return { data: null, error };

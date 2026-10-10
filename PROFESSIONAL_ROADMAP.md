@@ -95,7 +95,7 @@ git push                            # uske baad ke pushes
 
 ## Phase 3 — Guided onboarding aur first sync
 
-**Status:** Planned · **Branch:** `feature/phase-3-guided-onboarding` · **Base:** Abhi `feature/professional-roadmap-phases`; agar Phase 1/2 `allok` mein merge ho chuke hon to latest `allok`.
+**Status:** In progress · **Branch:** `feature/phase-3-guided-onboarding` · **Base:** `feature/professional-roadmap-phases`.
 
 ### Kya banana hai
 - First-time user ke liye short setup wizard: company select/create, Tally connection verify, first sync tak le jaana.
@@ -182,7 +182,7 @@ git push                            # uske baad ke pushes
 |---|---|---|---|
 | Phase 1 | Complete | `feature/professional-roadmap-phases` | [`46a7ee7`](https://github.com/jlsfinance/TALLYONMOB/commit/46a7ee7), dashboard restore [`b448d76`](https://github.com/jlsfinance/TALLYONMOB/commit/b448d76) |
 | Phase 2 | Complete | `feature/professional-roadmap-phases` | [`6a2c33d`](https://github.com/jlsfinance/TALLYONMOB/commit/6a2c33d) |
-| Phase 3 | Planned | `feature/phase-3-guided-onboarding` | Not started |
+| Phase 3 | In progress | `feature/phase-3-guided-onboarding` | Guided company/connection/first-sync wizard implementation in progress |
 | Phase 4 | Planned | `feature/phase-4-branded-invoices` | Not started |
 | Phase 5 | Planned | `feature/phase-5-business-insights` | Not started |
 | Phase 6 | Planned | `feature/phase-6-release-hardening` | Not started |
