@@ -87,6 +87,10 @@ const PLAN_LIMITS: Record<string, number> = {
     lifetime: -1, // unlimited
 };
 
+// Monetization is dormant until charging is explicitly enabled.
+// Set VITE_MONETIZATION_ENABLED=true to restore license/trial feature gating.
+const MONETIZATION_ENABLED = import.meta.env.VITE_MONETIZATION_ENABLED === 'true';
+
 export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const { user, selectedCompany } = useAuth() as any;
     const [license, setLicense] = useState<LicenseInfo>(defaultLicense);
@@ -95,6 +99,19 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const checkLicense = useCallback(async () => {
         if (!user?.id) {
             setLicense(defaultLicense);
+            setIsLoading(false);
+            return;
+        }
+
+        if (!MONETIZATION_ENABLED) {
+            setLicense({
+                ...defaultLicense,
+                status: 'active',
+                planName: 'Standard',
+                planSlug: 'standard',
+                features: ['*'],
+                companyLimit: -1,
+            });
             setIsLoading(false);
             return;
         }
@@ -183,6 +200,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     }, [checkLicense]);
 
     const hasFeature = useCallback((feature: string): boolean => {
+        if (!MONETIZATION_ENABLED) return true;
         if (license.isSuperAdmin) return true;
         if (license.status === 'expired' || license.status === 'blocked' || license.status === 'suspended') {
             return !EXPIRED_BLOCKED.includes(feature);
@@ -192,6 +210,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     }, [license]);
 
     const canAccess = useCallback((feature: string): boolean => {
+        if (!MONETIZATION_ENABLED) return true;
         if (license.isSuperAdmin) return true;
         if (license.status === 'expired' || license.status === 'blocked') return false;
         if (license.status === 'none') return false;
@@ -200,7 +219,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
 
     // isReadOnly sirf tab true jab license expired/blocked/suspended hai
     // 'none' (no license) pe app usable hai, sirf banner dikhega
-    const isReadOnly = license.status === 'expired' || license.status === 'blocked' || license.status === 'suspended';
+    const isReadOnly = MONETIZATION_ENABLED && (license.status === 'expired' || license.status === 'blocked' || license.status === 'suspended');
 
     return (
         <LicenseGateContext.Provider value={{ license, isLoading, hasFeature, canAccess, isReadOnly, refresh: checkLicense }}>

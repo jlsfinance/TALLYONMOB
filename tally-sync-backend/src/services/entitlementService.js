@@ -36,6 +36,19 @@ class EntitlementService {
     if (!principalIds.length) throw stableError('COMPANY_NOT_ALLOWED');
     if ((members || []).length && !eligibleMembers.length && company.owner_id !== company.user_id) throw stableError('COMPANY_NOT_ALLOWED');
 
+    // Monetization is dormant by default. Company ownership/membership checks above,
+    // device proof, version checks and operational request limits remain active.
+    // Set MONETIZATION_ENABLED=true when paid licensing is intentionally launched.
+    if (process.env.MONETIZATION_ENABLED !== 'true') {
+      const minimumVersion = process.env.MIN_SYNC_APP_VERSION;
+      if (minimumVersion && (!appVersion || !isVersionAtLeast(appVersion, minimumVersion))) {
+        throw stableError('APP_VERSION_UNSUPPORTED');
+      }
+      const maxRecords = Number.parseInt(process.env.MAX_SYNC_RECORDS_PER_REQUEST || '50000', 10);
+      if (recordCount > maxRecords) throw stableError('QUOTA_EXCEEDED');
+      return { companyId, userId: company.user_id || company.owner_id, planSlug: 'standard', expiryDate: null, recordCount, correlationId: crypto.randomUUID() };
+    }
+
     const now = new Date();
     const { data: licenses, error: licenseError } = await supabase.from('user_licenses')
       .select('id,user_id,status,expiry_date,tally_serial,plan_id,plan_slug')
