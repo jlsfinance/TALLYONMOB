@@ -116,8 +116,6 @@ namespace TallySyncApp.Services
             try
             {
                 SyncLogger.Log($">>> Pushing voucher to Tally...");
-                SyncLogger.SaveFile("last_push_request.xml", xmlRequest);
-
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
                 {
                     var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
@@ -129,8 +127,6 @@ namespace TallySyncApp.Services
                     }
 
                     var responseContent = await response.Content.ReadAsStringAsync();
-                    SyncLogger.SaveFile("last_push_response.xml", responseContent);
-
                     // Parse response to check for success
                     var doc = XDocument.Parse(responseContent);
                     

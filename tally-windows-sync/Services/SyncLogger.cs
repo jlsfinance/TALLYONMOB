@@ -6,8 +6,7 @@ using System.Text.Json;
 namespace TallySyncApp.Services
 {
     /// <summary>
-    /// Production-Tested Sync Debug Logger
-    /// Saves XML requests/responses and JSON payloads for troubleshooting.
+    /// Safe production logger. It records operational metadata, never raw sync payloads.
     /// </summary>
     public static class SyncLogger
     {
@@ -55,7 +54,7 @@ namespace TallySyncApp.Services
                     eventName,
                     level,
                     processId = Environment.ProcessId,
-                    data
+                    data = Sanitize(data)
                 };
                 File.AppendAllText(
                     Path.Combine(LogDir, "sync-events.jsonl"),
@@ -69,6 +68,8 @@ namespace TallySyncApp.Services
         {
             try
             {
+                if (IsSensitiveArtifact(fileName)) return;
+                content = TextSanitizer.Normalize(content);
                 File.WriteAllText(Path.Combine(LogDir, fileName), content);
             }
             catch
@@ -81,6 +82,7 @@ namespace TallySyncApp.Services
         {
             try
             {
+                if (IsSensitiveArtifact(fileName)) return;
                 var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
                 SaveFile(fileName, json);
             }
@@ -92,7 +94,23 @@ namespace TallySyncApp.Services
 
         public static void LogError(string message, Exception ex)
         {
-            Log($"❌ ERROR: {message}{Environment.NewLine}Details: {ex}");
+            Log($"ERROR: {message} | exceptionType={ex.GetType().Name} | message={TextSanitizer.Normalize(ex.Message)}");
+        }
+
+        private static bool IsSensitiveArtifact(string fileName)
+        {
+            var name = Path.GetFileName(fileName).ToLowerInvariant();
+            return name.Contains("request") || name.Contains("response") || name.Contains("payload")
+                || name.Contains("voucher") || name.Contains("body") || name.EndsWith(".xml", StringComparison.Ordinal)
+                || name.EndsWith(".json", StringComparison.Ordinal);
+        }
+
+        private static object? Sanitize(object? data)
+        {
+            if (data == null) return null;
+            var json = JsonSerializer.Serialize(data);
+            json = System.Text.RegularExpressions.Regex.Replace(json, "(?i)(token|password|secret|api[_-]?key|serial)[^,}]*", "$1=[REDACTED]");
+            return json.Length > 2000 ? json[..2000] + "...[TRUNCATED]" : json;
         }
     }
 }

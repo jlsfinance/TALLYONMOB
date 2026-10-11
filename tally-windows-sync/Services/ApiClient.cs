@@ -1150,14 +1150,12 @@ namespace TallySyncApp.Services
                 var json = normalizedPayload is JToken token
                     ? token.ToString(Formatting.None)
                     : JsonConvert.SerializeObject(normalizedPayload, serializerSettings);
-                if (table == "vouchers")
+                SyncLogger.LogEvent("sync.upsert.prepared", "info", new
                 {
-                    SyncLogger.Log($"DEBUG UPLOAD VOUCHERS: {json.Substring(0, Math.Min(json.Length, 500))}...");
-                }
-                if (table == "companies")
-                {
-                    SyncLogger.Log($"DEBUG UPLOAD COMPANY: {json}");
-                }
+                    table,
+                    payloadBytes = json.Length,
+                    batchSize = normalizedPayload is JArray array ? array.Count : 1
+                });
                 var rows = new JArray(ToObjectRows(normalizedPayload));
                 return await UpsertChunkWithFallbackAsync<T>(table, rows, onConflict);
             }
@@ -2361,7 +2359,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
 
 
 

@@ -83,7 +83,7 @@ router.post('/license', async (req, res) => {
 
         return res.json({ status: 'ok', message: 'Admin action applied' });
     } catch (error) {
-        return res.status(500).json({ status: 'error', message: error.message });
+        return res.status(500).json({ status: 'error', errorCode: error.code || 'ADMIN_OPERATION_FAILED' });
     }
 });
 

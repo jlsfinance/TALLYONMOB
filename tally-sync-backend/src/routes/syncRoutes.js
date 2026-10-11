@@ -144,7 +144,7 @@ router.post('/', validateSync, async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Sync failed',
-            message: error.message
+            errorCode: error.code || 'SYNC_OPERATION_FAILED'
         });
     }
 });
@@ -178,7 +178,7 @@ router.post('/company', validateCompanySync, async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Company sync failed',
-            message: error.message
+            errorCode: error.code || 'SYNC_OPERATION_FAILED'
         });
     }
 });
@@ -248,7 +248,7 @@ router.post('/batch', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Batch sync failed',
-            message: error.message
+            errorCode: error.code || 'SYNC_OPERATION_FAILED'
         });
     }
 });
@@ -289,7 +289,7 @@ router.post('/sync/with-items', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Sync with items failed',
-            message: error.message
+            errorCode: error.code || 'SYNC_OPERATION_FAILED'
         });
     }
 });
@@ -471,7 +471,7 @@ router.get('/devices/:companyId', async (req, res) => {
         res.status(200).json({ success: true, data: devices });
     } catch (error) {
         logger.error('Device list failed:', error);
-        res.status(500).json({ success: false, error: 'Failed to list devices', message: error.message });
+        res.status(500).json({ success: false, error: 'Failed to list devices', errorCode: error.code || 'SYNC_OPERATION_FAILED' });
     }
 });
 
@@ -481,7 +481,7 @@ router.get('/health/:companyId', async (req, res) => {
         res.status(200).json({ success: true, data: health });
     } catch (error) {
         logger.error('Sync health failed:', error);
-        res.status(500).json({ success: false, error: 'Failed to load sync health', message: error.message });
+        res.status(500).json({ success: false, error: 'Failed to load sync health', errorCode: error.code || 'SYNC_OPERATION_FAILED' });
     }
 });
 
@@ -491,7 +491,7 @@ router.get('/conflicts/:companyId', async (req, res) => {
         res.status(200).json({ success: true, data: conflicts });
     } catch (error) {
         logger.error('Conflict list failed:', error);
-        res.status(500).json({ success: false, error: 'Failed to list conflicts', message: error.message });
+        res.status(500).json({ success: false, error: 'Failed to list conflicts', errorCode: error.code || 'SYNC_OPERATION_FAILED' });
     }
 });
 
@@ -503,7 +503,7 @@ router.post('/conflicts/:id/resolve', async (req, res) => {
         res.status(200).json({ success: true, data: conflict });
     } catch (error) {
         logger.error('Conflict resolution failed:', error);
-        res.status(500).json({ success: false, error: 'Failed to resolve conflict', message: error.message });
+        res.status(500).json({ success: false, error: 'Failed to resolve conflict', errorCode: error.code || 'SYNC_OPERATION_FAILED' });
     }
 });
 

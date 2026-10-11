@@ -4,12 +4,33 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - 'tally-windows-sync/**'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
 
 jobs:
+  windows-build-check:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+    - name: Restore and build Windows client
+      shell: pwsh
+      run: |
+        dotnet restore tally-windows-sync/TallySyncApp.csproj --force
+        dotnet build tally-windows-sync/TallySyncApp.csproj -c Release --no-restore
+
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     
     steps:
@@ -34,32 +55,24 @@ jobs:
 
     - name: Create Squirrel Release
       run: |
-        $ErrorActionPreference = 'Continue'
+        $ErrorActionPreference = 'Stop'
         $VERSION = "${{ github.ref_name }}".Substring(1)
         $WORKSPACE = (Get-Location).Path
         
         # Find Squirrel tools directory
         $SQUIRREL_EXE_FILE = Get-ChildItem -Path "$env:USERPROFILE\.nuget\packages\clowd.squirrel" -Filter "Squirrel.exe" -Recurse | Where-Object { $_.FullName -like "*tools*" } | Select-Object -First 1
         
-        if (-not $SQUIRREL_EXE_FILE) {
-            Write-Host "::warning::Squirrel.exe not found - will use direct exe as installer"
-        }
+        if (-not $SQUIRREL_EXE_FILE) { throw "Squirrel.exe is required; refusing to publish an unsigned executable as an installer" }
         
         $PACK_DIR = Join-Path $WORKSPACE "PublishOutput"
         $RELEASE_DIR = Join-Path $WORKSPACE "Releases"
         if (-not (Test-Path $RELEASE_DIR)) { New-Item -ItemType Directory -Path $RELEASE_DIR }
         
-        # Try Squirrel pack (may fail at Setup.exe generation - that's OK)
-        if ($SQUIRREL_EXE_FILE) {
-            $SQUIRREL_DIR = $SQUIRREL_EXE_FILE.DirectoryName
-            $SQUIRREL_EXE = $SQUIRREL_EXE_FILE.FullName
-            
-            Write-Host "Squirrel dir: $SQUIRREL_DIR"
-            
-            Push-Location $SQUIRREL_DIR
-            & .\Squirrel.exe pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="$PACK_DIR" --releaseDir="$RELEASE_DIR" --packAuthors="ShauryaTechSol" --packTitle="TallyLink" 2>&1 | Write-Host
-            Pop-Location
-        }
+        $SQUIRREL_DIR = $SQUIRREL_EXE_FILE.DirectoryName
+        Push-Location $SQUIRREL_DIR
+        & .\Squirrel.exe pack --noDelta --packId="TallyLink" --packVersion="$VERSION" --packDir="$PACK_DIR" --releaseDir="$RELEASE_DIR" --packAuthors="ShauryaTechSol" --packTitle="TallyLink"
+        if ($LASTEXITCODE -ne 0) { throw "Squirrel packaging failed with exit code $LASTEXITCODE" }
+        Pop-Location
         
         Write-Host "Releases dir contents:"
         ls $RELEASE_DIR
@@ -72,14 +85,12 @@ jobs:
             Write-Host "Generated RELEASES file"
         }
         
-        # If no Setup.exe, use published exe directly
         $setupFile = Get-ChildItem -Path $RELEASE_DIR -Filter "*Setup*" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($setupFile) {
-            Move-Item $setupFile.FullName "$RELEASE_DIR\TallyLinkSetup.exe" -Force
-            Write-Host "Renamed Setup.exe"
-        } else {
-            Copy-Item "$PACK_DIR\TallyLink.exe" "$RELEASE_DIR\TallyLinkSetup.exe" -Force
-            Write-Host "Using published TallyLink.exe as installer (152MB self-contained)"
+        if (-not $setupFile) { throw "Squirrel did not produce a setup executable; refusing to publish fallback artifact" }
+        Move-Item $setupFile.FullName "$RELEASE_DIR\TallyLinkSetup.exe" -Force
+        Get-ChildItem $RELEASE_DIR -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Add-Content "$RELEASE_DIR\SHA256SUMS.txt"
         }
         
         Write-Host "Final Releases:"
@@ -106,6 +117,7 @@ jobs:
           Releases/TallyLinkSetup.exe
           Releases/*.nupkg
           Releases/RELEASES
+          Releases/SHA256SUMS.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

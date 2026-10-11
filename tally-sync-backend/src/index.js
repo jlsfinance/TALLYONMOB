@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 require('dotenv').config({ override: true });
+const { requestContext, snapshot } = require('./utils/telemetry');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -11,10 +13,11 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(helmet());
 app.use(cors()); // Allow all origins for dev
+app.use(requestContext);
 // Compress large sync responses while leaving tiny health responses untouched.
 app.use(compression({ threshold: '1kb' }));
 app.use(express.json({ limit: '50mb' })); // Large payload for Tally data
-app.use(morgan('dev'));
+app.use(morgan(':method :status :response-time ms correlation=:req[x-correlation-id]'));
 
 // Import Routes
 const syncRoutes = require('./routes/syncRoutes');
@@ -56,8 +59,23 @@ app.use('/api/mock/supa', appwriteMockRoute);
 
 // Health Check
 app.get('/', (req, res) => {
-    res.send({ status: 'Online', service: 'Tally Sync Backend' });
+    res.send({ status: 'Online', service: 'Tally Sync Backend', version: process.env.APP_VERSION || 'unknown', correlationId: req.correlationId });
 });
+
+app.get('/health/readiness', (req, res) => {
+    const checks = { process: 'healthy', database: 'not_checked', syncControlPlane: 'not_checked' };
+    res.status(200).json({ status: 'healthy', checks, version: process.env.APP_VERSION || 'unknown', correlationId: req.correlationId });
+});
+
+app.get('/metrics', (req, res) => {
+    const configuredKey = process.env.METRICS_ACCESS_KEY;
+    if (process.env.NODE_ENV === 'production' && (!configuredKey || req.get('x-metrics-key') !== configuredKey)) {
+        return res.status(404).json({ success: false, error: 'NOT_FOUND', correlationId: req.correlationId });
+    }
+    return res.status(200).json(snapshot());
+});
+
+app.use(errorHandler);
 
 // Start Server
 app.listen(PORT, () => {
