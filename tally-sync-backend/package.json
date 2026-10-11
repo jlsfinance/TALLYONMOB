@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test test/sync-control-plane.test.js test/phase3-incremental.test.js test/phase10-phase12-contract.test.js test/phase8-observability.test.js test/phase9-security-hardening.test.js",
+    "test": "node --test test/sync-control-plane.test.js test/phase3-incremental.test.js test/phase10-phase12-contract.test.js test/phase8-observability.test.js test/phase9-security-hardening.test.js test/phase10-readiness.test.js",
     "seed:mock": "node seed-mock-data.js",
     "verify:tally": "node verify-tally-sync.js --minutes 60"
   },

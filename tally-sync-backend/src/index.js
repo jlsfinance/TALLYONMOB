@@ -9,6 +9,7 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const { getReadiness } = require('./services/readinessService');
 
 // Middleware
 app.use(helmet());
@@ -62,9 +63,14 @@ app.get('/', (req, res) => {
     res.send({ status: 'Online', service: 'Tally Sync Backend', version: process.env.APP_VERSION || 'unknown', correlationId: req.correlationId });
 });
 
-app.get('/health/readiness', (req, res) => {
-    const checks = { process: 'healthy', database: 'not_checked', syncControlPlane: 'not_checked' };
-    res.status(200).json({ status: 'healthy', checks, version: process.env.APP_VERSION || 'unknown', correlationId: req.correlationId });
+app.get('/health/readiness', async (req, res) => {
+    const readiness = await getReadiness();
+    const httpStatus = readiness.status === 'healthy' ? 200 : 503;
+    res.status(httpStatus).json({
+        ...readiness,
+        version: process.env.APP_VERSION || 'unknown',
+        correlationId: req.correlationId,
+    });
 });
 
 app.get('/metrics', (req, res) => {
