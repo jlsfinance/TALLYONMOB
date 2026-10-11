@@ -42,6 +42,9 @@ function formatCurrency(n: number) {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 }
 
+const MOCK_PAYMENTS_ENABLED = import.meta.env.MODE !== 'production'
+    && import.meta.env.VITE_MOCK_PAYMENTS === 'true';
+
 export default function SubscriptionPage() {
     const { user } = useAuth() as any;
     const { license, isReadOnly, refresh } = useLicenseGate();
@@ -78,6 +81,27 @@ export default function SubscriptionPage() {
 
         setLoading(true);
         try {
+            const finalAmount = Math.max(0, plan.price - couponDiscount);
+            if (MOCK_PAYMENTS_ENABLED) {
+                const mockTransactionId = `mock_pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                const { error } = await supabase.from('payments').insert({
+                    user_id: user.id,
+                    plan_slug: selectedPlan,
+                    amount: plan.price,
+                    coupon_code: couponCode || null,
+                    discount: couponDiscount,
+                    final_amount: finalAmount,
+                    status: 'completed',
+                    payment_method: 'mock',
+                    razorpay_payment_id: mockTransactionId,
+                });
+                if (error) throw error;
+                toast.success(`Mock payment successful for ${plan.name} (${formatCurrency(finalAmount)})`);
+                setLoading(false);
+                setTimeout(() => window.location.reload(), 800);
+                return;
+            }
+
             const scriptLoaded = await loadRazorpayScript();
             if (!scriptLoaded) {
                 toast.error('Failed to load payment gateway. Check your internet.');
@@ -85,7 +109,7 @@ export default function SubscriptionPage() {
                 return;
             }
 
-            const amountInPaise = Math.max(0, plan.price - couponDiscount) * 100;
+            const amountInPaise = finalAmount * 100;
 
             const razorpay = new window.Razorpay({
                 key: import.meta.env.VITE_RAZORPAY_KEY_ID,
@@ -303,6 +327,11 @@ export default function SubscriptionPage() {
                             {loading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
                             {loading ? 'Processing...' : 'Buy Now'}
                         </button>
+                        {MOCK_PAYMENTS_ENABLED && (
+                            <p className="mt-2 text-center text-[10px] font-semibold text-amber-600">
+                                Demo mode: payment succeeds locally; no real charge is made.
+                            </p>
+                        )}
                     </motion.div>
                 )}
 
