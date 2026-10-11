@@ -50,6 +50,9 @@ function getAvailableFYs(): string[] {
     });
 }
 
+const DEMO_DASHBOARD_DATA_ENABLED = import.meta.env.MODE !== 'production'
+    && import.meta.env.VITE_DEMO_DASHBOARD_DATA === 'true';
+
 const QUICK_ACCESS_ITEMS = [
     { icon: <Package size={18} />, label: 'Buy Now', color: 'text-rose-500', path: '/create-voucher' },
     { icon: <FileText size={18} />, label: 'Invoice', color: 'text-emerald-500', path: '/create-invoice', badge: 'NEW' },
@@ -234,6 +237,28 @@ export default memo(function LiveKeepingsDashboard() {
         queryKey: ['dashboard', selectedCompany?.id, selectedFY],
         queryFn: async () => {
             if (!selectedCompany?.id) return null;
+            if (DEMO_DASHBOARD_DATA_ENABLED) {
+                return {
+                    totalSales: 245000,
+                    totalPurchases: 138500,
+                    totalReceipts: 184000,
+                    totalPayments: 96500,
+                    receivables: 61000,
+                    payables: 42000,
+                    todaySales: 12500,
+                    salesCount: 18,
+                    purchaseCount: 11,
+                    recentVouchers: [
+                        { id: 'demo-sale-1', voucher_type: 'Sales', voucher_number: 'DEMO-001', party_name: 'Demo Customer', grand_total: 12500, voucher_date: new Date().toISOString().slice(0, 10) },
+                        { id: 'demo-sale-2', voucher_type: 'Sales', voucher_number: 'DEMO-002', party_name: 'Sample Traders', grand_total: 8750, voucher_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10) },
+                    ],
+                    topParties: [
+                        { id: 'demo-party-1', name: 'Demo Customer', parent: 'Sundry Debtors', current_balance: 36000 },
+                        { id: 'demo-party-2', name: 'Sample Supplier', parent: 'Sundry Creditors', current_balance: 24000 },
+                    ],
+                    alerts: { overduePayments: 1, overdueAmount: 36000, lowStockCount: 2, lowStockItems: ['Demo Item A', 'Demo Item B'] },
+                };
+            }
             const today = format(new Date(), 'yyyy-MM-dd');
 
             const [sales, purchases, receipts, payments, ledgers, recentRes, stockItems] = await Promise.all([
@@ -452,6 +477,12 @@ export default memo(function LiveKeepingsDashboard() {
                     )}
                 </div>
             </HeaderPortal>
+
+            {DEMO_DASHBOARD_DATA_ENABLED && (
+                <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-[10px] font-semibold text-violet-700 dark:text-violet-300">
+                    Demo data mode: these dashboard values are sample numbers for temporary UI testing only.
+                </div>
+            )}
 
             {/* Sync Banner — compact + working */}
             <button onClick={() => navigate('/tally-sync')} className="w-full flex items-center justify-between p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 active:scale-[0.98] transition-transform">
