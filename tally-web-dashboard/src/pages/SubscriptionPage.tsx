@@ -44,6 +44,21 @@ function formatCurrency(n: number) {
 
 const MOCK_PAYMENTS_ENABLED = import.meta.env.MODE !== 'production'
     && import.meta.env.VITE_MOCK_PAYMENTS === 'true';
+const MOCK_PAYMENTS_STORAGE_PREFIX = 'tallyonmobile.mockPayments.';
+
+function readMockPayments(userId: string): any[] {
+    try {
+        return JSON.parse(localStorage.getItem(`${MOCK_PAYMENTS_STORAGE_PREFIX}${userId}`) || '[]');
+    } catch {
+        return [];
+    }
+}
+
+function writeMockPayment(userId: string, payment: any) {
+    const payments = [payment, ...readMockPayments(userId)].slice(0, 25);
+    localStorage.setItem(`${MOCK_PAYMENTS_STORAGE_PREFIX}${userId}`, JSON.stringify(payments));
+    return payments;
+}
 
 export default function SubscriptionPage() {
     const { user } = useAuth() as any;
@@ -58,6 +73,10 @@ export default function SubscriptionPage() {
         if (!user?.id) return;
 
         const loadPayments = async () => {
+            if (MOCK_PAYMENTS_ENABLED) {
+                setPayments(readMockPayments(user.id));
+                return;
+            }
             try {
                 const { data } = await supabase.from('payments')
                     .select('*')
@@ -84,7 +103,8 @@ export default function SubscriptionPage() {
             const finalAmount = Math.max(0, plan.price - couponDiscount);
             if (MOCK_PAYMENTS_ENABLED) {
                 const mockTransactionId = `mock_pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                const { error } = await supabase.from('payments').insert({
+                const mockPayment = {
+                    id: mockTransactionId,
                     user_id: user.id,
                     plan_slug: selectedPlan,
                     amount: plan.price,
@@ -94,8 +114,14 @@ export default function SubscriptionPage() {
                     status: 'completed',
                     payment_method: 'mock',
                     razorpay_payment_id: mockTransactionId,
-                });
-                if (error) throw error;
+                    created_at: new Date().toISOString(),
+                };
+                const payments = writeMockPayment(user.id, mockPayment);
+                setPayments(payments);
+                /*
+                 * Deliberately do not call Supabase here. This temporary demo
+                 * must never create test payment rows in the production project.
+                 */
                 toast.success(`Mock payment successful for ${plan.name} (${formatCurrency(finalAmount)})`);
                 setLoading(false);
                 setTimeout(() => window.location.reload(), 800);
