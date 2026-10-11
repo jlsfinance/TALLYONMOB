@@ -32,6 +32,7 @@ namespace TallySyncApp.Services
         private static readonly Regex SafeSqlIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
         private readonly ConcurrentDictionary<string, bool> _tableExistsCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, bool> _columnExistsCache = new(StringComparer.OrdinalIgnoreCase);
+        private string? _authenticatedUserId;
 
         private static readonly HashSet<string> OptionalSyncTables = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -67,6 +68,7 @@ namespace TallySyncApp.Services
         public void SetUserToken(string? token)
         {
             _userToken = string.IsNullOrWhiteSpace(token) ? null : token;
+            _authenticatedUserId = null;
         }
 
         public void ResetSchemaCapabilityCache()
@@ -86,6 +88,65 @@ namespace TallySyncApp.Services
             {
                 _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
             }
+        }
+
+        /// <summary>
+        /// Resolve the identity that Supabase will use for RLS. The desktop session
+        /// cache can outlive a refreshed token, so its user id must not be the sole
+        /// source of owner_id for writes.
+        /// </summary>
+        private async Task<string?> GetAuthenticatedUserIdAsync()
+        {
+            if (!string.IsNullOrWhiteSpace(_authenticatedUserId))
+            {
+                return _authenticatedUserId;
+            }
+
+            if (string.IsNullOrWhiteSpace(_userToken))
+            {
+                return null;
+            }
+
+            try
+            {
+                AddAuthHeader();
+                using var response = await _httpClient.GetAsync($"{_supabaseUrl}/auth/v1/user");
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"[WARN] Could not resolve authenticated Supabase user: HTTP {(int)response.StatusCode}");
+                    return null;
+                }
+
+                var body = await response.Content.ReadAsStringAsync();
+                var userId = JObject.Parse(body)["id"]?.ToString()?.Trim();
+                if (Guid.TryParse(userId, out _))
+                {
+                    _authenticatedUserId = userId;
+                    return userId;
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"[WARN] Could not resolve authenticated Supabase user: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        private async Task<string?> ResolveOwnerIdAsync(string? requestedOwnerId)
+        {
+            var authenticatedUserId = await GetAuthenticatedUserIdAsync();
+            if (!string.IsNullOrWhiteSpace(authenticatedUserId))
+            {
+                if (!string.IsNullOrWhiteSpace(requestedOwnerId)
+                    && !string.Equals(requestedOwnerId.Trim(), authenticatedUserId, StringComparison.OrdinalIgnoreCase))
+                {
+                    SyncLogger.Log("[WARN] Replaced stale desktop session owner_id with the authenticated Supabase user id.");
+                }
+                return authenticatedUserId;
+            }
+
+            return Guid.TryParse(requestedOwnerId, out _) ? requestedOwnerId!.Trim() : null;
         }
 
         /// <summary>
@@ -242,6 +303,8 @@ namespace TallySyncApp.Services
             string onConflict = "id",
             string? ownerId = null)
         {
+            ownerId = await ResolveOwnerIdAsync(ownerId);
+
             // Map dataType to table name
             string tableName = dataType.ToLower();
             
@@ -294,6 +357,18 @@ namespace TallySyncApp.Services
                 {
                     SyncLogger.Log($"[WARN] Table '{tableName}' has no owner_id column. Upload will continue without owner_id.");
                 }
+            }
+
+            if (string.IsNullOrWhiteSpace(ownerId) && await ColumnExistsAsync(tableName, "owner_id"))
+            {
+                const string missingIdentityMessage = "Sync paused: no authenticated Supabase user is available for the RLS-protected write. Sign in again and retry.";
+                SyncLogger.Log($"[ERROR] {missingIdentityMessage} table={tableName}");
+                return new ApiResponse<SyncResultDetails>
+                {
+                    Success = false,
+                    Error = missingIdentityMessage,
+                    Details = new SyncResultDetails { Total = data.Count, Success = false, Count = 0, Failed = data.Count }
+                };
             }
 
             // Convert company_id to UUID if it's a string name
@@ -2135,10 +2210,6 @@ namespace TallySyncApp.Services
         }
     }
 }
-
-
-
-
 
 
 
