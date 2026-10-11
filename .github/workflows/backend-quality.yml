@@ -42,6 +42,9 @@ jobs:
       - name: Run backend tests
         run: npm test
 
+      - name: Verify payment activation safety
+        run: npm run verify:payment-readiness
+
       - name: Check JavaScript syntax
         run: |
           set -euo pipefail
