@@ -33,6 +33,7 @@ export default function DashboardPage() {
     const { isDark } = useTheme();
     const { navigate } = useSafeNavigate();
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [period, setPeriod] = useState<DashboardPeriod>(() => getStoredDashboardPeriod());
     const [stats, setStats] = useState({
@@ -109,6 +110,7 @@ export default function DashboardPage() {
     const loadDashboardData = async () => {
         if (!selectedCompany) return;
         setLoading(true);
+        setLoadError(null);
         const { from, to } = getDateRange();
 
         try {
@@ -352,6 +354,7 @@ export default function DashboardPage() {
             setRecentVouchers(recent.data || []);
         } catch (error) {
             console.error('Dashboard load error:', error);
+            setLoadError('Dashboard data could not be loaded. Check the selected company, financial year, and sync connection, then refresh.');
         }
         setLoading(false);
     };
@@ -458,6 +461,17 @@ export default function DashboardPage() {
                     </button>
                 </div>
             </HeaderPortal>
+
+            {loadError && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300" role="alert">
+                    <div className="flex items-center justify-between gap-3">
+                        <span>{loadError}</span>
+                        <button onClick={handleRefresh} disabled={refreshing} className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+                            {refreshing ? 'Retrying…' : 'Retry'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <HeaderPortal type="filters">
                 <FinancialPeriodSelector
