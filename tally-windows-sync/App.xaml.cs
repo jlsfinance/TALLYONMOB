@@ -41,11 +41,13 @@ namespace TallySyncApp
 
         protected override void OnStartup(System.Windows.StartupEventArgs e)
         {
-            // DEBUG: Write immediately to confirm new code is running
             try
             {
-                Directory.CreateDirectory(@"C:\Users\Admin\logs");
-                File.WriteAllText(@"C:\Users\Admin\logs\tallylink-debug.log",
+                var startupLogDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "TallyLink", "logs");
+                Directory.CreateDirectory(startupLogDirectory);
+                File.WriteAllText(Path.Combine(startupLogDirectory, "tallylink-debug.log"),
                     $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NEW BUILD RUNNING\n");
             }
             catch { }
@@ -344,7 +346,9 @@ namespace TallySyncApp
         {
             try
             {
-                var logPath = @"C:\Users\Admin\logs";
+                var logPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "TallyLink", "logs");
                 Directory.CreateDirectory(logPath);
                 File.AppendAllText(
                     Path.Combine(logPath, "tallylink-crash.log"),

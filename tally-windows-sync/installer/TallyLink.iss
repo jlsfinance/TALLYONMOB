@@ -2,7 +2,7 @@
 ; Creates a proper Windows installer with license, path selection, shortcuts, etc.
 
 #define AppName "TallyLink"
-#define AppVersion "2.10.7"
+#define AppVersion "3.1.0"
 #define AppPublisher "TallyLink"
 #define AppURL "https://tallyonmob.vercel.app"
 #define AppExeName "TallyLink.exe"
@@ -69,9 +69,9 @@ Name: "startupicon"; Description: "Start TallyLink when Windows starts"; GroupDe
 
 [Files]
 ; Main exe (published single file)
-Source: "{#SourcePath}\..\..\tallysyncapp\TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\..\PublishOutput\TallyLink.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Config file
-Source: "{#SourcePath}\..\..\tallysyncapp\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
+Source: "{#SourcePath}\..\PublishOutput\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 ; Icon (embedded in the exe already)
 
 [Icons]
@@ -119,7 +119,6 @@ begin
     ForceDirectories(ExpandConstant('{app}\Logs'));
   end;
 end;
-
 
 
 

@@ -258,31 +258,27 @@ namespace TallySyncApp.ViewModels
                 // Ignore build stamp logging errors.
             }
 
-            // Auto-validate license on startup (background, no UI blocking)
-            _ = Task.Run(async () =>
+            // Never infer entitlement from a logged-in session. The server-side
+            // validate-license flow is the only authority for sync eligibility.
+            _ = Application.Current?.Dispatcher.BeginInvoke(new Action(async () =>
             {
                 await Task.Delay(2000);
                 try
                 {
-                    var authService = App.AuthService;
-                    if (authService != null && authService.IsLoggedIn && !string.IsNullOrEmpty(authService.CurrentSession?.Email))
+                    if (App.AuthService?.IsLoggedIn == true)
                     {
-                        bool isSuperAdmin = authService.CurrentSession.Email?.Trim().ToLower() == "lovneetrathi@gmail.com";
-                        Application.Current?.Dispatcher.Invoke(() =>
-                        {
-                            IsLicenseValid = true;
-                            LicenseStatus = isSuperAdmin ? "Active (Super Admin)" : "Active (Session)";
-                            LicensePlan = isSuperAdmin ? "Pro (Admin)" : "Trial";
-                            LicenseDaysRemaining = isSuperAdmin ? 9999 : 7;
-                        });
-                        Log($"License auto-validated: {(isSuperAdmin ? "Super Admin" : "Session")}");
+                        await ValidateLicense();
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log($"Auto-validate skip: {ex.Message}");
+                    IsLicenseValid = false;
+                    LicenseStatus = "Not Validated";
+                    LicensePlan = "Unknown";
+                    LicenseDaysRemaining = 0;
+                    Log($"Server license validation failed: {ex.Message}");
                 }
-            });
+            }));
 
             // Check sync staleness every 60 seconds
             var stalenessTimer = new System.Timers.Timer(60000);
@@ -654,21 +650,15 @@ namespace TallySyncApp.ViewModels
                  return true;
              }
 
-             // Mismatch
-             var res = MessageBox.Show(
-                 $"Tally Serial Number Mismatch!\n\nStored: {stored}\nCurrent: {current}\n\nDo you want to proceed and update the serial number?",
-                 "Security Warning",
-                 MessageBoxButton.YesNo,
+             // A mismatch must be resolved by the protected server transfer
+             // flow. Never allow a local overwrite to bypass serial binding.
+             MessageBox.Show(
+                 "This Tally serial is already bound to another license.\n\n" +
+                 "Contact support to request a protected serial transfer.",
+                 "Serial Transfer Required",
+                 MessageBoxButton.OK,
                  MessageBoxImage.Warning);
-                
-             if (res == MessageBoxResult.Yes)
-             {
-                 _syncManager.UpdateTallySerial(current!);
-                 Log($"Updated Tally Serial to: {current}");
-                 return true;
-             }
-             
-             Log("Sync cancelled by user due to serial mismatch.");
+             Log("Sync blocked due to serial mismatch; protected transfer required.");
              return false;
         }
 
@@ -813,4 +803,3 @@ namespace TallySyncApp.ViewModels
         }
     }
 }
-
