@@ -1,0 +1,58 @@
+name: Backend quality and security gate
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+      - 'phase/**'
+    paths:
+      - 'tally-sync-backend/**'
+      - '.github/workflows/backend-quality.yml'
+  pull_request:
+    paths:
+      - 'tally-sync-backend/**'
+      - '.github/workflows/backend-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tally-sync-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tally-sync-backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run backend tests
+        run: npm test
+
+      - name: Check JavaScript syntax
+        run: |
+          set -euo pipefail
+          find src test -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Verify staging migration safety
+        run: |
+          set -euo pipefail
+          migration='migrations/20261011_security_hardening_staging.sql'
+          test -s "$migration"
+          grep -q 'STAGING ONLY' "$migration"
+          grep -q 'Do not apply to production' "$migration"
+          ! grep -Eiq 'DROP TABLE|TRUNCATE|DELETE FROM|UPDATE public\.' "$migration"
+          echo 'Staging migration safety checks passed.'
