@@ -12,7 +12,7 @@ namespace TallySyncApp.Pages
     {
         private List<Voucher> _vouchers = new();
         private int _currentIndex = 0;
-        private Point _dragStart;
+        private System.Windows.Point _dragStart;
         private bool _isDragging = false;
 
         public event Action? OnBack;
