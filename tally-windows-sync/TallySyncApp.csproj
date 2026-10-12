@@ -17,7 +17,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.1.0</Version>
+    <Version>3.2.1</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA - Tally Data Sync</Product>
@@ -71,7 +71,6 @@
   </Target>
 
 </Project>
-
 
 
 
