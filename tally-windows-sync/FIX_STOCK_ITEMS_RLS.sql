@@ -4,17 +4,33 @@
 
 BEGIN;
 
-ALTER TABLE IF EXISTS public.stock_items ADD COLUMN IF NOT EXISTS owner_id UUID;
-ALTER TABLE IF EXISTS public.stock_items ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS public.stock_items (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    owner_id UUID,
+    name TEXT,
+    unit TEXT,
+    opening_stock NUMERIC,
+    current_stock NUMERIC,
+    opening_value NUMERIC,
+    closing_value NUMERIC,
+    rate NUMERIC,
+    stock_group TEXT,
+    hsn_code TEXT,
+    gst_rate NUMERIC,
+    master_id TEXT,
+    alter_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.stock_items ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE public.stock_items ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
     policy_name TEXT;
 BEGIN
-    IF to_regclass('public.stock_items') IS NULL THEN
-        RAISE EXCEPTION 'public.stock_items does not exist';
-    END IF;
-
     -- Remove stale/duplicate policies, including policies created by older fixes.
     FOR policy_name IN
         SELECT policyname
