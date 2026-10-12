@@ -1,5 +1,3 @@
-extern alias WinForms;
-
 using System;
 using System.Drawing;
 using System.Linq;
@@ -10,7 +8,7 @@ namespace TallySyncApp.Services
 {
     public class TrayService : IDisposable
     {
-        private WinForms::System.Windows.Forms.NotifyIcon? _trayIcon;
+        private System.Windows.Forms.NotifyIcon? _trayIcon;
         private readonly Action _showMainWindow;
         private readonly Action _startSync;
         private readonly Action _stopSync;
@@ -31,7 +29,7 @@ namespace TallySyncApp.Services
             if (_trayIcon != null) return;
 
             var icon = LoadEmbeddedIcon();
-            _trayIcon = new WinForms::System.Windows.Forms.NotifyIcon
+            _trayIcon = new System.Windows.Forms.NotifyIcon
             {
                 Icon = icon ?? SystemIcons.Application,
                 Text = "TallyLink - Syncing Tally Data",
@@ -39,25 +37,25 @@ namespace TallySyncApp.Services
                 BalloonTipTitle = "TallyLink",
             };
 
-            var contextMenu = new WinForms::System.Windows.Forms.ContextMenuStrip();
+            var contextMenu = new System.Windows.Forms.ContextMenuStrip();
 
-            var showItem = new WinForms::System.Windows.Forms.ToolStripMenuItem("Show TallyLink");
+            var showItem = new System.Windows.Forms.ToolStripMenuItem("Show TallyLink");
             showItem.Click += (s, e) => RestoreFromTray();
             contextMenu.Items.Add(showItem);
 
-            contextMenu.Items.Add(new WinForms::System.Windows.Forms.ToolStripSeparator());
+            contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
 
-            var syncItem = new WinForms::System.Windows.Forms.ToolStripMenuItem("Sync Now");
+            var syncItem = new System.Windows.Forms.ToolStripMenuItem("Sync Now");
             syncItem.Click += (s, e) => _startSync();
             contextMenu.Items.Add(syncItem);
 
-            var stopItem = new WinForms::System.Windows.Forms.ToolStripMenuItem("Stop Sync");
+            var stopItem = new System.Windows.Forms.ToolStripMenuItem("Stop Sync");
             stopItem.Click += (s, e) => _stopSync();
             contextMenu.Items.Add(stopItem);
 
-            contextMenu.Items.Add(new WinForms::System.Windows.Forms.ToolStripSeparator());
+            contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
 
-            var exitItem = new WinForms::System.Windows.Forms.ToolStripMenuItem("Exit");
+            var exitItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
             exitItem.Click += (s, e) => ExitApplication();
             contextMenu.Items.Add(exitItem);
 
@@ -79,7 +77,7 @@ namespace TallySyncApp.Services
                 3000,
                 "TallyLink",
                 "App minimized to tray. Sync continues in background.",
-                WinForms::System.Windows.Forms.ToolTipIcon.Info);
+                System.Windows.Forms.ToolTipIcon.Info);
         }
 
         public void RestoreFromTray()
@@ -90,7 +88,7 @@ namespace TallySyncApp.Services
             _showMainWindow();
         }
 
-        public void ShowNotification(string title, string message, WinForms::System.Windows.Forms.ToolTipIcon icon = WinForms::System.Windows.Forms.ToolTipIcon.Info)
+        public void ShowNotification(string title, string message, System.Windows.Forms.ToolTipIcon icon = System.Windows.Forms.ToolTipIcon.Info)
         {
             _trayIcon?.ShowBalloonTip(5000, title, message, icon);
         }

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app_icon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
@@ -43,12 +44,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="System.Windows.Forms">
-      <Aliases>WinForms</Aliases>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
@@ -71,7 +66,6 @@
   </Target>
 
 </Project>
-
 
 
 
