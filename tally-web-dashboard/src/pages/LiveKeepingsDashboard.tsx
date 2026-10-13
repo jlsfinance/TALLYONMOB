@@ -29,6 +29,13 @@ function formatCompact(amount: number) {
     return formatCurrency(amount);
 }
 
+function getVoucherAmount(voucher: any) {
+    const grandTotal = Number(voucher?.grand_total) || 0;
+    const totalAmount = Number(voucher?.total_amount) || 0;
+    const amount = Number(voucher?.amount) || 0;
+    return Math.abs(grandTotal || totalAmount || amount);
+}
+
 function getCurrentFY(): string {
     const now = new Date();
     const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -37,7 +44,9 @@ function getCurrentFY(): string {
 
 function getFYDates(fy: string): { from: string; to: string } {
     const startYear = parseInt(fy.split('-')[0]);
-    return { from: `${startYear}-04-01`, to: `${startYear + 1}-03-31` };
+    // Supabase timestamps compared with a bare date are evaluated at midnight,
+    // which excluded every voucher posted later on 31 March.
+    return { from: `${startYear}-04-01T00:00:00.000Z`, to: `${startYear + 1}-03-31T23:59:59.999Z` };
 }
 
 function getAvailableFYs(): string[] {
@@ -66,7 +75,7 @@ function shareOnWhatsApp(phone: string, message: string) {
 }
 
 function generateInvoiceMessage(v: any) {
-    const amt = formatCurrency(Number(v.grand_total) || Number(v.total_amount) || 0);
+    const amt = formatCurrency(getVoucherAmount(v));
     return `📄 *Invoice #${v.voucher_number || 'NA'}*\n👤 ${v.party_name || 'Customer'}\n💰 Amount: ${amt}\n📅 Date: ${format(new Date(v.voucher_date), 'dd MMM yyyy')}\n📝 Type: ${v.voucher_type}`;
 }
 
@@ -165,7 +174,7 @@ const RecentTransactions = memo(({ dashboard, navigate }: { dashboard: any; navi
         </div>
         <div className="space-y-[2px]">
             {(dashboard?.recentVouchers || []).slice(0, 5).map((v: any) => {
-                const amt = Number(v.grand_total) || Number(v.total_amount) || 0;
+                const amt = getVoucherAmount(v);
                 const isDebit = v.voucher_type === 'Sales' || v.voucher_type === 'Purchase';
                 return (
                     <div key={v.id} className="flex items-center justify-between p-2 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
@@ -236,21 +245,21 @@ export default memo(function LiveKeepingsDashboard() {
             const today = format(new Date(), 'yyyy-MM-dd');
 
             const [salesRes, purchasesRes, receiptsRes, paymentsRes, ledgersRes, recentRes, stockRes] = await Promise.all([
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
-                    .eq('company_id', selectedCompany.id).eq('voucher_type', 'Sales').eq('is_deleted', false)
+                supabase.from('vouchers').select('grand_total, total_amount, amount, voucher_date, party_name, id, voucher_type')
+                    .eq('company_id', selectedCompany.id).in('voucher_type', ['Sales', 'Sales Invoice']).eq('is_deleted', false)
                     .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount, voucher_date, party_name, id')
-                    .eq('company_id', selectedCompany.id).eq('voucher_type', 'Purchase').eq('is_deleted', false)
+                supabase.from('vouchers').select('grand_total, total_amount, amount, voucher_date, party_name, id, voucher_type')
+                    .eq('company_id', selectedCompany.id).in('voucher_type', ['Purchase', 'Purchase Invoice']).eq('is_deleted', false)
                     .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount')
+                supabase.from('vouchers').select('grand_total, total_amount, amount')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Receipt').eq('is_deleted', false)
                     .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
-                supabase.from('vouchers').select('grand_total, total_amount')
+                supabase.from('vouchers').select('grand_total, total_amount, amount')
                     .eq('company_id', selectedCompany.id).eq('voucher_type', 'Payment').eq('is_deleted', false)
                     .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to),
                 supabase.from('ledgers').select('name, current_balance, parent')
                     .eq('company_id', selectedCompany.id),
-                supabase.from('vouchers').select('id, voucher_type, voucher_number, party_name, grand_total, total_amount, voucher_date')
+                supabase.from('vouchers').select('id, voucher_type, voucher_number, party_name, grand_total, total_amount, amount, voucher_date')
                     .eq('company_id', selectedCompany.id).eq('is_deleted', false)
                     .order('voucher_date', { ascending: false }).limit(15),
                 supabase.from('stock_items').select('id, name, current_stock, opening_stock, stock_group')
@@ -261,11 +270,11 @@ export default memo(function LiveKeepingsDashboard() {
             const purchases = purchasesRes.data || [];
             const ledgers = ledgersRes.data || [];
 
-            const totalSales = sales.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const totalPurchases = purchases.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const totalReceipts = (receiptsRes.data || []).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const totalPayments = (paymentsRes.data || []).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            const todaySales = sales.filter(v => v.voucher_date === today).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
+            const totalSales = sales.reduce((s, v) => s + getVoucherAmount(v), 0);
+            const totalPurchases = purchases.reduce((s, v) => s + getVoucherAmount(v), 0);
+            const totalReceipts = (receiptsRes.data || []).reduce((s, v) => s + getVoucherAmount(v), 0);
+            const totalPayments = (paymentsRes.data || []).reduce((s, v) => s + getVoucherAmount(v), 0);
+            const todaySales = sales.filter(v => v.voucher_date === today).reduce((s, v) => s + getVoucherAmount(v), 0);
 
             const debtors = ledgers.filter(l => l.parent === 'Sundry Debtors');
             const creditors = ledgers.filter(l => l.parent === 'Sundry Creditors');
