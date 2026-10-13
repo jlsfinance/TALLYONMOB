@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireAuth, canAccessCompany } from '@/lib/auth';
 import { success, error, serverError, forbidden } from '@/lib/api-response';
+import { getVoucherAmount } from '@/lib/voucher-utils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,12 +44,19 @@ export async function GET(req: NextRequest) {
         orderBy: { voucherDate: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
+        include: {
+          stockEntries: { select: { amount: true } },
+          ledgerEntries: { select: { amount: true } },
+        },
       }),
       prisma.voucher.count({ where }),
     ]);
 
     return success({
-      items: vouchers,
+      items: vouchers.map((voucher: any) => ({
+        ...voucher,
+        grandTotal: getVoucherAmount(voucher),
+      })),
       total,
       page,
       pages: Math.ceil(total / limit),

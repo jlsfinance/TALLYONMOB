@@ -307,6 +307,24 @@ function extractNumber(node: unknown, field: string): number {
   return parseFloat(val.replace(/,/g, '')) || 0;
 }
 
+function extractVoucherTotal(node: Record<string, unknown>, ledgerEntries: TallyVoucher['ledgerEntries'], stockEntries: TallyVoucher['stockEntries']): number {
+  // VTotAmt is our custom TDL field, while GrandTotal/Amount cover standard
+  // Tally exports and older connector payloads.
+  const explicitTotal = [
+    extractNumber(node, 'VTotAmt'),
+    extractNumber(node, 'GrandTotal'),
+    extractNumber(node, 'AMOUNT'),
+  ].find((amount) => amount !== 0);
+  if (explicitTotal !== undefined) return explicitTotal;
+
+  // Some Tally company configurations omit GrandTotal from the XML. Inventory
+  // amounts are the safest fallback for sales and purchase vouchers; ledger
+  // entries cover vouchers without inventory lines.
+  const stockTotal = stockEntries.reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+  if (stockTotal !== 0) return stockTotal;
+  return ledgerEntries.reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+}
+
 export async function fetchCompanies(): Promise<TallyCompany[]> {
   const xml = buildCompanyListXml();
   const result = await sendTallyRequest(xml) as Record<string, unknown>;
@@ -402,7 +420,7 @@ export async function fetchVouchers(opts: TallyRequestOptions): Promise<TallyVou
       date: formatTallyDate(extractField(v, 'VDate')),
       partyName: extractField(v, 'VParty'),
       narration: extractField(v, 'VNar'),
-      totalAmount: extractNumber(v, 'VTotAmt'),
+      totalAmount: extractVoucherTotal(v, ledgerEntries, stockEntries),
       guid: extractField(v, 'VGUID'),
       alterId: extractNumber(v, 'VAltId'),
       masterId: extractNumber(v, 'VMstId'),

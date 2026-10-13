@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { withAuth, type AuthenticatedRequest, validateCompanyAccess } from '@/lib/middleware';
+import { getVoucherAmount, isVoucherType } from '@/lib/voucher-utils';
 
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const user = req.user!;
@@ -18,16 +19,15 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 
-  const from = new Date(fromDate);
-  const to = new Date(toDate);
+  const from = new Date(`${fromDate}T00:00:00.000Z`);
+  const to = new Date(`${toDate}T23:59:59.999Z`);
 
   // Parallel queries for dashboard data
   const [
     totalLedgers,
     totalVouchers,
     totalStockItems,
-    salesVouchers,
-    purchaseVouchers,
+    vouchersInPeriod,
     recentVouchers,
     lastSync,
   ] = await Promise.all([
@@ -35,17 +35,24 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     db.voucher.count({ where: { companyId, isDeleted: false, voucherDate: { gte: from, lte: to } } }),
     db.stockItem.count({ where: { companyId, isDeleted: false } }),
     db.voucher.findMany({
-      where: { companyId, isDeleted: false, voucherType: 'Sales', voucherDate: { gte: from, lte: to } },
-      select: { totalAmount: true, voucherDate: true },
-    }),
-    db.voucher.findMany({
-      where: { companyId, isDeleted: false, voucherType: 'Purchase', voucherDate: { gte: from, lte: to } },
-      select: { totalAmount: true, voucherDate: true },
+      where: { companyId, isDeleted: false, voucherDate: { gte: from, lte: to } },
+      select: {
+        voucherType: true,
+        totalAmount: true,
+        grandTotal: true,
+        voucherDate: true,
+        stockEntries: { select: { amount: true } },
+        ledgerEntries: { select: { amount: true } },
+      },
     }),
     db.voucher.findMany({
       where: { companyId, isDeleted: false },
       orderBy: { voucherDate: 'desc' },
       take: 10,
+      include: {
+        stockEntries: { select: { amount: true } },
+        ledgerEntries: { select: { amount: true } },
+      },
     }),
     db.syncHistory.findFirst({
       where: { companyId },
@@ -53,8 +60,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
     }),
   ]);
 
-  const totalSales = salesVouchers.reduce((sum: number, v: any) => sum + Number(v.totalAmount), 0);
-  const totalPurchase = purchaseVouchers.reduce((sum: number, v: any) => sum + Number(v.totalAmount), 0);
+  const salesVouchers = vouchersInPeriod.filter((v: any) => isVoucherType(v.voucherType, 'sales'));
+  const purchaseVouchers = vouchersInPeriod.filter((v: any) => isVoucherType(v.voucherType, 'purchase'));
+  const totalSales = salesVouchers.reduce((sum: number, v: any) => sum + getVoucherAmount(v), 0);
+  const totalPurchase = purchaseVouchers.reduce((sum: number, v: any) => sum + getVoucherAmount(v), 0);
 
   // Group by month for trends
   const salesByMonth = groupByMonth(salesVouchers);
@@ -83,7 +92,10 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
       totalLedgers,
       totalVouchers,
       totalStockItems,
-      recentVouchers,
+      recentVouchers: recentVouchers.map((voucher: any) => ({
+        ...voucher,
+        grandTotal: getVoucherAmount(voucher),
+      })),
       salesTrend: salesByMonth,
       purchaseTrend: purchaseByMonth,
       lastSyncAt: lastSync?.completedAt || null,
@@ -91,11 +103,11 @@ export const GET = withAuth(async (req: AuthenticatedRequest) => {
   });
 });
 
-function groupByMonth(vouchers: { totalAmount: any; voucherDate: Date }[]) {
+function groupByMonth(vouchers: { totalAmount: any; grandTotal: any; voucherDate: Date }[]) {
   const map = new Map<string, number>();
   vouchers.forEach((v) => {
     const key = v.voucherDate.toISOString().slice(0, 7); // YYYY-MM
-    map.set(key, (map.get(key) || 0) + Number(v.totalAmount));
+    map.set(key, (map.get(key) || 0) + getVoucherAmount(v));
   });
   return Array.from(map.entries())
     .sort(([a], [b]) => a.localeCompare(b))
