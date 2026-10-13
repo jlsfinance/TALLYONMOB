@@ -475,7 +475,7 @@ export default function InvoicePDFPage() {
                     // --- QUANTITY, RATE, AMOUNT ---
                     const quantity = Number(item.quantity ?? item.billed_qty ?? item.Quantity ?? 0);
                     const rate = Number(item.rate ?? item.unit_price ?? item.Rate ?? 0);
-                    const amount = Number(item.amount ?? item.Amount ?? (quantity * rate));
+                    const amount = Math.abs(Number(item.amount ?? item.Amount ?? (quantity * rate)) || 0);
 
                     // --- DISCOUNT DETECTION ---
                     // discount_percent comes from voucher_stock_entries (synced from Tally's DISCOUNT field)
@@ -513,7 +513,7 @@ export default function InvoicePDFPage() {
                     }
 
                     // Tally's amount is already post-discount, so taxable = amount
-                    const taxable = amount;
+                    const taxable = Math.abs(amount);
 
                     return {
                         ...item,
@@ -646,10 +646,20 @@ export default function InvoicePDFPage() {
                     }
                 }
 
-                // Calculate taxable amount (excluding GST)
+                // Calculate totals from the actual line items whenever available.
+                // Some older Tally syncs stored a tax/ledger amount in total_amount
+                // (or a negative value), which made the invoice show Zero Rupees.
                 const totalGSTAmount = cgstAmount + sgstAmount + igstAmount;
-                const netAmount = Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0);
-                const taxableAmount = totalGSTAmount > 0 ? (netAmount - totalGSTAmount) : Math.abs(Number(voucherData.taxable_value) || netAmount);
+                const itemTaxableAmount = round2(enrichedItems.reduce((sum, item) => sum + Math.abs(Number(item.taxable_value ?? item.amount) || 0), 0));
+                const storedNetAmount = Math.abs(Number(voucherData.net_amount) || Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0);
+                const storedTaxableAmount = Math.abs(Number(voucherData.taxable_value) || Number(voucherData.taxable_amount) || 0);
+                const taxableAmount = itemTaxableAmount > 0
+                    ? itemTaxableAmount
+                    : (storedTaxableAmount || Math.max(0, storedNetAmount - totalGSTAmount));
+                const calculatedNetAmount = round2(taxableAmount + totalGSTAmount + round2(Number(voucherData.round_off) || roundOffLedgerAmount));
+                const netAmount = itemTaxableAmount > 0 && calculatedNetAmount > 0
+                    ? calculatedNetAmount
+                    : storedNetAmount;
 
                 const sale = {
                     ...voucherData,
@@ -748,7 +758,7 @@ export default function InvoicePDFPage() {
                 row.gst_rate = row.taxable > 0 ? Math.round((itemGST / row.taxable) * 100 * 10) / 10 : 0;
             }
 
-            row.total = row.taxable + row.cgst + row.sgst + row.igst;
+            row.total = row.cgst + row.sgst + row.igst;
         });
 
         return Object.values(summary);
@@ -1752,4 +1762,3 @@ export default function InvoicePDFPage() {
         </div>
     );
 }
-
