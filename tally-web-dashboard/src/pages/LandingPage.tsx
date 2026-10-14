@@ -111,7 +111,7 @@ const FLOW_STEPS = [
 
 const FAQS = [
     {
-        question: 'Which Tally versions does TallyOnMobile work with?',
+        question: 'Which Tally versions does SYNCORA work with?',
         answer: 'The project documents compatibility with TallyPrime and Tally.ERP 9. Your local Tally installation and sync client need to be configured before synced data appears.',
     },
     {
@@ -220,8 +220,8 @@ export default function LandingPage() {
     return (
         <div id="top" className="min-h-screen overflow-x-hidden bg-[#f7f9f6] font-sans text-slate-900 selection:bg-emerald-200 selection:text-emerald-950">
             <SEO
-                title="TallyOnMobile | Your Tally business, in view"
-                description="Access Tally ledgers, vouchers, reports and outstanding balances through the TallyOnMobile web and mobile experience."
+                title="SYNCORA | Your Tally business, in view"
+                description="Access Tally ledgers, vouchers, reports and outstanding balances through SYNCORA's web and mobile workspace."
             />
             <a href="#main-content" className="sr-only z-[100] rounded-lg bg-white px-4 py-2 text-slate-900 focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
                 Skip to content
@@ -229,10 +229,10 @@ export default function LandingPage() {
 
             <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
                 <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-                    <a href="#top" aria-label="TallyOnMobile home" className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm">TL</span>
+                    <a href="#top" aria-label="SYNCORA home" className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm">SY</span>
                         <span className="min-w-0">
-                            <span className="block truncate text-sm font-black tracking-tight text-slate-950 sm:text-base">TallyOnMobile</span>
+                            <span className="block truncate text-sm font-black tracking-tight text-slate-950 sm:text-base">SYNCORA</span>
                             <span className="hidden text-[9px] font-bold uppercase tracking-[0.19em] text-slate-500 sm:block">Business, in view</span>
                         </span>
                     </a>
@@ -319,7 +319,7 @@ export default function LandingPage() {
                         <div className="mx-auto max-w-2xl text-center">
                             <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-800">A connected view of your books</p>
                             <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">The everyday details, easier to reach</h2>
-                            <p className="mt-4 text-sm leading-6 text-slate-600 sm:text-base">Explore the workspaces already available in TallyOnMobile. Sign-in and company permissions still apply.</p>
+                            <p className="mt-4 text-sm leading-6 text-slate-600 sm:text-base">Explore the workspaces already available in SYNCORA. Sign-in and company permissions still apply.</p>
                         </div>
                         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {FEATURES.map(feature => {
@@ -350,7 +350,7 @@ export default function LandingPage() {
                                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-800">A straightforward setup</p>
                                 <h2 className="mt-3 max-w-lg text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">From your Tally computer to your day-to-day view</h2>
                             </div>
-                            <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">TallyOnMobile uses its existing sync client, cloud services and signed-in app experience. Sync timing depends on your configured client and connection.</p>
+                            <p className="max-w-xl text-sm leading-6 text-slate-600 sm:text-base">SYNCORA uses its existing sync client, cloud services and signed-in app experience. Sync timing depends on your configured client and connection.</p>
                         </div>
                         <div className="mt-10 grid gap-4 md:grid-cols-3">
                             {FLOW_STEPS.map((step, index) => {
@@ -422,8 +422,8 @@ export default function LandingPage() {
                 <div className="mx-auto flex max-w-7xl flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
                     <div className="max-w-sm">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-xs font-black text-slate-950">TL</span>
-                            <span className="text-sm font-black tracking-tight">TallyOnMobile</span>
+                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 text-xs font-black text-slate-950">SY</span>
+                            <span className="text-sm font-black tracking-tight">SYNCORA</span>
                         </div>
                         <p className="mt-3 text-xs leading-5 text-slate-400">A connected view of your Tally business records, with your existing account and company access controls.</p>
                     </div>
@@ -434,7 +434,7 @@ export default function LandingPage() {
                         <button type="button" onClick={() => navigate('/terms')} className="hover:text-white">Terms</button>
                     </nav>
                 </div>
-                <div className="mx-auto mt-8 max-w-7xl border-t border-white/10 pt-5 text-[10px] text-slate-500">Tally and TallyPrime are trademarks of their respective owners. TallyOnMobile is an independent product experience.</div>
+                <div className="mx-auto mt-8 max-w-7xl border-t border-white/10 pt-5 text-[10px] text-slate-500">Tally and TallyPrime are trademarks of their respective owners. SYNCORA is an independent product experience.</div>
             </footer>
         </div>
     );

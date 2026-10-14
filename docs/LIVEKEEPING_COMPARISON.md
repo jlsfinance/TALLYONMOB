@@ -1,7 +1,8 @@
-# LiveKeeping reference comparison: first increment
+# LiveKeeping vs SYNCORA: first increment
 
 **Review date:** 14 October 2026  
 **Implementation branch:** `feature/livekeeping-inspired-landing-page`  
+**Public-facing brand:** SYNCORA. Existing repository paths and technical identifiers remain unchanged.
 **First increment:** replace the unauthenticated web landing page with an accessible, mobile-first product overview. No API, authentication, database, Tally sync, billing, or deployment settings are changed.
 
 ## Public reference observations
@@ -14,17 +15,17 @@ Core public workflows reviewed:
 - The [Payment Reminder page](https://www.livekeeping.com/features/payment-reminders) describes WhatsApp/SMS/email channels, amount and bill-link autofill, instant or scheduled/repeating delivery, bulk reminders, and a five-step flow from receivables to preview/send.
 - The [e-Invoice page](https://www.livekeeping.com/features/e-invoices) describes invoice-based and bulk creation, IRN/QR generation, cancellation within the stated 24-hour window, PDF sharing, and a setup path via a GSP and a company setting.
 - The [e-Way Bills page](https://www.livekeeping.com/features/e-way-bills) describes creation from vouchers, Part B/validity updates, a GSP setup, PDF/QR output, and live vehicle/toll tracking.
-- The [Pricing page](https://www.livekeeping.com/pricing) has one-year/three-year toggles, Growth/Pro/Pro Plus plans, a feature comparison, and purchase links. Its prices and marketing claims are LiveKeeping's displayed offer and are not copied into TallyOnMobile.
+- The [Pricing page](https://www.livekeeping.com/pricing) has one-year/three-year toggles, Growth/Pro/Pro Plus plans, a feature comparison, and purchase links. Its prices and marketing claims are LiveKeeping's displayed offer and are not copied into SYNCORA.
 
 These are observations about public marketing pages and visible controls, not independent verification of LiveKeeping's private APIs, signed-in product, or backend implementation.
 
-REA captured the public pages using empty browser storage and no login. For the reference Payment Reminder page, a 390×844 screenshot shows a stacked mobile layout; the top announcement text runs beyond the visible edge and the lower trust strip is partly obscured by the floating WhatsApp control. This is a visual observation, not a DOM-width assertion. TallyOnMobile's replacement page was rendered and interaction-tested locally at 390×844 and 1440×1100; at 390px there was no horizontal overflow, the menu opened/closed and navigated to the Features section, and the FAQ accordion expanded.
+REA captured the public pages using empty browser storage and no login. For the reference Payment Reminder page, a 390×844 screenshot shows a stacked mobile layout; the top announcement text runs beyond the visible edge and the lower trust strip is partly obscured by the floating WhatsApp control. This is a visual observation, not a DOM-width assertion. SYNCORA's replacement page was rendered and interaction-tested locally at 390×844 and 1440×1100; at 390px there was no horizontal overflow, the menu opened/closed and navigated to the Features section, and the FAQ accordion expanded.
 
 At the inspected desktop viewport, the reference page declared `width=device-width, initial-scale=1.0`. The Payment Reminder page's document width exceeded its client width in the earlier browser inspection; this is a viewport-specific observation, not an inference about the product's full responsive behavior.
 
 ## Feature comparison and priority
 
-| Product area | LiveKeeping public evidence | TallyOnMobile repository evidence | Assessment / priority |
+| Product area | LiveKeeping public evidence | SYNCORA repository evidence | Assessment / priority |
 | --- | --- | --- | --- |
 | Public product landing and navigation | Homepage links to features, pricing, testimonials, FAQs, connector instructions, login, trial, download, and demo actions. | Existing unauthenticated route rendered `src/pages/LandingPage.tsx`; it contained a feature grid, flow, FAQ, and plan cards but also unverified scale/security metrics and plan copy that conflicted with the actual `/pricing` page. | **Implemented first:** replace the landing surface with source-aligned capabilities, links to existing routes, accessible FAQ, and responsive navigation. Signed-in root redirect remains unchanged. |
 | Tally connector onboarding | Public page outlines downloading a Windows connector, selecting/syncing a company, then using mobile/web. | Windows sync projects, incremental-sync notes, and dashboard Tally Sync screen exist. The web screen checks local Tally connectivity and supports exporting selected vouchers. Sync docs have inconsistent cadence descriptions (15 minutes/manual in `INCREMENTAL_SYNC.md` versus 5 minutes in `ARCHITECTURE.md`). | **Partial; high value.** Landing page adds a high-level, source-aligned 3-step overview. A dedicated public setup guide, consistent diagnostics, and confirmed cadence remain open. |
@@ -34,12 +35,12 @@ At the inspected desktop viewport, the reference page declared `width=device-wid
 | Payment reminders | Reference describes scheduled/repeating reminders across WhatsApp, SMS and email, with bill links, bulk actions and preview. | `PaymentRemindersPage.tsx` reads outstanding ledgers, offers templates, supports multi-select, and opens WhatsApp/email/share intents. It does not implement unattended schedule delivery; email is a `mailto:` action, and SMS sending is absent from this screen. | **Partial; high value.** A persisted schedule/worker and supported delivery providers are needed. Market only the current share-based workflow until then. |
 | E-way bill / e-invoice compliance | Public pages claim voucher-based e-way bill creation, GSP setup, IRN/QR issuance, PDF sharing and live tracking. | `EWayBillPage.tsx` builds a timestamp-derived local reference and explicitly comments that production would call the GST API. The screen title mentions e-invoice, but inspected code does not establish official IRN issuance, PDF signing or vehicle tracking. | **Critical production gap.** Do not claim statutory issuance. Needs a verified gateway/provider, credential handling, status reconciliation, and compliance review. |
 | Data backup and restore | Reference describes scheduled backups, dated logs, and emailing a backup. | `DataBackupRestorePage.tsx` seeds example history in constants, simulates progress with random timers, exports a sample JSON placeholder, handles restore with a toast and a comment that a real restore is not yet implemented, and says data is stored locally in the browser. | **Demo-only prototype; high priority.** Implement real scoped export, durable backup storage, restore preview/commit, audit trail and recovery tests before making backup assurances. |
-| Pricing and plans | Public reference shows three plans, term toggles, comparisons, and purchase links. | `/pricing` owns TallyOnMobile's current plan catalog and subscription actions. The former landing page separately declared Starter/Professional/Enterprise prices/features that did not match `/pricing`. | **Existing page retained.** New landing page links to `/pricing`; no billing behavior or plan data was changed. |
+| Pricing and plans | Public reference shows three plans, term toggles, comparisons, and purchase links. | `/pricing` owns SYNCORA's current plan catalog and subscription actions. The former landing page separately declared Starter/Professional/Enterprise prices/features that did not match `/pricing`. | **Existing page retained.** New landing page links to `/pricing`; no billing behavior or plan data was changed. |
 | Reviews and trust badges | Reference homepage displays review scores and security certification badges. | No verified current review feed or certification evidence was found in the landing-page source. | **Not copied.** Avoid third-party ratings/certification claims without first-party evidence. |
 
 ## Recommended next implementation order
 
-1. **Statutory GST workflows (e-way bills and e-invoices):** largest trust/compliance risk because the visible TallyOnMobile implementation is currently a local demo reference, not a verified government/GSP transaction. First select an authorized provider and define credentials, cancellation, retries and audit requirements; only then implement.
+1. **Statutory GST workflows (e-way bills and e-invoices):** largest trust/compliance risk because the visible SYNCORA implementation is currently a local demo reference, not a verified government/GSP transaction. First select an authorized provider and define credentials, cancellation, retries and audit requirements; only then implement.
 2. **Scheduled payment reminders:** highest repeated user value after compliance. Add explicit customer opt-in, timezone/repeat rules, durable jobs, delivery-provider integration, stop-on-payment behavior, and delivery logs; do not present a schedule toggle without a working backend worker.
 3. **Real backup/restore:** protect accounting records with a tested export format, durable storage, restore preview, safe merge/replace semantics, access controls and recovery drills. The current screen is demonstrative only.
 4. **Connector onboarding and diagnostics:** resolve the contradictory cadence in repository docs; provide a public Windows setup guide, connection checks, last-sync/health/errors and recovery steps without changing the existing sync contract.
@@ -59,7 +60,7 @@ At the inspected desktop viewport, the reference page declared `width=device-wid
 
 Evidence IDs: homepage DOM/title/visible structure `ev_b409b02e41b13974dcdf52c6f805cbc21ac355816d847de6b273c3395cf15436` (target listing `ev_88a8ed6793f513631ccf8f771cd59522071ebf04c02a1d3d768a0b2ef737c9f7`); connector setup `ev_a7cac8c94da68f13b0bb5b52e932048b591ceab45d28a96d603b1158da7cd4ed`; payment reminders, 390×844 mobile capture `ev_5fe3d792b3b9798eb18a8ba33d93e4012dcbba655d21900b13dfea31f1612cec`; e-invoices `ev_5262f79407a42a52a161374c43b65345e8831714d14efe7e41041eac6cf19340`; e-way bills `ev_198ae95cd46e319557271416e1eac5422bf80414c5614cf235b410037aaf20cc`; pricing `ev_2ce7eea81e8ff984fac72bd8b5027173f7cbf50df64dca412280019e80587b5a`.
 
-The landing-page implementation does not reuse LiveKeeping's proprietary source, images, or exact copy. It is an original presentation of TallyOnMobile's own existing routes and capabilities.
+The landing-page implementation does not reuse LiveKeeping's proprietary source, images, or exact copy. It is an original presentation of SYNCORA's own existing routes and capabilities.
 
 ## Evidence sources
 

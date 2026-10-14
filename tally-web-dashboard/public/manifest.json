@@ -1,7 +1,7 @@
 {
-    "name": "TallyLink - Free Tally on Mobile",
-    "short_name": "TallyLink",
-    "description": "Access Tally ERP 9 & TallyPrime data on mobile for FREE. Real-time sync, reports, and dashboard.",
+    "name": "SYNCORA",
+    "short_name": "SYNCORA",
+    "description": "Access Tally ledgers, vouchers, reports and inventory with SYNCORA.",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
@@ -32,14 +32,14 @@
             "sizes": "1280x720",
             "type": "image/jpeg",
             "form_factor": "wide",
-            "label": "TallyLink Dashboard Desktop"
+            "label": "SYNCORA Dashboard Desktop"
         },
         {
             "src": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=600",
             "sizes": "600x1200",
             "type": "image/jpeg",
             "form_factor": "narrow",
-            "label": "TallyLink Mobile View"
+            "label": "SYNCORA Mobile View"
         }
     ]
 }

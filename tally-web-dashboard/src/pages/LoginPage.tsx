@@ -117,8 +117,8 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen overflow-x-hidden bg-[#f7f9f6] text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100 lg:flex">
             <SEO
-                title={isLogin ? "Client Login | SYNCORA TallyOnMobile" : "Create Account | SYNCORA TallyOnMobile"}
-                description="Sign in to access your TallyOnMobile workspace, including company ledgers, vouchers, reports and inventory."
+                title={isLogin ? "Client Login | SYNCORA" : "Create Account | SYNCORA"}
+                description="Sign in to access your SYNCORA workspace, including company ledgers, vouchers, reports and inventory."
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
@@ -141,9 +141,9 @@ export default function LoginPage() {
                 >
                     {/* Brand Logo */}
                     <button type="button" onClick={() => navigate('/')} className="mb-8 flex items-center gap-3 rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black tracking-tight text-white shadow-sm">TL</span>
+                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black tracking-tight text-white shadow-sm">SY</span>
                         <div>
-                            <h1 className="text-base font-black leading-none tracking-tight text-slate-950 dark:text-white">TallyOnMobile</h1>
+                            <h1 className="text-base font-black leading-none tracking-tight text-slate-950 dark:text-white">SYNCORA</h1>
                             <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400">Business, in view</p>
                         </div>
                     </button>
@@ -164,7 +164,7 @@ export default function LoginPage() {
                             <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
                                 {isLogin
                                     ? 'Sign in to access your business dashboard'
-                                    : 'Create your TallyOnMobile account to get started'
+                                    : 'Create your SYNCORA account to get started'
                                 }
                             </p>
                         </motion.div>
@@ -356,7 +356,7 @@ export default function LoginPage() {
                     className="relative z-10 w-full max-w-xl rounded-[2rem] border border-white/80 bg-white/75 p-8 shadow-[0_30px_90px_-42px_rgba(15,23,42,0.25)] backdrop-blur-xl xl:p-10 dark:border-slate-700/80 dark:bg-slate-900/75 dark:shadow-black/30"
                 >
                     <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
-                        <CheckCircle2 size={14} /> TallyOnMobile workspace
+                        <CheckCircle2 size={14} /> SYNCORA workspace
                     </div>
 
                     <h2 className="text-3xl font-black leading-tight tracking-tight text-slate-950 xl:text-4xl dark:text-white">
