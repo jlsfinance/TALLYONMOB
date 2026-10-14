@@ -111,7 +111,7 @@ export const AuthProvider = ({ children }) => {
                     const authUser = session?.user || null;
                     if (authUser) {
                         setUser(authUser);
-                        loadCompanies();
+                        loadCompanies(authUser.id);
                     }
                 });
 
@@ -141,7 +141,7 @@ export const AuthProvider = ({ children }) => {
 
             if (sessionUser) {
                 setUser(sessionUser);
-                await loadCompanies();
+                await loadCompanies(sessionUser.id);
             } else {
                 resetAuthState();
             }
@@ -158,12 +158,12 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const loadCompanies = async () => {
+    const loadCompanies = async (userId = user?.id) => {
         let result;
 
         try {
             result = await withTimeout(
-                companyApi.list(),
+                companyApi.list(userId),
                 COMPANY_LOAD_TIMEOUT_MS,
                 'Company load timed out'
             );
@@ -202,7 +202,7 @@ export const AuthProvider = ({ children }) => {
         const signedInUser = data?.session?.user || data?.user || null;
         if (!error && signedInUser) {
             setUser(signedInUser);
-            await loadCompanies();
+            await loadCompanies(signedInUser.id);
         }
         return { data, error };
     };
@@ -217,7 +217,7 @@ export const AuthProvider = ({ children }) => {
         const verifiedUser = data?.session?.user || data?.user || null;
         if (!error && verifiedUser) {
             setUser(verifiedUser);
-            await loadCompanies();
+            await loadCompanies(verifiedUser.id);
         }
         return { data, error };
     };
@@ -307,7 +307,6 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
-
 
 
 

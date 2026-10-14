@@ -50,7 +50,7 @@ const OnboardingPage = () => {
     const checkForCompanies = async () => {
         setIsChecking(true);
         try {
-            const { data } = await companyApi.list();
+            const { data } = await companyApi.list(user?.id);
             const companyList = data || [];
             setCompanies(companyList);
 
@@ -509,4 +509,3 @@ const OnboardingPage = () => {
 };
 
 export default OnboardingPage;
-

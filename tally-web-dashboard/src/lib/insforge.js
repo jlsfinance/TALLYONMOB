@@ -220,7 +220,14 @@ const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = n
 
 // ─── Company API ───
 const companyApi = {
-  list: async () => db.from("companies").select("*").order("name"),
+  // Never fetch the global companies collection in a normal user session.
+  // The old unscoped query exposed every customer's company name to the browser
+  // even when the rest of that company's data was not visible.
+  list: async (userId) => {
+    const resolvedUserId = userId || (await db.auth.getUser()).data?.user?.id;
+    if (!resolvedUserId) return { data: [], error: new Error("Authentication required") };
+    return db.from("companies").select("*").eq("owner_id", resolvedUserId).order("name");
+  },
   getById: async (id) => db.from("companies").select("*").eq("id", id).single(),
   getAppSettings: async () => {
     const { data, error } = await db.from("app_settings").select("*");
