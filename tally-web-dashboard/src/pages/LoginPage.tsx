@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, BarChart3, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Shield, Sun, Moon, User, BarChart3, CheckCircle2, BookOpen, Package, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '../contexts/types';
 import SEO from '../components/common/SEO';
@@ -108,49 +108,45 @@ export default function LoginPage() {
     };
 
     const highlights = [
-        { icon: <Zap size={20} />, text: "Real-time sync with Tally ERP" },
-        { icon: <BarChart3 size={20} />, text: "Smart business analytics & GST reports" },
-        { icon: <Shield size={20} />, text: "Bank-grade AES-256 encryption" },
-        { icon: <Smartphone size={20} />, text: "Works on mobile, tablet & desktop" },
+        { icon: <BarChart3 size={19} />, text: "Business overview and reports" },
+        { icon: <BookOpen size={19} />, text: "Ledgers and voucher workspaces" },
+        { icon: <MessageCircle size={19} />, text: "Payment follow-up tools" },
+        { icon: <Package size={19} />, text: "Inventory alongside your books" },
     ];
 
     return (
-        <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
+        <div className="min-h-screen overflow-x-hidden bg-[#f7f9f6] text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100 lg:flex">
             <SEO
                 title={isLogin ? "Client Login | SYNCORA TallyOnMobile" : "Create Account | SYNCORA TallyOnMobile"}
-                description="Securely access your SYNCORA TallyOnMobile business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
+                description="Sign in to access your TallyOnMobile workspace, including company ledgers, vouchers, reports and inventory."
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
             {/* Theme Toggle ? Top Right */}
             <button
                 onClick={toggleTheme}
-                className="fixed top-5 right-5 z-50 w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] transition-all"
+                className="fixed right-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white/90 text-slate-700 shadow-sm backdrop-blur transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 dark:border-slate-700 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:bg-slate-800 sm:right-6 sm:top-6"
                 aria-label="Toggle theme"
             >
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
             {/* Left ? Auth Form */}
-            <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 z-10">
+            <div className="relative z-10 flex min-h-screen flex-1 flex-col justify-center px-4 py-10 sm:px-8 sm:py-12 lg:px-10 xl:px-16">
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-                    className="max-w-md w-full mx-auto"
+                    className="mx-auto w-full max-w-md rounded-[2rem] border border-slate-200/80 bg-white/95 p-6 shadow-[0_24px_70px_-38px_rgba(15,23,42,0.28)] backdrop-blur sm:p-8 dark:border-slate-700 dark:bg-slate-900/95 dark:shadow-black/30"
                 >
                     {/* Brand Logo */}
-                    <div className="flex items-center gap-3 mb-10">
-                        <div className="w-11 h-11 rounded-[var(--radius-md)] bg-[var(--primary)] flex items-center justify-center shadow-[var(--shadow-md)]">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
-                            </svg>
-                        </div>
+                    <button type="button" onClick={() => navigate('/')} className="mb-8 flex items-center gap-3 rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black tracking-tight text-white shadow-sm">TL</span>
                         <div>
-                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">SYNCORA TallyOnMobile</h1>
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
+                            <h1 className="text-base font-black leading-none tracking-tight text-slate-950 dark:text-white">TallyOnMobile</h1>
+                            <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.19em] text-slate-500 dark:text-slate-400">Business, in view</p>
                         </div>
-                    </div>
+                    </button>
 
                     {/* Heading */}
                     <AnimatePresence mode="wait">
@@ -168,7 +164,7 @@ export default function LoginPage() {
                             <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
                                 {isLogin
                                     ? 'Sign in to access your business dashboard'
-                                    : 'Get started with SYNCORA TallyOnMobile in under a minute'
+                                    : 'Create your TallyOnMobile account to get started'
                                 }
                             </p>
                         </motion.div>
@@ -179,7 +175,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={loading}
-                        className="w-full bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] font-medium py-3 px-4 rounded-[var(--radius-md)] hover:bg-[var(--surface-hover)] hover:border-[var(--outline-variant)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-[var(--shadow-xs)]"
+                        className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-800 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
                     >
                         <svg viewBox="0 0 24 24" width="20" height="20">
                             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -214,7 +210,7 @@ export default function LoginPage() {
                                             type="text"
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-900"
                                             placeholder="Your full name"
                                             required={!isLogin && !otpSent}
                                         />
@@ -233,7 +229,7 @@ export default function LoginPage() {
                                             type="email"
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-900"
                                             placeholder="you@company.com"
                                             required
                                         />
@@ -248,8 +244,8 @@ export default function LoginPage() {
                                             type="password"
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                            placeholder="????????"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-900"
+                                            placeholder="Enter your password"
                                             required
                                         />
                                     </div>
@@ -273,7 +269,7 @@ export default function LoginPage() {
                                         type="text"
                                         value={otpCode}
                                         onChange={(e) => setOtpCode(e.target.value)}
-                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-900"
                                         placeholder="Enter the 6-digit OTP"
                                         required
                                     />
@@ -298,7 +294,7 @@ export default function LoginPage() {
                                         maxLength={6}
                                         value={twoFactorCode}
                                         onChange={(e) => setTwoFactorCode(e.target.value)}
-                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm font-mono tracking-widest text-center"
+                                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-center font-mono text-sm tracking-widest text-slate-900 placeholder:text-slate-400 transition focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-900"
                                         placeholder="000000"
                                         required
                                     />
@@ -309,7 +305,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-[var(--primary)] text-[var(--on-primary)] font-semibold py-3 rounded-[var(--radius-md)] hover:bg-[var(--primary-hover)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+                            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 py-3 font-bold text-white shadow-sm transition hover:bg-emerald-800 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -326,12 +322,12 @@ export default function LoginPage() {
                     <div className="mt-8 text-center">
                         <button
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-sm text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                            className="text-sm text-slate-600 transition-colors hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 dark:text-slate-300 dark:hover:text-white"
                         >
                             {isLogin ? (
-                                <>Don't have an account? <span className="font-semibold text-[var(--primary)]">Sign up</span></>
+                                <>Don't have an account? <span className="font-semibold text-emerald-700 dark:text-emerald-300">Sign up</span></>
                             ) : (
-                                <>Already have an account? <span className="font-semibold text-[var(--primary)]">Sign in</span></>
+                                <>Already have an account? <span className="font-semibold text-emerald-700 dark:text-emerald-300">Sign in</span></>
                             )}
                         </button>
                     </div>
@@ -340,7 +336,7 @@ export default function LoginPage() {
                     <div className="mt-4 text-center">
                         <button
                             onClick={() => navigate('/')}
-                            className="text-xs text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                            className="text-xs text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 dark:text-slate-400 dark:hover:text-white"
                         >
                             ← Back to home
                         </button>
@@ -348,58 +344,62 @@ export default function LoginPage() {
                 </motion.div>
             </div>
 
-            {/* Right — Trust Panel (Desktop Only) */}
-            <div className="hidden lg:flex flex-1 relative items-center justify-center bg-[var(--primary)]" style={{ maxWidth: '50%' }}>
-                {/* Subtle geometric pattern */}
-                <div
-                    className="absolute inset-0 opacity-[0.06]"
-                    style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                    }}
-                />
+            {/* Product preview panel (desktop only) */}
+            <aside className="relative hidden flex-1 items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-[#f7f9f6] to-cyan-50 px-8 py-12 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 lg:flex">
+                <div aria-hidden="true" className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-emerald-200/60 blur-3xl dark:bg-emerald-500/10" />
+                <div aria-hidden="true" className="absolute -bottom-24 -left-20 h-80 w-80 rounded-full bg-cyan-100/80 blur-3xl dark:bg-cyan-500/10" />
 
-                <div className="relative z-10 px-12 xl:px-20 max-w-lg">
-                    <motion.div
-                        initial={{ opacity: 0, y: 16 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.2 }}
-                    >
-                        {/* Trust badge */}
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-xs font-medium mb-8 backdrop-blur-sm">
-                            <CheckCircle2 size={14} />
-                            Trusted by 5,000+ Indian businesses
+                <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
+                    className="relative z-10 w-full max-w-xl rounded-[2rem] border border-white/80 bg-white/75 p-8 shadow-[0_30px_90px_-42px_rgba(15,23,42,0.25)] backdrop-blur-xl xl:p-10 dark:border-slate-700/80 dark:bg-slate-900/75 dark:shadow-black/30"
+                >
+                    <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
+                        <CheckCircle2 size={14} /> TallyOnMobile workspace
+                    </div>
+
+                    <h2 className="text-3xl font-black leading-tight tracking-tight text-slate-950 xl:text-4xl dark:text-white">
+                        Your Tally business,<br />in view.
+                    </h2>
+                    <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-300">
+                        Sign in to access your company workspace, including ledgers, vouchers, reports, inventory and payment follow-up tools.
+                    </p>
+
+                    <div className="mt-8 grid grid-cols-2 gap-3">
+                        {highlights.map((item, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.25 + i * 0.08 }}
+                                className="flex min-h-[82px] items-center gap-3 rounded-2xl border border-slate-100 bg-white/80 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-800/80"
+                            >
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300">
+                                    {item.icon}
+                                </span>
+                                <span className="text-xs font-semibold leading-snug text-slate-700 sm:text-sm dark:text-slate-200">{item.text}</span>
+                            </motion.div>
+                        ))}
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-slate-100 bg-white/80 p-4 dark:border-slate-700 dark:bg-slate-800/70">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-bold text-slate-900 dark:text-white">A clear view of your business</p>
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Illustrative workspace preview</p>
+                            </div>
+                            <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300">Overview</span>
                         </div>
-
-                        {/* Headline */}
-                        <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-5">
-                            Your Tally data,<br />
-                            accessible <span className="text-white/80">everywhere.</span>
-                        </h2>
-
-                        <p className="text-white/70 text-base leading-relaxed mb-10">
-                            Sync your Tally ERP to the cloud. Access real-time reports, GST analytics, and business insights from any device.
-                        </p>
-
-                        {/* Feature List */}
-                        <div className="space-y-4">
-                            {highlights.map((item, i) => (
-                                <motion.div
-                                    key={i}
-                                    initial={{ opacity: 0, x: 12 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: 0.4 + i * 0.1 }}
-                                    className="flex items-center gap-4"
-                                >
-                                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-white/10 flex items-center justify-center text-white flex-shrink-0">
-                                        {item.icon}
-                                    </div>
-                                    <span className="text-white/90 text-sm font-medium">{item.text}</span>
-                                </motion.div>
+                        <div aria-hidden="true" className="mt-4 flex h-14 items-end gap-2">
+                            {[34, 51, 43, 68, 57, 82, 64, 91, 72, 100, 81, 92].map((height, i) => (
+                                <span key={i} className="flex-1 rounded-t-md bg-gradient-to-t from-emerald-700 to-lime-400" style={{ height: `${height}%`, opacity: 0.62 + (i % 3) * 0.12 }} />
                             ))}
                         </div>
-                    </motion.div>
-                </div>
-            </div>
+                        <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">Example illustration only — sign in to view your own workspace.</p>
+                    </div>
+                </motion.div>
+            </aside>
         </div>
     );
 }
