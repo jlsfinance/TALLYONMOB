@@ -10,7 +10,7 @@ import { TrendingUp, Search, Plus, IndianRupee, Receipt, Filter } from 'lucide-r
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import TransactionCard from '@/components/shared/TransactionCard';
-import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
+import FinancialPeriodSelector from '@/components/shared/FinancialPeriodSelector';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 
 export default function SalesPage() {
@@ -28,36 +28,31 @@ export default function SalesPage() {
 
     const [selectedFy, setSelectedFy] = useState(getCurrentFy());
     const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
+    const [periodLoadedFor, setPeriodLoadedFor] = useState<string | null>(null);
 
+    // Keep the user's period per company. Do not replace it with the latest voucher
+    // when the page remounts after opening a bill and pressing Back.
     useEffect(() => {
         if (!selectedCompany?.id) return;
-        const detectFy = async () => {
-            try {
-                const { data, error } = await supabase
-                    .from('vouchers')
-                    .select('voucher_date')
-                    .eq('company_id', selectedCompany.id)
-                    .eq('voucher_type', 'Sales')
-                    .eq('is_deleted', false)
-                    .order('voucher_date', { ascending: false })
-                    .limit(1);
-                if (error) return;
-                if (data && data.length > 0 && data[0].voucher_date) {
-                    const latestDate = new Date(data[0].voucher_date);
-                    const month = latestDate.getMonth();
-                    const year = latestDate.getFullYear();
-                    const fyStartYear = month >= 3 ? year : year - 1;
-                    const endYr = (fyStartYear + 1).toString().slice(2);
-                    const detectedFy = `FY ${fyStartYear}-${endYr}`;
-                    setSelectedFy(detectedFy);
-                    setSelectedMonth('all');
-                }
-            } catch (e) {
-                console.error('FY detection failed', e);
-            }
-        };
-        detectFy();
+        const key = `sales-period:${selectedCompany.id}`;
+        try {
+            const saved = JSON.parse(localStorage.getItem(key) || 'null');
+            setSelectedFy(typeof saved?.fy === 'string' ? saved.fy : getCurrentFy());
+            setSelectedMonth(typeof saved?.month === 'string' ? saved.month : 'all');
+        } catch {
+            setSelectedFy(getCurrentFy());
+            setSelectedMonth('all');
+        }
+        setPeriodLoadedFor(selectedCompany.id);
     }, [selectedCompany?.id]);
+
+    useEffect(() => {
+        if (!selectedCompany?.id || periodLoadedFor !== selectedCompany.id) return;
+        localStorage.setItem(`sales-period:${selectedCompany.id}`, JSON.stringify({
+            fy: selectedFy,
+            month: selectedMonth || 'all'
+        }));
+    }, [selectedCompany?.id, periodLoadedFor, selectedFy, selectedMonth]);
 
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
@@ -111,6 +106,7 @@ export default function SalesPage() {
                 .select('*', { count: 'exact' })
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
+                .eq('is_deleted', false)
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
@@ -136,12 +132,17 @@ export default function SalesPage() {
                     grand_total: rest.total,
                     status: p.status
                 };
+            }).filter(sale => {
+                // pending_transactions has no voucher_date column; apply the same
+                // inclusive FY/month range after unpacking voucher_data.
+                const date = String(sale.voucher_date || '').slice(0, 10);
+                return date >= dateRange.start && date <= dateRange.end;
             });
 
             return [...pendingSales, ...(syncedData || [])];
         },
         {
-            enabled: !!selectedCompany?.id,
+            enabled: !!selectedCompany?.id && periodLoadedFor === selectedCompany.id,
             staleTime: 3 * 60 * 1000,
             refetchOnWindowFocus: false,
         }
@@ -216,24 +217,22 @@ export default function SalesPage() {
                 </div>
             </HeaderPortal>
 
-            <HeaderPortal type="actions">
-                <div className="flex items-center gap-2">
-                    <CompactDateFilter
-                        selectedFy={selectedFy}
-                        onFyChange={setSelectedFy}
-                        selectedMonth={selectedMonth}
-                        onMonthChange={setSelectedMonth}
-                        monthsInFy={monthsInFy}
-                    />
-                    <button
-                        onClick={() => navigate('/create-invoice')}
-                        className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
-                        title="New Invoice"
-                    >
-                        <Plus size={18} />
-                    </button>
-                </div>
-            </HeaderPortal>
+            {/* Period selector is rendered in page content so it remains usable on
+                mobile and desktop even when the shell header is remounted. */}
+            <div className="flex justify-end relative z-20">
+                <FinancialPeriodSelector
+                    selectedFy={selectedFy}
+                    onFyChange={(fy) => {
+                        setSelectedFy(fy);
+                        // A month belongs to the previous FY; reset to the
+                        // complete selected financial year immediately.
+                        setSelectedMonth('all');
+                    }}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                    monthsInFy={monthsInFy}
+                />
+            </div>
 
             {/* Performance Indicators */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

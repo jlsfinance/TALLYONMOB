@@ -222,6 +222,19 @@ const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = n
 const companyApi = {
   list: async () => db.from("companies").select("*").order("name"),
   getById: async (id) => db.from("companies").select("*").eq("id", id).single(),
+  create: async ({ name, ownerId }) => {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) return { data: null, error: new Error("Company name is required") };
+    if (!ownerId) return { data: null, error: new Error("Signed-in user is required") };
+    return db.from("companies").insert({
+      name: normalizedName,
+      formal_name: normalizedName,
+      owner_id: ownerId,
+      status: "pending",
+      is_active: true,
+      is_deleted: false,
+    }).select("*").single();
+  },
   getAppSettings: async () => {
     const { data, error } = await db.from("app_settings").select("*");
     if (error) return { data: null, error };
@@ -251,28 +264,18 @@ const companyApi = {
   },
   deleteCompanyData: async (companyId) => {
     if (!companyId) return { success: false, error: "Company id is required" };
-    const companyTables = [
-      "voucher_stock_entries", "voucher_ledger_entries", "pending_transactions",
-      "sync_history", "sync_state", "sync_queue", "deleted_records", "approval_items",
-      "payment_links", "email_queue", "reminder_logs", "tds_tcs_entries", "sales_items",
-      "bill_allocations", "bank_allocations", "device_tokens", "notifications",
-      "notification_logs", "notification_templates", "notification_settings", "user_devices",
-      "user_activity_logs", "user_activity_stats", "user_sessions", "recurring_invoices",
-      "sales_visits", "team_members", "company_users", "company_members", "company_settings",
-      "app_settings", "employees", "payslips", "petty_cash_entries", "bank_ledger_mappings",
-      "budgets", "eway_bills", "gst_automation_runs", "ledgers", "stock_items", "vouchers",
-      "sales", "purchases", "ledger_groups", "cost_centres", "stock_groups", "stock_categories",
-      "voucher_types"
-    ];
     try {
-      for (const table of companyTables) {
-        const { error } = await db.from(table).delete().eq("company_id", companyId);
-        if (error && !["42P01", "PGRST204", "PGRST205"].includes(error.code)) {
-          return { success: false, error: `Could not delete ${table}: ${error.message}` };
-        }
+      const { data: deleted, error } = await db.rpc("delete_company_data", { p_company_id: companyId });
+      if (error) {
+        const missingFunction = error.code === "PGRST202" || error.code === "42883";
+        return {
+          success: false,
+          error: missingFunction
+            ? "Company deletion is not enabled on the database yet. Apply the latest Supabase migration and try again."
+            : error.message,
+        };
       }
-      const { error } = await db.from("companies").delete().eq("id", companyId);
-      if (error) return { success: false, error: error.message };
+      if (deleted !== true) return { success: false, error: "Company was not deleted. Check that you own this company and have delete permission." };
       return { success: true, error: null };
     } catch (error) {
       return { success: false, error: error?.message || "Failed to delete company data" };
@@ -432,27 +435,67 @@ const stockApi = {
   getHistory: async (companyId, itemIdOrName, { fromDate, toDate, party, voucherTypes, sort = "desc", limit = 5e3 } = {}) => {
     try {
       if (!companyId || !itemIdOrName) return { data: null, error: null };
-      let item = null;
-      let itemName = itemIdOrName;
-      const itemByIdRes = await db.from("stock_items").select("*").eq("company_id", companyId).eq("id", itemIdOrName).maybeSingle();
-      if (itemByIdRes.data) { item = itemByIdRes.data; itemName = item.name; }
-      else {
-        const itemByNameRes = await db.from("stock_items").select("*").eq("company_id", companyId).ilike("name", String(itemIdOrName)).maybeSingle();
-        item = itemByNameRes.data || null;
-        if (item?.name) itemName = item.name;
+      // The selected company + stock item id are authoritative. Name is retained
+      // only for old sync batches that did not persist stock_item_id.
+      const byId = await db.from("stock_items").select("*").eq("company_id", companyId).eq("id", itemIdOrName).maybeSingle();
+      let item = byId.data || null;
+      if (!item) {
+        const byName = await db.from("stock_items").select("*").eq("company_id", companyId).ilike("name", String(itemIdOrName).trim()).maybeSingle();
+        item = byName.data || null;
       }
-      const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
-      if (entriesRes.error) return entriesRes;
-      let entryRows = entriesRes.data || [];
-      if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
-        if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
+      const itemName = String(item?.name || itemIdOrName).trim();
+      const itemId = item?.id || (String(itemIdOrName).match(/^[0-9a-f-]{20,}$/i) ? itemIdOrName : null);
+      const read = async (query) => {
+        const result = await query;
+        return result.error ? [] : (result.data || []);
+      };
+
+      // Support every data shape used by the sync/import pipelines. Missing
+      // optional tables/columns do not make the detail page fail.
+      const [rowsById, rowsByName] = await Promise.all([
+        itemId ? read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_id", itemId).limit(limit)) : Promise.resolve([]),
+        read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit))
+      ]);
+      let entryRows = [...rowsById, ...rowsByName];
+      if (!entryRows.length && itemName) {
+        entryRows = await read(db.from("voucher_stock_entries").select("*").eq("company_id", companyId).ilike("stock_item_name", `%${itemName}%`).limit(limit));
       }
-      const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
-      if (voucherIds.length === 0) {
-        const emptySummary = { opening_qty: Number(item?.opening_stock || item?.opening_balance || 0), total_in_qty: 0, total_out_qty: 0, total_in_amount: 0, total_out_amount: 0, closing_qty: Number(item?.opening_stock || item?.opening_balance || 0) };
-        return { data: { item, rows: [], summary: emptySummary }, error: null };
+      const seen = new Set();
+      entryRows = entryRows.filter((entry) => {
+        const key = entry.id || [entry.voucher_id, entry.stock_item_id || entry.stock_item_name, entry.quantity, entry.amount, entry.is_inward].join("|");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // Manual invoice imports can exist in sales_items/purchase_items without a
+      // voucher_stock_entries row. Use them only when the same voucher is absent.
+      const [salesRows, purchaseRows] = await Promise.all([
+        read(db.from("sales_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit)),
+        read(db.from("purchase_items").select("*").eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit))
+      ]);
+      const saleIds = salesRows.map((row) => row.sale_id).filter(Boolean);
+      const purchaseIds = purchaseRows.map((row) => row.purchase_id).filter(Boolean);
+      const [sales, purchases] = await Promise.all([
+        saleIds.length ? read(db.from("sales").select("id, voucher_id").eq("company_id", companyId).in("id", saleIds)) : Promise.resolve([]),
+        purchaseIds.length ? read(db.from("purchases").select("id, voucher_id").eq("company_id", companyId).in("id", purchaseIds)) : Promise.resolve([])
+      ]);
+      const saleVoucherById = Object.fromEntries(sales.map((row) => [row.id, row.voucher_id || row.id]));
+      const purchaseVoucherById = Object.fromEntries(purchases.map((row) => [row.id, row.voucher_id || row.id]));
+      const canonicalVoucherIds = new Set(entryRows.map((row) => row.voucher_id).filter(Boolean));
+      salesRows.forEach((row) => {
+        const voucherId = saleVoucherById[row.sale_id];
+        if (voucherId && !canonicalVoucherIds.has(voucherId)) entryRows.push({ ...row, id: `sale-item:${row.id}`, voucher_id: voucherId, is_inward: false });
+      });
+      purchaseRows.forEach((row) => {
+        const voucherId = purchaseVoucherById[row.purchase_id];
+        if (voucherId && !canonicalVoucherIds.has(voucherId)) entryRows.push({ ...row, id: `purchase-item:${row.id}`, voucher_id: voucherId, is_inward: true });
+      });
+
+      const voucherIds = [...new Set(entryRows.map((entry) => entry.voucher_id).filter(Boolean))];
+      const openingQty = Number(item?.opening_stock || item?.opening_balance || 0);
+      if (!voucherIds.length) {
+        return { data: { item, rows: [], summary: { opening_qty: openingQty, total_in_qty: 0, total_out_qty: 0, total_in_amount: 0, total_out_amount: 0, closing_qty: openingQty } }, error: null };
       }
       const vouchersRes = await fetchVouchersByIds({ companyId, voucherIds, select: "id, voucher_number, voucher_type, voucher_date, party_name", partyName: party || null, partyLike: true, fromDate, toDate, voucherTypes });
       if (vouchersRes.error) return { data: null, error: vouchersRes.error };
@@ -462,19 +505,20 @@ const stockApi = {
         if (!voucher) return null;
         const quantity = Math.abs(Number(entry.quantity) || 0);
         const amount = Math.abs(Number(entry.amount) || 0);
-        const rate = Math.abs(Number(entry.rate) || 0);
-        const isInward = entry.is_inward === true || ["Purchase", "Purchase Invoice"].includes(voucher.voucher_type);
+        const rate = Math.abs(Number(entry.rate) || 0) || (quantity ? amount / quantity : 0);
+        const type = String(voucher.voucher_type || "").trim().toLowerCase();
+        const isInward = entry.is_inward === true || type === "purchase" || type === "purchase invoice";
         return { id: entry.id, voucher_id: voucher.id || entry.voucher_id, voucher_type: voucher.voucher_type, voucher_date: voucher.voucher_date, voucher_number: voucher.voucher_number, party_name: voucher.party_name, quantity, rate, amount, tax_rate: Number(entry.tax_rate ?? entry.gst_rate ?? 0), qty_in: isInward ? quantity : 0, qty_out: isInward ? 0 : quantity, qty_delta: isInward ? quantity : -quantity, raw: entry };
       }).filter(Boolean).sort(compareByVoucherDate);
-      let runningQty = Number(item?.opening_stock || item?.opening_balance || 0);
+      let runningQty = openingQty;
       let totalInQty = 0, totalOutQty = 0, totalInAmount = 0, totalOutAmount = 0;
       const rowsAsc = normalized.map((row) => {
-        runningQty += row.qty_delta; totalInQty += row.qty_in; totalOutQty += row.qty_out;
+        runningQty += row.qty_delta;
+        totalInQty += row.qty_in; totalOutQty += row.qty_out;
         totalInAmount += row.qty_in > 0 ? row.amount : 0; totalOutAmount += row.qty_out > 0 ? row.amount : 0;
         return { ...row, running_stock: runningQty };
       });
-      const summary = { opening_qty: Number(item?.opening_stock || item?.opening_balance || 0), total_in_qty: totalInQty, total_out_qty: totalOutQty, total_in_amount: totalInAmount, total_out_amount: totalOutAmount, closing_qty: runningQty };
-      return { data: { item, rows: sort === "asc" ? rowsAsc : [...rowsAsc].reverse(), summary }, error: null };
+      return { data: { item, rows: sort === "asc" ? rowsAsc : [...rowsAsc].reverse(), summary: { opening_qty: openingQty, total_in_qty: totalInQty, total_out_qty: totalOutQty, total_in_amount: totalInAmount, total_out_amount: totalOutAmount, closing_qty: runningQty } }, error: null };
     } catch (error) {
       return { data: null, error: error instanceof Error ? error : new Error("Failed to load stock history") };
     }
