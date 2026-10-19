@@ -241,11 +241,22 @@ export const AuthProvider = ({ children }) => {
         try {
             const { success, error } = await companyApi.deleteCompanyData(companyId);
             if (success) {
-                await loadCompanies();
-                if (selectedCompany?.id === companyId) {
-                    setSelectedCompany(null);
+                const remainingCompanies = companies.filter(company => company.id !== companyId);
+                const wasSelected = selectedCompany?.id === companyId;
+                setCompanies(remainingCompanies);
+
+                if (wasSelected) {
+                    const nextCompany = remainingCompanies[0] || null;
+                    setSelectedCompany(nextCompany);
+                    if (nextCompany) localStorage.setItem('selectedCompanyId', nextCompany.id);
+                    else localStorage.removeItem('selectedCompanyId');
+                } else if (localStorage.getItem('selectedCompanyId') === companyId) {
                     localStorage.removeItem('selectedCompanyId');
                 }
+
+                // Reconcile with the server after the immediate UI update. A refresh failure
+                // should not turn a confirmed delete into a misleading failure toast.
+                loadCompanies().catch((refreshError) => console.warn('Company list refresh failed after deletion:', refreshError));
                 return { success: true };
             }
             return { success: false, error };
@@ -307,7 +318,6 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
-
 
 
 

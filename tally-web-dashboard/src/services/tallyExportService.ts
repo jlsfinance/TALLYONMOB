@@ -99,7 +99,8 @@ export async function sendToTally(xml: string, tallyPort = 9000): Promise<{ succ
  */
 export async function exportVouchersToTally(
     vouchers: any[],
-    onProgress?: (current: number, total: number) => void
+    onProgress?: (current: number, total: number) => void,
+    tallyPort = 9000
 ): Promise<{ exported: number; failed: number; errors: string[] }> {
     let exported = 0;
     let failed = 0;
@@ -109,7 +110,7 @@ export async function exportVouchersToTally(
         onProgress?.(i + 1, vouchers.length);
 
         const xml = generateTallyVoucherXml(vouchers[i]);
-        const result = await sendToTally(xml);
+        const result = await sendToTally(xml, tallyPort);
 
         if (result.success) {
             exported++;

@@ -15,8 +15,12 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
     const [theme, setTheme] = useState<Theme>(() => {
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('theme') as Theme;
-            if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
+            try {
+                const saved = localStorage.getItem('theme') as Theme;
+                if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
+            } catch {
+                // Continue with the system preference when storage is unavailable.
+            }
         }
         return 'system';
     });
@@ -25,7 +29,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (typeof window !== 'undefined') {
             return window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
-        return true;
+        return false;
     });
 
     const effectiveTheme: 'light' | 'dark' = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
@@ -33,12 +37,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
         const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-        mq.addEventListener('change', handler);
-        return () => mq.removeEventListener('change', handler);
+        if (typeof mq.addEventListener === 'function') {
+            mq.addEventListener('change', handler);
+            return () => mq.removeEventListener('change', handler);
+        }
+        mq.addListener(handler);
+        return () => mq.removeListener(handler);
     }, []);
 
     useEffect(() => {
-        localStorage.setItem('theme', theme);
+        try { localStorage.setItem('theme', theme); } catch { /* Preference still applies for this session. */ }
         const root = document.documentElement;
         root.classList.toggle('dark', effectiveTheme === 'dark');
         root.dataset.theme = effectiveTheme;
@@ -50,7 +58,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }, [theme, effectiveTheme]);
 
     const toggleTheme = () => {
-        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+        // Use the effective theme, not just the stored preference. In system mode the
+        // previous toggle could appear to do nothing when the OS was already dark.
+        setTheme(effectiveTheme === 'dark' ? 'light' : 'dark');
     };
 
     const setThemeMode = (mode: Theme) => {
