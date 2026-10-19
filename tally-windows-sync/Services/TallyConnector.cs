@@ -39,6 +39,7 @@ namespace TallySyncApp.Services
         private int _consecutiveFailures = 0;
         private DateTime _circuitBreakerTrippedAt = DateTime.MinValue;
         private DateTime _lastRequestTime = DateTime.MinValue;
+        private readonly SemaphoreSlim _requestGate = new(1, 1);
 
         public event EventHandler<string>? LogReceived;
 
@@ -88,10 +89,22 @@ namespace TallySyncApp.Services
                     // We don't want to wait 30s just to see if it's there.
                     using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
                     {
-                        var response = await _httpClient.PostAsync(url, content, cts.Token);
-                        if (response.IsSuccessStatusCode)
+                        await _requestGate.WaitAsync(cts.Token);
+                        HttpResponseMessage response;
+                        try
                         {
-                            return (true, $"Connected on port {port}");
+                            response = await _httpClient.PostAsync(url, content, cts.Token);
+                        }
+                        finally
+                        {
+                            _requestGate.Release();
+                        }
+                        using (response)
+                        {
+                            if (response.IsSuccessStatusCode)
+                            {
+                                return (true, $"Connected on port {port}");
+                            }
                         }
                     }
                 }
@@ -151,7 +164,18 @@ namespace TallySyncApp.Services
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(customTimeout ?? _timeout)))
                 {
                     var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
-                    var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token);
+                    await _requestGate.WaitAsync(cts.Token);
+                    HttpResponseMessage response;
+                    try
+                    {
+                        response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token);
+                    }
+                    finally
+                    {
+                        _requestGate.Release();
+                    }
+                    using (response)
+                    {
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -195,6 +219,7 @@ namespace TallySyncApp.Services
                         // Success - reset circuit breaker
                         _consecutiveFailures = 0;
                         return doc;
+                    }
                     }
                 }
             }
@@ -260,7 +285,18 @@ namespace TallySyncApp.Services
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(customTimeout ?? _timeout));
                 var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
-                var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token).ConfigureAwait(false);
+                await _requestGate.WaitAsync(cts.Token).ConfigureAwait(false);
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _requestGate.Release();
+                }
+                using (response)
+                {
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -292,6 +328,7 @@ namespace TallySyncApp.Services
 
                 _consecutiveFailures = 0;
                 return SanitizeXmlString(responseContent);
+                }
             }
             catch (TaskCanceledException)
             {
@@ -354,7 +391,16 @@ namespace TallySyncApp.Services
                 {
                     Content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml")
                 };
-                var response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+                await _requestGate.WaitAsync(cts.Token).ConfigureAwait(false);
+                HttpResponseMessage response;
+                try
+                {
+                    response = await _httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _requestGate.Release();
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -900,7 +946,7 @@ namespace TallySyncApp.Services
         /// This prevents Tally from generating massive XML responses
         /// that crash both Tally and the sync app.
         /// </summary>
-        private const int VOUCHER_BATCH_SIZE = 50;         // Fetch 50 vouchers per batch (Safe Mode)
+        private const int VOUCHER_BATCH_SIZE = 100;        // Normal mode: exactly 100 vouchers per Tally request
         private const int MIN_BATCH_SIZE = 25;              // Minimum batch on retry
         private const int INTER_BATCH_DELAY_MS = 500;       // 500ms breathing room for Tally
         private const int BATCH_TIMEOUT_SECONDS = 120;      // 2 min per batch (not 5 min for everything)
@@ -908,7 +954,7 @@ namespace TallySyncApp.Services
         private int GetAdaptiveVoucherBatchSize(int defaultBatchSize = 100)
         {
             if (_consecutiveFailures >= 3) return MIN_BATCH_SIZE;
-            if (_consecutiveFailures >= 2) return Math.Max(MIN_BATCH_SIZE, VOUCHER_BATCH_SIZE);
+            if (_consecutiveFailures >= 2) return MIN_BATCH_SIZE;
             return Math.Max(MIN_BATCH_SIZE, defaultBatchSize);
         }
         
@@ -966,7 +1012,7 @@ namespace TallySyncApp.Services
                 currentEnd = currentStart.AddDays(-1);
             }
             // ===== PHASE 2: Batched Full Fetch with exact IDs =====
-            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(100);
+            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(VOUCHER_BATCH_SIZE);
             SyncLogger.Log($"📦 Phase 2: Fetching {allAlterIds.Count} vouchers in batches of {BATCH_SIZE}");
             
             var allVouchers = new List<Voucher>();
@@ -1387,7 +1433,7 @@ namespace TallySyncApp.Services
             Log($"Ã°Å¸â€Â Scout found {allAlterIds.Count} vouchers.");
             
             // PHASE 2: EXACT 100-VOUCHER CHUNKS
-            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(100);
+            int BATCH_SIZE = GetAdaptiveVoucherBatchSize(VOUCHER_BATCH_SIZE);
             var allVouchers = new List<Voucher>();
             int totalBatches = (int)Math.Ceiling((double)allAlterIds.Count / BATCH_SIZE);
 
@@ -1481,6 +1527,24 @@ namespace TallySyncApp.Services
             string typeLog = voucherTypeFilter ?? "All";
 
             SyncLogger.Log($"Extracting Vouchers ({typeLog}): {effectiveFrom:dd-MMM-yy} to {effectiveTo:dd-MMM-yy}");
+
+            // Never issue the legacy unbounded full-detail export. It can produce a
+            // 20MB+ XML response and make Tally stop responding. The chunked path
+            // scouts lightweight IDs first, then fetches exactly 100 vouchers per request.
+            var chunkedVouchers = await GetVouchersChunkedAsync(
+                effectiveFrom,
+                effectiveTo,
+                companyName,
+                null,
+                stockItemHsnCache);
+            if (string.IsNullOrWhiteSpace(voucherTypeFilter))
+            {
+                return chunkedVouchers;
+            }
+
+            return chunkedVouchers
+                .Where(v => string.Equals(v.VoucherType, voucherTypeFilter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
             // Voucher type filter for TDL Collection
             string typeFilter = string.IsNullOrEmpty(voucherTypeFilter) ? "" :
@@ -3770,6 +3834,7 @@ namespace TallySyncApp.Services
         public void Dispose()
         {
             _httpClient?.Dispose();
+            _requestGate.Dispose();
         }
     }
 
