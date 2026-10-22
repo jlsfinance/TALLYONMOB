@@ -69,8 +69,7 @@ namespace TallySyncApp
                     {
                         Log("Login successful!");
                         LoginSuccessful = true;
-                        DialogResult = true;
-                        Close();
+                        DialogResult = true;   // closes the modal window and returns true to ShowDialog()
                     }
                     else
                     {

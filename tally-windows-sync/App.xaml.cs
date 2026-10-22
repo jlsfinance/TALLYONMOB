@@ -281,6 +281,12 @@ private async Task CheckForUpdates()
 
         private void ShowLoginWindow()
         {
+            // The login window is the only window, so with the default OnLastWindowClose
+            // mode WPF shuts the app down the moment it closes - the main window would be
+            // created into an already dying process. Keep the app alive until we know the
+            // outcome of the login.
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
             var loginWindow = new LoginWindow(_authService!);
             var result = loginWindow.ShowDialog();
 
@@ -288,6 +294,8 @@ private async Task CheckForUpdates()
             {
                 _logger?.LogInformation($"User logged in: {_authService!.CurrentSession?.Email}");
                 ShowMainWindow();
+                // Main window is up: from now on closing it should end the app as before.
+                ShutdownMode = ShutdownMode.OnLastWindowClose;
             }
             else
             {
@@ -305,7 +313,9 @@ private async Task CheckForUpdates()
             }
             _mainWindow.Show();
             _mainWindow.Activate();
-            _tray?.ShowWindow();
+            // Notify the tray of the new state; calling TrayService.ShowWindow() here would
+            // recurse forever, because the tray's "Show window" callback is this very method.
+            _tray?.SyncVisibilityWithWindow(true);
         }
 
         private void HideMainWindow()
@@ -315,7 +325,10 @@ private async Task CheckForUpdates()
                 _mainWindow.Hide();
                 _mainWindow.WindowState = WindowState.Minimized;
             }
-            _tray?.HideWindow();
+            // Same recursion hazard as ShowMainWindow(): the tray's "Hide window" callback
+            // is this method, so only the state is synced and the icon is made visible.
+            _tray?.SyncVisibilityWithWindow(false);
+            _tray?.ShowTrayIcon();
         }
 
         protected override void OnExit(ExitEventArgs e)
@@ -392,6 +405,9 @@ private async Task CheckForUpdates()
         public static void Logout()
         {
             _authService?.SignOut();
+
+            // Closing the main window must not end the app - the login window follows.
+            Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             // Close all windows
             foreach (Window window in Current.Windows)

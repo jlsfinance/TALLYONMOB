@@ -47,6 +47,11 @@ namespace TallySyncApp
         {
             if (!(sender is System.Windows.Controls.RadioButton btn)) return;
 
+            // The XAML sets IsChecked="True" on the nav buttons while the window is still being
+            // built, so the panels (declared later in the XAML) do not exist yet -> skip that first
+            // event, the XAML already defines the initial panel visibility.
+            if (DashboardPanel is null) return;
+
             // Hide all panels
             DashboardPanel.Visibility = Visibility.Collapsed;
             SyncStatusPanel.Visibility = Visibility.Collapsed;

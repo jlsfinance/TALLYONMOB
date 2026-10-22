@@ -162,8 +162,10 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8">
                             <Grid>
+                                <!-- No Margin here: the TextBox already applies its own Padding to the
+                                     text. Adding the padding again as a margin pushes the viewport
+                                     away from the text and the text is clipped away (invisible). -->
                                 <ScrollViewer x:Name="PART_ContentHost"
-                                              Margin="{TemplateBinding Padding}"
                                               VerticalAlignment="Center"/>
                                 <!-- WPF placeholder: TextBox has no PlaceholderText (that is UWP/WinUI).
                                      Bind the placeholder string through Tag instead. -->
@@ -211,7 +213,6 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8">
                             <ScrollViewer x:Name="PART_ContentHost"
-                                          Margin="{TemplateBinding Padding}"
                                           VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
