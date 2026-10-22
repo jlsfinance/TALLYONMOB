@@ -58,6 +58,21 @@ namespace TallySyncApp
             // 1. Settings first (needed by several services below)
             LoadSettings();
 
+            // 1. Check .NET 8 Desktop Runtime is installed
+            if (!HasNet8Runtime())
+            {
+                MessageBox.Show(
+                    ".NET 8 Desktop Runtime is required to run TallyLink.\n\n" +
+                    "Please download and install it from:\n" +
+                    "https://dotnet.microsoft.com/download/dotnet/8.0\n\n" +
+                    "Then try running TallyLink again.",
+                    "Missing .NET Runtime",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                Shutdown();
+                return;
+            }
+
             // 2. Logging (NLog + a safe console logger)
             InitializeLogging();
 
@@ -201,6 +216,24 @@ namespace TallySyncApp
             {
                 if (_authService!.IsLoggedIn) ShowMainWindow();
                 else ShowLoginWindow();
+            }
+        }
+
+        /// <summary>
+        /// Checks if .NET 8 Desktop Runtime is installed by looking for the shared runtime folder.
+        /// </summary>
+        private static bool HasNet8Runtime()
+        {
+            try
+            {
+                string runtimePath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                    "dotnet", "shared", "Microsoft.WindowsDesktop.App", "8.0");
+                return Directory.Exists(runtimePath);
+            }
+            catch
+            {
+                return false;
             }
         }
 
