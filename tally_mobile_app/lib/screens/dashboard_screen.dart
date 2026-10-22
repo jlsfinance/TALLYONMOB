@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../services/api_service.dart';
+import 'package:provider/provider.dart';
 import '../models/app_models.dart';
+import '../services/api_service.dart';
+import '../services/sync_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String companyId;
@@ -19,17 +21,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _dashboardFuture = ApiService.getDashboard(widget.companyId);
+    _dashboardFuture = _fetchDashboard();
+  }
+
+  Future<DashboardSummary> _fetchDashboard() {
+    final api = context.read<ApiService>();
+    return api.getDashboard(widget.companyId);
   }
 
   Future<void> _refresh() async {
+    final sync = context.read<SyncService>();
+    await sync.syncCompany(widget.companyId);
     setState(() {
-      _dashboardFuture = ApiService.getDashboard(widget.companyId);
+      _dashboardFuture = _fetchDashboard();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final sync = context.watch<SyncService>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('LiveKeeping Dashboard',
@@ -37,6 +48,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          // Sync status indicator
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: sync.isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.sync, size: 20),
+                      onPressed: _refresh,
+                      tooltip: sync.statusText,
+                    ),
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -48,7 +78,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               } else if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 48, color: Colors.red),
+                      const SizedBox(height: 12),
+                      Text('Error: ${snapshot.error}',
+                          textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _refresh,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
               } else if (!snapshot.hasData) {
                 return const Center(child: Text('No Data'));
               }
@@ -57,17 +104,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSyncStatusBanner(sync),
+                  const SizedBox(height: 12),
                   _buildSummaryCard(data),
                   const SizedBox(height: 20),
                   const Text('Quick Access',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   _buildGridMenu(context),
                   const SizedBox(height: 20),
                   const Text('Recent Ledgers',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   _buildRecentLedgers(),
                 ],
@@ -77,6 +126,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildSyncStatusBanner(SyncService sync) {
+    if (sync.lastError != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded,
+                size: 18, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                sync.lastError!,
+                style: TextStyle(fontSize: 12, color: Colors.red.shade800),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildSummaryCard(DashboardSummary data) {
@@ -181,7 +259,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildRecentLedgers() {
-    // Placeholder for ledger list
     return Card(
         child: ListTile(
       leading: const CircleAvatar(child: Text("A")),

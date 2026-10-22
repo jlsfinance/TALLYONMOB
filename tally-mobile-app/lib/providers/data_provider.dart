@@ -39,7 +39,6 @@ class DataProvider extends ChangeNotifier {
     try {
       _isLoading = true;
       _error = null;
-      notifyListeners();
 
       final response = await _supabase
           .from('companies')
@@ -63,7 +62,6 @@ class DataProvider extends ChangeNotifier {
     try {
       _isLoading = true;
       _error = null;
-      notifyListeners();
 
       // Fetch counts and totals in parallel
       final responses = await Future.wait([

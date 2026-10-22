@@ -19,6 +19,7 @@ import Import from '../../components/Import';
 import PartyDetails from '../../components/PartyDetails';
 
 import Dashboard from '../../components/Dashboard';
+import AnalyticsDashboard from '../../components/AnalyticsDashboard';
 import Reports from '../../components/Reports';
 import { PublicBillView } from '../../components/PublicBillView';
 import { BackupSettings } from '../../components/BackupSettings';
@@ -359,7 +360,7 @@ const AccountingApp: React.FC = () => {
                 <div
                     className={`
           fixed inset-0 z-[100] md:relative md:z-auto
-          ${isSidebarOpen ? 'flex' : (['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS'].includes(currentView) ? 'hidden' : 'hidden md:flex')}
+          ${isSidebarOpen ? 'flex' : (['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'ANALYTICS_DASHBOARD', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS'].includes(currentView) ? 'hidden' : 'hidden md:flex')}
         `}
                 >
                     <div
@@ -499,6 +500,14 @@ const AccountingApp: React.FC = () => {
                             {currentView === ViewState.EXPENSES && <Expenses />}
                             {currentView === ViewState.PAYMENTS && <Payments onBack={() => setCurrentView(ViewState.DASHBOARD)} createTrigger={triggerPaymentCreate} />}
                             {currentView === ViewState.REPORTS && <Reports onBack={() => setCurrentView(ViewState.DASHBOARD)} />}
+                            {currentView === ViewState.ANALYTICS_DASHBOARD && (
+                                <AnalyticsDashboard
+                                    onBack={() => setCurrentView(ViewState.DASHBOARD)}
+                                    tallyDashboardStats={dashboardStats}
+                                    tallyLedgers={ledgers}
+                                    tallyVouchers={vouchers}
+                                />
+                            )}
                             {currentView === ViewState.REPORTS_HUB && (
                                 <ReportsHub
                                     onBack={() => setCurrentView(ViewState.DASHBOARD)}
@@ -513,6 +522,7 @@ const AccountingApp: React.FC = () => {
                                             'sales_summary': ViewState.REPORTS,
                                             'stock_summary': ViewState.INVENTORY,
                                             'balance_sheet': ViewState.REPORTS,
+                                            'analytics_dashboard': ViewState.ANALYTICS_DASHBOARD,
                                         };
                                         setCurrentView(reportMap[reportId] || ViewState.REPORTS);
                                     }}
@@ -651,7 +661,7 @@ const AccountingApp: React.FC = () => {
                     )}
                 </main>
 
-                {!['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS', 'LEDGER_DETAIL', 'VOUCHER_DETAIL', 'SYNC_SETTINGS'].includes(currentView) && (
+                {!['VIEW_INVOICE', 'CREATE_INVOICE', 'EDIT_INVOICE', 'PUBLIC_VIEW_INVOICE', 'CREATE_PURCHASE', 'EDIT_PURCHASE', 'SMART_CALCULATOR', 'NORMAL_CALCULATOR', 'CREDIT_NOTE', 'CREATE_CREDIT_NOTE', 'CUSTOMER_LEDGER', 'REPORTS', 'ANALYTICS_DASHBOARD', 'POST_SAVE_SUMMARY', 'SPONSORED_DETAILS', 'LEDGER_DETAIL', 'VOUCHER_DETAIL', 'SYNC_SETTINGS'].includes(currentView) && (
                     <MobileBottomNav
                         currentView={currentView}
                         onChangeView={(view) => {

@@ -1,7 +1,6 @@
 <Application x:Class="TallySyncApp.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <!-- ========== COLOR PALETTE ========== -->
         <Color x:Key="PrimaryColor">#2563EB</Color>
@@ -162,9 +161,20 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8">
-                            <ScrollViewer x:Name="PART_ContentHost"
-                                          Margin="{TemplateBinding Padding}"
-                                          VerticalAlignment="Center"/>
+                            <Grid>
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"/>
+                                <!-- WPF placeholder: TextBox has no PlaceholderText (that is UWP/WinUI).
+                                     Bind the placeholder string through Tag instead. -->
+                                <TextBlock x:Name="PlaceholderOverlay"
+                                           Text="{TemplateBinding Tag}"
+                                           Foreground="#9CA3AF"
+                                           Margin="{TemplateBinding Padding}"
+                                           VerticalAlignment="Center"
+                                           IsHitTestVisible="False"
+                                           Visibility="Collapsed"/>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsFocused" Value="True">
@@ -173,6 +183,9 @@
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Border" Property="BorderBrush" Value="#9CA3AF"/>
+                            </Trigger>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="PlaceholderOverlay" Property="Visibility" Value="Visible"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

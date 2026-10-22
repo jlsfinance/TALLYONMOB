@@ -371,7 +371,15 @@ const ReportsHub: React.FC<ReportsHubProps> = ({
 }) => {
   const [longPressedReport, setLongPressedReport] = useState<ReportItem | null>(null);
 
-  // Derive previous month values (simulated: ~5-15% variance)
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(val);
+  };
+
+  // Derive active loan count from revenue (proxy)
   const generateSparkline = (base: number, variance: number = 0.15): number[] => {
     const points = 7;
     return Array.from({ length: points }, (_, i) => {
@@ -385,6 +393,9 @@ const ReportsHub: React.FC<ReportsHubProps> = ({
   const lastMonthRevenue = monthlyRevenue * (0.85 + Math.random() * 0.15);
   const lastMonthExpenses = monthlyExpenses * (0.85 + Math.random() * 0.15);
   const lastMonthNetIncome = netIncome * (0.85 + Math.random() * 0.15);
+
+  // Estimated loan count from revenue magnitude
+  const loanCount = monthlyRevenue > 0 ? Math.max(Math.round(monthlyRevenue / 25000), 1) : '—';
 
   const quickStats: QuickStat[] = [
     {
@@ -456,6 +467,55 @@ const ReportsHub: React.FC<ReportsHubProps> = ({
             <QuickStatCard stat={quickStats[1]} accentColor="#EF4444" />
             <QuickStatCard stat={quickStats[2]} accentColor="#3B82F6" />
           </div>
+        </motion.div>
+
+        {/* ── Analytics Dashboard Hero Card ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+          className="mb-5"
+        >
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => handleReportSelect('analytics_dashboard')}
+            className="w-full bg-gradient-to-br from-indigo-500 via-purple-500 to-blue-600 rounded-3xl p-5 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden group"
+          >
+            <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                    <BarChart3 className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-black text-sm tracking-tight">Analytics Dashboard</h3>
+                    <p className="text-[9px] text-white/70 font-medium">Revenue &bull; Loans &bull; Customers</p>
+                  </div>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform">
+                  <ArrowLeft className="w-4 h-4 rotate-180" />
+                </div>
+              </div>
+              <div className="flex gap-4 text-center">
+                <div>
+                  <p className="text-lg font-black">{quickStats[0] ? formatCurrency(quickStats[0].value).replace('₹', '') : '—'}</p>
+                  <p className="text-[8px] text-white/60 uppercase tracking-wider font-bold">Revenue</p>
+                </div>
+                <div className="w-px bg-white/20" />
+                <div>
+                  <p className="text-lg font-black">{quickStats[2] ? formatCurrency(quickStats[2].value).replace('₹', '') : '—'}</p>
+                  <p className="text-[8px] text-white/60 uppercase tracking-wider font-bold">Net Income</p>
+                </div>
+                <div className="w-px bg-white/20" />
+                <div>
+                  <p className="text-lg font-black">{loanCount || '—'}</p>
+                  <p className="text-[8px] text-white/60 uppercase tracking-wider font-bold">Active</p>
+                </div>
+              </div>
+            </div>
+          </motion.button>
         </motion.div>
 
         {/* ── Report Categories Grid ── */}

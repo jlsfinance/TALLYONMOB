@@ -9,7 +9,13 @@ import {
 import { format, startOfYear, endOfYear, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import { motion } from 'framer-motion';
+import {
+    PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend
+} from 'recharts';
 import toast from 'react-hot-toast';
+
+const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
 const formatCurrency = (amount: number) => {
     const absAmount = Math.abs(amount || 0);
@@ -17,6 +23,14 @@ const formatCurrency = (amount: number) => {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     }).format(absAmount);
+};
+
+const formatCompact = (amount: number) => {
+    const absAmount = Math.abs(amount || 0);
+    if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(1)}Cr`;
+    if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(1)}L`;
+    if (absAmount >= 1000) return `₹${(absAmount / 1000).toFixed(1)}K`;
+    return `₹${absAmount.toFixed(0)}`;
 };
 
 // Clickable row component
@@ -126,10 +140,6 @@ export default function ProfitLossPage() {
             // Process Ledgers
             ledgers?.forEach(l => {
                 const balance = Number(l.current_balance) || 0;
-                // In Tally: 
-                // Expenses/Assets are typically Positive (Debit)
-                // Incomes/Liabilities are typically Negative (Credit) in some syncs.
-                // We use absolute value for side-based display.
                 const absBalance = Math.abs(balance);
                 if (absBalance === 0) return;
 
@@ -165,7 +175,6 @@ export default function ProfitLossPage() {
                 .eq('company_id', selectedCompany.id);
 
             if (stockItems && stockItems.length > 0) {
-                // Prefer direct value columns (synced from Tally)
                 const openingVal = stockItems.reduce((sum, item) => sum + (Number(item.opening_value) || 0), 0);
                 const closingVal = stockItems.reduce((sum, item) => sum + (Number(item.closing_value) || 0), 0);
 
@@ -173,7 +182,6 @@ export default function ProfitLossPage() {
                     plData.openingStock = openingVal;
                     if (plData.closingStock === 0) plData.closingStock = closingVal;
                 } else {
-                    // Fallback: calculate from qty * rate
                     plData.openingStock = stockItems.reduce((sum, item) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
                     const itemsClosingValue = stockItems.reduce((sum, item) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
                     if (itemsClosingValue > 0 && plData.closingStock === 0) {
@@ -229,6 +237,21 @@ export default function ProfitLossPage() {
     const navigateToLedger = (ledgerId: string) => {
         navigate(`/ledgers/${ledgerId}`);
     };
+
+    // Pie chart data for income/collections breakdown
+    const collectionPieData = useMemo(() => {
+        if (!data) return [];
+        const items = [
+            { name: 'Sales', value: data.salesAccounts?.total || 0 },
+            { name: 'Direct Incomes', value: data.directIncomes?.total || 0 },
+            { name: 'Indirect Incomes', value: data.indirectIncomes?.total || 0 },
+            { name: 'Closing Stock', value: data.closingStock || 0 },
+        ];
+        return items.filter(i => i.value > 0).map(i => ({
+            ...i,
+            value: Math.round(i.value)
+        }));
+    }, [data]);
 
     if (loading) {
         return (
@@ -288,6 +311,61 @@ export default function ProfitLossPage() {
                 </button>
             </HeaderPortal>
 
+            {/* Collections Pie Chart */}
+            {collectionPieData.length > 0 && (
+                <div className="max-w-7xl mx-auto px-4 pt-4">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6, ease: 'easeOut' }}
+                        className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5"
+                    >
+                        <div className="flex items-center gap-2 mb-4">
+                            <BarChart3 size={16} className="text-emerald-400" />
+                            <h3 className="text-sm font-bold text-[var(--on-surface)] uppercase tracking-wider">Collections Breakdown</h3>
+                        </div>
+                        <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={collectionPieData}
+                                        dataKey="value"
+                                        nameKey="name"
+                                        cx="50%"
+                                        cy="50%"
+                                        outerRadius={90}
+                                        innerRadius={35}
+                                        paddingAngle={3}
+                                        animationBegin={0}
+                                        animationDuration={1200}
+                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                        labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                                    >
+                                        {collectionPieData.map((_, i) => (
+                                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip
+                                        formatter={(value: number) => [formatCompact(value), 'Amount']}
+                                        contentStyle={{
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)',
+                                            background: 'var(--surface)',
+                                        }}
+                                    />
+                                    <Legend
+                                        verticalAlign="bottom"
+                                        iconType="circle"
+                                        formatter={(value: string) => (
+                                            <span style={{ color: 'var(--on-surface)', fontSize: '11px', fontWeight: 600 }}>{value}</span>
+                                        )}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
 
             {/* T-Account Layout */}
             <div className="max-w-7xl mx-auto p-4">

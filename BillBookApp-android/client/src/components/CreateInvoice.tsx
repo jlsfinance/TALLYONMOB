@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Customer, Product, Invoice, InvoiceItem, InvoiceFormat } from '../types';
 import { StorageService } from '../services/storageService';
-import { Plus, Trash2, Save, Eye, X, Banknote, ArrowLeft, AlertCircle, Calculator, Package, UserPlus, User, Phone, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Save, Eye, X, Banknote, ArrowLeft, AlertCircle, Calculator, Package, UserPlus, User, Phone, ChevronRight, Check, Loader2, Sparkles, PartyPopper } from 'lucide-react';
 import Autocomplete from './Autocomplete';
 // import InvoiceView from './InvoiceView'; // Removed unused import
 import { useCompany } from '@/contexts/CompanyContext';
@@ -12,6 +12,9 @@ import { SoundService } from '@/services/soundService';
 import { ContactsService } from '@/services/contactsService';
 import VoiceInput from './VoiceInput';
 import { ParsedItem } from '../services/voiceParser';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 interface CreateInvoiceProps {
   onSave: (invoice: Invoice, showActions?: boolean) => void;
@@ -83,6 +86,54 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState<Invoice | null>(null);
   const [lastActionTime, setLastActionTime] = useState<number>(0);
+
+  // Multi-step progress
+  const [currentStep, setCurrentStep] = useState<'customer' | 'items' | 'review'>('customer');
+  
+  // Validation states
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Shimmer loading state
+  const [isLoading, setIsLoading] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Form field errors
+  const getFieldError = (field: string) => validationErrors[field] || '';
+  const setFieldError = (field: string, error: string) => {
+    setValidationErrors(prev => ({ ...prev, [field]: error }));
+  };
+  const clearFieldError = (field: string) => {
+    setValidationErrors(prev => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validateStep = (step: string): boolean => {
+    const errors: Record<string, string> = {};
+    if (step === 'customer') {
+      if (!selectedCustomerId) errors.customer = 'Please select a customer';
+      if (!date) errors.date = 'Date is required';
+    } else if (step === 'items') {
+      const validItems = items.filter(i => i.productId && i.productId.trim() !== '');
+      if (validItems.length === 0) errors.items = 'Add at least one item';
+    }
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const goToStep = (step: 'customer' | 'items' | 'review') => {
+    if (step === 'items' && !validateStep('customer')) return;
+    if (step === 'review' && !validateStep('items')) return;
+    setCurrentStep(step);
+    HapticService.light();
+  };
 
   // Focus navigation
 
@@ -1010,6 +1061,10 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
     SoundService.playSuccess();
     HapticService.heavy();
 
+    // Show confetti celebration
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3000);
+
     onSave(invoiceData);
   };
 
@@ -1022,27 +1077,73 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
 
   return (
     <div className="bg-background min-h-screen pb-48 font-sans">
-      {/* Edit Warning Modal */}
+      {/* Confetti overlay */}
+      <AnimatePresence>
+        {showConfetti && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[300] pointer-events-none flex items-center justify-center"
+          >
+            <motion.div className="text-6xl" animate={{ scale: [0, 1.2, 1], rotate: [0, 10, -10, 0] }} transition={{ duration: 0.6 }}>
+              <PartyPopper className="w-32 h-32 text-primary drop-shadow-2xl" />
+            </motion.div>
+            {/* Confetti particles */}
+            {Array.from({ length: 20 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-2 h-2 rounded-full"
+                style={{
+                  background: ['#8b5cf6', '#10b981', '#f43f5e', '#f59e0b', '#3b82f6'][i % 5],
+                  left: `${10 + Math.random() * 80}%`,
+                  top: `${10 + Math.random() * 80}%`,
+                }}
+                initial={{ scale: 0, y: 0, opacity: 1 }}
+                animate={{ scale: [0, 1.5, 0], y: [0, -100 - Math.random() * 200], x: [0, (Math.random() - 0.5) * 200], opacity: [1, 1, 0] }}
+                transition={{ duration: 1 + Math.random() * 0.5, delay: Math.random() * 0.3 }}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Shimmer loading overlay */}
+      <AnimatePresence>
+        {isLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-background flex flex-col gap-4 p-6 pt-safe"
+          >
+            <div className="shimmer h-12 w-3/4 rounded-xl" />
+            <div className="shimmer h-32 w-full rounded-2xl" />
+            <div className="shimmer h-24 w-full rounded-2xl" />
+            <div className="shimmer h-48 w-full rounded-2xl" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Edit Warning Modal - Glass Effect */}
       {showEditWarning && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-slate-800 rounded-[24px] shadow-2xl w-full max-w-sm p-6 text-center">
-            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass-strong rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="w-16 h-16 bg-warning/20 text-warning rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold mb-2">Save Changes?</h3>
-            <p className="text-slate-500 mb-6">You are editing an existing invoice. This will update the customer balance and records.</p>
+            <h3 className="text-xl font-heading font-bold text-foreground mb-2">Save Changes?</h3>
+            <p className="text-muted-foreground mb-6">You are editing an existing invoice. This will update the customer balance and records.</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowEditWarning(false)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-100 rounded-xl">Cancel</button>
-              <button onClick={handleSubmit} className="flex-1 py-3 font-bold bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200">Yes, Save</button>
+              <button onClick={() => setShowEditWarning(false)} className="flex-1 py-3 font-bold text-muted-foreground hover:bg-surface-container-highest rounded-xl border border-border transition-all">Cancel</button>
+              <button onClick={handleSubmit} className="flex-1 py-3 font-bold bg-primary text-primary-foreground rounded-xl shadow-lg shadow-primary/20">Yes, Save</button>
             </div>
           </motion.div>
         </div>
       )}
 
-      {/* Top App Bar/Header - Google Activity Style */}
+      {/* Top App Bar/Header - Premium Style with Progress */}
       <motion.div
         className={`sticky top-0 pt-safe z-30 ${isScrolled
-          ? 'bg-background border-b border-border shadow-sm'
+          ? 'bg-background/95 backdrop-blur-xl border-b border-border shadow-sm'
           : 'bg-background border-b border-transparent'
           }`}
       >
@@ -1058,7 +1159,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               type="text"
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 focus:outline-none transition-colors w-full"
+              className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none bg-transparent border-b border-transparent hover:border-slate-300 focus:border-primary focus:outline-none transition-colors w-full"
               placeholder="INV-NO"
             />
           </div>
@@ -1083,18 +1184,72 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleSubmit}
-              className="bg-google-blue text-white px-6 py-2.5 rounded-full font-bold shadow-lg shadow-google-blue/20 flex items-center gap-2 hover:shadow-google transition-all"
+              disabled={isSubmitting}
+              className="bg-primary text-primary-foreground px-6 py-2.5 rounded-full font-bold shadow-lg shadow-primary/20 flex items-center gap-2 hover:shadow-primary/30 transition-all disabled:opacity-50"
             >
-              <Save className="w-5 h-5" />
-              <span>Save</span>
+              {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+              <span>{isSubmitting ? 'Saving...' : 'Save'}</span>
             </motion.button>
+          </div>
+        </div>
+
+        {/* Progress Indicator - 3 Steps */}
+        <div className="px-4 pb-3 max-w-5xl mx-auto">
+          <div className="flex items-center gap-0">
+            {[
+              { key: 'customer', label: 'Customer', icon: User },
+              { key: 'items', label: 'Items', icon: Package },
+              { key: 'review', label: 'Review', icon: Eye },
+            ].map((step, idx) => {
+              const StepIcon = step.icon;
+              const isActive = currentStep === step.key;
+              const isCompleted = 
+                (step.key === 'customer' && (currentStep === 'items' || currentStep === 'review')) ||
+                (step.key === 'items' && currentStep === 'review');
+              return (
+                <React.Fragment key={step.key}>
+                  <button
+                    onClick={() => goToStep(step.key as any)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${
+                      isActive 
+                        ? 'bg-primary/10 text-primary border border-primary/20 shadow-sm' 
+                        : isCompleted 
+                          ? 'bg-success/10 text-success border border-success/20' 
+                          : 'bg-surface-container text-muted-foreground border border-border'
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <StepIcon className="w-3 h-3" />
+                    )}
+                    <span>{step.label}</span>
+                  </button>
+                  {idx < 2 && (
+                    <div className={`flex-1 h-px mx-2 ${isCompleted ? 'bg-success/30' : 'bg-border'}`} />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       </motion.div>
 
-      <div className="max-w-5xl mx-auto space-y-2 pt-2 px-2">
-        {/* Combined Customer & Payment - Ultra Compact */}
-        <div className="bg-white dark:bg-slate-900 p-3 rounded-[24px] border border-slate-100 dark:border-slate-800 shadow-sm space-y-3">
+      {/* Animated Step Content */}
+      <div className="max-w-5xl mx-auto space-y-3 pt-2 px-2">
+        {/* Step 1: Customer & Payment - Glass Card */}
+        <motion.div
+          initial={false}
+          animate={{ opacity: currentStep === 'customer' || currentStep === 'items' || currentStep === 'review' ? 1 : 0.5, height: 'auto' }}
+          className={`glass rounded-2xl p-4 space-y-4 transition-all duration-300 ${currentStep !== 'customer' ? 'opacity-60 pointer-events-none' : ''}`}
+        >
+          <div className="flex items-center gap-3 mb-1">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${currentStep === 'customer' ? 'bg-primary text-primary-foreground' : 'bg-success/20 text-success'}`}>
+              {currentStep === 'customer' ? '1' : <Check className="w-4 h-4" />}
+            </div>
+            <h2 className="font-heading font-semibold text-sm text-foreground">Customer Details</h2>
+          </div>
+
           <div className="flex items-center gap-3">
             <div className="flex-1 relative">
               <Autocomplete
@@ -1103,29 +1258,38 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
                 onChange={(val) => {
                   setSelectedCustomerId(val);
                   setHasChanges(true);
+                  clearFieldError('customer');
                 }}
                 onCreate={handleCreateCustomer}
                 placeholder="Select Customer..."
                 type="customer"
               />
+              {getFieldError('customer') && (
+                <p className="mt-1 text-[10px] font-bold text-destructive/80 animate-slide-up flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {getFieldError('customer')}
+                </p>
+              )}
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800 px-2 py-2 rounded-xl border border-slate-100 dark:border-slate-700 shrink-0">
+            <div className="bg-surface-container-highest px-3 py-2 rounded-xl border border-border shrink-0">
               <input
                 type="date"
                 value={date}
-                onChange={(e) => { setDate(e.target.value); setHasChanges(true); }}
-                className="bg-transparent text-[10px] font-black text-slate-900 dark:text-white outline-none w-24"
+                onChange={(e) => { setDate(e.target.value); setHasChanges(true); clearFieldError('date'); }}
+                className="bg-transparent text-[10px] font-black text-foreground outline-none w-24"
               />
+              {getFieldError('date') && (
+                <p className="text-[8px] font-bold text-destructive/80">{getFieldError('date')}</p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <div className="flex bg-slate-50 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-100 dark:border-slate-700 flex-1">
+            <div className="flex bg-surface-container-highest p-0.5 rounded-xl border border-border flex-1">
               <button
                 onClick={() => { setPaymentMode('CASH'); setHasChanges(true); HapticService.light(); }}
                 className={`flex-1 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all ${paymentMode === 'CASH'
-                  ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm'
-                  : 'text-slate-400'
+                  ? 'bg-card text-success shadow-sm'
+                  : 'text-muted-foreground'
                   }`}
               >
                 Cash
@@ -1133,8 +1297,8 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               <button
                 onClick={() => { setPaymentMode('CREDIT'); setHasChanges(true); HapticService.light(); }}
                 className={`flex-1 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all ${paymentMode === 'CREDIT'
-                  ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
-                  : 'text-slate-400'
+                  ? 'bg-card text-primary shadow-sm'
+                  : 'text-muted-foreground'
                   }`}
               >
                 Credit
@@ -1150,8 +1314,8 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
                       HapticService.impact();
                     }}
                     className={`text-[9px] font-black px-2.5 py-1.5 rounded-xl border transition-all flex items-center gap-1 ${includePreviousBalance
-                      ? 'bg-amber-500 text-white border-amber-600'
-                      : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 border-amber-100 dark:border-amber-500/20'
+                      ? 'bg-success text-success-foreground border-success'
+                      : 'bg-amber-500/10 text-warning border-amber-500/20'
                       }`}
                   >
                     <Banknote className="w-3 h-3" />
@@ -1161,63 +1325,110 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               </div>
             )}
           </div>
-        </div>
 
-        <div className="space-y-1.5 pt-1">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Items</span>
-              <VoiceInput onItemsParsed={handleVoiceItems} />
+          {/* Next Step Button */}
+          {currentStep === 'customer' && (
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => goToStep('items')}
+              className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all flex items-center justify-center gap-2"
+            >
+              Continue to Items <ChevronRight className="w-4 h-4" />
+            </motion.button>
+          )}
+        </motion.div>
+
+        {/* Step 2: Items - Glass Card */}
+        <motion.div
+          initial={false}
+          animate={{ 
+            opacity: currentStep === 'items' || currentStep === 'review' ? 1 : 0.4,
+            height: 'auto'
+          }}
+          className={`glass rounded-2xl p-4 space-y-3 transition-all duration-300 ${currentStep !== 'items' && currentStep !== 'review' ? 'hidden' : currentStep === 'review' ? 'opacity-60 pointer-events-none' : ''}`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${currentStep === 'items' ? 'bg-primary text-primary-foreground' : 'bg-success/20 text-success'}`}>
+                {currentStep === 'items' ? '2' : <Check className="w-4 h-4" />}
+              </div>
+              <h2 className="font-heading font-semibold text-sm text-foreground">Invoice Items</h2>
             </div>
-            <button onClick={handleAddItem} className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 dark:bg-blue-500/10 px-3 py-1 rounded-full">+ Add Item</button>
+            <div className="flex items-center gap-2">
+              <VoiceInput onItemsParsed={handleVoiceItems} />
+              <button onClick={handleAddItem} className="text-[9px] font-black text-primary uppercase bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 hover:bg-primary/20 transition-colors">+ Add Item</button>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
+          {getFieldError('items') && (
+            <p className="text-[10px] font-bold text-destructive/80 animate-slide-up flex items-center gap-1 bg-destructive/10 px-3 py-2 rounded-lg">
+              <AlertCircle className="w-3 h-3" /> {getFieldError('items')}
+            </p>
+          )}
+
+          <div className="space-y-2">
             <AnimatePresence mode="popLayout">
               {items.filter(i => i.productId).map((item, idx) => (
                 <motion.div
                   key={idx}
                   layout
-                  initial={{ opacity: 0, y: 5 }}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
+                  exit={{ opacity: 0, scale: 0.95, x: -20 }}
                   onClick={() => handleOpenItemModal(items.indexOf(item))}
-                  className="bg-white dark:bg-slate-900 p-3 rounded-[20px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between active:scale-[0.98] transition-all"
+                  className="bg-surface-container-highest p-3 rounded-xl border border-border hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer active:scale-[0.98] group"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400">
-                      <Package className="w-4 h-4" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                        <Package className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-foreground leading-tight">
+                          {item.description || 'Select Item...'}
+                        </p>
+                        <p className="text-[9px] font-medium text-muted-foreground">
+                          {item.quantity} {item.unit || 'pcs'} × ₹{item.rate}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">
-                        {item.description || 'Select Item...'}
-                      </p>
-                      <p className="text-[9px] font-bold text-slate-400">
-                        {item.quantity} {item.unit || 'pcs'} × ₹{item.rate}
-                      </p>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-foreground">₹{(item.totalAmount || 0).toLocaleString('en-IN')}</p>
+                      {item.gstRate > 0 && <p className="text-[8px] font-bold text-primary">GST {item.gstRate}%</p>}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-slate-900 dark:text-white">₹{(item.totalAmount || 0).toLocaleString('en-IN')}</p>
                   </div>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={handleAddItemAndOpen}
-              className="flex-1 py-4 rounded-xl border-2 border-dashed border-blue-200 dark:border-slate-700 bg-blue-50/30 dark:bg-slate-900/40 text-blue-600 dark:text-blue-400 font-bold flex items-center justify-center gap-2 hover:bg-blue-50 transition-all active:scale-[0.98] text-sm"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Add Item</span>
-            </button>
+          <button
+            onClick={handleAddItemAndOpen}
+            className="w-full py-3.5 rounded-xl border-2 border-dashed border-border bg-surface-container text-muted-foreground font-bold flex items-center justify-center gap-2 hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all active:scale-[0.98] text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Item</span>
+          </button>
 
-            {/* Voice Input Button */}
-            <VoiceInput onItemsParsed={handleVoiceItems} />
-          </div>
-        </div>
+          {/* Navigation buttons */}
+          {currentStep === 'items' && (
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setCurrentStep('customer')}
+                className="flex-1 py-3 rounded-xl border border-border text-muted-foreground font-bold text-xs uppercase tracking-wider hover:bg-surface-container transition-all"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => goToStep('review')}
+                className="flex-[2] py-3 bg-primary text-primary-foreground rounded-xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all flex items-center justify-center gap-2"
+              >
+                Review Invoice <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </motion.div>
 
       </div>
 
@@ -1340,47 +1551,154 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
         )}
       </AnimatePresence>
 
-      {/* Notes Section */}
-      <div className="max-w-5xl mx-auto px-4 pb-4 mt-6">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-[24px] shadow-sm border border-slate-100 dark:border-slate-700">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Additional Notes</h2>
-          <textarea
-            className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-            rows={3}
-            value={notes}
-            onChange={(e) => { setNotes(e.target.value); setHasChanges(true); }}
-            placeholder="Terms & Conditions, Payment Instructions, etc."
-          />
-        </div>
-      </div>
+      {/* Step 3: Review Section - Notes & Summary */}
+      {currentStep === 'review' && (
+        <div className="max-w-5xl mx-auto px-4 pb-4 space-y-4 animate-slide-up">
+          {/* Notes Glass Card */}
+          <div className="glass rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <h2 className="font-heading font-semibold text-sm text-foreground">Additional Notes</h2>
+            </div>
+            <textarea
+              className="w-full bg-surface-container border border-border rounded-xl p-4 text-sm font-medium focus:ring-2 focus:ring-primary/50 outline-none resize-none transition-all"
+              rows={3}
+              value={notes}
+              onChange={(e) => { setNotes(e.target.value); setHasChanges(true); }}
+              placeholder="Terms & Conditions, Payment Instructions, etc."
+            />
+          </div>
 
-      {/* Floating Save Bar - Ultra Compact & Premium */}
+          {/* Discount & Rounding Glass Card */}
+          <div className="glass rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                <Calculator className="w-4 h-4" />
+              </div>
+              <h2 className="font-heading font-semibold text-sm text-foreground">Discount & Rounding</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-surface-container-highest rounded-xl p-1 border border-border">
+                <button
+                  onClick={() => setDiscountType('PERCENTAGE')}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${discountType === 'PERCENTAGE' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                >
+                  %
+                </button>
+                <button
+                  onClick={() => setDiscountType('AMOUNT')}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${discountType === 'AMOUNT' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
+                >
+                  ₹
+                </button>
+              </div>
+              <input
+                type="number"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(Number(e.target.value))}
+                placeholder="Discount"
+                className="flex-1 bg-surface-container-highest border border-border rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:border-primary/50 transition-colors"
+              />
+              {roundUpTo > 0 && (
+                <div className="bg-success/10 text-success text-[10px] font-bold px-3 py-2 rounded-xl whitespace-nowrap">
+                  Round: ₹{roundUpTo}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Summary Glass Card */}
+          <div className="glass rounded-2xl p-4 space-y-3 gradient-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center text-success">
+                <Banknote className="w-4 h-4" />
+              </div>
+              <h2 className="font-heading font-semibold text-sm text-foreground">Invoice Summary</h2>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-bold text-foreground">₹{calculateSubtotal().toLocaleString('en-IN')}</span>
+              </div>
+              {calculateTotalCGST() > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">CGST</span>
+                  <span className="font-bold text-primary">₹{calculateTotalCGST().toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {calculateTotalSGST() > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">SGST</span>
+                  <span className="font-bold text-primary">₹{calculateTotalSGST().toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {calculateTotalIGST() > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">IGST</span>
+                  <span className="font-bold text-primary">₹{calculateTotalIGST().toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {discountValue > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-destructive">Discount {discountType === 'PERCENTAGE' ? `(${discountValue}%)` : ''}</span>
+                  <span className="font-bold text-destructive">-₹{(discountType === 'PERCENTAGE' ? (calculateSubtotal() * discountValue / 100) : discountValue).toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              <div className="border-t border-border pt-2 flex justify-between items-center">
+                <span className="font-heading font-bold text-foreground">Total</span>
+                <span className="text-xl font-heading font-bold text-primary">₹{calculateRoundedTotal().toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-muted-foreground">
+                <span>{items.filter(i => i.productId).length} items</span>
+                <span>{paymentMode === 'CASH' ? 'Cash Payment' : 'Credit Payment'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Save Bar - Premium Glass */}
       <motion.div
         initial={{ y: 100 }}
         animate={{ y: 0 }}
-        className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800 p-4 pb-8 md:pb-4 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]"
+        className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border p-4 pb-8 md:pb-4 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]"
       >
         <div className="max-w-5xl mx-auto flex justify-between items-center px-2">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-600 flex flex-col items-center justify-center text-white shadow-lg shadow-blue-500/30">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-purple-600 flex flex-col items-center justify-center text-primary-foreground shadow-lg shadow-primary/30 glow-primary">
               <span className="text-[8px] font-black uppercase leading-none mb-0.5">Items</span>
               <span className="text-lg font-black leading-none">{items.filter(i => i.productId).length}</span>
             </div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Payable</p>
-              <p className="text-2xl font-black text-slate-900 dark:text-white tracking-tighter">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total Payable</p>
+              <p className="text-2xl font-heading font-bold text-foreground tracking-tighter">
                 ₹{calculateRoundedTotal().toLocaleString('en-IN')}
               </p>
             </div>
           </div>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={handleSubmit}
-            className="bg-blue-600 text-white px-8 py-4 rounded-[24px] font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 flex items-center gap-2"
-          >
-            <Save className="w-4 h-4" />
-            <span>Save Bill</span>
-          </motion.button>
+          <div className="flex items-center gap-3">
+            {/* Back to Edit (only on review step) */}
+            {currentStep === 'review' && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setCurrentStep('items')}
+                className="px-5 py-3 rounded-2xl border border-border text-muted-foreground font-bold text-[10px] uppercase tracking-wider hover:bg-surface-container transition-all"
+              >
+                Edit
+              </motion.button>
+            )}
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="bg-primary text-primary-foreground px-8 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl shadow-primary/20 flex items-center gap-2 hover:shadow-primary/30 transition-all disabled:opacity-50 glow-primary"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              <span>{isSubmitting ? 'Saving...' : 'Save Bill'}</span>
+            </motion.button>
+          </div>
         </div>
       </motion.div>
 
@@ -1511,7 +1829,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
         )
       }
 
-      {/* Modal for Creating Customer */}
+      {/* Modal for Creating Customer - Glass Effect */}
       <AnimatePresence>
         {showCustomerModal && (
           <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
@@ -1519,7 +1837,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               initial={{ opacity: 0, y: "100%" }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: "100%" }}
-              className="bg-white dark:bg-slate-900 rounded-t-[40px] sm:rounded-[40px] w-full max-w-lg p-8 shadow-2xl relative"
+              className="glass-strong rounded-t-[40px] sm:rounded-[40px] w-full max-w-lg p-8 shadow-2xl relative"
             >
               <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto mb-8 sm:hidden" />
               <div className="flex items-center gap-4 mb-8">
@@ -1658,11 +1976,11 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
         )}
       </AnimatePresence>
 
-      {/* Product Modal */}
+      {/* Product Modal - Glass Effect */}
       {
         showProductModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white dark:bg-slate-800 rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="glass-strong rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
               <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">New Product</h3>
                 <button onClick={() => setShowProductModal(false)} className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full dark:text-white"><X className="w-5 h-5" /></button>
@@ -1684,7 +2002,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
         )
       }
 
-      {/* Amount Received Modal for Credit Sales */}
+      {/* Amount Received Modal for Credit Sales - Glass Effect */}
       {
         showAmountReceivedModal && pendingCreditInvoice && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
@@ -1692,7 +2010,7 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               transition={{ type: "spring", damping: 20 }}
-              className="bg-white dark:bg-slate-800 rounded-[24px] shadow-2xl w-full max-w-md overflow-hidden"
+              className="glass-strong rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
             >
               {/* Header */}
               <div className="bg-emerald-600 text-white p-6 rounded-t-3xl">
@@ -1802,45 +2120,6 @@ const CreateInvoice: React.FC<CreateInvoiceProps> = ({ onSave, onCancel, initial
           </div>
         )
       }
-
-      {/* Sticky Bottom Summary Bar - Google Premium Style */}
-      <div className="fixed bottom-0 left-0 right-0 bg-surface-container/80 backdrop-blur-xl border-t border-border z-40 pb-safe">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Total Payable</p>
-            <p className="text-3xl font-bold font-heading text-foreground">
-              ₹{calculateRoundedTotal().toLocaleString('en-IN')}
-            </p>
-            {/* Discount Input for Full Bill */}
-            <div className="flex items-center gap-2 mt-2">
-              <select
-                value={discountType}
-                onChange={(e) => setDiscountType(e.target.value as 'PERCENTAGE' | 'AMOUNT')}
-                className="bg-slate-100 dark:bg-slate-800 text-[10px] font-bold p-1 rounded"
-              >
-                <option value="PERCENTAGE">%</option>
-                <option value="AMOUNT">₹</option>
-              </select>
-              <input
-                type="number"
-                value={discountValue}
-                onChange={(e) => setDiscountValue(Number(e.target.value))}
-                placeholder="Disc."
-                className="w-16 bg-slate-100 dark:bg-slate-800 text-xs font-bold p-1 rounded border border-transparent focus:border-google-blue outline-none"
-              />
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="flex items-center gap-2 mb-1 justify-end">
-              <span className="w-2 h-2 rounded-full bg-google-green" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{items.filter(i => i.productId).length} Items Added</span>
-            </div>
-            <p className="text-[11px] font-bold text-google-blue">
-              {roundUpTo > 0 ? 'Rounded Off' : 'Exact Amount'}
-            </p>
-          </div>
-        </div>
-      </div>
 
       <AnimatePresence>
         {showPreview && previewData && (

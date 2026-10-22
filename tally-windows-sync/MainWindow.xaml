@@ -127,9 +127,8 @@
                             <TextBlock Text="TallySync"
                                        Foreground="White"
                                        FontSize="16"
-                                       FontWeight="Bold"
-                                       LetterSpacing="0.5"/>
-                            <TextBlock Text="{Binding Status.CompanyName, StringFormat='{0}'}"
+                                       FontWeight="Bold"/>
+                            <TextBlock Text="{Binding Status.CompanyName, StringFormat='{}{0}'}"
                                        Foreground="#64748B"
                                        FontSize="11"
                                        Margin="0,1,0,0"/>
@@ -171,11 +170,12 @@
                 </StackPanel>
 
                 <!-- Sidebar Footer -->
-                <StackPanel Grid.Row="2"
-                            BorderBrush="#1E293B"
-                            BorderThickness="0,1,0,0"
-                            Padding="16,16"
-                            Margin="0,0,0,0">
+                <Border Grid.Row="2"
+                        BorderBrush="#1E293B"
+                        BorderThickness="0,1,0,0"
+                        Padding="16,16"
+                        Margin="0,0,0,0">
+                    <StackPanel>
                     <!-- Connection Status Indicators -->
                     <StackPanel Margin="0,0,0,12">
                         <Grid Margin="0,0,0,8">
@@ -213,7 +213,8 @@
                                Foreground="#475569"
                                FontSize="11"
                                HorizontalAlignment="Center"/>
-                </StackPanel>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
@@ -428,7 +429,7 @@
                                            FontWeight="Bold"
                                            Foreground="#2563EB"/>
                                 <TextBlock Grid.Row="2"
-                                           Text="{Binding Status.TotalRecords, StringFormat='{0} total records'}"
+                                           Text="{Binding Status.TotalRecords, StringFormat='{}{0} total records'}"
                                            Foreground="#9CA3AF"
                                            FontSize="12"
                                            Margin="0,4,0,0"/>
@@ -871,11 +872,12 @@
             </Grid>
 
             <!-- ===== STATUS BAR (Footer) ===== -->
-            <StatusBar Grid.Row="2"
-                       Background="White"
-                       BorderBrush="#E5E7EB"
-                       BorderThickness="0,1,0,0"
-                       Height="28">
+            <Border Grid.Row="2"
+                    Background="White"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="0,1,0,0">
+                <StatusBar Background="White"
+                           Height="28">
                 <StatusBarItem>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="● "
@@ -898,7 +900,8 @@
                     <TextBlock Text="{Binding Status.State}"
                                Foreground="#9CA3AF" FontSize="11"/>
                 </StatusBarItem>
-            </StatusBar>
+                </StatusBar>
+            </Border>
         </Grid>
     </Grid>
 </Window>

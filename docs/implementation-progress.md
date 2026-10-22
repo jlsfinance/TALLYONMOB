@@ -1,0 +1,3 @@
+- Toggle button added (additive)
+- Original thebaap preserved
+- REA used for connector audit only (not UI pixel copy)

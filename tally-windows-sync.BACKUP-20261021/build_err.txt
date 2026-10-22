@@ -1,0 +1,6 @@
+MSBUILD : error MSB1008: Only one project can be specified.
+    Full command line: 'C:\Program Files\dotnet\sdk\8.0.417\MSBuild.dll -maxcpucount -verbosity:m -nologo -restore -consoleloggerparameters:Summary " d:\New folder 2 \tally-windows-sync\TallySyncApp.sln\ /v:m /clp:ErrorsOnly /nologo  -distributedlogger:Microsoft.DotNet.Tools.MSBuild.MSBuildLogger,C:\Program Files\dotnet\sdk\8.0.417\dotnet.dll*Microsoft.DotNet.Tools.MSBuild.MSBuildForwardingLogger,C:\Program Files\dotnet\sdk\8.0.417\dotnet.dll'
+  Switches appended by response files:
+Switch: folder
+
+For switch syntax, type "MSBuild -help"

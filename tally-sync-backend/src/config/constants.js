@@ -15,8 +15,8 @@ module.exports = {
     RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
     RATE_LIMIT_MAX_REQUESTS: 100,
 
-    // Sync batch size
-    MAX_SYNC_BATCH_SIZE: 500,
+    // Sync batch size (100 = LiveKeeping style)
+    MAX_SYNC_BATCH_SIZE: 100,
 
     // User roles
     ROLES: {

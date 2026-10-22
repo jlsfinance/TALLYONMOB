@@ -9,6 +9,7 @@ import 'config/theme.dart';
 import 'config/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'providers/data_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -24,7 +25,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Set status bar style
+  // Transparent status bar
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -55,16 +56,23 @@ class TallyMobileApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => DataProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
-      child: MaterialApp(
-        title: 'Tally Mobile',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: const AppRouter(),
-        routes: {
-          '/login': (context) => const LoginScreen(),
-          '/companies': (context) => const CompanySelectionScreen(),
-          '/dashboard': (context) => const DashboardScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Tally Mobile',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.darkTheme,       // fallback
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const AppRouter(),
+            routes: {
+              '/login': (context) => const LoginScreen(),
+              '/companies': (context) => const CompanySelectionScreen(),
+              '/dashboard': (context) => const DashboardScreen(),
+            },
+          );
         },
       ),
     );

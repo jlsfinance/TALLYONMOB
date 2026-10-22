@@ -83,3 +83,61 @@ class DashboardSummary {
     );
   }
 }
+
+class Voucher {
+  final String id;
+  final String voucherNumber;
+  final String voucherType;
+  final String partyName;
+  final double amount;
+  final DateTime? date;
+  final String? narration;
+
+  Voucher({
+    required this.id,
+    required this.voucherNumber,
+    required this.voucherType,
+    required this.partyName,
+    required this.amount,
+    this.date,
+    this.narration,
+  });
+
+  factory Voucher.fromJson(Map<String, dynamic> json) {
+    return Voucher(
+      id: json['id'] ?? '',
+      voucherNumber: json['voucher_number'] ?? '',
+      voucherType: json['voucher_type'] ?? '',
+      partyName: json['party_name'] ?? '',
+      amount: (json['amount'] ?? 0).toDouble(),
+      date: json['date'] != null ? DateTime.tryParse(json['date']) : null,
+      narration: json['narration'],
+    );
+  }
+}
+
+class StockItem {
+  final String id;
+  final String name;
+  final double closingQuantity;
+  final String unit;
+  final double closingValue;
+
+  StockItem({
+    required this.id,
+    required this.name,
+    required this.closingQuantity,
+    required this.unit,
+    required this.closingValue,
+  });
+
+  factory StockItem.fromJson(Map<String, dynamic> json) {
+    return StockItem(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      closingQuantity: (json['closing_quantity'] ?? 0).toDouble(),
+      unit: json['unit'] ?? '',
+      closingValue: (json['closing_value'] ?? 0).toDouble(),
+    );
+  }
+}

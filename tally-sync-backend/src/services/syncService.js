@@ -42,12 +42,16 @@ class SyncService {
                 // Transform data to ensure company_id and proper formatting
                 const formattedData = batch.map(item => this.transformRecord(item, companyId, table));
 
+                // LiveKeeping-style progress: "Batch 3/10 — 300/1000 records"
+                const uploadedSoFar = i * MAX_SYNC_BATCH_SIZE + batch.length;
+                logger.info(`📦 Batch ${i + 1}/${batches.length} — ${uploadedSoFar}/${data.length} records to ${table}`);
+
                 try {
                     const { error } = await supabase
+                        .database
                         .from(table)
                         .upsert(formattedData, {
-                            onConflict: 'id',
-                            ignoreDuplicates: false
+                            onConflict: 'id'
                         });
 
                     if (error) {

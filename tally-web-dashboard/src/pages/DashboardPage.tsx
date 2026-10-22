@@ -1,3 +1,4 @@
+// Redesigned: JLS-4 CRED-style premium dashboard
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -7,8 +8,10 @@ import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns
 import {
     TrendingUp, TrendingDown, Wallet, CreditCard, FileText, Users,
     BarChart3, Plus, RefreshCw, ArrowRight, Activity, Calendar, Zap,
-    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle, Clock
+    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle, Clock,
+    Sun, Moon, Sunrise, Sparkles
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Spinner } from '../components/ui/GlassUI';
 import { BarChart3D } from '../components/3d';
 import BillingDashboard from './BillingDashboard';
@@ -23,6 +26,194 @@ import { toast } from 'react-hot-toast';
 import { sendEodReport } from '../lib/whatsapp';
 
 const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
+
+// ── Stagger animation variants ──
+const staggerContainer = {
+    hidden: {},
+    show: {
+        transition: { staggerChildren: 0.08 }
+    }
+};
+
+const fadeUpItem = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } }
+};
+
+// ── Daily Briefing Widget ──
+function DailyBriefing({ companyName, todaySales }: { companyName: string; todaySales: number }) {
+    const now = new Date();
+    const hour = now.getHours();
+    let greeting: string;
+    let GreetingIcon: any;
+
+    if (hour < 12) {
+        greeting = 'Good Morning';
+        GreetingIcon = Sunrise;
+    } else if (hour < 17) {
+        greeting = 'Good Afternoon';
+        GreetingIcon = Sun;
+    } else if (hour < 21) {
+        greeting = 'Good Evening';
+        GreetingIcon = Moon;
+    } else {
+        greeting = 'Good Night';
+        GreetingIcon = Moon;
+    }
+
+    const dateStr = now.toLocaleDateString('en-IN', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
+
+    const formatCurrency = (amount: number) => {
+        if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
+        if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
+        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-purple-600/20 p-5 backdrop-blur-xl"
+        >
+            <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl" />
+            <div className="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-purple-500/10 blur-xl" />
+
+            <div className="relative z-10 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="rounded-lg bg-white/10 p-2 backdrop-blur-sm">
+                            <GreetingIcon size={18} className="text-blue-300" />
+                        </div>
+                        <div>
+                            <p className="text-lg font-bold text-white">{greeting}</p>
+                            <p className="text-xs font-medium text-white/50">{dateStr}</p>
+                        </div>
+                    </div>
+                    <div className="hidden items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 sm:flex">
+                        <Sparkles size={12} className="text-amber-300" />
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                            Daily Briefing
+                        </span>
+                    </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+                    <div>
+                        <p className="text-xs font-medium uppercase tracking-wider text-white/50">
+                            {companyName}
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-white/90">
+                            Here's your financial snapshot for today
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2">
+                        <IndianRupee size={16} className="text-emerald-400" />
+                        <div>
+                            <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70">
+                                Today's Sales
+                            </p>
+                            <p className="text-lg font-bold text-emerald-300">
+                                {formatCurrency(todaySales)}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
+// ── Glass Metric Card ──
+function GlassMetricCard({ title, value, icon, subtitle, trend, onClick, color = 'blue' }: any) {
+    const gradMap: any = {
+        blue: 'from-blue-600/80 to-blue-900/60',
+        teal: 'from-teal-600/80 to-teal-900/60',
+        amber: 'from-amber-600/80 to-amber-900/60',
+        red: 'from-red-600/80 to-red-900/60',
+    };
+
+    return (
+        <motion.div
+            variants={fadeUpItem}
+            onClick={onClick}
+            className="relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br p-5 backdrop-blur-xl transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl"
+            style={{ backgroundImage: `linear-gradient(to bottom right, var(--tw-gradient-stops))` }}
+        >
+            <div className={`absolute inset-0 bg-gradient-to-br ${gradMap[color] || gradMap.blue}`} />
+            <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full bg-white/5" />
+            <div className="absolute -bottom-8 -right-8 h-16 w-16 rounded-full bg-white/5" />
+
+            <div className="relative z-10">
+                <div className="flex items-start justify-between">
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-medium uppercase tracking-wider text-white/70">{title}</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrencyCurried(value)}</p>
+                        {subtitle && <p className="text-xs text-white/60">{subtitle}</p>}
+                    </div>
+                    <div className="rounded-lg bg-white/10 p-2.5 backdrop-blur-sm">{icon}</div>
+                </div>
+                {trend && trend.value !== 0 && (
+                    <div className="mt-3 flex items-center gap-1.5">
+                        {trend.direction === 'up' ? (
+                            <ArrowUpRight size={14} className="text-green-300" />
+                        ) : (
+                            <ArrowDownRight size={14} className="text-red-300" />
+                        )}
+                        <span className={`text-xs font-medium ${trend.direction === 'up' ? 'text-green-300' : 'text-red-300'}`}>
+                            {Math.abs(trend.value)}%
+                        </span>
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+}
+
+const formatCurrencyCurried = (amount: number) => {
+    if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
+    if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+};
+
+// ── Glass Chart Card ──
+function GlassChartCard({ title, icon, children, className = '' }: any) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className={`rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl ${className}`}
+        >
+            <div className="mb-4 flex items-center gap-2">
+                <div className="text-blue-400">{icon}</div>
+                <h3 className="text-sm font-semibold text-white/90">{title}</h3>
+            </div>
+            {children}
+        </motion.div>
+    );
+}
+
+// ── Glass Quick Action ──
+function GlassQuickAction({ title, icon, to }: any) {
+    return (
+        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <Link to={to} className="group block">
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm transition-all duration-200 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-lg">
+                    <span className="text-blue-400 transition-transform group-hover:scale-110">{icon}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 group-hover:text-white/90">
+                        {title}
+                    </span>
+                </div>
+            </Link>
+        </motion.div>
+    );
+}
 
 export default function DashboardPage() {
     const { selectedCompany, user, appMode } = useAuth() as any;
@@ -287,76 +478,30 @@ export default function DashboardPage() {
 
     if (!selectedCompany) return null;
 
-    // Stat Card Component
-    const MetricCard = ({ title, value, icon, subtitle, trend, onClick, color = 'blue' }: any) => {
-        const colorMap: any = {
-            blue: { bg: 'bg-blue-50 dark:bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'hover:border-blue-200 dark:hover:border-blue-800' },
-            teal: { bg: 'bg-teal-50 dark:bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'hover:border-teal-200 dark:hover:border-teal-800' },
-            amber: { bg: 'bg-amber-50 dark:bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'hover:border-amber-200 dark:hover:border-amber-800' },
-            red: { bg: 'bg-red-50 dark:bg-red-500/10', text: 'text-red-600 dark:text-red-400', border: 'hover:border-red-200 dark:hover:border-red-800' },
-        };
-        const c = colorMap[color] || colorMap.blue;
-
-        return (
-            <div
-                onClick={onClick}
-                className={`bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5 cursor-pointer ${c.border} hover:shadow-[var(--shadow-md)] transition-all duration-200 group`}
-            >
-                <div className="flex items-start justify-between mb-3">
-                    <div className={`w-10 h-10 rounded-[var(--radius-md)] ${c.bg} ${c.text} flex items-center justify-center`}>
-                        {icon}
-                    </div>
-                    {trend && trend.value !== 0 && (
-                        <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${trend.direction === 'up'
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
-                            : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400'
-                            }`}>
-                            {trend.direction === 'up' ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                            {trend.value}%
-                        </span>
-                    )}
-                </div>
-                <p className="text-xs font-medium text-[var(--text-muted)] mb-1">{title}</p>
-                <p className="text-xl font-bold text-[var(--on-surface)] tracking-tight">{formatCurrency(value)}</p>
-                <p className="text-[11px] text-[var(--text-muted)] mt-1.5">{subtitle}</p>
-            </div>
-        );
-    };
-
-    // Quick Action
-    const QuickAction = ({ title, icon, to }: any) => (
-        <Link to={to} className="group">
-            <div className="bg-[var(--surface)] border border-dashed border-[var(--outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col items-center justify-center gap-2 h-24 hover:border-solid hover:border-[var(--primary)] hover:bg-[var(--primary-glow)] transition-all duration-150">
-                <span className="text-[var(--primary)] group-hover:scale-110 transition-transform">{icon}</span>
-                <span className="text-xs font-medium text-[var(--on-surface-variant)] group-hover:text-[var(--primary)]">{title}</span>
-            </div>
-        </Link>
-    );
-
     return (
-        <div className="max-w-[1400px] mx-auto space-y-6">
+        <div className="min-h-screen bg-black px-4 pb-20 pt-6 sm:px-6 lg:px-8">
             <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-sm md:text-xl font-bold text-[var(--on-surface)] tracking-tight">
+                    <h1 className="text-sm md:text-xl font-bold text-white tracking-tight">
                         {t('dashboard.title')}
                     </h1>
-                    <p className="hidden md:block text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-widest mt-0.5">
+                    <p className="hidden md:block text-white/50 text-[9px] font-bold uppercase tracking-widest mt-0.5">
                         {selectedCompany.name}
                     </p>
                 </div>
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <div className="flex bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-90 md:scale-100 origin-right">
+                <div className="flex overflow-hidden rounded-lg border border-white/10 bg-black/60">
                     {periodFilters.map((filter) => (
                         <button
                             key={filter.key}
                             onClick={() => setPeriod(filter.key)}
                             className={`
-                                flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
+                                flex items-center gap-1 px-2.5 py-1.5 text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
                                 ${period === filter.key
-                                    ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)] scale-105'
-                                    : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-white/60 hover:text-white/90'
                                 }
                             `}
                         >
@@ -373,7 +518,7 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={handleRefresh}
-                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 hover:text-white/90 transition-colors md:h-9 md:w-9"
                         title="Refresh"
                     >
                         <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
@@ -381,7 +526,7 @@ export default function DashboardPage() {
 
                     <button
                         onClick={() => navigate('/create-invoice')}
-                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-lg hover:scale-105 transition-transform md:h-9 md:w-9"
                         title={t('dashboard.new_invoice')}
                     >
                         <Plus size={16} />
@@ -391,150 +536,157 @@ export default function DashboardPage() {
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-3">
-                    <Spinner size="lg" />
-                    <p className="text-[var(--text-muted)] text-sm">Loading financial data...</p>
+                    <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                    <p className="text-white/50 text-sm">Loading financial data...</p>
                 </div>
             ) : appMode === 'billing' ? (
                 <BillingDashboard />
             ) : (
-                <div className="space-y-6 animate-fadeIn">
+                <div className="space-y-6">
+                    {/* ── DAILY BRIEFING ── */}
+                    <DailyBriefing
+                        companyName={selectedCompany.name}
+                        todaySales={todaySales}
+                    />
 
-                    {/* COMPANY INFO BANNER */}
+                    {/* ── COMPANY INFO BANNER ── */}
                     {(selectedCompany.gstin || selectedCompany.address || selectedCompany.phone || selectedCompany.email) && (
-                        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: 0.1 }}
+                            className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
+                        >
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 {selectedCompany.gstin && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">GSTIN</span>
-                                        <span className="text-sm font-semibold text-[var(--on-surface)] font-mono bg-[var(--surface-container)] px-2 py-0.5 rounded">{selectedCompany.gstin}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">GSTIN</span>
+                                        <span className="rounded bg-white/10 px-2 py-0.5 text-sm font-semibold font-mono text-white/80">{selectedCompany.gstin}</span>
                                     </div>
                                 )}
                                 {selectedCompany.address && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Address</span>
-                                        <span className="text-sm text-[var(--on-surface-variant)] truncate max-w-[300px]">{selectedCompany.address}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Address</span>
+                                        <span className="truncate max-w-[300px] text-sm text-white/60">{selectedCompany.address}</span>
                                     </div>
                                 )}
                                 {selectedCompany.phone && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Phone</span>
-                                        <span className="text-sm text-[var(--on-surface-variant)]">{selectedCompany.phone}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Phone</span>
+                                        <span className="text-sm text-white/60">{selectedCompany.phone}</span>
                                     </div>
                                 )}
                                 {selectedCompany.email && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Email</span>
-                                        <span className="text-sm text-[var(--on-surface-variant)]">{selectedCompany.email}</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Email</span>
+                                        <span className="text-sm text-white/60">{selectedCompany.email}</span>
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
                     )}
 
-                    {/* KEY METRICS */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 stagger-children">
-                        <MetricCard
+                    {/* ── KEY METRICS (Staggered Animated) ── */}
+                    <motion.div
+                        variants={staggerContainer}
+                        initial="hidden"
+                        animate="show"
+                        className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4"
+                    >
+                        <GlassMetricCard
                             title={t('dashboard.total_sales')}
                             value={stats.sales}
-                            icon={<TrendingUp size={18} />}
+                            icon={<TrendingUp size={18} className="text-white" />}
                             trend={salesTrend}
                             subtitle={`${stats.salesCount} invoices`}
                             color="blue"
                             onClick={() => navigate('/sales')}
                         />
-                        <MetricCard
+                        <GlassMetricCard
                             title={t('dashboard.total_purchases')}
                             value={stats.purchases}
-                            icon={<TrendingDown size={18} />}
+                            icon={<TrendingDown size={18} className="text-white" />}
                             subtitle={`${stats.purchaseCount} bills`}
                             color="teal"
                             onClick={() => navigate('/purchases')}
                         />
-                        <MetricCard
+                        <GlassMetricCard
                             title={t('dashboard.receivable')}
                             value={stats.receivables}
-                            icon={<Wallet size={18} />}
+                            icon={<Wallet size={18} className="text-white" />}
                             subtitle="Pending collection"
                             color="amber"
                             onClick={() => navigate('/ledgers?group=Sundry Debtors')}
                         />
-                        <MetricCard
+                        <GlassMetricCard
                             title={t('dashboard.payable')}
                             value={stats.payables}
-                            icon={<CreditCard size={18} />}
+                            icon={<CreditCard size={18} className="text-white" />}
                             subtitle="Outstanding"
                             color="red"
                             onClick={() => navigate('/ledgers?group=Sundry Creditors')}
                         />
-                    </div>
+                    </motion.div>
 
-                    {/* MAIN CONTENT */}
+                    {/* ── MAIN CONTENT ── */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-                        {/* Chart */}
-                        <div className="lg:col-span-2">
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
-                                <div className="flex items-center justify-between mb-5">
-                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.revenue_trend')}</h3>
-                                    <span className="text-xs text-[var(--text-muted)]">{t('dashboard.last_6_months')}</span>
+                        {/* Left + Center: Charts */}
+                        <div className="lg:col-span-2 space-y-5">
+                            {/* Revenue Trend (BarChart3D) */}
+                            <GlassChartCard title={t('dashboard.revenue_trend')} icon={<BarChart3 size={16} />}>
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-xs text-white/50">{t('dashboard.last_6_months')}</span>
                                 </div>
-                                <div className="h-[280px] w-full rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)] p-3">
+                                <div className="h-[280px] w-full rounded-xl bg-white/5 border border-white/10 p-3">
                                     <BarChart3D
                                         data={monthlySales}
                                         height={260}
-                                        barColor={isDark ? '#60A5FA' : '#1A56DB'}
+                                        barColor="#60A5FA"
                                         animated
                                     />
                                 </div>
-                            </div>
+                            </GlassChartCard>
 
-                            {/* New Row: Cash Flow & Expenses */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                            {/* Cash Flow + Expense Distribution */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 {/* Cash Flow Trend */}
-                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
-                                    <div className="flex items-center justify-between mb-5">
-                                        <h3 className="text-sm font-semibold text-[var(--on-surface)]">Cash Flow (Last 30 Days)</h3>
-                                        <Activity size={16} className="text-blue-500" />
-                                    </div>
+                                <GlassChartCard title="Cash Flow (Last 30 Days)" icon={<Activity size={16} />}>
                                     <div className="h-[250px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={cashFlowTrend}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#E2E8F0'} />
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
                                                 <XAxis
                                                     dataKey="date"
                                                     axisLine={false}
                                                     tickLine={false}
-                                                    tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                    tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.5)' }}
                                                     interval={6}
                                                 />
                                                 <YAxis
                                                     axisLine={false}
                                                     tickLine={false}
-                                                    tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                    tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.5)' }}
                                                     tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
                                                 />
                                                 <RechartsTooltip
                                                     contentStyle={{
-                                                        backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                                                        border: '1px solid #334155',
+                                                        backgroundColor: 'rgba(0,0,0,0.8)',
+                                                        border: '1px solid rgba(255,255,255,0.1)',
                                                         borderRadius: '8px',
-                                                        fontSize: '11px'
+                                                        fontSize: '11px',
+                                                        color: '#fff'
                                                     }}
                                                 />
-                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }} />
                                                 <Line type="monotone" dataKey="income" stroke="#10B981" strokeWidth={3} dot={false} animationDuration={1500} />
                                                 <Line type="monotone" dataKey="expense" stroke="#EF4444" strokeWidth={3} dot={false} animationDuration={1500} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
-                                </div>
+                                </GlassChartCard>
 
-                                {/* Expense Breakdown */}
-                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
-                                    <div className="flex items-center justify-between mb-5">
-                                        <h3 className="text-sm font-semibold text-[var(--on-surface)]">Expense Distribution</h3>
-                                        <BarChart3 size={16} className="text-amber-500" />
-                                    </div>
+                                {/* Expense Distribution */}
+                                <GlassChartCard title="Expense Distribution" icon={<BarChart3 size={16} />}>
                                     <div className="h-[250px] w-full flex items-center">
                                         <div className="w-1/2 h-full">
                                             <ResponsiveContainer width="100%" height="100%">
@@ -548,101 +700,129 @@ export default function DashboardPage() {
                                                         paddingAngle={5}
                                                         dataKey="value"
                                                     >
-                                                        {expenseGroups.map((entry, index) => (
+                                                        {expenseGroups.map((_entry, index) => (
                                                             <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                                         ))}
                                                     </Pie>
-                                                    <RechartsTooltip />
+                                                    <RechartsTooltip
+                                                        contentStyle={{
+                                                            backgroundColor: 'rgba(0,0,0,0.8)',
+                                                            border: '1px solid rgba(255,255,255,0.1)',
+                                                            borderRadius: '8px',
+                                                            fontSize: '11px',
+                                                            color: '#fff'
+                                                        }}
+                                                    />
                                                 </PieChart>
                                             </ResponsiveContainer>
                                         </div>
                                         <div className="w-1/2 flex flex-col gap-2 pl-4">
-                                            {expenseGroups.map((group, idx) => (
-                                                <div key={group.name} className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></div>
-                                                        <span className="text-[10px] font-bold text-[var(--on-surface-variant)] truncate max-w-[80px] text-left">{group.name}</span>
+                                            {expenseGroups.map((group, idx) => {
+                                                const total = expenseGroups.reduce((s: number, g: any) => s + g.value, 0) || 1;
+                                                return (
+                                                    <div key={group.name} className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                                                            <span className="text-[10px] font-bold text-white/60 truncate max-w-[80px]">{group.name}</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-white/90">
+                                                            {((group.value / total) * 100).toFixed(1)}%
+                                                        </span>
                                                     </div>
-                                                    <span className="text-[10px] font-black text-[var(--on-surface)]">
-                                                        {(group.value / (expenseGroups.reduce((s, g) => s + g.value, 0) || 1) * 100).toFixed(1)}%
-                                                    </span>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                </div>
+                                </GlassChartCard>
                             </div>
                         </div>
 
                         {/* Right Column */}
                         <div className="space-y-5">
-
-                            {/* Quick Actions */}
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
-                                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">{t('dashboard.quick_actions')}</h3>
+                            {/* Quick Actions (Glass Grid) */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.4, delay: 0.2 }}
+                                className="rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl"
+                            >
+                                <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-3">
+                                    {t('dashboard.quick_actions')}
+                                </h3>
                                 <div className="grid grid-cols-2 gap-2.5">
-                                    <QuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
-                                    <QuickAction title={t('nav.vouchers')} icon={<CreditCard size={20} />} to="/vouchers" />
-                                    <QuickAction title="Sync Status" icon={<RefreshCw size={20} />} to="/sync-history" />
-                                    <button
-                                        onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)}
-                                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 transition-all"
-                                    >
-                                        <div className="p-2 rounded-lg bg-emerald-500 text-white shadow-lg mb-2">
-                                            <MessageCircle size={20} />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase">Send EOD</span>
-                                    </button>
+                                    <GlassQuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
+                                    <GlassQuickAction title={t('nav.vouchers')} icon={<CreditCard size={20} />} to="/vouchers" />
+                                    <GlassQuickAction title="Sync Status" icon={<RefreshCw size={20} />} to="/sync-history" />
+                                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                        <button
+                                            onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)}
+                                            className="flex flex-col items-center justify-center w-full h-full p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:shadow-lg transition-all"
+                                        >
+                                            <div className="p-2 rounded-lg bg-emerald-500 text-white shadow-lg mb-2">
+                                                <MessageCircle size={20} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-wider">Send EOD</span>
+                                        </button>
+                                    </motion.div>
                                 </div>
-                            </div>
+                            </motion.div>
 
-                            {/* Recent Activity */}
-                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden">
-                                <div className="px-5 py-3.5 border-b border-[var(--border)]">
-                                    <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.recent_vouchers')}</h3>
+                            {/* Recent Activity (Glass Animated Feed) */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.4, delay: 0.3 }}
+                                className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl overflow-hidden"
+                            >
+                                <div className="px-5 py-3.5 border-b border-white/10">
+                                    <h3 className="text-sm font-semibold text-white/90">{t('dashboard.recent_vouchers')}</h3>
                                 </div>
-                                <div className="divide-y divide-[var(--border)]">
+                                <div className="divide-y divide-white/10">
                                     {recentVouchers.length === 0 ? (
-                                        <div className="p-8 text-center text-[var(--text-muted)] text-sm">{t('dashboard.no_recent')}</div>
+                                        <div className="p-8 text-center text-white/40 text-sm">{t('dashboard.no_recent')}</div>
                                     ) : (
                                         recentVouchers.map((v, idx) => (
-                                            <div
+                                            <motion.div
                                                 key={v.id || idx}
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: idx * 0.05 }}
                                                 onClick={() => navigate(`/vouchers/${v.id}`)}
-                                                className="px-5 py-3 hover:bg-[var(--surface-hover)] transition-colors cursor-pointer flex items-center justify-between group"
+                                                className="px-5 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer flex items-center justify-between group"
                                             >
                                                 <div className="flex items-center gap-3 min-w-0">
-                                                    <div className={`w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-xs font-bold flex-shrink-0 ${v.voucher_type === 'Sales'
-                                                        ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
-                                                        : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)]'
-                                                        }`}>
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+                                                        v.voucher_type === 'Sales'
+                                                            ? 'bg-blue-500/20 text-blue-400'
+                                                            : 'bg-white/10 text-white/60'
+                                                    }`}>
                                                         {v.party_name?.[0] || '?'}
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-medium text-[var(--on-surface)] truncate group-hover:text-[var(--primary)] transition-colors">
+                                                        <p className="text-sm font-medium text-white/80 truncate group-hover:text-blue-400 transition-colors">
                                                             {v.party_name || 'Unknown'}
                                                         </p>
-                                                        <p className="text-[11px] text-[var(--text-muted)]">
+                                                        <p className="text-[11px] text-white/40">
                                                             {v.voucher_type} • {format(new Date(v.voucher_date), 'MMM d')}
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <p className="text-sm font-semibold text-[var(--on-surface)] flex-shrink-0 ml-3">
+                                                <p className="text-sm font-semibold text-white/90 shrink-0 ml-3">
                                                     {formatCurrency(v.total_amount)}
                                                 </p>
-                                            </div>
+                                            </motion.div>
                                         ))
                                     )}
                                 </div>
-                                <div className="px-5 py-3 border-t border-[var(--border)] text-center">
+                                <div className="px-5 py-3 border-t border-white/10 text-center">
                                     <button
                                         onClick={() => navigate('/vouchers')}
-                                        className="text-xs font-medium text-[var(--primary)] hover:underline"
+                                        className="text-xs font-medium text-blue-400 hover:underline"
                                     >
                                         {t('dashboard.view_all_transactions')} →
                                     </button>
                                 </div>
-                            </div>
+                            </motion.div>
                         </div>
                     </div>
                 </div>

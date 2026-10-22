@@ -127,7 +127,7 @@ const TABLES = {
   COMPANY_PROFILES: 'company_profiles',
 } as const;
 
-const BATCH_CHUNK_SIZE = 500;
+const BATCH_CHUNK_SIZE = 100;
 
 // ============================================================
 // INTERNAL HELPERS

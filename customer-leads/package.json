@@ -1,0 +1,16 @@
+{
+  "name": "jls-finance-leads",
+  "version": "1.0.0",
+  "description": "Customer acquisition landing page for JLS Finance Ltd",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["finance", "loans", "leads", "landing-page"],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  }
+}

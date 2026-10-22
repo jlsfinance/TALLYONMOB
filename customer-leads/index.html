@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JLS Finance Ltd - Personal Loan & EMI Solutions</title>
+    <style>
+        /* ===== RESET & BASE ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0a0e1a;
+            color: #e0e4f0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        a { color: #6c8cff; text-decoration: none; }
+        a:hover { color: #8aa4ff; }
+
+        /* ===== UTILITY ===== */
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+        .section-title {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 2.5rem;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            color: #fff;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        /* ===== NAV ===== */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            background: rgba(10, 14, 26, 0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(108, 140, 255, 0.15);
+            padding: 14px 0;
+        }
+        nav .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+        }
+        .nav-cta {
+            padding: 8px 20px;
+            border-radius: 25px;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.85rem;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(108,140,255,0.4); color: #fff; }
+
+        /* ===== HERO ===== */
+        .hero {
+            padding: 130px 0 80px;
+            background: radial-gradient(ellipse at 30% 20%, rgba(108,140,255,0.12) 0%, transparent 60%),
+                        radial-gradient(ellipse at 70% 80%, rgba(167,139,250,0.08) 0%, transparent 50%),
+                        #0a0e1a;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(circle at 50% 50%, rgba(108,140,255,0.03) 0%, transparent 50%);
+            animation: pulseGlow 8s ease-in-out infinite;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.2); opacity: 1; }
+        }
+        .hero * { position: relative; z-index: 1; }
+
+        .hero-badge { margin-bottom: 20px; }
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 12px;
+            line-height: 1.2;
+        }
+        .hero h1 span {
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p {
+            font-size: 1.1rem;
+            color: #8892b0;
+            max-width: 600px;
+            margin: 0 auto 32px;
+        }
+        .hero .sub-hindi {
+            font-size: 1.15rem;
+            color: #a0a8c4;
+            margin-bottom: 30px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn-primary {
+            padding: 14px 36px;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(108,140,255,0.4); color: #fff; }
+        .btn-whatsapp {
+            padding: 14px 36px;
+            border-radius: 30px;
+            background: #25d366;
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-whatsapp:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(37,211,102,0.4); color: #fff; }
+
+        /* ===== COUNTER ===== */
+        .counter-section {
+            padding: 40px 0;
+            border-top: 1px solid rgba(108,140,255,0.08);
+            border-bottom: 1px solid rgba(108,140,255,0.08);
+        }
+        .counter-grid {
+            display: flex;
+            justify-content: center;
+            gap: 60px;
+            flex-wrap: wrap;
+        }
+        .counter-item { text-align: center; }
+        .counter-item .num {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .counter-item .label {
+            font-size: 0.85rem;
+            color: #8892b0;
+            margin-top: 4px;
+        }
+
+        /* ===== FORM SECTION ===== */
+        .form-section {
+            padding: 70px 0;
+            background: linear-gradient(180deg, #0a0e1a 0%, #0f1525 100%);
+        }
+        .form-card {
+            max-width: 560px;
+            margin: 0 auto;
+            background: linear-gradient(145deg, #111827, #0d1322);
+            border: 1px solid rgba(108,140,255,0.15);
+            border-radius: 20px;
+            padding: 40px 36px;
+        }
+        .form-card h2 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 6px;
+            color: #fff;
+        }
+        .form-card .form-sub {
+            text-align: center;
+            color: #8892b0;
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #a0a8c4;
+            margin-bottom: 6px;
+        }
+        .form-group label .hint { color: #6c8cff; font-weight: 400; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(108,140,255,0.2);
+            background: rgba(10,14,26,0.6);
+            color: #e0e4f0;
+            font-size: 0.95rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            outline: none;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #6c8cff;
+            box-shadow: 0 0 0 3px rgba(108,140,255,0.15);
+        }
+        .form-group input::placeholder { color: #4a5070; }
+        .form-group select option { background: #111827; color: #e0e4f0; }
+        .form-row { display: flex; gap: 14px; }
+        .form-row .form-group { flex: 1; }
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            border-radius: 30px;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 6px;
+        }
+        .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(108,140,255,0.4); }
+        .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .form-status {
+            text-align: center;
+            margin-top: 14px;
+            font-size: 0.9rem;
+            min-height: 24px;
+        }
+        .form-status.success { color: #4ade80; }
+        .form-status.error { color: #f87171; }
+        .form-status.loading { color: #6c8cff; }
+
+        /* ===== TRUST BADGES ===== */
+        .trust-badges {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: #6a7290;
+        }
+        .trust-badge svg { width: 18px; height: 18px; fill: #6c8cff; }
+
+        /* ===== TESTIMONIALS ===== */
+        .testimonials-section {
+            padding: 70px 0;
+            background: #0a0e1a;
+        }
+        .testimonial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+        .testimonial-card {
+            background: linear-gradient(145deg, #111827, #0d1322);
+            border: 1px solid rgba(108,140,255,0.1);
+            border-radius: 16px;
+            padding: 28px;
+        }
+        .testimonial-card .stars {
+            color: #fbbf24;
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+        .testimonial-card .quote {
+            font-size: 0.9rem;
+            color: #c0c8e0;
+            margin-bottom: 16px;
+            font-style: italic;
+        }
+        .testimonial-card .author {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .testimonial-card .avatar {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 1rem; color: #fff;
+        }
+        .testimonial-card .name { font-weight: 600; color: #fff; font-size: 0.9rem; }
+        .testimonial-card .place { font-size: 0.8rem; color: #6a7290; }
+
+        /* ===== FEATURES ===== */
+        .features-section {
+            padding: 70px 0;
+            background: #0f1525;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: linear-gradient(145deg, #111827, #0d1322);
+            border: 1px solid rgba(108,140,255,0.08);
+            border-radius: 16px;
+            padding: 28px 24px;
+            text-align: center;
+        }
+        .feature-card .icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+        .feature-card h3 {
+            font-size: 1rem;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 0.85rem;
+            color: #6a7290;
+        }
+
+        /* ===== PRIVACY NOTE ===== */
+        .privacy-note {
+            padding: 20px 0;
+            border-top: 1px solid rgba(108,140,255,0.08);
+            text-align: center;
+            font-size: 0.78rem;
+            color: #4a5070;
+        }
+        .privacy-note a { color: #6a7290; text-decoration: underline; }
+
+        /* ===== FOOTER ===== */
+        footer {
+            padding: 30px 0 20px;
+            border-top: 1px solid rgba(108,140,255,0.06);
+            text-align: center;
+        }
+        footer .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        footer .footer-links a {
+            font-size: 0.82rem;
+            color: #6a7290;
+        }
+        footer .copyright {
+            font-size: 0.78rem;
+            color: #404660;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .hero { padding: 110px 0 60px; }
+            .form-card { padding: 28px 20px; }
+            .form-row { flex-direction: column; gap: 0; }
+            .counter-grid { gap: 30px; }
+            .section-title { font-size: 1.5rem; }
+            .testimonial-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 480px) {
+            .hero h1 { font-size: 1.6rem; }
+            .hero p, .hero .sub-hindi { font-size: 0.95rem; }
+            .btn-primary, .btn-whatsapp { padding: 12px 24px; font-size: 0.9rem; }
+            .nav-cta { padding: 6px 14px; font-size: 0.78rem; }
+            .logo { font-size: 1rem; }
+        }
+
+        /* ===== LOADING SPINNER ===== */
+        .spinner {
+            display: inline-block;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<!-- ===== NAVBAR ===== -->
+<nav>
+    <div class="container">
+        <div class="logo">
+            <div class="logo-icon">📊</div>
+            JLS Finance
+        </div>
+        <a href="#form" class="nav-cta">Apply Now</a>
+    </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section class="hero" id="hero">
+    <div class="container">
+        <div class="hero-badge"><span class="badge">✅ RBI Registered NBFC</span></div>
+        <h1>Personal Loan? <span>Easy EMI?</span><br>Humein batao!</h1>
+        <p class="sub-hindi">📱 ₹1,000 से ₹5,00,000 तक का लोन — सिर्फ 2 मिनट में आवेदन करें, WhatsApp पर तुरंत अपडेट पाएं</p>
+        <p>Instant loan approval up to ₹5 Lakhs • Zero paperwork • Same-day disbursal</p>
+        <div class="hero-actions">
+            <a href="#form" class="btn-primary">📝 Apply Now — Free</a>
+            <a href="https://wa.me/919876543210?text=Hi%20JLS%20Finance!%20I%20need%20a%20loan%20of%20%E2%82%B9" target="_blank" rel="noopener" class="btn-whatsapp">💬 Chat on WhatsApp</a>
+        </div>
+    </div>
+</section>
+
+<!-- ===== COUNTER ===== -->
+<section class="counter-section">
+    <div class="container">
+        <div class="counter-grid">
+            <div class="counter-item">
+                <div class="num" id="customerCount">100+</div>
+                <div class="label">Customers Served</div>
+            </div>
+            <div class="counter-item">
+                <div class="num">⭐ 4.8</div>
+                <div class="label">Average Rating</div>
+            </div>
+            <div class="counter-item">
+                <div class="num">₹2 Cr+</div>
+                <div class="label">Loans Disbursed</div>
+            </div>
+            <div class="counter-item">
+                <div class="num">📱 24/7</div>
+                <div class="label">WhatsApp Support</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== FEATURES ===== -->
+<section class="features-section" id="features">
+    <div class="container">
+        <h2 class="section-title">Why Choose JLS Finance?</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="icon">⚡</div>
+                <h3>Instant Approval</h3>
+                <p>Get your loan approved within minutes via our automated WhatsApp chatbot</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📄</div>
+                <h3>Zero Paperwork</h3>
+                <p>100% digital process — no branches, no physical documents needed</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔄</div>
+                <h3>Flexible EMI</h3>
+                <p>Choose repayment tenure from 3 to 24 months as per your convenience</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔒</div>
+                <h3>100% Secure</h3>
+                <p>Your data is encrypted and protected with bank-grade security</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== FORM ===== -->
+<section class="form-section" id="form">
+    <div class="container">
+        <div class="form-card">
+            <h2>🚀 Free Loan Inquiry</h2>
+            <p class="form-sub">2 मिनट में जानें — आपको कितना लोन मिल सकता है</p>
+            <form id="leadForm">
+                <div class="form-group">
+                    <label for="name">Full Name <span class="hint">(पूरा नाम)</span></label>
+                    <input type="text" id="name" name="name" placeholder="e.g. Rajesh Kumar" required autocomplete="name">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="phone">Phone Number <span class="hint">(मोबाइल)</span></label>
+                        <input type="tel" id="phone" name="phone" placeholder="98XXXXXXXX" pattern="[0-9]{10}" required autocomplete="tel">
+                    </div>
+                    <div class="form-group">
+                        <label for="city">City <span class="hint">(शहर)</span></label>
+                        <input type="text" id="city" name="city" placeholder="e.g. Delhi" required autocomplete="address-level2">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="amount">Loan Amount Needed <span class="hint">(कितना लोन चाहिए?)</span></label>
+                    <select id="amount" name="amount" required>
+                        <option value="">— Select Amount —</option>
+                        <option value="5000">₹5,000</option>
+                        <option value="10000">₹10,000</option>
+                        <option value="25000">₹25,000</option>
+                        <option value="50000">₹50,000</option>
+                        <option value="100000">₹1,00,000</option>
+                        <option value="250000">₹2,50,000</option>
+                        <option value="500000">₹5,00,000</option>
+                        <option value="other">Other (Other Amount)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit" id="submitBtn">📩 Get Free Quote</button>
+                <div class="form-status" id="formStatus"></div>
+            </form>
+
+            <div class="trust-badges">
+                <span class="trust-badge">
+                    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    RBI Regulated
+                </span>
+                <span class="trust-badge">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    Data Encrypted
+                </span>
+                <span class="trust-badge">
+                    <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                    No Hidden Fees
+                </span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== TESTIMONIALS ===== -->
+<section class="testimonials-section" id="testimonials">
+    <div class="container">
+        <h2 class="section-title">❤️ What Our Customers Say</h2>
+        <div class="testimonial-grid">
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <div class="quote">"Very fast service! I needed ₹25,000 urgently for my daughter's school fees and got the money in my account within 2 hours. WhatsApp bot made it super easy!"</div>
+                <div class="author">
+                    <div class="avatar">PK</div>
+                    <div>
+                        <div class="name">Pooja K.</div>
+                        <div class="place">Jaipur, Rajasthan</div>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <div class="quote">"I was worried about my CIBIL score but JLS Finance helped me get a loan without any hassle. The EMI options are very flexible. Highly recommended!"</div>
+                <div class="author">
+                    <div class="avatar">AM</div>
+                    <div>
+                        <div class="name">Amit M.</div>
+                        <div class="place">Delhi</div>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <div class="quote">"बहुत अच्छा experience रहा। पूरा process WhatsApp पर हुआ, कहीं जाना नहीं पड़ा। ₹50,000 का लोन मिला — शुक्रिया JLS Finance!"</div>
+                <div class="author">
+                    <div class="avatar">RS</div>
+                    <div>
+                        <div class="name">Ravi S.</div>
+                        <div class="place">Lucknow, UP</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== PRIVACY NOTE ===== -->
+<div class="privacy-note">
+    <div class="container">
+        🔒 Your information is 100% secure. We never share your data with third parties without your consent.
+        <a href="#">Privacy Policy</a> • <a href="#">Terms & Conditions</a>
+    </div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<footer>
+    <div class="container">
+        <div class="footer-links">
+            <a href="#">About Us</a>
+            <a href="#">EMI Calculator</a>
+            <a href="#">FAQs</a>
+            <a href="#">Contact</a>
+            <a href="#">Privacy Policy</a>
+        </div>
+        <div class="copyright">
+            © 2026 JLS Finance Ltd. All rights reserved. | RBI Registered NBFC
+        </div>
+    </div>
+</footer>
+
+<!-- ===== JAVASCRIPT ===== -->
+<script>
+    (function() {
+        const form = document.getElementById('leadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusEl = document.getElementById('formStatus');
+        const customerCount = document.getElementById('customerCount');
+
+        // Animate customer counter
+        function animateCounter(start, end, element, suffix) {
+            let current = start;
+            const step = Math.ceil((end - start) / 40);
+            const timer = setInterval(() => {
+                current += step;
+                if (current >= end) {
+                    current = end;
+                    clearInterval(timer);
+                }
+                element.textContent = current + (suffix || '');
+            }, 40);
+        }
+        // Start animation when counter section is visible
+        const counterObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    animateCounter(50, 100, customerCount, '+');
+                    counterObserver.disconnect();
+                }
+            });
+        }, { threshold: 0.5 });
+        const counterSection = document.querySelector('.counter-section');
+        if (counterSection) counterObserver.observe(counterSection);
+
+        // Form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const name = document.getElementById('name').value.trim();
+            const phone = document.getElementById('phone').value.trim();
+            const city = document.getElementById('city').value.trim();
+            const amount = document.getElementById('amount').value;
+
+            // Validation
+            if (!name || name.length < 2) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = '❌ Please enter your full name / कृपया अपना नाम दर्ज करें';
+                return;
+            }
+            if (!/^[0-9]{10}$/.test(phone)) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = '❌ Please enter a valid 10-digit phone number / सही मोबाइल नंबर दर्ज करें';
+                return;
+            }
+            if (!city || city.length < 2) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = '❌ Please enter your city / कृपया अपना शहर दर्ज करें';
+                return;
+            }
+            if (!amount) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = '❌ Please select a loan amount / लोन राशि चुनें';
+                return;
+            }
+
+            // Show loading state
+            submitBtn.disabled = true;
+            statusEl.className = 'form-status loading';
+            statusEl.innerHTML = '<span class="spinner"></span> Submitting...';
+            submitBtn.textContent = '⏳ Processing...';
+
+            try {
+                const payload = { name, phone, amount, city };
+                const response = await fetch('/api/lead', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    statusEl.className = 'form-status success';
+                    statusEl.innerHTML = '✅ <strong>Thank you!</strong> We\'ll contact you on WhatsApp shortly.<br>🙏 <strong>धन्यवाद!</strong> हम आपसे WhatsApp पर जल्द संपर्क करेंगे।';
+                    form.reset();
+
+                    // Update counter
+                    const current = parseInt(customerCount.textContent) || 100;
+                    customerCount.textContent = (current + 1) + '+';
+                } else {
+                    throw new Error(data.message || 'Submission failed');
+                }
+            } catch (err) {
+                statusEl.className = 'form-status error';
+                statusEl.textContent = '❌ ' + (err.message || 'Something went wrong. Please try again / कृपया पुनः प्रयास करें।');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '📩 Get Free Quote';
+            }
+        });
+
+        // WhatsApp click-to-chat with pre-filled message
+        document.querySelectorAll('.btn-whatsapp').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                // Allow default navigation
+            });
+        });
+    })();
+</script>
+
+</body>
+</html>

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <SupportedOSPlatform>windows</SupportedOSPlatform>
     <ApplicationIcon>app_icon.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -18,7 +19,7 @@
     <Company>TallySync</Company>
     <Product>TallySync - Tally Data Sync</Product>
     <Description>Sync Tally ERP data to cloud for mobile access</Description>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,10 +29,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Clowd.Squirrel" Version="2.11.1" />
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
+    <PackageReference Include="Microsoft.AspNet.SignalR.Client" Version="2.4.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="MongoDB.Bson" Version="3.12.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+    <PackageReference Include="NLog" Version="6.2.2" />
+    <PackageReference Include="System.Management" Version="10.0.13" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
   </ItemGroup>
 
@@ -39,6 +46,13 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="NLog.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Remove="app_icon.ico" />
+    <Resource Include="app_icon.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
   </ItemGroup>
 
   <!-- Exclude TallySyncApp subfolder to avoid conflicts -->

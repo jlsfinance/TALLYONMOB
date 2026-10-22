@@ -18,6 +18,7 @@ import SponsoredSlide from './SponsoredSlide';
 import { Card, CardContent } from '../components/ui/card';
 import { useAuth } from '../contexts/AuthContext';
 import admobService from '../services/AdmobService';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
     onCreateInvoice: () => void;
@@ -99,6 +100,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
     const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
     const [editAmount, setEditAmount] = useState('');
+    const [showChart, setShowChart] = useState(false);
+    const [revenueChartData, setRevenueChartData] = useState<{ month: string; revenue: number; expenses: number }[]>([]);
 
     useEffect(() => {
         loadData();
@@ -308,6 +311,27 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         setInvoices(sortedInvoices);
 
+        // Generate revenue chart data from invoices (last 6 months)
+        const chartData: { month: string; revenue: number; expenses: number }[] = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const monthStr = d.toLocaleString('en-US', { month: 'short' });
+            const yearStr = d.getFullYear().toString().slice(-2);
+            const monthPrefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            
+            const monthInvoices = allInvoices.filter(inv => inv.date.startsWith(monthPrefix));
+            const revenue = monthInvoices.reduce((sum, inv) => sum + inv.total, 0);
+            const expenses = monthInvoices.filter(inv => inv.status === 'PAID').reduce((sum, inv) => sum + (inv.total * 0.3), 0); // Estimate 30% expenses
+            
+            chartData.push({
+                month: `${monthStr} '${yearStr}`,
+                revenue: Math.round(revenue * 100) / 100,
+                expenses: Math.round(expenses * 100) / 100
+            });
+        }
+        setRevenueChartData(chartData);
+
     };
 
     const createNewCompany = () => {
@@ -318,27 +342,25 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     return (
-        <div className="pb-32 bg-surface-container-low dark:bg-slate-950 min-h-screen">
+        <div className="pb-32 bg-background min-h-screen">
             {/* Daily Briefing Popup (Top) */}
             {showDailyBriefing && <DailyBriefing onClose={() => setShowDailyBriefing(false)} />}
 
-            {/* Header Area - Material 3 Adaptive Top Bar */}
-            <div className="px-4 pb-2 bg-surface/80 dark:bg-slate-900/80 sticky top-0 z-30 border-b border-outline-variant/50 backdrop-blur-md">
+            {/* Header Area - Redesigned with Glass Effect */}
+            <div className="px-4 pb-2 glass sticky top-0 z-30 border-b border-border/50">
                 <div className="flex items-center justify-between h-14 max-w-5xl mx-auto">
 
                     {/* Left: Nav Drawer Trigger */}
                     <div className="w-20 flex items-center justify-start gap-1">
-
-
                         <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => {
                                 HapticService.light();
                                 onToggleSidebar();
                             }}
-                            className="p-2 rounded-full hover:bg-surface-container-high transition-colors"
+                            className="p-2 rounded-xl hover:bg-white/10 transition-all active:scale-90"
                         >
-                            <Menu className="w-6 h-6 text-on-surface" />
+                            <Menu className="w-5 h-5 text-foreground" />
                         </motion.button>
 
                     </div>
@@ -349,12 +371,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                             onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
                             className="flex flex-col items-center justify-center active:scale-95 transition-transform"
                         >
-                            <h2 className="font-black text-base text-on-surface leading-none uppercase tracking-tighter">
+                            <h2 className="font-heading text-lg font-bold text-foreground leading-none tracking-tight">
                                 {company?.name || 'My Business'}
                             </h2>
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-google-blue mt-0.5 uppercase tracking-widest bg-google-blue/5 px-2 py-0.5 rounded-full border border-google-blue/10">
+                            <div className="flex items-center gap-1 text-[9px] font-semibold text-primary mt-0.5 uppercase tracking-widest bg-primary/5 px-2 py-0.5 rounded-full border border-primary/10">
                                 <span>Switch</span>
-                                <ChevronRight className="w-2.5 h-2.5" />
+                                <ChevronRight className="w-2 h-2" />
                             </div>
                         </button>
 
@@ -400,24 +422,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 HapticService.light();
                                 onOpenAI();
                             }}
-                            className="p-2 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all relative overflow-hidden group"
+                            className="p-2 rounded-xl bg-gradient-to-br from-primary to-purple-600 text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all relative overflow-hidden group glow-primary"
                         >
                             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                            <Sparkles className="w-5 h-5" />
+                            <Sparkles className="w-4 h-4" />
                         </motion.button>
 
-                        {/* Reminder Icon (Was Bell) */}
+                        {/* Reminder Icon */}
                         <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => {
                                 HapticService.light();
                                 setShowAddReminderModal(true);
                             }}
-                            className="p-2 rounded-full hover:bg-surface-container-high transition-colors relative"
+                            className="p-2 rounded-xl hover:bg-white/10 transition-all active:scale-90 relative"
                         >
-                            <Calendar className="w-5 h-5 text-on-surface" />
+                            <Calendar className="w-4 h-4 text-foreground" />
                             {todaysReminders.length > 0 && (
-                                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-surface rounded-full"></span>
+                                <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-destructive border-2 border-background rounded-full"></span>
                             )}
                         </motion.button>
                     </div>
@@ -450,21 +472,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                         >
                             <div className="relative group">
                                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                                    <span className="material-symbols-outlined text-[20px] text-google-blue">search</span>
+                                    <span className="material-symbols-outlined text-[18px] text-primary">search</span>
                                 </div>
                                 <input
                                     type="text"
                                     placeholder="Search bills, items, or customers..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-white dark:bg-slate-800 border-2 border-google-blue/30 rounded-[20px] py-4 pl-12 pr-4 text-sm font-bold text-on-surface placeholder:text-on-surface-variant/40 outline-none focus:border-google-blue focus:ring-4 focus:ring-google-blue/10 shadow-xl shadow-google-blue/5 transition-all"
+                                    className="w-full bg-card border border-border/50 rounded-2xl py-3.5 pl-11 pr-10 text-sm font-medium text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 shadow-sm transition-all"
                                 />
                                 {searchQuery && (
                                     <button
                                         onClick={() => setSearchQuery('')}
-                                        className="absolute inset-y-0 right-4 flex items-center text-on-surface-variant/40 hover:text-on-surface active:scale-90 transition-transform"
+                                        className="absolute inset-y-0 right-4 flex items-center text-muted-foreground/40 hover:text-foreground active:scale-90 transition-transform"
                                     >
-                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                        <span className="material-symbols-outlined text-[16px]">close</span>
                                     </button>
                                 )}
                             </div>
@@ -473,14 +495,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </AnimatePresence>
             </div>
 
-            {/* TRANSACTION / PARTY DETAILS TABS */}
-            <div className="px-4 mt-4 flex items-center gap-3">
+            {/* TRANSACTION / PARTY DETAILS TABS - Redesigned */}
+            <div className="px-4 mt-4 flex items-center gap-2">
                 <button
                     onClick={() => setActiveTab('TRANSACTION')}
-                    className={`flex-1 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all relative overflow-hidden group ${activeTab === 'TRANSACTION'
-                        ? 'bg-rose-500/10 border-rose-500 text-rose-500 dark:text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.3)]'
-                        : 'bg-transparent border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
+                    className={`flex-1 py-2.5 rounded-xl border text-[10px] font-semibold uppercase tracking-wider transition-all relative overflow-hidden group ${
+                        activeTab === 'TRANSACTION'
+                            ? 'bg-destructive/10 border-destructive/30 text-destructive shadow-sm'
+                            : 'bg-transparent border-border/50 text-muted-foreground/60 hover:text-foreground/80 hover:border-border'
+                    }`}
                 >
                     Transaction Details
                 </button>
@@ -489,182 +512,193 @@ const Dashboard: React.FC<DashboardProps> = ({
                         HapticService.light();
                         onOpenParties();
                     }}
-                    className={`flex-1 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all relative overflow-hidden group ${activeTab === 'PARTY'
-                        ? 'bg-blue-500/10 border-blue-500 text-blue-500 dark:text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
-                        : 'bg-transparent border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
-                        }`}
+                    className={`flex-1 py-2.5 rounded-xl border text-[10px] font-semibold uppercase tracking-wider transition-all relative overflow-hidden group ${
+                        activeTab === 'PARTY'
+                            ? 'bg-info/10 border-info/30 text-info shadow-sm'
+                            : 'bg-transparent border-border/50 text-muted-foreground/60 hover:text-foreground/80 hover:border-border'
+                    }`}
                 >
                     Party Details
                 </button>
             </div>
 
-            {/* QUICK ACTIONS - Compact Grid, Merged with Stats */}
-            {/* QUICK ACTIONS - Premium Layered Design */}
-            <div className="mt-4 px-3 grid grid-cols-4 gap-3">
+            {/* QUICK ACTIONS - Redesigned with Glass + Hover Effects */}
+            <div className="mt-4 px-3 grid grid-cols-4 gap-2.5">
                 {/* Add Txn - Hero Action */}
                 <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    initial={{ opacity: 0, y: 10 }}
+                    whileTap={{ scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.05 }}
+                    transition={{ delay: 0.05, type: "spring", stiffness: 200, damping: 20 }}
                     onClick={onCreateInvoice}
-                    className="group relative flex flex-col items-center justify-center py-2.5 rounded-2xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden"
+                    className="group relative flex flex-col items-center justify-center py-3 rounded-2xl glass hover-lift border border-primary/20"
                 >
-                    {/* Background Layer 1: Subtle Gradient wash on hover */}
-                    <div className="absolute inset-0 bg-rose-500/0 group-hover:bg-rose-500/5 transition-colors duration-300" />
-
-                    {/* Background Layer 2: The Icon Container with Glow */}
-                    <div className="relative mb-1.5 p-0.5 rounded-full bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900/30 dark:to-rose-900/10">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shadow-lg shadow-rose-500/30 ring-2 ring-white dark:ring-slate-900 group-hover:scale-105 transition-transform duration-300">
+                    {/* Icon Container with Gradient */}
+                    <div className="relative mb-1.5">
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-destructive to-pink-600 flex items-center justify-center shadow-lg shadow-destructive/30 ring-2 ring-background group-hover:scale-110 transition-all duration-300">
                             <Plus className="w-5 h-5 text-white" strokeWidth={3} />
                         </div>
                     </div>
-
-                    <span className="relative text-[10px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">Add Txn</span>
+                    <span className="relative text-[9px] font-semibold text-foreground/80 group-hover:text-destructive transition-colors">Add Txn</span>
                 </motion.button>
 
                 {/* Report - Premium Glass Style */}
                 <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    initial={{ opacity: 0, y: 10 }}
+                    whileTap={{ scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
+                    transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
                     onClick={onOpenReports}
-                    className="group relative flex flex-col items-center justify-center py-2.5 rounded-2xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-100 dark:border-slate-800"
+                    className="group relative flex flex-col items-center justify-center py-3 rounded-2xl glass hover-lift border border-border/30"
                 >
-                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors duration-300" />
-
-                    <div className="relative mb-1.5 p-0.5 rounded-full bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-blue-900/10">
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center border border-blue-100 dark:border-blue-800 shadow-sm group-hover:shadow-md group-hover:border-blue-200 transition-all duration-300">
-                            <ClipboardList className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div className="relative mb-1.5">
+                        <div className="w-11 h-11 rounded-xl bg-card flex items-center justify-center border border-border/30 shadow-sm group-hover:border-info/30 group-hover:shadow-md transition-all duration-300">
+                            <ClipboardList className="w-5 h-5 text-info" />
                         </div>
                     </div>
-                    <span className="relative text-[10px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Report</span>
+                    <span className="relative text-[9px] font-semibold text-foreground/80 group-hover:text-info transition-colors">Report</span>
                 </motion.button>
 
                 {/* Day Book */}
                 <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    initial={{ opacity: 0, y: 10 }}
+                    whileTap={{ scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
+                    transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 20 }}
                     onClick={onOpenDaybook}
-                    className="group relative flex flex-col items-center justify-center py-2.5 rounded-2xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-100 dark:border-slate-800"
+                    className="group relative flex flex-col items-center justify-center py-3 rounded-2xl glass hover-lift border border-border/30"
                 >
-                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors duration-300" />
-
-                    <div className="relative mb-1.5 p-0.5 rounded-full bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-blue-900/10">
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center border border-blue-100 dark:border-blue-800 shadow-sm group-hover:shadow-md group-hover:border-blue-200 transition-all duration-300">
-                            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div className="relative mb-1.5">
+                        <div className="w-11 h-11 rounded-xl bg-card flex items-center justify-center border border-border/30 shadow-sm group-hover:border-primary/30 group-hover:shadow-md transition-all duration-300">
+                            <BookOpen className="w-5 h-5 text-primary" />
                         </div>
                     </div>
-                    <span className="relative text-[10px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Day Book</span>
+                    <span className="relative text-[9px] font-semibold text-foreground/80 group-hover:text-primary transition-colors">Day Book</span>
                 </motion.button>
 
                 {/* Calculator */}
                 <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    initial={{ opacity: 0, y: 10 }}
+                    whileTap={{ scale: 0.95 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
+                    transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
                     onClick={() => {
                         HapticService.light();
                         onOpenSmartCalc();
                     }}
-                    className="group relative flex flex-col items-center justify-center py-2.5 rounded-2xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border border-slate-100 dark:border-slate-800"
+                    className="group relative flex flex-col items-center justify-center py-3 rounded-2xl glass hover-lift border border-border/30"
                 >
-                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors duration-300" />
-
-                    <div className="relative mb-1.5 p-0.5 rounded-full bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-blue-900/10">
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center border border-blue-100 dark:border-blue-800 shadow-sm group-hover:shadow-md group-hover:border-blue-200 transition-all duration-300">
-                            <Calculator className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div className="relative mb-1.5">
+                        <div className="w-11 h-11 rounded-xl bg-card flex items-center justify-center border border-border/30 shadow-sm group-hover:border-success/30 group-hover:shadow-md transition-all duration-300">
+                            <Calculator className="w-5 h-5 text-success" />
                         </div>
                     </div>
-                    <span className="relative text-[10px] font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Calculator</span>
+                    <span className="relative text-[9px] font-semibold text-foreground/80 group-hover:text-success transition-colors">Calculator</span>
                 </motion.button>
             </div>
 
-            {/* COMPACT STATS GRID - No Gaps, Merged Borders, CLICKABLE */}
-            <div className="mt-3 grid grid-cols-2 border-y border-slate-200 dark:border-slate-800">
-                {/* 1. To Collect (You'll Get) - Green - CLICKABLE */}
+            {/* STATS CARDS - Redesigned with Gradient Backgrounds + Glass */}
+            <div className="mt-3 px-3 grid grid-cols-2 gap-2.5">
+                {/* 1. To Collect (You'll Get) */}
                 <motion.div
-                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.05, type: "spring", stiffness: 200, damping: 20 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => onOpenParties('receivable')}
-                    className="bg-white dark:bg-slate-900 border-r border-b border-slate-200 dark:border-slate-800 p-3 relative cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                    className="glass rounded-2xl p-4 relative cursor-pointer hover-lift group overflow-hidden"
                 >
-                    <div className="absolute top-0 left-0 w-0.5 h-full bg-emerald-500 group-hover:w-1 transition-all" />
-                    <div className="flex justify-between items-start mb-1 pl-2">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">You'll Get</span>
-                        <ArrowDown className="w-3 h-3 text-emerald-500" />
+                    {/* Gradient accent bar */}
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-success to-emerald-400" />
+                    <div className="flex justify-between items-start mb-1">
+                        <span className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider">You'll Get</span>
+                        <div className="w-7 h-7 rounded-lg bg-success/10 flex items-center justify-center">
+                            <ArrowDown className="w-3.5 h-3.5 text-success" />
+                        </div>
                     </div>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-none pl-2">
+                    <h3 className="font-heading text-xl font-bold text-foreground leading-none">
                         ₹{toCollect.toLocaleString('en-IN')}
                     </h3>
-                    <p className="text-[8px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5 pl-2 flex items-center gap-1">
-                        Outstanding <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <p className="text-[8px] text-success font-medium mt-1 flex items-center gap-1">
+                        Outstanding <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-all translate-x-[-4px] group-hover:translate-x-0" />
                     </p>
                 </motion.div>
 
-                {/* 2. To Pay (You'll Give) - Red - CLICKABLE */}
+                {/* 2. To Pay (You'll Give) */}
                 <motion.div
-                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => onOpenParties('payable')}
-                    className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 relative cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                    className="glass rounded-2xl p-4 relative cursor-pointer hover-lift group overflow-hidden"
                 >
-                    <div className="absolute top-0 left-0 w-0.5 h-full bg-red-500 group-hover:w-1 transition-all" />
-                    <div className="flex justify-between items-start mb-1 pl-2">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">You'll Give</span>
-                        <ArrowUpRight className="w-3 h-3 text-red-500" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-destructive to-rose-400" />
+                    <div className="flex justify-between items-start mb-1">
+                        <span className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider">You'll Give</span>
+                        <div className="w-7 h-7 rounded-lg bg-destructive/10 flex items-center justify-center">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-destructive" />
+                        </div>
                     </div>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-none pl-2">
+                    <h3 className="font-heading text-xl font-bold text-foreground leading-none">
                         ₹{toPay.toLocaleString('en-IN')}
                     </h3>
-                    <p className="text-[8px] text-red-600 dark:text-red-400 font-bold mt-0.5 pl-2 flex items-center gap-1">
-                        Payables <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <p className="text-[8px] text-destructive font-medium mt-1 flex items-center gap-1">
+                        Payables <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-all translate-x-[-4px] group-hover:translate-x-0" />
                     </p>
                 </motion.div>
 
-                {/* 3. Stock Value - Blue - CLICKABLE */}
+                {/* 3. Stock Value */}
                 <motion.div
-                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 20 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => onOpenReports()}
-                    className="bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-3 relative cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                    className="glass rounded-2xl p-4 relative cursor-pointer hover-lift group overflow-hidden"
                 >
-                    <div className="absolute top-0 left-0 w-0.5 h-full bg-blue-500 group-hover:w-1 transition-all" />
-                    <div className="flex justify-between items-start mb-1 pl-2">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Stock Value</span>
-                        <Package className="w-3 h-3 text-blue-500" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-info to-blue-400" />
+                    <div className="flex justify-between items-start mb-1">
+                        <span className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider">Stock Value</span>
+                        <div className="w-7 h-7 rounded-lg bg-info/10 flex items-center justify-center">
+                            <Package className="w-3.5 h-3.5 text-info" />
+                        </div>
                     </div>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-none pl-2">
+                    <h3 className="font-heading text-xl font-bold text-foreground leading-none">
                         ₹{stockValue.toLocaleString('en-IN')}
                     </h3>
-                    <p className="text-[8px] text-blue-600 dark:text-blue-400 font-bold mt-0.5 pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[8px] text-info font-medium mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         View Details <ChevronRight className="w-2.5 h-2.5" />
                     </p>
                 </motion.div>
 
-                {/* 4. Cash in Hand - Orange - CLICKABLE */}
+                {/* 4. Cash in Hand */}
                 <motion.div
-                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 20 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => onOpenDaybook()}
-                    className="bg-white dark:bg-slate-900 p-3 relative cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                    className="glass rounded-2xl p-4 relative cursor-pointer hover-lift group overflow-hidden"
                 >
-                    <div className="absolute top-0 left-0 w-0.5 h-full bg-orange-500 group-hover:w-1 transition-all" />
-                    <div className="flex justify-between items-start mb-1 pl-2">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Cash Recd</span>
-                        <Wallet className="w-3 h-3 text-orange-500" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-warning to-amber-400" />
+                    <div className="flex justify-between items-start mb-1">
+                        <span className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider">Cash Recd</span>
+                        <div className="w-7 h-7 rounded-lg bg-warning/10 flex items-center justify-center">
+                            <Wallet className="w-3.5 h-3.5 text-warning" />
+                        </div>
                     </div>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white leading-none pl-2">
+                    <h3 className="font-heading text-xl font-bold text-foreground leading-none">
                         ₹{cashInHand.toLocaleString('en-IN')}
                     </h3>
-                    <p className="text-[8px] text-orange-600 dark:text-orange-400 font-bold mt-0.5 pl-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[8px] text-warning font-medium mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         View Daybook <ChevronRight className="w-2.5 h-2.5" />
                     </p>
                 </motion.div>
             </div>
 
-            {/* ===== SYNC STATUS BANNER ===== */}
-            <div className="px-4 mt-3">
+            {/* ===== SYNC STATUS BANNER ===== Redesigned */}
+            <div className="px-3 mt-3">
                 <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -674,38 +708,38 @@ const Dashboard: React.FC<DashboardProps> = ({
                             onSync();
                         }
                     }}
-                    className={`rounded-xl bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none border px-4 py-3 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-all ${
-                        syncStatus === 'synced' ? 'border-emerald-200 dark:border-emerald-800' :
-                        syncStatus === 'syncing' ? 'border-blue-200 dark:border-blue-800' :
-                        syncStatus === 'error' ? 'border-red-200 dark:border-red-800' :
-                        'border-slate-200 dark:border-slate-700'
+                    className={`glass rounded-2xl px-4 py-3 flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-all border ${
+                        syncStatus === 'synced' ? 'border-success/30' :
+                        syncStatus === 'syncing' ? 'border-info/30' :
+                        syncStatus === 'error' ? 'border-destructive/30' :
+                        'border-border/30'
                     }`}
                 >
                     {/* Icon */}
-                    <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
-                        syncStatus === 'synced' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
-                        syncStatus === 'syncing' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' :
-                        syncStatus === 'error' ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' :
-                        'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                    <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${
+                        syncStatus === 'synced' ? 'bg-success/10 text-success' :
+                        syncStatus === 'syncing' ? 'bg-info/10 text-info' :
+                        syncStatus === 'error' ? 'bg-destructive/10 text-destructive' :
+                        'bg-white/5 text-muted-foreground'
                     }`}>
                         {syncStatus === 'syncing' ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                         ) : syncStatus === 'synced' ? (
-                            <CheckCircle2 className="w-5 h-5" />
+                            <CheckCircle2 className="w-4 h-4" />
                         ) : syncStatus === 'error' ? (
-                            <AlertTriangle className="w-5 h-5" />
+                            <AlertTriangle className="w-4 h-4" />
                         ) : (
-                            <RefreshCw className="w-5 h-5" />
+                            <RefreshCw className="w-4 h-4" />
                         )}
                     </div>
 
                     {/* Text */}
                     <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-bold ${
-                            syncStatus === 'synced' ? 'text-emerald-700 dark:text-emerald-300' :
-                            syncStatus === 'syncing' ? 'text-blue-700 dark:text-blue-300' :
-                            syncStatus === 'error' ? 'text-red-700 dark:text-red-300' :
-                            'text-slate-500 dark:text-slate-400'
+                        <p className={`text-sm font-semibold ${
+                            syncStatus === 'synced' ? 'text-success' :
+                            syncStatus === 'syncing' ? 'text-info' :
+                            syncStatus === 'error' ? 'text-destructive' :
+                            'text-muted-foreground'
                         }`}>
                             {syncStatus === 'syncing' ? 'Syncing with Tally...' :
                              syncStatus === 'error' ? 'Sync failed — tap to retry' :
@@ -714,9 +748,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </p>
                         {syncStatus === 'syncing' && (
                             <div className="flex gap-1 mt-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-info animate-bounce" style={{ animationDelay: '0ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-info animate-bounce" style={{ animationDelay: '150ms' }} />
+                                <span className="w-1.5 h-1.5 rounded-full bg-info animate-bounce" style={{ animationDelay: '300ms' }} />
                             </div>
                         )}
                     </div>
@@ -731,10 +765,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 onSync();
                             }
                         }}
-                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                        className={`flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
                             syncStatus === 'syncing'
-                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 cursor-not-allowed'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                ? 'bg-info/10 text-info cursor-not-allowed'
+                                : 'bg-white/5 text-muted-foreground hover:bg-white/10'
                         }`}
                         disabled={syncStatus === 'syncing'}
                     >
@@ -743,88 +777,181 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </motion.div>
             </div>
 
-            {/* ===== QUICK STATS ROW (LiveKeeping Style) ===== */}
+            {/* ===== QUICK STATS ROW (Redesigned with Glass + Gradient) ===== */}
             {(monthlyRevenue !== undefined || monthlyExpenses !== undefined || netIncome !== undefined) && (
-                <div className="px-4 mt-3 grid grid-cols-3 gap-3">
+                <div className="px-3 mt-3 grid grid-cols-3 gap-2.5">
                     {/* Revenue Card */}
-                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
-                        <CardContent className="p-3">
-                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Revenue</p>
-                            <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 leading-none mb-1">
+                    <div className="glass rounded-2xl overflow-hidden border border-success/20">
+                        <div className="p-3">
+                            <p className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Revenue</p>
+                            <p className="font-heading text-lg font-bold text-success leading-none mb-1">
                                 ₹{(monthlyRevenue ?? 0).toLocaleString('en-IN')}
                             </p>
                             {revenueChange !== undefined && (
-                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
-                                    revenueChange >= 0 ? 'text-emerald-500' : 'text-red-500'
+                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${
+                                    revenueChange >= 0 ? 'text-success' : 'text-destructive'
                                 }`}>
                                     {revenueChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                                     {Math.abs(revenueChange).toFixed(1)}%
                                 </span>
                             )}
-                            {/* Mini CSS Sparkline */}
-                            <div className="mt-2 flex items-end gap-[2px] h-6">
-                                {Array.from({ length: 10 }, (_, i) => {
-                                    const barHeight = 20 + Math.sin(i * 0.8 + 0.5) * 15 + Math.random() * 10;
-                                    return <div key={i} className="flex-1 rounded-t-sm bg-emerald-300/60 dark:bg-emerald-700/40" style={{ height: `${barHeight}%` }} />;
-                                })}
+                            {/* Mini Recharts Sparkline */}
+                            <div className="mt-2 h-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={revenueChartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="var(--spark-color, #10b981)" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="var(--spark-color, #10b981)" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <Area type="monotone" dataKey="revenue" stroke="var(--spark-color, #10b981)" strokeWidth={1.5} fill="url(#sparkGrad)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* Expenses Card */}
-                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
-                        <CardContent className="p-3">
-                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Expenses</p>
-                            <p className="text-lg font-black text-rose-600 dark:text-rose-400 leading-none mb-1">
+                    <div className="glass rounded-2xl overflow-hidden border border-destructive/20">
+                        <div className="p-3">
+                            <p className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Expenses</p>
+                            <p className="font-heading text-lg font-bold text-destructive leading-none mb-1">
                                 ₹{(monthlyExpenses ?? 0).toLocaleString('en-IN')}
                             </p>
                             {expensesChange !== undefined && (
-                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
-                                    expensesChange <= 0 ? 'text-emerald-500' : 'text-red-500'
+                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${
+                                    expensesChange <= 0 ? 'text-success' : 'text-destructive'
                                 }`}>
                                     {expensesChange <= 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
                                     {Math.abs(expensesChange).toFixed(1)}%
                                 </span>
                             )}
-                            {/* Mini CSS Sparkline */}
-                            <div className="mt-2 flex items-end gap-[2px] h-6">
-                                {Array.from({ length: 10 }, (_, i) => {
-                                    const barHeight = 20 + Math.cos(i * 0.7 + 1.2) * 12 + Math.random() * 10;
-                                    return <div key={i} className="flex-1 rounded-t-sm bg-rose-300/60 dark:bg-rose-700/40" style={{ height: `${barHeight}%` }} />;
-                                })}
+                            {/* Mini Recharts Sparkline */}
+                            <div className="mt-2 h-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={revenueChartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="var(--spark-color, #10b981)" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="var(--spark-color, #10b981)" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <Area type="monotone" dataKey="revenue" stroke="var(--spark-color, #10b981)" strokeWidth={1.5} fill="url(#sparkGrad)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
                     {/* Net Income Card */}
-                    <Card className="overflow-hidden border-slate-100 dark:border-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-none">
-                        <CardContent className="p-3">
-                            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Net Income</p>
-                            <p className={`text-lg font-black leading-none mb-1 ${
-                                (netIncome ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                    <div className="glass rounded-2xl overflow-hidden border border-border/30">
+                        <div className="p-3">
+                            <p className="text-[8px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Net Income</p>
+                            <p className={`font-heading text-lg font-bold leading-none mb-1 ${
+                                (netIncome ?? 0) >= 0 ? 'text-success' : 'text-destructive'
                             }`}>
                                 ₹{(netIncome ?? 0).toLocaleString('en-IN')}
                             </p>
                             {revenueChange !== undefined && expensesChange !== undefined && (
-                                <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${
-                                    (netIncome ?? 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${
+                                    (netIncome ?? 0) >= 0 ? 'text-success' : 'text-destructive'
                                 }`}>
                                     {(netIncome ?? 0) >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                                     {(netIncome ?? 0) >= 0 ? 'Profitable' : 'Loss'}
                                 </span>
                             )}
-                            {/* Mini CSS Sparkline */}
-                            <div className="mt-2 flex items-end gap-[2px] h-6">
-                                {Array.from({ length: 10 }, (_, i) => {
-                                    const barHeight = 20 + Math.sin(i * 0.9 + 2.1) * 18 + Math.random() * 8;
-                                    const isUp = Math.sin(i * 0.9 + 2.1) >= 0;
-                                    return <div key={i} className={`flex-1 rounded-t-sm ${isUp ? 'bg-emerald-300/60 dark:bg-emerald-700/40' : 'bg-rose-300/60 dark:bg-rose-700/40'}`} style={{ height: `${barHeight}%` }} />;
-                                })}
+                            {/* Mini Recharts Net Sparkline */}
+                            <div className="mt-2 h-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={revenueChartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                                        <defs>
+                                            <linearGradient id="netSparkGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                            </linearGradient>
+                                            <linearGradient id="netSparkGradDown" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={1.5} fill="url(#netSparkGrad)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
             )}
+
+            {/* REVENUE TREND CHART - Recharts */}
+            <div className="px-4 mt-3">
+                <div
+                    onClick={() => setShowChart(!showChart)}
+                    className="glass rounded-2xl p-4 cursor-pointer hover:shadow-md transition-all"
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                <TrendingUp className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h3 className="font-heading font-semibold text-sm text-foreground">Revenue Trend</h3>
+                                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+                                    Last 6 months
+                                </p>
+                            </div>
+                        </div>
+                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${showChart ? 'rotate-90' : ''}`} />
+                    </div>
+
+                    {showChart && revenueChartData.length > 0 && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                        >
+                            <div className="h-52 mt-2">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={revenueChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                        <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+                                        <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} tickFormatter={(val) => `₹${val >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: 'hsl(var(--card))',
+                                                border: '1px solid hsl(var(--border))',
+                                                borderRadius: '12px',
+                                                fontSize: '12px',
+                                                fontWeight: 'bold'
+                                            }}
+                                            formatter={(value: number) => [`₹${value.toLocaleString('en-IN')}`, undefined]}
+                                        />
+                                        <defs>
+                                            <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#lineGrad)" dot={{ r: 3, fill: 'hsl(var(--primary))' }} activeDot={{ r: 5, fill: 'hsl(var(--primary))' }} />
+                                        <Line type="monotone" dataKey="expenses" stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            {/* Legend */}
+                            <div className="flex items-center justify-center gap-6 mt-2 text-[10px] font-bold text-muted-foreground">
+                                <span className="flex items-center gap-2">
+                                    <span className="w-3 h-0.5 bg-primary rounded-full" /> Revenue
+                                </span>
+                                <span className="flex items-center gap-2">
+                                    <span className="w-3 h-0.5 bg-rose-500 rounded-full" /> Estimated Expenses
+                                </span>
+                            </div>
+                        </motion.div>
+                    )}
+                </div>
+            </div>
 
             {/* PROMO SLIDES CAROUSEL - Firebase Managed */}
             <div className="px-4 mt-2 mb-2 relative">
@@ -990,53 +1117,54 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </AnimatePresence>
             </div>
 
-            {/* PAYMENT REMINDERS SECTION - Compact Single Line */}
+            {/* PAYMENT REMINDERS SECTION - Redesigned with Glass */}
             {todaysReminders.length > 0 && (
-                <div className="px-5 mt-2">
+                <div className="px-3 mt-3">
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setShowReminderModal(true)}
-                        className="h-[48px] bg-white dark:bg-slate-900 rounded-full shadow-sm border border-slate-200/60 dark:border-slate-800 flex items-center justify-between pl-1.5 pr-4 relative overflow-hidden cursor-pointer"
+                        className="glass rounded-2xl p-1.5 flex items-center justify-between relative overflow-hidden cursor-pointer hover-lift border border-warning/20"
                     >
                         <div className="flex items-center gap-3 relative z-10">
                             {/* Icon Circle */}
-                            <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-100 dark:border-orange-500/20 flex items-center justify-center shrink-0">
-                                <Calendar className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                            <div className="w-10 h-10 rounded-xl bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0">
+                                <Calendar className="w-4 h-4 text-warning" />
                             </div>
 
                             {/* Single Line Text */}
-                            <p className="text-slate-700 dark:text-slate-300 text-xs font-medium truncate max-w-[220px]">
+                            <p className="text-foreground/80 text-xs font-medium truncate max-w-[220px]">
                                 {todaysReminders.length === 1 ? (
                                     <>
-                                        Payment due: <span className="font-bold text-slate-900 dark:text-white">{todaysReminders[0].customerName}</span>
+                                        Payment due: <span className="font-bold text-foreground">{todaysReminders[0].customerName}</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span className="font-bold text-orange-600 dark:text-orange-400">{todaysReminders.length} Payments</span> scheduled for today
+                                        <span className="font-bold text-warning">{todaysReminders.length} Payments</span> scheduled for today
                                     </>
                                 )}
                             </p>
                         </div>
 
                         {/* Arrow */}
-                        <ChevronRight className="w-4 h-4 text-slate-400 dark:text-slate-600" />
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/40" />
                     </motion.div>
                 </div>
             )}
 
 
-            {/* RECENT TRANSACTIONS - Compact */}
+            {/* RECENT TRANSACTIONS - Redesigned with Stagger Animations + Glass */}
             <div className="mt-3">
-                <div className="flex items-center justify-between mb-1 px-3">
-                    <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recent Transactions</h3>
-                    <motion.button whileTap={{ scale: 0.95 }} onClick={onOpenReports} className="text-[9px] font-black text-blue-500 uppercase tracking-wider">
+                <div className="flex items-center justify-between mb-2 px-3">
+                    <h3 className="font-heading text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Recent Transactions</h3>
+                    <motion.button whileTap={{ scale: 0.95 }} onClick={onOpenReports} className="text-[9px] font-semibold text-info uppercase tracking-wider">
                         View All
                     </motion.button>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800">
+                <div className="px-3">
+                    <div className="glass rounded-2xl overflow-hidden border border-border/30">
                     {(() => {
                         const filtered = invoices.filter(inv =>
                             inv.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1046,9 +1174,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                         if (filtered.length === 0) {
                             return (
-                                <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-                                    <FileText className="w-5 h-5 opacity-40 mb-2" />
-                                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-60">
+                                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                                    <FileText className="w-6 h-6 opacity-30 mb-2" />
+                                    <p className="text-[9px] font-semibold uppercase tracking-widest opacity-50">
                                         {searchQuery ? "No matches found" : "No recent activity"}
                                     </p>
                                 </div>
@@ -1056,40 +1184,48 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }
 
                         return (
-                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {filtered.map(inv => (
+                            <div className="divide-y divide-border/30">
+                                {filtered.map((inv, idx) => (
                                     <motion.div
                                         key={inv.id}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: idx * 0.03, type: "spring", stiffness: 200, damping: 25 }}
                                         whileTap={{ scale: 0.98 }}
-                                        className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-slate-50 dark:active:bg-slate-800"
+                                        className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
                                         onClick={() => onViewInvoice(inv)}
                                     >
                                         {/* Left: Customer, Invoice & Date */}
                                         <div className="flex flex-col flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm font-bold text-slate-900 dark:text-white truncate">{inv.customerName}</span>
-                                                <span className="text-[10px] text-slate-400 shrink-0">#{inv.invoiceNumber}</span>
+                                                <span className="text-sm font-semibold text-foreground truncate">{inv.customerName}</span>
+                                                <span className="text-[9px] text-muted-foreground/60 shrink-0 font-mono">#{inv.invoiceNumber}</span>
                                             </div>
-                                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                            <span className="text-[10px] text-muted-foreground/50 font-medium mt-0.5">
                                                 {new Date(inv.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                                             </span>
                                         </div>
 
                                         {/* Right: Amount & Status */}
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <span className="text-sm font-bold text-slate-900 dark:text-white">₹{inv.total.toLocaleString('en-IN')}</span>
-                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${inv.status === 'PAID' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                                            <span className="text-sm font-bold text-foreground">₹{inv.total.toLocaleString('en-IN')}</span>
+                                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md ${
+                                                inv.status === 'PAID' 
+                                                  ? 'bg-success/15 text-success border border-success/20' 
+                                                  : 'bg-destructive/15 text-destructive border border-destructive/20'
+                                            }`}>
                                                 {inv.status === 'PAID' ? 'P' : 'D'}
                                             </span>
                                         </div>
                                     </motion.div>
                                 ))}
                                 <div className="py-2 text-center">
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">End</span>
+                                    <span className="text-[8px] font-semibold text-muted-foreground/30 uppercase tracking-wider">End of list</span>
                                 </div>
                             </div>
                         );
                     })()}
+                    </div>
                 </div>
             </div>
 
@@ -1108,8 +1244,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 )}
             </AnimatePresence>
 
-            <div className="mt-12 mb-8 text-center opacity-40">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-on-surface">Made with ❤️ by Lavneet</p>
+            <div className="mt-12 mb-8 text-center opacity-30">
+                <p className="text-[9px] font-heading font-bold uppercase tracking-[0.3em] text-muted-foreground">Made with ❤️ by Lavneet</p>
             </div>
 
             {showBackupSettings && <BackupSettings onClose={() => setShowBackupSettings(false)} />}

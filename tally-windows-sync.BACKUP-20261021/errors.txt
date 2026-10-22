@@ -1,0 +1,7 @@
+D:\New folder (2)\tally-windows-sync\Services\SyncManager.cs(151,25): error CS0103: The name 'NotifyStatusChanged' does not exist in the current context [D:\New folder (2)\tally-windows-sync\TallySyncApp\TallySyncApp.csproj]
+
+Build FAILED.
+    3 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:01.68

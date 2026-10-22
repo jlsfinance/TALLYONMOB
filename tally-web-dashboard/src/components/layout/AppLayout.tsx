@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
+import MobileBottomNav from './MobileBottomNav';
 import AIFloatingButton from '../AIFloatingButton';
 import {
     LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
@@ -101,6 +102,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     { to: '/ai-assistant', icon: <Bot size={18} />, label: t('nav.ai_assistant') },
                     { to: '/ai-entry', icon: <Sparkles size={18} />, label: t('dashboard.recent_vouchers') }, // Using appropriate label or add new
                     { to: '/invoice-scanner', icon: <ScanLine size={18} />, label: 'Scanner' },
+                    { to: '/analytics-dashboard', icon: <BarChart3 size={18} />, label: 'Analytics Dashboard' },
                 ]
             },
             {
@@ -156,17 +158,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
     const navGroups = appMode === 'tally' ? tallyNavGroups : billingNavGroups;
 
+    // Demo notification badge counts — replace with real data source
+    const [unreadCount] = useState(3);
+
     const bottomNavItems = useMemo(() => appMode === 'tally' ? [
         { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
-        { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
+        { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers', badge: unreadCount },
         { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
         { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
     ] : [
         { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
         { to: '/create-invoice', icon: <Plus size={20} />, label: 'Bill' },
-        { to: '/sales', icon: <FileText size={20} />, label: 'Sales' },
+        { to: '/sales', icon: <FileText size={20} />, label: 'Sales', badge: unreadCount },
         { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
-    ], [appMode]);
+    ], [appMode, unreadCount]);
 
     return (
         <div className="flex min-h-screen relative overflow-x-hidden bg-[var(--background)]">
@@ -499,27 +504,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
             </main>
 
-            {/* ===== MOBILE BOTTOM NAV ===== */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--surface)] border-t border-[var(--border)] safe-area-pb">
-                <div className="flex items-center justify-around h-16 px-2">
-                    {bottomNavItems.map((item) => {
-                        const isActive = location.pathname === item.to;
-                        return (
-                            <Link key={item.to} to={item.to} className="flex-1">
-                                <div className={`
-                                    flex flex-col items-center justify-center gap-1 py-1.5 transition-all duration-150
-                                    ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
-                                `}>
-                                    <div className={`p-1.5 rounded-[var(--radius-sm)] ${isActive ? 'bg-[var(--primary-container)]' : ''}`}>
-                                        {item.icon}
-                                    </div>
-                                    <span className={`text-[10px] font-semibold ${isActive ? '' : 'opacity-70'}`}>{item.label}</span>
-                                </div>
-                            </Link>
-                        );
-                    })}
-                </div>
-            </nav>
+            {/* ===== MOBILE BOTTOM NAV (animated) ===== */}
+            <MobileBottomNav items={bottomNavItems} />
 
             <AIFloatingButton />
         </div>

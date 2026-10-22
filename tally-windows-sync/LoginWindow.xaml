@@ -14,15 +14,17 @@
         <!-- Floating animation for logo -->
         <Storyboard x:Key="FloatingAnimation" RepeatBehavior="Forever" AutoReverse="True">
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
-                             From="0" To="-8" Duration="0:0:2.5"
-                             EasingFunction="SineEase"/>
+                             From="0" To="-8" Duration="0:0:2.5">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
         </Storyboard>
 
         <!-- Spinner rotation -->
         <Storyboard x:Key="SpinnerAnimation" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                             From="0" To="360" Duration="0:0:1.2"
-                             EasingFunction="LinearEase"/>
+                             From="0" To="360" Duration="0:0:1.2" />
         </Storyboard>
     </Window.Resources>
 
@@ -41,11 +43,15 @@
         </Border>
 
         <!-- Subtle pattern overlay -->
-        <Border CornerRadius="16" Background="Transparent" Opacity="0.03">
+        <Border CornerRadius="16" Opacity="0.03">
             <Border.Background>
                 <DrawingBrush Viewport="0,0,40,40" ViewportUnits="Absolute" TileMode="Tile">
                     <DrawingBrush.Drawing>
-                        <GeometryDrawing Geometry="M0,20 L20,0" Pen="#FFFFFF" StrokeThickness="0.5"/>
+                        <GeometryDrawing Geometry="M0,20 L20,0">
+                            <GeometryDrawing.Pen>
+                                <Pen Brush="#FFFFFF" Thickness="0.5"/>
+                            </GeometryDrawing.Pen>
+                        </GeometryDrawing>
                     </DrawingBrush.Drawing>
                 </DrawingBrush>
             </Border.Background>
@@ -89,12 +95,10 @@
                 </Border>
 
                 <TextBlock Text="TallySync" Foreground="White" FontSize="26"
-                           FontWeight="Bold" HorizontalAlignment="Center" Margin="0,14,0,0"
-                           LetterSpacing="1"/>
+                           FontWeight="Bold" HorizontalAlignment="Center" Margin="0,14,0,0"/>
                 <TextBlock Text="Cloud Sync Desktop App"
                            Foreground="#93C5FD" FontSize="12"
-                           HorizontalAlignment="Center" Margin="0,5,0,0"
-                           LetterSpacing="0.5"/>
+                           HorizontalAlignment="Center" Margin="0,5,0,0"/>
             </StackPanel>
 
             <!-- ===== LOGIN CARD (Glassmorphism) ===== -->
@@ -129,7 +133,7 @@
                                    Margin="0,0,0,6"/>
                         <TextBox x:Name="FullNameBox"
                                  Style="{StaticResource ModernTextBox}"
-                                 PlaceholderText="John Doe"/>
+                                 Tag="John Doe"/>
                     </StackPanel>
 
                     <!-- Email -->
@@ -141,7 +145,7 @@
                                    Margin="0,0,0,6"/>
                         <TextBox x:Name="EmailBox"
                                  Style="{StaticResource ModernTextBox}"
-                                 PlaceholderText="you@example.com"/>
+                                 Tag="you@example.com"/>
                     </StackPanel>
 
                     <!-- Password -->

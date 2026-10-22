@@ -81,9 +81,21 @@
   --color-google-red: hsl(var(--google-red));
   --color-google-yellow: hsl(var(--google-yellow));
   --color-google-green: hsl(var(--google-green));
+
+  /* NEW: Fintech-specific colors */
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
 }
 
-/* MODER MATERIAL 3 THEME - ADVANCED REFINEMENT */
+/* ============================================
+   FINETECH DARK THEME — CRED / Google Pay Style
+   Deep dark base with indigo/purple accents,
+   emerald success, and rose danger tones.
+   ============================================ */
 :root {
   /* OFFICIAL GOOGLE BRAND COLORS */
   --google-blue: 217 89% 61%;
@@ -95,105 +107,136 @@
   --google-green: 152 68% 41%;
   /* #34A853 */
 
-  --background: 210 33% 99%;
-  --foreground: 220 20% 10%;
+  /* --- Fintech Semantic Colors --- */
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 35 92% 58%;
+  --warning-foreground: 0 0% 100%;
+  --info: 200 98% 55%;
+  --info-foreground: 0 0% 100%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 220 20% 10%;
+  /* --- Core Backgrounds --- */
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 95%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 20% 10%;
+  --card: 240 10% 5.9%;
+  --card-foreground: 0 0% 95%;
 
-  --primary: 215 100% 45%;
-  --primary-foreground: 210 40% 98%;
+  --popover: 240 10% 5.9%;
+  --popover-foreground: 0 0% 95%;
 
-  --secondary: 215 20% 95%;
-  --secondary-foreground: 215 10% 10%;
+  /* --- Primary: Indigo → Purple Gradient --- */
+  --primary: 255 72% 65%;
+  --primary-foreground: 0 0% 100%;
 
-  --muted: 210 30% 96%;
-  --muted-foreground: 215 16% 47%;
+  --secondary: 240 5% 14%;
+  --secondary-foreground: 0 0% 95%;
 
-  --accent: 215 100% 96%;
-  --accent-foreground: 215 100% 20%;
+  --muted: 240 5% 12%;
+  --muted-foreground: 240 5% 64.9%;
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --accent: 255 70% 20%;
+  --accent-foreground: 255 85% 85%;
 
-  --border: 214 30% 92%;
-  --input: 214 30% 92%;
-  --ring: 215 100% 45%;
+  --destructive: 340 82% 52%;
+  --destructive-foreground: 0 0% 98%;
 
-  --radius: 1.75rem;
-  /* 28px - Official M3 Large */
+  /* --- Borders & Inputs --- */
+  --border: 240 5% 18%;
+  --input: 240 5% 18%;
+  --ring: 255 72% 65%;
+  --card-border: 240 5% 18%;
+  --primary-border: 255 72% 65%;
+  --accent-border: 255 70% 30%;
+  --muted-border: 240 5% 16%;
+  --secondary-border: 240 5% 16%;
+  --destructive-border: 340 82% 52%;
 
-  --surface-container-low: 210 33% 98%;
-  --surface-container: 210 33% 100%;
-  --surface-container-high: 210 33% 96%;
-  --surface-container-highest: 210 33% 92%;
+  /* --- Sidebar --- */
+  --sidebar: 240 8% 5%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 255 72% 65%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 255 70% 16%;
+  --sidebar-accent-foreground: 255 85% 85%;
+  --sidebar-border: 240 5% 14%;
+  --sidebar-ring: 255 72% 65%;
+  --sidebar-primary-border: 255 72% 65%;
+  --sidebar-accent-border: 255 70% 24%;
 
-  --sidebar: 210 33% 99%;
-  --sidebar-foreground: 220 20% 10%;
-  --sidebar-primary: 215 100% 45%;
-  --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 215 100% 94%;
-  --sidebar-accent-foreground: 215 100% 15%;
-  --sidebar-border: 214 32% 91%;
-  --sidebar-ring: 215 100% 45%;
+  /* --- Surface Containers --- */
+  --surface-container-low: 240 8% 7%;
+  --surface-container: 240 8% 9%;
+  --surface-container-high: 240 8% 12%;
+  --surface-container-highest: 240 8% 16%;
 
-  --elevate-1: rgba(0, 0, 0, 0.04);
-  --elevate-2: rgba(0, 0, 0, 0.08);
+  /* --- Radius --- */
+  --radius: 1.25rem;
 
-  /* Google Style Shadows */
-  --shadow-google: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
-  --shadow-google-lg: 0 4px 4px 0 rgba(60, 64, 67, 0.30), 0 8px 12px 6px rgba(60, 64, 67, 0.15);
+  /* --- Elevation --- */
+  --elevate-1: rgba(255, 255, 255, 0.03);
+  --elevate-2: rgba(255, 255, 255, 0.06);
+
+  /* --- Shadows --- */
+  --shadow-google: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --shadow-google-lg: 0 4px 4px 0 rgba(0, 0, 0, 0.30), 0 8px 12px 6px rgba(0, 0, 0, 0.15);
 }
 
 .dark {
-  /* DARK MODE - Deep Material 3 Midnight */
-  --background: 222 25% 4%;
-  --foreground: 210 20% 98%;
+  /* DARK MODE — CRED-inspired deep midnight */
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 95%;
 
-  --card: 222 20% 7%;
-  --card-foreground: 210 20% 98%;
+  --card: 240 10% 5.9%;
+  --card-foreground: 0 0% 95%;
 
-  --popover: 222 20% 9%;
-  --popover-foreground: 210 20% 98%;
+  --popover: 240 10% 5.9%;
+  --popover-foreground: 0 0% 95%;
 
-  --primary: 215 100% 78%;
-  --primary-foreground: 215 100% 10%;
+  --primary: 255 72% 65%;
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 222 15% 15%;
-  --secondary-foreground: 210 20% 98%;
+  --secondary: 240 5% 14%;
+  --secondary-foreground: 0 0% 95%;
 
-  --muted: 222 20% 10%;
-  --muted-foreground: 215 12% 65%;
+  --muted: 240 5% 12%;
+  --muted-foreground: 240 5% 64.9%;
 
-  --accent: 215 100% 15%;
-  --accent-foreground: 215 100% 95%;
+  --accent: 255 70% 20%;
+  --accent-foreground: 255 85% 85%;
 
-  --destructive: 0 70% 50%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 340 82% 52%;
+  --destructive-foreground: 0 0% 98%;
 
-  --border: 222 15% 12%;
-  --input: 222 15% 12%;
-  --ring: 215 100% 78%;
+  --border: 240 5% 18%;
+  --input: 240 5% 18%;
+  --ring: 255 72% 65%;
 
-  --surface-container-low: 222 25% 5%;
-  --surface-container: 222 25% 6%;
-  --surface-container-high: 222 25% 8%;
-  --surface-container-highest: 222 25% 12%;
+  --surface-container-low: 240 8% 7%;
+  --surface-container: 240 8% 9%;
+  --surface-container-high: 240 8% 12%;
+  --surface-container-highest: 240 8% 16%;
 
-  --sidebar: 222 25% 4%;
-  --sidebar-foreground: 210 20% 98%;
-  --sidebar-primary: 215 100% 78%;
-  --sidebar-primary-foreground: 215 100% 10%;
-  --sidebar-accent: 215 100% 12%;
-  --sidebar-accent-foreground: 223 10% 95%;
-  --sidebar-border: 222 15% 10%;
-  --sidebar-ring: 215 100% 78%;
+  --sidebar: 240 8% 5%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 255 72% 65%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 255 70% 16%;
+  --sidebar-accent-foreground: 255 85% 85%;
+  --sidebar-border: 240 5% 14%;
+  --sidebar-ring: 255 72% 65%;
 
-  --elevate-1: rgba(255, 255, 255, 0.02);
-  --elevate-2: rgba(255, 255, 255, 0.04);
+  --card-border: 240 5% 18%;
+  --primary-border: 255 72% 65%;
+  --accent-border: 255 70% 30%;
+  --muted-border: 240 5% 16%;
+  --secondary-border: 240 5% 16%;
+  --destructive-border: 340 82% 52%;
+  --sidebar-primary-border: 255 72% 65%;
+  --sidebar-accent-border: 255 70% 24%;
+
+  --elevate-1: rgba(255, 255, 255, 0.03);
+  --elevate-2: rgba(255, 255, 255, 0.06);
 
   --shadow-google: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
   --shadow-google-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
@@ -274,7 +317,7 @@
  */
 @layer components {
   .glass-card {
-    @apply bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-white/20 dark:border-slate-800/50 shadow-sm;
+    @apply bg-white/10 dark:bg-white/5 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-xl;
   }
 }
 
@@ -365,14 +408,101 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
-}
 
-/* Safe Area Padding Managed by App Layout */
-body {
-  min-height: 100vh;
-  background-color: hsl(var(--background));
-}
-@layer utilities {
+  /* ============================================
+     FINETECH CUSTOM UTILITIES
+     ============================================ */
+
+  /* Glass morphism card effect */
+  .glass {
+    background: linear-gradient(
+      135deg,
+      hsla(var(--card) / 0.6) 0%,
+      hsla(var(--card) / 0.3) 100%
+    );
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid hsla(var(--border) / 0.5);
+  }
+
+  .glass-strong {
+    background: linear-gradient(
+      135deg,
+      hsla(var(--card) / 0.8) 0%,
+      hsla(var(--card) / 0.5) 100%
+    );
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid hsla(var(--border) / 0.6);
+  }
+
+  /* Gradient border (requires relative positioning) */
+  .gradient-border {
+    position: relative;
+  }
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, #8b5cf6 50%, #a855f7 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Text gradient */
+  .text-gradient {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, #a855f7 50%, #d946ef 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Shimmer effect for loading/placeholder */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--surface-container-low)) 25%,
+      hsl(var(--surface-container-high)) 50%,
+      hsl(var(--surface-container-low)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  /* Hover lift effect */
+  .hover-lift {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .hover-lift:active {
+    transform: translateY(-1px);
+  }
+
+  /* Neon glow for primary elements */
+  .glow-primary {
+    box-shadow: 0 0 20px hsla(var(--primary) / 0.3),
+                0 0 60px hsla(var(--primary) / 0.1);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 20px hsla(var(--success) / 0.3),
+                0 0 60px hsla(var(--success) / 0.1);
+  }
+
+  .glow-destructive {
+    box-shadow: 0 0 20px hsla(var(--destructive) / 0.3),
+                0 0 60px hsla(var(--destructive) / 0.1);
+  }
+
+  /* Scrollbar hiding */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
@@ -380,4 +510,76 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+}
+
+/* ============================================
+   ANIMATION KEYFRAMES
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Safe Area Padding Managed by App Layout */
+body {
+  min-height: 100vh;
+  background-color: hsl(var(--background));
+}
+
+/* Animation utility classes */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
 }

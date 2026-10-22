@@ -444,12 +444,31 @@ namespace TallySyncApp.Services
             return doc?.Descendants(tag).Count() ?? 0;
         }
 
+        private const int TALLY_PAGE_SIZE = 100;
+
         /// <summary>
-        /// Get all ledgers from Tally
+        /// Get all ledgers from Tally (paginated, 100 per page)
         /// </summary>
         public async Task<List<Ledger>> GetLedgersAsync(string? companyName = null)
         {
-            var request = @"
+            return await FetchPagedLedgersAsync(companyName);
+        }
+
+        /// <summary>
+        /// Fetch ledgers with Tally pagination (100 per page) to prevent Tally crash (c0000005)
+        /// </summary>
+        private async Task<List<Ledger>> FetchPagedLedgersAsync(string? companyName)
+        {
+            var allLedgers = new List<Ledger>();
+            int page = 0;
+            int totalFetched;
+            
+            do
+            {
+                int fromCount = page * TALLY_PAGE_SIZE;
+                int toCount = fromCount + TALLY_PAGE_SIZE - 1;
+                
+                var request = $@"
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
@@ -461,88 +480,209 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVFROMCOUNT>{fromCount}</SVFROMCOUNT>
+        <SVTOCOUNT>{toCount}</SVTOCOUNT>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME=""LedgerCollection"" ISMODIFY=""No"">
             <TYPE>Ledger</TYPE>
             <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+            <FILTER>PagingFilter</FILTER>
           </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""PagingFilter"">$$IsBetween:$SVFROMCOUNT,$SVTOCOUNT,$RECORDCOUNT</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>";
 
-            var doc = await SendRequestAsync(request, companyName);
-            if (doc == null) return new List<Ledger>();
+                SyncLogger.Log($"Page {page + 1} -- Ledgers {fromCount} to {toCount}");
+                
+                var doc = await SendRequestAsync(request, companyName);
+                if (doc == null) break;
 
-            var ledgers = new List<Ledger>();
-
-            foreach (var ledgerElement in doc.Descendants("LEDGER"))
-            {
-                try
+                var pageLedgers = new List<Ledger>();
+                foreach (var ledgerElement in doc.Descendants("LEDGER"))
                 {
-                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
-                    var addressParts = new List<string>();
-                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
-                    if (addressList != null)
+                    try
                     {
-                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        var addressParts = new List<string>();
+                        var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                        if (addressList != null)
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        if (addressParts.Count == 0)
+                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                        if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
+                            addressParts.Add(state);
+                        var fullAddress = string.Join(", ", addressParts);
+                        var phone = GetElementValue(ledgerElement, "LEDGERPHONE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERMOBILE")
+                                 ?? GetElementValue(ledgerElement, "PHONE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
+                        var email = GetElementValue(ledgerElement, "LEDGEREMAIL")
+                                 ?? GetElementValue(ledgerElement, "EMAIL");
+                        var gstin = GetElementValue(ledgerElement, "PARTYGSTIN")
+                                 ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+
+                        pageLedgers.Add(new Ledger
+                        {
+                            Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
+                            Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
+                            ParentGroup = GetElementValue(ledgerElement, "PARENT"),
+                            LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
+                            OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
+                            ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
+                            Address = fullAddress,
+                            Phone = phone,
+                            Email = email,
+                            Gstin = gstin,
+                            Pan = GetElementValue(ledgerElement, "PANNUMBER"),
+                            MasterId = GetElementValue(ledgerElement, "MASTERID"),
+                            AlterId = GetElementValue(ledgerElement, "ALTERID")
+                        });
                     }
-                    // Fallback: direct ADDRESS descendants if ADDRESS.LIST not found
-                    if (addressParts.Count == 0)
+                    catch (Exception ex)
                     {
-                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        Console.WriteLine($"Error parsing ledger in page {page + 1}: {ex.Message}");
                     }
-                    // Append state if available
-                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
-                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        addressParts.Add(state);
-                    }
-                    var fullAddress = string.Join(", ", addressParts);
-
-                    // Extract phone: Try multiple Tally field names
-                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
-                             ?? GetElementValue(ledgerElement, "PHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
-
-                    // Extract email
-                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
-                             ?? GetElementValue(ledgerElement, "EMAIL");
-
-                    // Extract GSTIN: Try multiple Tally field names
-                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
-                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
-
-                    ledgers.Add(new Ledger
-                    {
-                        Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                        Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
-                        ParentGroup = GetElementValue(ledgerElement, "PARENT"),
-                        LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                        OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                        ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = fullAddress,
-                        Phone = phone,
-                        Email = email,
-                        Gstin = gstin,
-                        Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                        MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                        AlterId = GetElementValue(ledgerElement, "ALTERID")
-                    });
                 }
-                catch (Exception ex)
+
+                totalFetched = pageLedgers.Count;
+                allLedgers.AddRange(pageLedgers);
+                page++;
+                
+                SyncLogger.Log($"Page {page}: {totalFetched} ledgers (total: {allLedgers.Count})");
+                
+                if (totalFetched >= TALLY_PAGE_SIZE)
                 {
-                    Console.WriteLine($"Error parsing ledger: {ex.Message}");
+                    await Task.Delay(500);
                 }
-            }
-
-            return ledgers;
+                
+            } while (totalFetched >= TALLY_PAGE_SIZE);
+            
+            SyncLogger.Log($"Total ledgers fetched: {allLedgers.Count}");
+            return allLedgers;
         }
+
         /// <summary>
+        /// Get ledgers modified after a specific ALTERID (paginated, 100 per page)
+        /// </summary>
+        public async Task<List<Ledger>> GetModifiedLedgersAsync(string companyName, long afterAlterId)
+        {
+            var allLedgers = new List<Ledger>();
+            int page = 0;
+            int totalFetched;
+
+            do
+            {
+                int fromCount = page * TALLY_PAGE_SIZE;
+                int toCount = fromCount + TALLY_PAGE_SIZE - 1;
+
+                SyncLogger.Log($"Modified ledgers page {page + 1} (ALTERID > {afterAlterId}, {fromCount}-{toCount})");
+
+                var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>ModifiedLedgers</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVFROMCOUNT>{fromCount}</SVFROMCOUNT>
+        <SVTOCOUNT>{toCount}</SVTOCOUNT>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""ModifiedLedgers"">
+            <TYPE>Ledger</TYPE>
+            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
+            <FILTER>ModifiedAfter, PagingFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""PagingFilter"">$$IsBetween:$SVFROMCOUNT,$SVTOCOUNT,$RECORDCOUNT</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+                var doc = await SendRequestAsync(request, companyName, 300);
+                if (doc == null) break;
+
+                var pageLedgers = new List<Ledger>();
+                foreach (var ledgerElement in doc.Descendants("LEDGER"))
+                {
+                    try
+                    {
+                        var addressParts = new List<string>();
+                        var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                        if (addressList != null)
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        if (addressParts.Count == 0)
+                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                        var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
+                        if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
+                            addressParts.Add(state);
+                        var fullAddress = string.Join(", ", addressParts);
+                        var phone = GetElementValue(ledgerElement, "LEDGERPHONE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERMOBILE")
+                                 ?? GetElementValue(ledgerElement, "PHONE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
+                        var email = GetElementValue(ledgerElement, "LEDGEREMAIL")
+                                 ?? GetElementValue(ledgerElement, "EMAIL");
+                        var gstin = GetElementValue(ledgerElement, "PARTYGSTIN")
+                                 ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
+
+                        pageLedgers.Add(new Ledger
+                        {
+                            Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
+                            Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
+                            ParentGroup = GetElementValue(ledgerElement, "PARENT"),
+                            LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
+                            OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
+                            ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
+                            Address = fullAddress,
+                            Phone = phone,
+                            Email = email,
+                            Gstin = gstin,
+                            Pan = GetElementValue(ledgerElement, "PANNUMBER"),
+                            MasterId = GetElementValue(ledgerElement, "MASTERID"),
+                            AlterId = GetElementValue(ledgerElement, "ALTERID")
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error parsing modified ledger in page {page + 1}: {ex.Message}");
+                    }
+                }
+
+                totalFetched = pageLedgers.Count;
+                allLedgers.AddRange(pageLedgers);
+                page++;
+
+                SyncLogger.Log($"Page {page}: {totalFetched} modified ledgers (total: {allLedgers.Count})");
+
+                if (totalFetched >= TALLY_PAGE_SIZE)
+                {
+                    await Task.Delay(500);
+                }
+            } while (totalFetched >= TALLY_PAGE_SIZE);
+
+            SyncLogger.Log($"Total modified ledgers fetched: {allLedgers.Count}");
+            return allLedgers;
+        }
+
+        /// <summary>
+        /// Get vouchers modified after a specific ALTERID
+        /// This catches ANY modification        /// <summary>
         /// Get vouchers modified after a specific ALTERID
         /// This catches ANY modification - even to 6-month old entries!
         /// NOTE: Collections do not fully support EXPLODEGSTDETAILS. HSN codes may be missing in raw XML.
@@ -594,104 +734,6 @@ namespace TallySyncApp.Services
             SyncLogger.Log($"✅ Found {vouchers.Count} modified vouchers (ALTERID > {afterAlterId})");
             
             return vouchers;
-        }
-
-        /// <summary>
-        /// Get ledgers modified after a specific ALTERID
-        /// </summary>
-        public async Task<List<Ledger>> GetModifiedLedgersAsync(string companyName, long afterAlterId)
-        {
-            SyncLogger.Log($"🔍 Fetching ledgers with ALTERID > {afterAlterId}");
-            
-            var request = $@"
-<ENVELOPE>
-  <HEADER>
-    <VERSION>1</VERSION>
-    <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>ModifiedLedgers</ID>
-  </HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-      </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-          <COLLECTION NAME=""ModifiedLedgers"">
-            <TYPE>Ledger</TYPE>
-            <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
-            <FILTER>ModifiedAfter</FILTER>
-          </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
-        </TDLMESSAGE>
-      </TDL>
-    </DESC>
-  </BODY>
-</ENVELOPE>";
-
-            var doc = await SendRequestAsync(request, companyName, 120);
-            
-            if (doc == null) return new List<Ledger>();
-
-            var ledgers = new List<Ledger>();
-            foreach (var ledgerElement in doc.Descendants("LEDGER"))
-            {
-                try
-                {
-                    // Extract address from ADDRESS.LIST > ADDRESS structure (Tally Prime format)
-                    var addressParts = new List<string>();
-                    var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
-                    if (addressList != null)
-                    {
-                        addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-                    if (addressParts.Count == 0)
-                    {
-                        addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
-                    }
-                    var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
-                    if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        addressParts.Add(state);
-                    }
-                    var fullAddress = string.Join(", ", addressParts);
-
-                    var phone = GetElementValue(ledgerElement, "LEDGERPHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERMOBILE") 
-                             ?? GetElementValue(ledgerElement, "PHONE") 
-                             ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
-                    var email = GetElementValue(ledgerElement, "LEDGEREMAIL") 
-                             ?? GetElementValue(ledgerElement, "EMAIL");
-                    var gstin = GetElementValue(ledgerElement, "PARTYGSTIN") 
-                             ?? GetElementValue(ledgerElement, "GSTREGISTRATIONNUMBER");
-
-                    ledgers.Add(new Ledger
-                    {
-                        Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                        Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
-                        ParentGroup = GetElementValue(ledgerElement, "PARENT"),
-                        LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                        OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                        ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
-                        Address = fullAddress,
-                        Phone = phone,
-                        Email = email,
-                        Gstin = gstin,
-                        Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                        MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                        AlterId = GetElementValue(ledgerElement, "ALTERID")
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error parsing modified ledger: {ex.Message}");
-                }
-            }
-
-            SyncLogger.Log($"✅ Found {ledgers.Count} modified ledgers");
-            return ledgers;
         }
 
         public async Task<List<Voucher>> GetVouchersAsync(DateTime? fromDate = null, DateTime? toDate = null, string? companyName = null, Dictionary<string, string>? stockItemHsnCache = null)

@@ -155,10 +155,11 @@ export default function LoginPage() {
                                     exit={{ opacity: 0, height: 0 }}
                                     className="overflow-hidden"
                                 >
-                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
+                                    <label htmlFor="login-fullName" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
                                     <div className="relative">
                                         <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                         <input
+                                            id="login-fullName"
                                             type="text"
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
@@ -172,10 +173,11 @@ export default function LoginPage() {
                         </AnimatePresence>
 
                         <div>
-                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
+                            <label htmlFor="login-email" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
                             <div className="relative">
                                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                 <input
+                                    id="login-email"
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
@@ -187,10 +189,11 @@ export default function LoginPage() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
+                            <label htmlFor="login-password" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
                             <div className="relative">
                                 <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                 <input
+                                    id="login-password"
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}

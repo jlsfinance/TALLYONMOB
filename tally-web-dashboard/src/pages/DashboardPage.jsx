@@ -1,16 +1,69 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { companyApi } from '../lib/supabase';
+import { companyApi, supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+    ResponsiveContainer
+} from 'recharts';
+
+const formatCurrency = (amount) => {
+    const absAmount = Math.abs(amount || 0);
+    if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(1)} Cr`;
+    if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(1)} L`;
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0
+    }).format(absAmount);
+};
+
+const formatCompact = (amount) => {
+    const absAmount = Math.abs(amount || 0);
+    if (absAmount >= 10000000) return `${(absAmount / 10000000).toFixed(1)}Cr`;
+    if (absAmount >= 100000) return `${(absAmount / 100000).toFixed(1)}L`;
+    if (absAmount >= 1000) return `${(absAmount / 1000).toFixed(1)}K`;
+    return absAmount.toFixed(0);
+};
+
+const formatDate = (date) => {
+    if (!date) return 'Never';
+    return new Date(date).toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+};
+
+const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-white rounded-lg shadow-lg border border-gray-100 p-3">
+                <p className="text-sm font-semibold text-gray-800 mb-1">{label}</p>
+                {payload.map((entry, i) => (
+                    <p key={i} className="text-sm" style={{ color: entry.color }}>
+                        {entry.name}: {formatCurrency(entry.value)}
+                    </p>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
 
 export default function DashboardPage() {
     const { selectedCompany, companies, selectCompany } = useAuth();
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [monthlyRevenue, setMonthlyRevenue] = useState([]);
 
     useEffect(() => {
         if (selectedCompany) {
             loadSummary();
+            loadMonthlyRevenue();
         }
     }, [selectedCompany]);
 
@@ -21,23 +74,50 @@ export default function DashboardPage() {
         setLoading(false);
     };
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0
-        }).format(amount);
-    };
+    const loadMonthlyRevenue = async () => {
+        try {
+            const now = new Date();
+            const from = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0];
+            const { data: vouchers } = await supabase
+                .from('vouchers')
+                .select('total_amount, grand_total, voucher_date, voucher_type')
+                .eq('company_id', selectedCompany.id)
+                .in('voucher_type', ['Sales', 'Purchase'])
+                .eq('is_deleted', false)
+                .gte('voucher_date', from)
+                .order('voucher_date', { ascending: true });
 
-    const formatDate = (date) => {
-        if (!date) return 'Never';
-        return new Date(date).toLocaleString('en-IN', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+            if (!vouchers) return;
+
+            // Group by month
+            const byMonth = {};
+            vouchers.forEach(v => {
+                const monthKey = v.voucher_date.substring(0, 7); // YYYY-MM
+                if (!byMonth[monthKey]) byMonth[monthKey] = { revenue: 0, expenses: 0 };
+                const amount = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
+                if (v.voucher_type === 'Sales') {
+                    byMonth[monthKey].revenue += amount;
+                } else {
+                    byMonth[monthKey].expenses += amount;
+                }
+            });
+
+            const months = Object.entries(byMonth)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, val]) => {
+                    const [y, m] = key.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return {
+                        month: `${monthNames[parseInt(m) - 1]} '${y.slice(2)}`,
+                        revenue: Math.round(val.revenue),
+                        expenses: Math.round(val.expenses),
+                    };
+                });
+
+            setMonthlyRevenue(months);
+        } catch (err) {
+            console.error('Error loading monthly revenue:', err);
+        }
     };
 
     if (!selectedCompany) {
@@ -168,6 +248,61 @@ export default function DashboardPage() {
                         <p className="text-sm text-gray-500 mt-2">Click to view all purchase invoices</p>
                     </Link>
                 </div>
+            )}
+
+            {/* Revenue Line Chart */}
+            {monthlyRevenue.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                    className="bg-white rounded-xl p-4 sm:p-6 shadow"
+                >
+                    <div className="flex items-center gap-2 mb-4">
+                        <span className="text-xl">📊</span>
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-800">Revenue Trend (Last 6 Months)</h3>
+                    </div>
+                    <div className="h-64 sm:h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={monthlyRevenue}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                <XAxis
+                                    dataKey="month"
+                                    tick={{ fontSize: 11, fill: '#888' }}
+                                    axisLine={{ stroke: '#e5e7eb' }}
+                                />
+                                <YAxis
+                                    tickFormatter={formatCompact}
+                                    tick={{ fontSize: 11, fill: '#888' }}
+                                    axisLine={{ stroke: '#e5e7eb' }}
+                                />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="revenue"
+                                    name="Revenue"
+                                    stroke="#22c55e"
+                                    strokeWidth={2.5}
+                                    dot={{ r: 4, fill: '#22c55e', strokeWidth: 2, stroke: '#fff' }}
+                                    activeDot={{ r: 6, fill: '#22c55e', strokeWidth: 2, stroke: '#fff' }}
+                                    animationBegin={0}
+                                    animationDuration={1200}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="expenses"
+                                    name="Expenses"
+                                    stroke="#ef4444"
+                                    strokeWidth={2}
+                                    dot={{ r: 3, fill: '#ef4444', strokeWidth: 2, stroke: '#fff' }}
+                                    activeDot={{ r: 5, fill: '#ef4444', strokeWidth: 2, stroke: '#fff' }}
+                                    animationBegin={300}
+                                    animationDuration={1200}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </motion.div>
             )}
 
             {/* Quick Actions */}

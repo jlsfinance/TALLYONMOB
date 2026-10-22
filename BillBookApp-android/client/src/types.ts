@@ -33,6 +33,7 @@ export enum ViewState {
   REPORTS_HUB = 'REPORTS_HUB',
   MORE_MENU = 'MORE_MENU',
   SYNC_SETTINGS = 'SYNC_SETTINGS',
+  ANALYTICS_DASHBOARD = 'ANALYTICS_DASHBOARD',
 }
 
 export interface Expense {
