@@ -75,7 +75,7 @@ class _CompanySelectionScreenState extends State<CompanySelectionScreen> {
                       const Icon(
                         Icons.business_outlined,
                         size: 64,
-                        color: AppColors.textMuted,
+                        color: AppColors.textMutedLight,
                       ),
                       const SizedBox(height: 16),
                       Text(

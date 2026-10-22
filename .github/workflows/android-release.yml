@@ -23,6 +23,13 @@ jobs:
           flutter-version: '3.x'
           channel: 'stable'
 
+      - name: Create .env file
+        run: |
+          cd tally-mobile-app
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+        shell: bash
+
       - name: Install dependencies
         run: |
           cd tally-mobile-app

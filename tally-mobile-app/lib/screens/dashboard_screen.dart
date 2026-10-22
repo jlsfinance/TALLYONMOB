@@ -843,7 +843,7 @@ class _ChartBase extends StatelessWidget {
   final bool isArea;
   final List<FlSpot> spots;
 
-  const _ChartBase({
+  _ChartBase({
     required this.data,
     required this.color,
     this.isArea = false,
