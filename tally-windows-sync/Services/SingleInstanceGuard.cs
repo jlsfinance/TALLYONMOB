@@ -69,67 +69,50 @@ namespace TallySyncApp.Services
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            // Fast path: try to open the mutex without creating it. If this succeeds, another
-            // process already owns it, so we are the secondary instance.
-            try
-            {
-                using var existing = Mutex.OpenExisting(MutexName);
-                _ownsMutex = false;
-                return false;
-            }
-            catch (WaitHandleCannotBeOpenedException)
-            {
-                // Does not exist yet — we may be the first instance. Fall through and create it.
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Exists but is locked down; fall through and retry with an ACL.
-            }
-
-            // Slow path: create the mutex ourselves, granting Everyone access so the guard
-            // still works across user accounts on the same machine.
+            // Try to create/open the mutex. If another live instance owns it, WaitOne(0) returns false.
             bool createdNew = false;
             try
             {
                 _mutex = new Mutex(false, MutexName, out createdNew);
-
-                // The 4-argument Mutex ctor that takes a MutexSecurity does not exist on
-                // .NET (only on .NET Framework), so apply the ACL after creation instead.
-                try
-                {
-                    var security = new MutexSecurity();
-                    security.AddAccessRule(new MutexAccessRule(
-                        new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                        MutexRights.FullControl,
-                        AccessControlType.Allow));
-                    _mutex.SetAccessControl(security);
-                }
-                catch (Exception)
-                {
-                    // ACL application is best effort; the mutex still enforces single-instance
-                    // for the creating user.
-                }
             }
             catch (UnauthorizedAccessException)
             {
-                // Could not create it either (extremely locked-down environment). Assume a
-                // single instance is running rather than blocking the user from starting.
                 _ownsMutex = false;
                 return false;
             }
 
-            if (!createdNew)
+            // If we created it new, we're primary.
+            if (createdNew)
             {
-                // Someone beat us to it between OpenExisting and the create.
-                _mutex.Dispose();
-                _mutex = null;
-                _ownsMutex = false;
-                return false;
+                _ownsMutex = true;
+                CreateActivationEvent();
+                return true;
             }
 
-            _ownsMutex = true;
-            CreateActivationEvent();
-            return true;
+            // Mutex already existed. Try to acquire it with 0 timeout.
+            // If the previous owner crashed, WaitOne returns true (abandoned mutex).
+            try
+            {
+                if (_mutex.WaitOne(0))
+                {
+                    _ownsMutex = true;
+                    CreateActivationEvent();
+                    return true;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // Previous owner died — we now own it.
+                _ownsMutex = true;
+                CreateActivationEvent();
+                return true;
+            }
+
+            // Another instance is genuinely running.
+            _mutex.Dispose();
+            _mutex = null;
+            _ownsMutex = false;
+            return false;
         }
 
         /// <summary>
