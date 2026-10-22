@@ -30,10 +30,10 @@ jobs:
     - name: Inject Supabase key into appsettings.json
       run: |
         $key = "${{ secrets.SUPABASE_ANON_KEY }}"
-        $content = Get-Content "tally-windows-sync/appsettings.json" -Raw
-        $content = $content -replace 'eyJhbG\.\.\.N7u0', $key
+        $content = Get-Content "tally-windows-sync/appsettings.template.json" -Raw
+        $content = $content -replace 'PLACEHOLDER', $key
         Set-Content "tally-windows-sync/appsettings.json" $content
-        Write-Host "Injected Supabase anon key into appsettings.json"
+        Write-Host "Generated appsettings.json with Supabase anon key"
       shell: pwsh
 
     - name: Publish App
