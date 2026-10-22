@@ -59,6 +59,7 @@ namespace TallySyncApp
 
             try
             {
+                Log($"Login attempt: {email}");
                 if (_isLoginMode)
                 {
                     // Login
@@ -66,12 +67,14 @@ namespace TallySyncApp
 
                     if (success)
                     {
+                        Log("Login successful!");
                         LoginSuccessful = true;
                         DialogResult = true;
                         Close();
                     }
                     else
                     {
+                        Log($"Login failed: {error}");
                         ShowError(error ?? "Login failed. Please check your credentials.");
                     }
                 }
@@ -101,6 +104,7 @@ namespace TallySyncApp
             }
             catch (Exception ex)
             {
+                Log($"EXCEPTION: {ex.GetType().Name}: {ex.Message}");
                 ShowError($"Connection error: {ex.Message}");
             }
             finally
@@ -138,6 +142,16 @@ namespace TallySyncApp
             }
 
             HideError();
+        }
+
+        private void Log(string message)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                LogPanel.Visibility = Visibility.Visible;
+                LogTextBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\n");
+                LogTextBox.ScrollToEnd();
+            });
         }
 
         private void ShowError(string message)

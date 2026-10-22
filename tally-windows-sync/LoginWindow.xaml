@@ -250,6 +250,25 @@
                             </TextBlock.TextDecorations>
                         </TextBlock>
                     </StackPanel>
+
+                    <!-- Debug Log Panel -->
+                    <Border x:Name="LogPanel"
+                            Background="#1F2937"
+                            CornerRadius="8"
+                            Margin="0,16,0,0"
+                            Padding="8"
+                            Visibility="Visible">
+                        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                            <TextBox x:Name="LogTextBox"
+                                     Background="Transparent"
+                                     Foreground="#10B981"
+                                     FontFamily="Consolas"
+                                     FontSize="10"
+                                     IsReadOnly="True"
+                                     TextWrapping="Wrap"
+                                     BorderThickness="0"/>
+                        </ScrollViewer>
+                    </Border>
                 </StackPanel>
             </Border>
         </Grid>
