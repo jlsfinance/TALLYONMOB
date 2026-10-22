@@ -27,6 +27,15 @@ jobs:
         dotnet restore tally-windows-sync/TallySyncApp.csproj --force
       shell: pwsh
 
+    - name: Inject Supabase key into appsettings.json
+      run: |
+        $key = "${{ secrets.SUPABASE_ANON_KEY }}"
+        $content = Get-Content "tally-windows-sync/appsettings.json" -Raw
+        $content = $content -replace 'eyJhbG\.\.\.N7u0', $key
+        Set-Content "tally-windows-sync/appsettings.json" $content
+        Write-Host "Injected Supabase anon key into appsettings.json"
+      shell: pwsh
+
     - name: Publish App
       run: |
         dotnet publish tally-windows-sync/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
