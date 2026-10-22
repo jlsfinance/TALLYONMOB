@@ -24,12 +24,12 @@ jobs:
     - name: Restore dependencies
       run: |
         dotnet nuget locals all --clear
-        dotnet restore tally-windows-sync/TallySyncApp/TallySyncApp.csproj --force
+        dotnet restore tally-windows-sync/TallySyncApp.csproj --force
       shell: pwsh
 
     - name: Publish App
       run: |
-        dotnet publish tally-windows-sync/TallySyncApp/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
+        dotnet publish tally-windows-sync/TallySyncApp.csproj -c Release -r win-x64 --self-contained -o PublishOutput
       shell: pwsh
 
     - name: Create Squirrel Release
