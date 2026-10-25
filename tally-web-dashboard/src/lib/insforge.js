@@ -250,7 +250,12 @@ const companyApi = {
     }
   },
   deleteCompanyData: async (companyId) => {
-    return { success: true, error: "Not implemented in direct sdk safely" };
+    // Cascade-deletes all company-scoped rows via SECURITY DEFINER RPC (see
+    // supabase/migrations/20251025_0000_delete_company_data.sql). Owner-only.
+    const { data, error } = await db.rpc("delete_company_data", { p_company_id: companyId });
+    if (error) return { success: false, error: error.message };
+    const deleted = Number(Array.isArray(data) ? data[0] : data) || 0;
+    return { success: true, error: null, deleted };
   },
 };
 
