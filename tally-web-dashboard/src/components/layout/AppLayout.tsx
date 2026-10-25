@@ -641,44 +641,46 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
             </main>
 
-            {/* ===== MOBILE BOTTOM NAV — LiveKeepings Style ===== */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
-                <div className="flex items-center justify-around h-[60px] px-2">
-                    {bottomNavItems.map((item) => {
-                        const isActive = location.pathname === item.to;
-                        const prefetchOnHover = () => {
-                            const importer = routePrefetchMap[item.to.split('?')[0]];
-                            if (importer) importer().catch(() => {});
+            {/* ===== MOBILE BOTTOM NAV — LiveKeepings Style (Hidden on full-screen create-invoice flow) ===== */}
+            {location.pathname !== '/create-invoice' && (
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
+                    <div className="flex items-center justify-around h-[60px] px-2">
+                        {bottomNavItems.map((item) => {
+                            const isActive = location.pathname === item.to;
+                            const prefetchOnHover = () => {
+                                const importer = routePrefetchMap[item.to.split('?')[0]];
+                                if (importer) importer().catch(() => {});
 
-                            // Prefetch data
-                            if (!selectedCompany?.id) return;
-                            const fy = getCurrentFY();
-                            const fyDates = getFYDates(fy);
-                            const path = item.to.split('?')[0];
+                                // Prefetch data
+                                if (!selectedCompany?.id) return;
+                                const fy = getCurrentFY();
+                                const fyDates = getFYDates(fy);
+                                const path = item.to.split('?')[0];
 
-                            if (path === '/dashboard') prefetchDashboard(selectedCompany.id, fyDates);
-                            else if (path === '/vouchers') prefetchVouchers(selectedCompany.id, 'all', String(getFYStartYear(fy)));
-                            else if (path === '/ledgers') prefetchLedgers(selectedCompany.id);
-                            else if (path === '/stock') prefetchStock(selectedCompany.id);
-                        };
-                        return (
-                            <SafeLink key={item.to} to={item.to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} className="flex-1 relative group">
-                                <div className={`
-                                    flex flex-col items-center justify-center gap-0.5 py-1 transition-all duration-150
-                                    ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
-                                `}>
-                                    <div className={`p-1.5 rounded-[var(--radius-md)] transition-all ${isActive ? 'bg-[var(--primary)]/10' : ''}`}>
-                                        {item.icon}
+                                if (path === '/dashboard') prefetchDashboard(selectedCompany.id, fyDates);
+                                else if (path === '/vouchers') prefetchVouchers(selectedCompany.id, 'all', String(getFYStartYear(fy)));
+                                else if (path === '/ledgers') prefetchLedgers(selectedCompany.id);
+                                else if (path === '/stock') prefetchStock(selectedCompany.id);
+                            };
+                            return (
+                                <SafeLink key={item.to} to={item.to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} className="flex-1 relative group">
+                                    <div className={`
+                                        flex flex-col items-center justify-center gap-0.5 py-1 transition-all duration-150
+                                        ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
+                                    `}>
+                                        <div className={`p-1.5 rounded-[var(--radius-md)] transition-all ${isActive ? 'bg-[var(--primary)]/10' : ''}`}>
+                                            {item.icon}
+                                        </div>
+                                        <span className={`text-[10px] transition-all ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
                                     </div>
-                                    <span className={`text-[10px] transition-all ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
-                                </div>
-                            </SafeLink>
-                        );
-                    })}
-                </div>
-            </nav>
+                                </SafeLink>
+                            );
+                        })}
+                    </div>
+                </nav>
+            )}
 
-            <AIFloatingButton />
+            {location.pathname !== '/create-invoice' && <AIFloatingButton />}
             <CommandPalette />
             <GlobalSearch open={showSearch} onClose={() => setShowSearch(false)} />
         </div>

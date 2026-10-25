@@ -757,21 +757,21 @@ export default function CreateInvoicePage() {
             {/* ========================================================================= */}
             <AnimatePresence>
                 {showItemModal && activeItemIndex !== null && (
-                    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+                    <div className="fixed inset-0 z-[100] flex flex-col justify-end">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setShowItemModal(false)}
-                            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                         />
                         <motion.div
                             initial={{ y: "100%" }}
                             animate={{ y: 0 }}
                             exit={{ y: "100%" }}
-                            className="relative bg-[#0B1118] border-t border-[#1E2B38] w-full max-h-[90vh] rounded-t-3xl shadow-2xl flex flex-col"
+                            className="relative bg-[#0B1118] border-t border-[#1E2B38] w-full max-h-[85vh] sm:max-h-[90vh] rounded-t-3xl shadow-2xl flex flex-col overflow-hidden"
                         >
-                            <div className="p-4 pb-2 border-b border-[#1E2B38] flex items-center justify-between">
+                            <div className="p-4 pb-2 border-b border-[#1E2B38] flex items-center justify-between shrink-0">
                                 <div className="flex items-center gap-2">
                                     <Package size={16} className="text-[#00E599]" />
                                     <h3 className="text-sm font-black text-white">Item Details</h3>
@@ -784,7 +784,7 @@ export default function CreateInvoicePage() {
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-2xl mx-auto w-full">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 max-w-2xl mx-auto w-full">
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">
                                         Select Stock Item *
@@ -881,7 +881,7 @@ export default function CreateInvoicePage() {
                                 </div>
                             </div>
 
-                            <div className="p-3.5 sm:p-4 bg-[#121B24] border-t border-[#1E2B38] flex gap-2.5">
+                            <div className="p-3.5 sm:p-4 pb-6 sm:pb-4 bg-[#121B24] border-t border-[#1E2B38] flex gap-2.5 shrink-0 safe-area-pb">
                                 <button
                                     type="button"
                                     onClick={handleAddItem}
