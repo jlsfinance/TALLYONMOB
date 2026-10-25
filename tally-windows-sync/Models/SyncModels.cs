@@ -20,8 +20,8 @@ namespace TallySyncApp.Models
         public bool IsServerConnected { get; set; }
         public string? CompanyName { get; set; }
 
-        public int ProgressPercentage => TotalRecords > 0 
-            ? (int)((double)ProcessedRecords / TotalRecords * 100) 
+        public int ProgressPercentage => TotalRecords > 0
+            ? Math.Min(100, (int)((double)ProcessedRecords / TotalRecords * 100))
             : 0;
 
         public string StatusText => State switch
@@ -145,7 +145,7 @@ namespace TallySyncApp.Models
         public string AccessToken { get; set; } = string.Empty;
         public string RefreshToken { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
-        public bool IsLoggedIn => !string.IsNullOrEmpty(AccessToken) && DateTime.UtcNow < ExpiresAt;
+        public bool IsLoggedIn => !string.IsNullOrEmpty(AccessToken) && (DateTime.UtcNow < ExpiresAt || !string.IsNullOrEmpty(RefreshToken));
     }
 
     public class TallySettings

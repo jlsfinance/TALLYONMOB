@@ -11,7 +11,10 @@ namespace TallySyncApp.Services
     /// </summary>
     public static class SyncLogger
     {
-        private static readonly string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+        // Not BaseDirectory: the shipped exe is a single-file bundle, so BaseDirectory is a
+        // random %TEMP%\.net\... folder that gets wiped on update/cleanup.
+        private static readonly string LogDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TallySync", "Logs");
 
         static SyncLogger()
         {

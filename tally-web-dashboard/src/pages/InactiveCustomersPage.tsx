@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     UserX, Search, Filter, Calendar, TrendingDown, AlertTriangle,
     MessageCircle, Mail, Phone, Share2, Loader2, ChevronRight,
@@ -50,7 +50,7 @@ export default function InactiveCustomersPage() {
                 .select('party_name, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('is_deleted', false)
-                .in('voucher_type', ['Sales', 'Receipt']);
+                .in('voucher_type', ['Sales', 'Receipt']).limit(50000);
 
             const now = new Date();
             const cutoffDate = new Date();
@@ -292,3 +292,4 @@ export default function InactiveCustomersPage() {
         </div>
     );
 }
+

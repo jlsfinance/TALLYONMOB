@@ -1,41 +1,152 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
+import { shareVoucherOnWhatsApp } from '../lib/whatsappInvoice';
 import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
 } from 'lucide-react';
 import '../styles/Material3.css';
 
+const toNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const absNumber = (value) => Math.abs(toNumber(value));
+
+const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const parseStateCodeFromGstin = (gstin) => {
+    const text = String(gstin || '').trim().toUpperCase();
+    const match = text.match(/^(\d{2})/);
+    return match ? match[1] : '';
+};
+
+const normalizeStateKey = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const isTrueish = (value) => (
+    value === true
+    || value === 1
+    || value === '1'
+    || String(value || '').trim().toLowerCase() === 'true'
+);
+
+const areDifferentStates = (companyState, partyState, companyGstin, partyGstin) => {
+    const companyStateCode = parseStateCodeFromGstin(companyGstin);
+    const partyStateCode = parseStateCodeFromGstin(partyGstin);
+
+    if (companyStateCode && partyStateCode) {
+        return companyStateCode !== partyStateCode;
+    }
+
+    const normalizedCompanyState = normalizeStateKey(companyState);
+    const normalizedPartyState = normalizeStateKey(partyState);
+
+    if (normalizedCompanyState && normalizedPartyState) {
+        return normalizedCompanyState !== normalizedPartyState;
+    }
+
+    return false;
+};
+
+const queryErrorText = (error) => `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+
+const isMissingColumnError = (error, table, column) => {
+    const text = queryErrorText(error);
+    return (
+        String(error?.code || '') === '42703'
+        || text.includes(`column ${table}.${column}`)
+        || text.includes(`'${column}' column`)
+    );
+};
+
+const withOptionalLedgerState = async (buildQuery, ...fieldAttempts) => {
+    const attempts = ['*', ...fieldAttempts.filter(Boolean)];
+    let lastResult = null;
+
+    for (const fields of attempts) {
+        const result = await buildQuery(fields);
+        lastResult = result;
+
+        if (!result?.error) {
+            if (result?.data) {
+                if (Array.isArray(result.data)) {
+                    result.data = result.data.map((row) => ({ ...row, state: row?.state || '' }));
+                } else if (typeof result.data === 'object') {
+                    result.data = { ...result.data, state: result.data?.state || '' };
+                }
+            }
+            return result;
+        }
+
+        const missingAnyOptionalLedgerField = ['state', 'gstin', 'address', 'email', 'phone']
+            .some((column) => isMissingColumnError(result.error, 'ledgers', column));
+
+        if (!missingAnyOptionalLedgerField) {
+            return result;
+        }
+    }
+
+    return lastResult;
+};
+
+const buildInvoiceSeed = (voucherData) => {
+    if (!voucherData) return null;
+
+    const netAmount = absNumber(voucherData.net_amount ?? voucherData.grand_total ?? voucherData.total_amount);
+
+    return {
+        ...voucherData,
+        invoice_number: voucherData.invoice_number || voucherData.voucher_number || '---',
+        invoice_date: voucherData.invoice_date || voucherData.voucher_date || voucherData.date,
+        party_ledger_name: voucherData.party_ledger_name || voucherData.party_name || voucherData.customerName || 'Unknown party',
+        net_amount: netAmount,
+        taxable_amount: absNumber(voucherData.taxable_amount ?? voucherData.total_amount ?? voucherData.grand_total),
+        voucher_type: voucherData.voucher_type || voucherData.transaction_type || 'Sales'
+    };
+};
+
+const isSalesVoucherType = (value) => {
+    const type = String(value || '').trim().toLowerCase();
+    return type === 'sales' || type === 'sales invoice';
+};
+
 export default function InvoicePDFPage() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const { selectedCompany } = useAuth();
     const printRef = useRef();
+    const navigationVoucher = location.state?.voucher || null;
+    const backTarget = location.state?.from || (isSalesVoucherType(navigationVoucher?.voucher_type || navigationVoucher?.transaction_type) ? '/sales' : '/vouchers');
 
-    const [invoice, setInvoice] = useState(null);
-    const [companyInfo, setCompanyInfo] = useState(null);
+    const [invoice, setInvoice] = useState(() => buildInvoiceSeed(navigationVoucher));
+    const [companyInfo, setCompanyInfo] = useState(() => selectedCompany || null);
     const [items, setItems] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [ledgerLineEntries, setLedgerLineEntries] = useState([]);
+    const [loading, setLoading] = useState(!navigationVoucher);
     const [template, setTemplate] = useState('professional');
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
-    const [containerHeight, setContainerHeight] = useState('auto');
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
             if (typeof window !== 'undefined') {
-                const sidebarWidth = window.innerWidth >= 768 ? 240 : 0;
-                const availableWidth = window.innerWidth - sidebarWidth - 32; // -32 for padding
-                const s = availableWidth < 794 ? availableWidth / 794 : 1;
-                setScale(s);
-                if (availableWidth < 794) {
-                    setContainerHeight(`${297 * s + 40}mm`); // A4 Height * scale + padding
+                const mobile = window.innerWidth < 768;
+                setIsMobile(mobile);
+                if (mobile) {
+                    setScale(1);
                 } else {
-                    setContainerHeight('auto');
+                    const sidebarWidth = 240;
+                    const padding = 48;
+                    const availableWidth = window.innerWidth - sidebarWidth - padding;
+                    const s = Math.min(availableWidth / (210 * 3.7795), 1.15);
+                    setScale(s);
                 }
             }
         };
@@ -52,228 +163,539 @@ export default function InvoicePDFPage() {
         }
     }, [id, selectedCompany?.id]);
 
+    useEffect(() => {
+        const seededInvoice = buildInvoiceSeed(navigationVoucher);
+        if (seededInvoice) {
+            setInvoice((current) => current || seededInvoice);
+        }
+    }, [id, navigationVoucher]);
+
     const loadInvoice = async () => {
-        setLoading(true);
+        setLoading((current) => current || !invoice);
         try {
-            let { data: voucherData } = await supabase
+            const decodedId = decodeURIComponent(id || '');
+            const navigationIds = [navigationVoucher?.id, navigationVoucher?.voucher_id].filter(Boolean).map(String);
+            let voucherData = navigationIds.includes(decodedId) ? navigationVoucher : null;
+
+            const { data: primaryVoucher } = await supabase
                 .from('vouchers')
                 .select('*')
-                .eq('id', id)
-                .single();
+                .eq('id', decodedId)
+                .maybeSingle();
+
+            if (primaryVoucher) {
+                voucherData = { ...(voucherData || {}), ...primaryVoucher };
+            }
 
             if (!voucherData) {
                 const { data: fallback } = await supabase
                     .from('vouchers')
                     .select('*')
-                    .eq('voucher_id', id)
-                    .single();
+                    .eq('voucher_id', decodedId)
+                    .maybeSingle();
                 voucherData = fallback;
             }
 
             if (voucherData) {
-                // Fetch full company details to get address/gstin (Moved up to be available for calculations)
-                const { data: companyData } = await supabase
-                    .from('companies')
-                    .select('*')
-                    .eq('id', voucherData.company_id)
-                    .single();
+                setInvoice((current) => current || buildInvoiceSeed(voucherData));
 
-                if (companyData) {
-                    // Critical Fix: Remove null values so they don't overwrite valid context data
-                    const cleanCompanyData = Object.fromEntries(
-                        Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
-                    );
-                    setCompanyInfo({ ...(selectedCompany || {}), ...cleanCompanyData });
-                } else {
-                    console.warn('DEBUG: No company data found in DB, using context fallback as last resort.');
-                    setCompanyInfo(selectedCompany);
-                }
+                const baseCompanyInfo = { ...(selectedCompany || {}) };
+                const companyName = baseCompanyInfo?.name || voucherData.company_name || '';
+                const partyQuery = voucherData.party_ledger_id
+                    ? withOptionalLedgerState(
+                        (fields) => supabase
+                            .from('ledgers')
+                            .select(fields)
+                            .eq('id', voucherData.party_ledger_id)
+                            .maybeSingle(),
+                        'id, address, gstin, state, email, phone',
+                        'id, address, gstin, email, phone'
+                    )
+                    : voucherData.party_name
+                        ? withOptionalLedgerState(
+                            (fields) => supabase
+                                .from('ledgers')
+                                .select(fields)
+                                .eq('company_id', voucherData.company_id)
+                                .ilike('name', voucherData.party_name.trim())
+                                .maybeSingle(),
+                            'id, address, gstin, state, email, phone',
+                            'id, address, gstin, email, phone'
+                        )
+                        : Promise.resolve({ data: null });
 
-                // Fetch Party Details (Address, GSTIN)
-                let partyDetails = {};
-                if (voucherData.party_ledger_id) {
-                    const { data: pData, error: pErr } = await supabase
-                        .from('ledgers')
-                        .select('id, address, gstin, email, phone')
-                        .eq('id', voucherData.party_ledger_id)
-                        .single();
-                    if (pErr) console.error('DEBUG: Party Ledger Fetch Error:', pErr);
-                    if (pData) partyDetails = pData;
-                } else if (voucherData.party_name) {
-                    const { data: pData, error: pErr } = await supabase
-                        .from('ledgers')
-                        .select('id, address, gstin, email, phone')
-                        .eq('company_id', voucherData.company_id)
-                        .ilike('name', voucherData.party_name.trim())
-                        .maybeSingle();
-                    if (pErr) console.error('DEBUG: Party Name Fetch Error:', pErr);
-                    if (pData) partyDetails = pData;
-                }
-
-                // Fallback for Company GSTIN: Check if a ledger exists with Company Name
-                const currentGstin = companyData?.gstin || selectedCompany?.gstin;
-                const currentAddress = companyData?.address || selectedCompany?.address;
-
-                if (!currentGstin || currentGstin === 'N/A' || !currentAddress) {
-                    const { data: cLedger } = await supabase
-                        .from('ledgers')
-                        .select('gstin, address, email, phone')
-                        .eq('company_id', voucherData.company_id)
-                        .ilike('name', companyData?.name || selectedCompany?.name || '')
-                        .maybeSingle();
-
-                    if (cLedger) {
-                        setCompanyInfo(prev => ({
-                            ...prev,
-                            gstin: prev?.gstin || cLedger.gstin,
-                            address: prev?.address || cLedger.address,
-                            email: prev?.email || cLedger.email,
-                            phone: prev?.phone || cLedger.phone
-                        }));
-                    }
-                }
-
-                // Bank Details Fallback: Search for any ledger in 'Bank Accounts' group
-                if (!companyData?.bank_name && !selectedCompany?.bank_name) {
-                    const { data: bLedger } = await supabase
+                const [
+                    companyResult,
+                    partyResult,
+                    companyLedgerResult,
+                    bankResult
+                ] = await Promise.all([
+                    supabase
+                        .from('companies')
+                        .select('*')
+                        .eq('id', voucherData.company_id)
+                        .maybeSingle(),
+                    partyQuery,
+                    withOptionalLedgerState(
+                        (fields) => supabase
+                            .from('ledgers')
+                            .select(fields)
+                            .eq('company_id', voucherData.company_id)
+                            .ilike('name', companyName)
+                            .maybeSingle(),
+                        'gstin, address, email, phone, state',
+                        'gstin, address, email, phone'
+                    ),
+                    supabase
                         .from('ledgers')
                         .select('name, address')
                         .eq('company_id', voucherData.company_id)
                         .or('parent.eq.Bank Accounts,parent_group.eq.Bank Accounts')
                         .limit(1)
-                        .maybeSingle();
+                        .maybeSingle()
+                ]);
 
-                    if (bLedger) {
-                        setCompanyInfo(prev => ({
-                            ...prev,
-                            bank_name: prev?.bank_name || bLedger.name,
-                            bank_account: prev?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '')
-                        }));
+                const companyData = companyResult.data;
+                const partyDetails = partyResult.data || {};
+                const cLedger = companyLedgerResult.data;
+                const bLedger = bankResult.data;
+                let resolvedCompanyInfo = companyData
+                    ? {
+                        ...baseCompanyInfo,
+                        ...Object.fromEntries(
+                            Object.entries(companyData).filter(([_, v]) => v != null && v !== '')
+                        )
                     }
+                    : baseCompanyInfo;
+
+                if (cLedger) {
+                    resolvedCompanyInfo = {
+                        ...resolvedCompanyInfo,
+                        gstin: resolvedCompanyInfo?.gstin || cLedger.gstin,
+                        address: resolvedCompanyInfo?.address || cLedger.address,
+                        email: resolvedCompanyInfo?.email || cLedger.email,
+                        phone: resolvedCompanyInfo?.phone || cLedger.phone,
+                        state: resolvedCompanyInfo?.state || cLedger.state
+                    };
                 }
 
-                // Fetch stock entries first to calculate GST from items
-                const { data: stockEntries } = await supabase
-                    .from('voucher_stock_entries')
-                    .select('*')
-                    .eq('voucher_id', voucherData.id);
+                if (bLedger) {
+                    resolvedCompanyInfo = {
+                        ...resolvedCompanyInfo,
+                        bank_name: resolvedCompanyInfo?.bank_name || bLedger.name,
+                        bank_account: resolvedCompanyInfo?.bank_account || (bLedger.address?.match(/\d{10,}/)?.[0] || '')
+                    };
+                }
 
-                const { data: stockItems } = await supabase
-                    .from('stock_items')
-                    .select('id, name, hsn_code, unit, gst_rate')
-                    .eq('company_id', voucherData.company_id);
+                setCompanyInfo(resolvedCompanyInfo);
+
+                // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
+                const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, decodedId].filter(Boolean)));
+
+                // Fetch stock entries, ledger entries, and stock items in PARALLEL
+                const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
+                    supabase.from('voucher_stock_entries').select('*').eq('is_deleted', false).eq('is_deleted', false).in('voucher_id', voucherLookupIds),
+                    supabase.from('voucher_ledger_entries').select('*').eq('is_deleted', false).eq('is_deleted', false).in('voucher_id', voucherLookupIds),
+                    supabase.from('stock_items').select('id, name, hsn_code, unit, gst_rate').eq('company_id', voucherData.company_id)
+                ]);
+
+                const stockEntries = stockResult.data;
+                const ledgerEntries = ledgerResult.data;
+                const stockItems = stockItemsResult.data;
+                setLedgerLineEntries(ledgerEntries || []);
 
                 const stockLookup = {};
                 stockItems?.forEach(item => {
-                    stockLookup[item.name] = item;
+                    const name = String(item.name || '').trim();
+                    if (name) {
+                        stockLookup[name] = item;
+                        stockLookup[name.toLowerCase()] = item;
+                        stockLookup[name.toLowerCase().replace(/\s+/g, ' ')] = item;
+                    }
                 });
 
-                // Enrich items with GST info
-                const enrichedItems = (stockEntries || []).map(item => {
-                    const master = stockLookup[item.item_name || item.stock_item_name] || {};
-                    const gstRate = Number(item.gst_rate) || Number(master.gst_rate) || 0;
-                    const amount = Number(item.amount) || 0;
+                // Robust item detection: voucher_stock_entries -> raw_data -> inventory_entries
+                let inventoryItems = stockEntries || [];
+
+                if (inventoryItems.length === 0) {
+                    const parsedRawData = (() => {
+                        if (!voucherData.raw_data) return {};
+                        if (typeof voucherData.raw_data === 'object') return voucherData.raw_data;
+                        if (typeof voucherData.raw_data === 'string') {
+                            try { return JSON.parse(voucherData.raw_data); } catch (_) { return {}; }
+                        }
+                        return {};
+                    })();
+
+                    inventoryItems =
+                        parsedRawData.inventory_entries ||
+                        parsedRawData.inventoryEntries ||
+                        parsedRawData.items ||
+                        parsedRawData.stock_entries ||
+                        voucherData.inventory_entries ||
+                        voucherData.items ||
+                        [];
+                }
+
+                // Final Fallback: Check related Sales/Purchase tables for items
+                if (inventoryItems.length === 0) {
+                    const isSales = voucherData.voucher_type === 'Sales' || (!voucherData.voucher_type && voucherData.grand_total > 0);
+                    const isPurchase = voucherData.voucher_type === 'Purchase' || voucherData.voucher_type === 'Purchase Voucher';
+
+                    if (isSales || isPurchase) {
+                        try {
+                            const parentTable = isSales ? 'sales' : 'purchases';
+                            const childTable = isSales ? 'sales_items' : 'purchase_items';
+                            const childFK = isSales ? 'sale_id' : 'purchase_id';
+
+                            // Try lookup by voucher lookup IDs in parent table first
+                            const { data: parents } = await supabase
+                                .from(parentTable)
+                                .select('id')
+                                .in('voucher_id', voucherLookupIds);
+
+                            const parentIdList = (parents || []).map(p => p.id);
+                            if (parentIdList.length > 0) {
+                                const { data: relatedItems } = await supabase
+                                    .from(childTable)
+                                    .select('*')
+                                    .in(childFK, parentIdList);
+                                if (relatedItems?.length > 0) inventoryItems = relatedItems;
+                            }
+                        } catch (e) {
+                            console.error('Error fetching related items:', e);
+                        }
+                    }
+                }
+
+                // Detect if this voucher has CGST/SGST (intra-state) or IGST (inter-state)
+                // This is critical: Tally's RATEOFTAXCALCULATION stores the per-component rate
+                // (e.g., 2.5% for CGST when total GST is 5%). We need to double it for intra-state.
+                let hasIntraStateLedgers = false;  // CGST+SGST = intra-state
+                let hasInterStateLedgers = false;  // IGST = inter-state
+                let invoiceDiscountFromLedger = 0;
+                if (ledgerEntries && ledgerEntries.length > 0) {
+                    ledgerEntries.forEach(entry => {
+                        const name = (entry.ledger_name || '').toUpperCase();
+                        if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                            hasIntraStateLedgers = true;
+                        }
+                        if (name.includes('IGST')) {
+                            hasInterStateLedgers = true;
+                        }
+                        // Also detect discount ledger entries
+                        if (name.includes('DISCOUNT') || name.includes('DISC')) {
+                            invoiceDiscountFromLedger += Math.abs(Number(entry.amount) || 0);
+                        }
+                    });
+                }
+
+                // Enrich items with GST info and handle various field name conventions
+                const enrichedItems = inventoryItems.map((item, itemIdx) => {
+                    const itemName = item.item_name || item.stock_item_name || item.item_label || item.StockItemName || 'Item';
+                    const master = stockLookup[itemName] || stockLookup[String(itemName).toLowerCase()] || {};
+
+                    // --- GST RATE DETECTION ---
+                    // tax_rate from voucher_stock_entries = Tally's RATEOFTAXCALCULATION
+                    // CRITICAL: This is the PER-COMPONENT rate (e.g., 2.5% CGST, not 5% total)
+                    // For intra-state (CGST+SGST): multiply by 2 to get total GST rate
+                    // For inter-state (IGST): use as-is (it's already the total rate)
+                    let rawTaxRate = Number(item.tax_rate || 0);
+                    let gstRate = 0;
+
+                    if (rawTaxRate > 0) {
+                        // Tally's RATEOFTAXCALCULATION is the TOTAL rate (5/12/18/28).
+                        // It is per-component (2.5/9/14) only when the total isn't a standard rate.
+                        const r = Math.round(rawTaxRate * 100) / 100;
+                        const d = Math.round(rawTaxRate * 2 * 100) / 100;
+                        const stdRates = [0.25, 1, 1.5, 3, 5, 6, 12, 18, 28];
+                        if (stdRates.includes(r)) gstRate = r;
+                        else if (stdRates.includes(d)) gstRate = d;
+                        else gstRate = r;
+                    }
+
+                    // Fallback: check other direct field names
+                    if (gstRate === 0) {
+                        const directGst = Number(item.gst_rate || item.GSTRate || item.tax_percent || 0);
+                        if (directGst > 0) gstRate = directGst;
+                    }
+                    // Fallback: master stock item gst_rate
+                    if (gstRate === 0) gstRate = Number(master.gst_rate || 0);
+
+                    // Fallback: Scan nested tax_entries for rates (Common in Tally JSON/raw_data)
+                    if (gstRate === 0 && item.tax_entries) {
+                        const taxEntries = Array.isArray(item.tax_entries) ? item.tax_entries : [item.tax_entries];
+                        taxEntries.forEach(te => {
+                            const rate = Number(te.rate ?? te.Rate ?? te.rate_percent ?? te.RatePercent ?? 0);
+                            if (rate > 0) {
+                                const name = (te.ledger_name || te.LedgerName || '').toUpperCase();
+                                if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                                    gstRate = Math.max(gstRate, rate * 2);
+                                } else {
+                                    gstRate = Math.max(gstRate, rate);
+                                }
+                            }
+                        });
+                    }
+
+                    // Last resort: Derive GST rate from voucher_ledger_entries by parsing % from name
+                    if (gstRate === 0 && ledgerEntries && ledgerEntries.length > 0) {
+                        let totalGstFromLedgers = 0;
+                        ledgerEntries.forEach(entry => {
+                            const name = (entry.ledger_name || '').toUpperCase();
+                            const amt = Math.abs(Number(entry.amount) || 0);
+                            const rateMatch = name.match(/(\d+\.?\d*)\s*%/);
+                            if (rateMatch) {
+                                const parsedRate = Number(rateMatch[1]);
+                                if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST')) {
+                                    gstRate = Math.max(gstRate, parsedRate * 2);
+                                } else if (name.includes('IGST')) {
+                                    gstRate = Math.max(gstRate, parsedRate);
+                                }
+                            }
+                            if (name.includes('CGST') || name.includes('SGST') || name.includes('UTGST') || name.includes('IGST')) {
+                                totalGstFromLedgers += amt;
+                            }
+                        });
+                        // Ratio fallback: if still 0 and single item
+                        if (gstRate === 0 && totalGstFromLedgers > 0 && inventoryItems.length === 1) {
+                            const itemAmt = Math.abs(Number(item.amount || 0));
+                            if (itemAmt > 0) {
+                                const derivedRate = (totalGstFromLedgers / itemAmt) * 100;
+                                const stdRates = [5, 12, 18, 28];
+                                const nearest = stdRates.reduce((a, b) => Math.abs(b - derivedRate) < Math.abs(a - derivedRate) ? b : a);
+                                if (Math.abs(nearest - derivedRate) < 2) gstRate = nearest;
+                            }
+                        }
+                    }
+
+                    // --- QUANTITY, RATE, AMOUNT ---
+                    const quantity = Number(item.quantity ?? item.billed_qty ?? item.Quantity ?? 0);
+                    const rate = Number(item.rate ?? item.unit_price ?? item.Rate ?? 0);
+                    const amount = Number(item.amount ?? item.Amount ?? (quantity * rate));
+
+                    // --- DISCOUNT DETECTION ---
+                    // discount_percent comes from voucher_stock_entries (synced from Tally's DISCOUNT field)
+                    let discountVal = 0;
+                    const rawDiscount = item.discount_percent ?? item.discount ?? item.Discount ?? item.DiscountPercent ?? item.discount_amount;
+                    if (rawDiscount !== undefined && rawDiscount !== null) {
+                        discountVal = Math.abs(Number(String(rawDiscount).replace(/[^0-9.-]/g, '')) || 0);
+                    }
+
+                    // DERIVED DISCOUNT: If discount_percent is 0 in DB but amount < rate * quantity,
+                    // Tally applied discount implicitly. Calculate from the difference.
+                    if (discountVal === 0 && quantity > 0 && rate > 0) {
+                        const grossAmount = Math.abs(quantity * rate);
+                        const netAmount = Math.abs(amount);
+                        if (grossAmount > netAmount && (grossAmount - netAmount) > 0.5) {
+                            // There's an implicit discount
+                            discountVal = Math.round(((grossAmount - netAmount) / grossAmount) * 100 * 100) / 100;
+                        }
+                    }
+
+                    // Fallback: If still no per-item discount but invoice has a discount ledger, distribute proportionally
+                    if (discountVal === 0 && invoiceDiscountFromLedger > 0 && inventoryItems.length > 0) {
+                        const totalItemsAmount = inventoryItems.reduce((s, i) => s + Math.abs(Number(i.amount || 0)), 0);
+                        if (totalItemsAmount > 0) {
+                            const itemProportion = Math.abs(amount) / totalItemsAmount;
+                            const itemDiscountAmt = invoiceDiscountFromLedger * itemProportion;
+                            const preDiscountAmt = Math.abs(amount) + itemDiscountAmt;
+                            if (preDiscountAmt > 0) {
+                                discountVal = Math.round((itemDiscountAmt / preDiscountAmt) * 100 * 100) / 100;
+                            }
+                        }
+                    }
+
+                    if (itemIdx === 0) {
+                    }
+
+                    // Tally's amount is already post-discount, so taxable = amount
                     const taxable = amount;
 
                     return {
                         ...item,
                         stock_item_id: master.id,
-                        stock_item_name: item.item_name || item.stock_item_name || 'Item',
-                        hsn_code: item.hsn_code || master.hsn_code || '',
-                        unit: item.unit || master.unit || '',
+                        stock_item_name: itemName,
+                        hsn_code: (() => {
+                            const raw = item.hsn_code || item.hsn || item.HsnCode || '';
+                            const isValidHsn = (v) => v && v !== 'NIL' && v !== 'NA' && v !== '-' && v.trim() !== '' && v.trim().length >= 4;
+                            // Known-bad HSN from Tally (e.g. 6292 for footwear) -> prefer master stock item HSN
+                            const isKnownBad = (v) => String(v || '').trim() === '6292';
+                            return (isValidHsn(raw) && !isKnownBad(raw)) ? raw : (master.hsn_code || raw || '');
+                        })(),
+                        unit: item.unit || item.Unit || master.unit || 'pcs',
                         gst_rate: gstRate,
-                        quantity: Number(item.quantity) || Number(item.billed_qty) || 0,
-                        rate: Number(item.rate) || Number(item.unit_price) || 0,
+                        quantity: quantity,
+                        rate: rate,
                         amount: amount,
-                        discount: Number(item.discount) || Number(item.discount_percent) || 0,
+                        discount: discountVal,
+                        discount_percent: discountVal, // keep both names for columnVisibility check
                         taxable_value: taxable
                     };
                 });
 
-                setItems(enrichedItems);
-
-                // Fetch ledger entries to get GST amounts (CGST, SGST, IGST are posted as ledgers in Tally)
-                const { data: ledgerEntries } = await supabase
-                    .from('voucher_ledger_entries')
-                    .select('ledger_name, amount')
-                    .eq('voucher_id', voucherData.id);
-
-
-
-                // Calculate GST from items if not in voucher data
-                let cgstAmount = Number(voucherData.cgst_amount) || 0;
-                let sgstAmount = Number(voucherData.sgst_amount) || 0;
-                let igstAmount = Number(voucherData.igst_amount) || 0;
-
-                // Extract GST from ledger entries (Tally posts GST to separate ledgers)
-                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0 && ledgerEntries) {
-                    ledgerEntries.forEach(entry => {
-                        const ledgerName = (entry.ledger_name || '').toUpperCase();
-                        const amount = Math.abs(Number(entry.amount) || 0);
-
-                        if (ledgerName.includes('CGST') || ledgerName.includes('CENTRAL GST')) {
-                            cgstAmount += amount;
-                        } else if (ledgerName.includes('SGST') || ledgerName.includes('STATE GST') || ledgerName.includes('UTGST')) {
-                            sgstAmount += amount;
-                        } else if (ledgerName.includes('IGST') || ledgerName.includes('INTEGRATED GST')) {
-                            igstAmount += amount;
-                        }
+                // Rate reconciliation: Tally's actual tax total is ground truth. A bad master
+                // stock gst_rate fallback can inflate item rates; if the item-wise sum then
+                // misses the real tax, pick the single standard rate that best matches it.
+                const actualGst = (() => {
+                    let g = (Number(voucherData.cgst_amount) || 0) + (Number(voucherData.sgst_amount) || 0) + (Number(voucherData.igst_amount) || 0);
+                    if (g > 0) return g;
+                    // Voucher row khali ho to GST ledger entries se (Tally ground truth)
+                    let lg = 0;
+                    (ledgerEntries || []).forEach(e => {
+                        const n = (e.ledger_name || '').toUpperCase();
+                        if (n.includes('CGST') || n.includes('SGST') || n.includes('UTGST') || n.includes('IGST')) lg += Math.abs(Number(e.amount) || 0);
                     });
-
-
+                    return lg;
+                })();
+                if (actualGst > 0 && enrichedItems.length > 0) {
+                    const itemTaxSum = enrichedItems.reduce((s, it) => s + (Number(it.taxable_value) || 0) * (Number(it.gst_rate) || 0) / 100, 0);
+                    if (itemTaxSum > 0 && Math.abs(itemTaxSum - actualGst) / actualGst > 0.02) {
+                        const totTaxable = enrichedItems.reduce((s, it) => s + (Number(it.taxable_value) || 0), 0);
+                        const stdRates = [0.25, 1, 1.5, 3, 5, 12, 18, 28];
+                        let best = null;
+                        stdRates.forEach(r => {
+                            const err = Math.abs(totTaxable * r / 100 - actualGst);
+                            if (!best || err < best.err) best = { r, err };
+                        });
+                        if (best && best.err / actualGst < 0.02) {
+                            enrichedItems.forEach(it => { it.gst_rate = best.r; });
+                        }
+                    }
                 }
 
-                // If still no GST from ledgers, try calculating from items
-                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0) {
-                    const companyState = companyData?.state || selectedCompany?.state || '';
-                    const partyState = voucherData.party_state || voucherData.place_of_supply || '';
-                    const isIGST = companyState && partyState && companyState !== partyState;
+                setItems(enrichedItems);
 
-                    let totalGST = 0;
+
+
+                const voucherTax = {
+                    cgst: absNumber(voucherData.cgst_amount),
+                    sgst: absNumber(voucherData.sgst_amount),
+                    igst: absNumber(voucherData.igst_amount)
+                };
+                const ledgerTax = { cgst: 0, sgst: 0, igst: 0 };
+                let discountLedgerAmount = 0;
+                let roundOffLedgerAmount = 0;
+
+                // Extract GST and Discount from ledger entries without double-counting voucher totals.
+                if (ledgerEntries) {
+                    ledgerEntries.forEach(entry => {
+                        const ledgerName = (entry.ledger_name || '').toUpperCase();
+                        const amount = absNumber(entry.amount);
+
+                        if (ledgerName.includes('CGST') || ledgerName.includes('CENTRAL GST')) {
+                            ledgerTax.cgst += amount;
+                        } else if (ledgerName.includes('SGST') || ledgerName.includes('STATE GST') || ledgerName.includes('UTGST')) {
+                            ledgerTax.sgst += amount;
+                        } else if (ledgerName.includes('IGST') || ledgerName.includes('INTEGRATED GST')) {
+                            ledgerTax.igst += amount;
+                        } else if (ledgerName.includes('DISCOUNT')) {
+                            discountLedgerAmount += amount;
+                        } else if (ledgerName.includes('ROUND')) {
+                            roundOffLedgerAmount += round2(Number(entry.amount) || 0);
+                        }
+                    });
+                }
+
+                const voucherTaxTotal = voucherTax.cgst + voucherTax.sgst + voucherTax.igst;
+                const ledgerTaxTotal = ledgerTax.cgst + ledgerTax.sgst + ledgerTax.igst;
+                const companyState = resolvedCompanyInfo?.state || '';
+                const partyState = voucherData.party_state || voucherData.place_of_supply || partyDetails.state || '';
+                const companyGstin = resolvedCompanyInfo?.gstin || '';
+                const partyGstin = voucherData.party_gstin || partyDetails.gstin || '';
+                const explicitVoucherInterState =
+                    isTrueish(voucherData.is_inter_state)
+                    || isTrueish(voucherData.is_interstate)
+                    || (voucherTax.igst > 0 && (voucherTax.cgst + voucherTax.sgst) === 0);
+
+                const resolvedIsInterState =
+                    hasInterStateLedgers
+                    || (!hasIntraStateLedgers && (
+                        ledgerTax.igst > 0
+                        || explicitVoucherInterState
+                        || areDifferentStates(companyState, partyState, companyGstin, partyGstin)
+                    ));
+
+                const preferredTax = ledgerTaxTotal > 0 ? ledgerTax : voucherTax;
+                let cgstAmount = 0;
+                let sgstAmount = 0;
+                let igstAmount = 0;
+                let totalGST = preferredTax.cgst + preferredTax.sgst + preferredTax.igst;
+
+                if (totalGST <= 0) {
+                    totalGST = voucherTaxTotal > 0 ? voucherTaxTotal : ledgerTaxTotal;
+                }
+
+                if (totalGST > 0) {
+                    if (resolvedIsInterState) {
+                        igstAmount = round2(preferredTax.igst > 0 ? preferredTax.igst : totalGST);
+                    } else {
+                        const explicitIntraTotal = preferredTax.cgst + preferredTax.sgst;
+                        if (explicitIntraTotal > 0) {
+                            cgstAmount = round2(preferredTax.cgst);
+                            sgstAmount = round2(preferredTax.sgst);
+                        } else {
+                            cgstAmount = round2(totalGST / 2);
+                            sgstAmount = round2(totalGST - cgstAmount);
+                        }
+                    }
+                }
+
+                // If GST totals are absent, calculate them from item values or voucher totals.
+                if (cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0) {
+                    totalGST = 0;
                     let hasGSTRates = false;
 
                     enrichedItems.forEach(item => {
-                        const itemAmount = Number(item.amount) || 0;
-                        const gstRate = Number(item.gst_rate) || 0;
-                        if (gstRate > 0) {
+                        const itemAmount = absNumber(item.amount);
+                        const gstRate = toNumber(item.gst_rate);
+                        if (gstRate > 0 && itemAmount > 0) {
                             hasGSTRates = true;
-                            const gstAmount = (itemAmount * gstRate) / (100 + gstRate);
-                            totalGST += gstAmount;
+                            totalGST += (itemAmount * gstRate) / 100;
                         }
                     });
 
-
-
-                    // If no GST from items, check voucher totals
                     if (!hasGSTRates || totalGST === 0) {
-                        const grandTotal = Math.abs(Number(voucherData.grand_total) || 0);
-                        const taxableValue = Math.abs(Number(voucherData.taxable_value) || 0);
-                        const totalAmount = Math.abs(Number(voucherData.total_amount) || 0);
+                        const grandTotal = absNumber(voucherData.grand_total);
+                        const taxableValue = absNumber(voucherData.taxable_value || voucherData.taxable_amount);
+                        const totalAmount = absNumber(voucherData.total_amount);
 
                         if (grandTotal > taxableValue && taxableValue > 0) {
                             totalGST = grandTotal - taxableValue;
                         } else if (grandTotal > totalAmount && totalAmount > 0) {
                             totalGST = grandTotal - totalAmount;
                         }
-
                     }
 
+                    totalGST = round2(totalGST);
+
                     if (totalGST > 0) {
-                        if (isIGST) {
-                            igstAmount = Math.round(totalGST * 100) / 100;
+                        if (resolvedIsInterState) {
+                            igstAmount = totalGST;
                         } else {
-                            cgstAmount = Math.round((totalGST / 2) * 100) / 100;
-                            sgstAmount = Math.round((totalGST / 2) * 100) / 100;
+                            cgstAmount = round2(totalGST / 2);
+                            sgstAmount = round2(totalGST - cgstAmount);
                         }
                     }
                 }
 
-
-
-                // Calculate taxable amount (excluding GST)
+                // Calculate taxable amount (excluding GST).
+                // Prefer the voucher's own taxable value; fall back to the REAL sum of
+                // line-item amounts. (The live vouchers table has no `taxable_amount`
+                // or `grand_total` column - grand_total is NULL here - so back-computing
+                // taxable as `net - tax` absorbs the round-off and the item-table
+                // Total row no longer matches the sum of the line amounts.)
                 const totalGSTAmount = cgstAmount + sgstAmount + igstAmount;
                 const netAmount = Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0);
-                const taxableAmount = totalGSTAmount > 0 ? (netAmount - totalGSTAmount) : Math.abs(Number(voucherData.taxable_value) || netAmount);
+                const lineItemTotal = enrichedItems.reduce((s, it) => s + absNumber(it.amount), 0);
+                let taxableAmount;
+                if (Number(voucherData.taxable_amount) > 0) taxableAmount = absNumber(voucherData.taxable_amount);
+                else if (Number(voucherData.taxable_value) > 0) taxableAmount = absNumber(voucherData.taxable_value);
+                else taxableAmount = round2(lineItemTotal);
+                // Round-off = signed residual between the rounded grand total and
+                // (taxable + tax). This makes the bottom totals reconcile exactly:
+                //   taxable + tax + round_off == grand_total.
+                const roundOff = round2(netAmount - (taxableAmount + totalGSTAmount));
 
                 const sale = {
                     ...voucherData,
@@ -292,7 +714,8 @@ export default function InvoicePDFPage() {
                     cgst_amount: cgstAmount,
                     sgst_amount: sgstAmount,
                     igst_amount: igstAmount,
-                    round_off: Number(voucherData.round_off) || 0,
+                    discount_amount: discountLedgerAmount,
+                    round_off: roundOff,
                     voucher_type: voucherData.voucher_type || 'Sales'
                 };
                 setInvoice(sale);
@@ -305,20 +728,25 @@ export default function InvoicePDFPage() {
         setLoading(false);
     };
 
-    // Smart column detection — Tally-style: hide every column with no data
+    // Smart column detection - Tally-style: hide every column with no data
     const columnVisibility = useMemo(() => {
         if (!items || !invoice) return {};
 
-        const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-' && i.hsn_code.trim() !== '');
+        const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-' && i.hsn_code !== 'NIL' && i.hsn_code.trim() !== '' && i.hsn_code.trim().length >= 4);
         const hasGST = items.some(i => Number(i.gst_rate) > 0) || Number(invoice?.cgst_amount) > 0 || Number(invoice?.igst_amount) > 0;
-        const hasDiscount = items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+        // Discount column is only shown when this invoice actually has a discount
+        // (line or ledger level). The live vouchers table lacks `discount_amount`
+        // (it's missing from the schema), so `invoice.discount_amount` (ledger-derived)
+        // is the reliable source, plus per-line discount_percent.
+        const hasDiscount = items.some(i => absNumber(i.discount_percent) > 0 || absNumber(i.discount) > 0)
+            || absNumber(invoice?.discount_amount) > 0;
         const hasUnit = items.some(i => i.unit && i.unit.trim() !== '');
         const hasRate = items.some(i => Number(i.rate) > 0);
         const hasQty = items.some(i => Number(i.quantity) > 0);
         const isIGST = Number(invoice?.igst_amount) > 0;
         const hasCGST = Number(invoice?.cgst_amount) > 0;
         const hasSGST = Number(invoice?.sgst_amount) > 0;
-        const hasRoundOff = Number(invoice?.round_off) > 0 && Math.abs(Number(invoice?.round_off)) > 0.001;
+        const hasRoundOff = Math.abs(Number(invoice?.round_off)) > 0.001;
 
         // Critical Fix: Use companyInfo instead of invoice.selectedCompany
         const hasBankDetails = !!(companyInfo?.bank_name || companyInfo?.bank_account);
@@ -326,14 +754,22 @@ export default function InvoicePDFPage() {
         return { hasHSN, hasGST, hasDiscount, hasUnit, hasRate, hasQty, isIGST, hasCGST, hasSGST, hasRoundOff, hasBankDetails };
     }, [items, invoice, companyInfo]);
 
-    // HSN Summary calculation - distribute invoice GST proportionally
+    // HSN Summary - RECONCILED to the actual posted tax.
+    // Source of truth for tax = the CGST/SGST/IGST posted on the invoice ledgers
+    // (the invoice totals), NOT the per-item master rate. The sync currently stores
+    // tax_rate=0 on every line, so per-item rates fall back to the stock-item master,
+    // which can disagree with the rate actually billed (e.g. footwear master=12% but
+    // the invoice was billed 5% flat). When item rates are missing OR their implied
+    // tax diverges from the posted tax, we distribute the ACTUAL posted tax
+    // proportionally so the HSN table always reconciles to the top CGST/SGST boxes
+    // and the grand total.
     const hsnSummary = useMemo(() => {
         const summary = {};
         let totalTaxable = 0;
 
-        // First pass: calculate taxable amounts per HSN
+        // First pass: taxable amounts grouped by HSN
         items.forEach(item => {
-            const hsn = item.hsn_code || 'NIL';
+            const hsn = (item.hsn_code && item.hsn_code !== 'NIL' && item.hsn_code.trim().length >= 4) ? item.hsn_code : 'NIL';
             const gstRate = item.gst_rate || 0;
             const key = `${hsn}_${gstRate}`;
             if (!summary[key]) {
@@ -344,37 +780,74 @@ export default function InvoicePDFPage() {
             totalTaxable += taxable;
         });
 
-        // Second pass: distribute GST proportionally
-        const invoiceCGST = invoice?.cgst_amount || 0;
-        const invoiceSGST = invoice?.sgst_amount || 0;
-        const invoiceIGST = invoice?.igst_amount || 0;
-        const totalInvoiceGST = invoiceCGST + invoiceSGST + invoiceIGST;
+        const rows = Object.values(summary);
+        const isIGST = !!columnVisibility.isIGST;
 
-        Object.values(summary).forEach(row => {
-            const proportion = totalTaxable > 0 ? row.taxable / totalTaxable : 0;
+        // Posted tax = the invoice's ACTUAL tax (ledger-derived, same source as the top boxes)
+        const invoiceCGST = absNumber(invoice?.cgst_amount) || 0;
+        const invoiceSGST = absNumber(invoice?.sgst_amount) || 0;
+        const invoiceIGST = absNumber(invoice?.igst_amount) || 0;
+        const postedTotal = invoiceCGST + invoiceSGST + invoiceIGST;
 
-            // If items have GST rates, use them; otherwise distribute invoice GST
+        // Tax implied by per-item master rates (only trustworthy when the sync
+        // captured real line rates; currently always 0 -> itemRateTax stays 0).
+        let itemRateTax = 0;
+        rows.forEach(row => {
             if (row.gst_rate > 0) {
-                if (columnVisibility.isIGST) {
+                if (isIGST) {
                     row.igst = (row.taxable * row.gst_rate) / 100;
                 } else {
                     row.cgst = (row.taxable * row.gst_rate) / 200;
-                    row.sgst = (row.taxable * row.gst_rate) / 200;
+                    row.sgst = row.cgst;
                 }
-            } else if (totalInvoiceGST > 0) {
-                // Distribute invoice GST proportionally
-                row.cgst = Math.round(invoiceCGST * proportion * 100) / 100;
-                row.sgst = Math.round(invoiceSGST * proportion * 100) / 100;
-                row.igst = Math.round(invoiceIGST * proportion * 100) / 100;
-                // Calculate effective GST rate
-                const itemGST = row.cgst + row.sgst + row.igst;
-                row.gst_rate = row.taxable > 0 ? Math.round((itemGST / row.taxable) * 100 * 10) / 10 : 0;
+                itemRateTax += row.cgst + row.sgst + row.igst;
             }
-
-            row.total = row.taxable + row.cgst + row.sgst + row.igst;
         });
 
-        return Object.values(summary);
+        // Reconcile: if item rates are missing OR their tax doesn't match what was
+        // actually billed (beyond a ₹1 tolerance), fall back to the posted tax.
+        const TOLERANCE = 1;
+        const needsReconcile = postedTotal > 0 &&
+            (itemRateTax === 0 || Math.abs(itemRateTax - postedTotal) > TOLERANCE);
+
+        if (needsReconcile) {
+            // Distribute the ACTUAL posted tax proportionally, with a residual
+            // adjustment on the largest row so HSN total == posted tax EXACTLY.
+            const distribute = (posted) => {
+                const alloc = {};
+                let sum = 0;
+                rows.forEach(r => {
+                    const part = totalTaxable > 0 ? r.taxable / totalTaxable : 0;
+                    alloc[r.hsn] = round2(posted * part);
+                    sum += alloc[r.hsn];
+                });
+                const residual = round2(posted - sum);
+                if (residual !== 0 && rows.length) {
+                    const biggest = [...rows].sort((a, b) => b.taxable - a.taxable)[0];
+                    alloc[biggest.hsn] = round2(alloc[biggest.hsn] + residual);
+                }
+                return alloc;
+            };
+            const cgstBy = distribute(invoiceCGST);
+            const sgstBy = distribute(invoiceSGST);
+            const igstBy = distribute(invoiceIGST);
+            rows.forEach(row => {
+                row.cgst = cgstBy[row.hsn];
+                row.sgst = sgstBy[row.hsn];
+                row.igst = igstBy[row.hsn];
+                // Effective flat rate that reconciles to the invoice's actual tax
+                const itemGST = row.cgst + row.sgst + row.igst;
+                row.gst_rate = row.taxable > 0 ? round2((itemGST / row.taxable) * 100) : 0;
+                row.total = round2(row.taxable + row.cgst + row.sgst + row.igst);
+            });
+        } else {
+            // Item rates reconcile with posted tax (or no posted tax) -> keep them.
+            rows.forEach(row => {
+                row.total = round2(row.taxable + row.cgst + row.sgst + row.igst);
+            });
+        }
+
+        return rows;
     }, [items, invoice, columnVisibility.isIGST]);
 
     const formatCurrency = (amount) => {
@@ -449,7 +922,27 @@ export default function InvoicePDFPage() {
         const midX = margin + (pageWidth - 2 * margin) * 0.55; // 55% Left, 45% Right for better balance
         doc.line(midX, y, midX, y + headerH);
 
-        // LEFT: Company Info
+        // LEFT: Header info — sale = apna company, purchase = supplier (party) upar
+        const vTypePdf = invoice?.voucher_type?.toLowerCase() || '';
+        const isPurchase = vTypePdf.includes('purchase');
+        const isReceiptP = vTypePdf.includes('receipt');
+        const isRcpPayP = vTypePdf.includes('receipt') || vTypePdf.includes('payment');
+        const isDrPdf = (l) => l.is_debit === true || l.is_debit === 'true';
+        const rcpPartyNameP = invoice?.party_ledger_name
+            || ledgerLineEntries.find(l => !isDrPdf(l))?.ledger_name
+            || ledgerLineEntries.find(isDrPdf)?.ledger_name || '';
+        const hfName = isPurchase ? (invoice?.party_ledger_name || 'Supplier') : (companyInfo?.name || 'Company Name');
+        const hfSrc = isPurchase ? {
+            gstin: invoice?.party_gstin,
+            state: invoice?.party_state || invoice?.place_of_supply,
+            phone: null,
+            address: invoice?.party_address
+        } : {
+            gstin: companyInfo?.gstin,
+            state: companyInfo?.state,
+            phone: companyInfo?.phone,
+            address: companyInfo?.address
+        };
         let leftY = y + 5;
         const leftX = margin + 4;
         const maxLeftW = midX - leftX - 2;
@@ -457,36 +950,34 @@ export default function InvoicePDFPage() {
         doc.setFontSize(12); // Slightly smaller but bold
         doc.setFont('helvetica', 'bold');
 
-        // Handle long company names by wrapping
-        const companyName = companyInfo?.name || 'Company Name';
-        const nameLines = doc.splitTextToSize(companyName, maxLeftW);
+        // Handle long names by wrapping
+        const nameLines = doc.splitTextToSize(hfName, maxLeftW);
         doc.text(nameLines, leftX, leftY);
         leftY += (nameLines.length * 5); // Dynamic height adjustment
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        if (companyInfo?.phone) {
-            doc.text(`Contact: ${companyInfo.phone}`, leftX, leftY);
+        if (hfSrc.phone) {
+            doc.text(`Contact: ${hfSrc.phone}`, leftX, leftY);
             leftY += 4;
         }
-        if (companyInfo?.gstin) {
-            doc.text(`GSTIN/UIN: ${companyInfo.gstin}`, leftX, leftY);
+        if (hfSrc.gstin) {
+            doc.text(`GSTIN/UIN: ${hfSrc.gstin}`, leftX, leftY);
             leftY += 4;
         }
-        if (companyInfo?.state) {
-            doc.text(`State: ${companyInfo.state}`, leftX, leftY);
+        if (hfSrc.state) {
+            doc.text(`State: ${hfSrc.state}`, leftX, leftY);
             leftY += 4;
         }
-        if (companyInfo?.address) {
-            const addrLines = doc.splitTextToSize(companyInfo.address, maxLeftW);
+        if (hfSrc.address) {
+            const addrLines = doc.splitTextToSize(hfSrc.address, maxLeftW);
             doc.text(addrLines, leftX, leftY);
         }
 
         // RIGHT: Invoice Title & Details
         let rightY = y + 6;
         const rightX = midX + 4;
-        const isPurchase = invoice?.voucher_type?.toLowerCase().includes('purchase') || invoice?.voucher_type?.toLowerCase().includes('payment');
-        const title = isPurchase ? 'PURCHASE VOUCHER' : 'TAX INVOICE';
+        const title = isRcpPayP ? (isReceiptP ? 'RECEIPT VOUCHER' : 'PAYMENT VOUCHER') : (isPurchase ? 'PURCHASE VOUCHER' : 'TAX INVOICE');
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
@@ -523,11 +1014,15 @@ export default function InvoicePDFPage() {
         // --- BORDERS & GRID ---
         const contentStartY = y;
 
-        // --- BILL TO / BUYER SECTION ---
-        // Auto-calculate height based on address length
+        // --- SECOND INFO BAND: sale = Buyer (party), purchase = apna firm details ---
         doc.setFontSize(9);
-        const partyAddrLines = invoice?.party_address ? doc.splitTextToSize(invoice.party_address, pageWidth - 2 * margin - 10) : [];
-        const partySectionH = Math.max(25, 15 + (partyAddrLines.length * 4)); // Compact dynamic height
+        const bandName = isPurchase ? (companyInfo?.name || 'Purchaser') : (invoice?.party_ledger_name || 'Cash');
+        const bandGstin = isPurchase ? companyInfo?.gstin : invoice?.party_gstin;
+        const bandState = isPurchase ? companyInfo?.state : (invoice?.party_state || invoice?.place_of_supply);
+        const bandPhone = isPurchase ? companyInfo?.phone : null;
+        const bandAddr = isPurchase ? companyInfo?.address : invoice?.party_address;
+        const bandAddrLines = bandAddr ? doc.splitTextToSize(bandAddr, pageWidth - 2 * margin - 10) : [];
+        const partySectionH = Math.max(25, 15 + (bandAddrLines.length * 4)); // Compact dynamic height
 
         doc.rect(margin, y, pageWidth - 2 * margin, partySectionH);
 
@@ -536,38 +1031,43 @@ export default function InvoicePDFPage() {
 
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
-        const partyLabel = isPurchase ? 'SUPPLIER (BILL FROM)' : 'BUYER (BILL TO)';
+        const partyLabel = isPurchase ? 'FIRM DETAILS (PURCHASER)' : isRcpPayP ? (isReceiptP ? 'PARTY (RECEIVED FROM)' : 'PARTY (PAID TO)') : 'BUYER (BILL TO)';
         doc.text(partyLabel, leftX, partyY);
         partyY += 5;
 
         doc.setFontSize(10);
-        doc.text(invoice?.party_ledger_name || 'Cash', leftX, partyY);
+        doc.text(bandName, leftX, partyY);
         partyY += 5;
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        if (partyAddrLines.length > 0) {
-            doc.text(partyAddrLines, leftX, partyY);
-            partyY += (partyAddrLines.length * 4);
+        if (bandAddrLines.length > 0) {
+            doc.text(bandAddrLines, leftX, partyY);
+            partyY += (bandAddrLines.length * 4);
         }
 
         partyY += 2;
-        if (invoice?.party_gstin) {
+        if (bandPhone) {
             doc.setFont('helvetica', 'bold');
-            doc.text(`GSTIN/UIN: ${invoice.party_gstin}`, leftX, partyY);
-            if (invoice?.party_state || invoice?.place_of_supply) {
-                doc.text(`State Name: ${invoice?.party_state || invoice?.place_of_supply}`, leftX + 80, partyY);
+            doc.text(`Contact: ${bandPhone}`, leftX, partyY);
+            partyY += 4;
+        }
+        if (bandGstin) {
+            doc.text(`GSTIN/UIN: ${bandGstin}`, leftX, partyY);
+            if (bandState) {
+                doc.text(`State Name: ${bandState}`, leftX + 80, partyY);
             }
             doc.setFont('helvetica', 'normal');
         }
 
         y += partySectionH; // Move Y past party section
 
+        if (!isRcpPayP) {
         // --- ITEMS TABLE ---
         const hasItems = items.length > 0;
         const _hasHSN = hasItems && items.some(i => i.hsn_code);
         const _hasGST = hasItems;
-        const _hasDisc = hasItems && items.some(i => Number(i.discount) > 0 || Number(i.discount_percent) > 0);
+        const _hasDisc = columnVisibility.hasDiscount;
 
         const tableColumns = [
             { header: 'SI No.', dataKey: 'sno' },
@@ -658,6 +1158,44 @@ export default function InvoicePDFPage() {
 
         y += 6;
         doc.line(margin, y, pageWidth - margin, y);
+        } else {
+            // --- RECEIPT/PAYMENT: Dr/Cr particulars table ---
+            const rcpRows = ledgerLineEntries.filter(l => l.ledger_name && Math.abs(Number(l.amount) || 0) > 0);
+            const drTotal = rcpRows.filter(isDrPdf).reduce((s, l) => s + Math.abs(Number(l.amount) || 0), 0);
+            const crTotal = rcpRows.filter(l => !isDrPdf(l)).reduce((s, l) => s + Math.abs(Number(l.amount) || 0), 0);
+            autoTable(doc, {
+                startY: y,
+                head: [['Particulars', 'Debit (Dr)', 'Credit (Cr)']],
+                body: rcpRows.length === 0 ? [['No ledger entries', '', '']] : rcpRows.map(l => {
+                    const dr = isDrPdf(l);
+                    const amt = Math.abs(Number(l.amount) || 0);
+                    return [dr ? `Dr ${l.ledger_name}` : `${l.ledger_name} Cr`, dr ? formatNumber(amt) : '', !dr ? formatNumber(amt) : ''];
+                }),
+                foot: [['Total', formatNumber(drTotal), formatNumber(crTotal)]],
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, valign: 'middle' },
+                headStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0] },
+                footStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
+                columnStyles: {
+                    0: { halign: 'left' },
+                    1: { halign: 'right', cellWidth: 40 },
+                    2: { halign: 'right', cellWidth: 40 }
+                }
+            });
+            y = doc.lastAutoTable.finalY;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const stmtLine = isReceiptP
+                ? `Received with thanks from ${rcpPartyNameP} a sum of Rs. ${formatNumber(invoice?.net_amount || 0)}${invoice?.payment_mode ? ` by ${invoice.payment_mode}` : ''}`
+                : `Paid to ${rcpPartyNameP} a sum of Rs. ${formatNumber(invoice?.net_amount || 0)}${invoice?.payment_mode ? ` by ${invoice.payment_mode}` : ''}`;
+            doc.text(doc.splitTextToSize(stmtLine, pageWidth - 2 * margin), margin + 2, y + 7);
+            y += 11;
+            if (invoice?.narration) {
+                doc.setFontSize(8);
+                doc.text(doc.splitTextToSize(`Narration: ${invoice.narration}`, pageWidth - 2 * margin), margin + 2, y + 2);
+                y += 7;
+            }
+        }
 
         // --- AMOUNT IN WORDS & TAXES ---
         const bottomSectionStart = y;
@@ -678,7 +1216,7 @@ export default function InvoicePDFPage() {
         doc.line(rightXStart, y, rightXStart, y + 40);
 
         const drawTaxRow = (label, amount) => {
-            if (amount > 0) {
+            if (amount !== 0) {
                 doc.setFont('helvetica', 'normal');
                 doc.text(label, rightXStart + 2, taxY + 3);
                 doc.setFont('helvetica', 'bold');
@@ -690,6 +1228,7 @@ export default function InvoicePDFPage() {
         if (invoice?.cgst_amount) drawTaxRow('CGST Amount', invoice.cgst_amount);
         if (invoice?.sgst_amount) drawTaxRow('SGST Amount', invoice.sgst_amount);
         if (invoice?.igst_amount) drawTaxRow('IGST Amount', invoice.igst_amount);
+        if (invoice?.discount_amount) drawTaxRow('Discount', -Math.abs(invoice.discount_amount)); // Show as negative
         if (invoice?.round_off) drawTaxRow('Round Off', invoice.round_off);
 
         // Grand Total Line
@@ -858,41 +1397,52 @@ export default function InvoicePDFPage() {
     };
 
     const handleWhatsAppShare = () => {
-        const message = `*TAX INVOICE*
-    ━━━━━━━━━━━━━━━━━━━
-    📋 *Invoice #${invoice?.invoice_number}*
-    📅 Date: ${formatDate(invoice?.invoice_date)}
-
-    🏢 *From:*
-    ${companyInfo?.name}
-    GSTIN: ${companyInfo?.gstin || 'N/A'}
-
-    👤 *To:*
-    ${invoice?.party_ledger_name}
-    GSTIN: ${invoice?.party_gstin || 'N/A'}
-
-    ━━━━━━━━━━━━━━━━━━━
-    💰 *Amount Details:*
-
-    Taxable: ${formatCurrency(invoice?.taxable_amount)}
-    ${invoice?.cgst_amount > 0 ? `CGST: ${formatCurrency(invoice?.cgst_amount)}` : ''}
-    ${invoice?.sgst_amount > 0 ? `SGST: ${formatCurrency(invoice?.sgst_amount)}` : ''}
-    ${invoice?.igst_amount > 0 ? `IGST: ${formatCurrency(invoice?.igst_amount)}` : ''}
-    ━━━━━━━━━━━━━━━━━━━
-    *TOTAL: ${formatCurrency(invoice?.net_amount)}*
-    ━━━━━━━━━━━━━━━━━━━
-
-    Thank you for your business! 🙏
-    Generated via JLS BillBook`;
-
-        window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+        if (!invoice) return;
+        const voucherData = {
+            id: invoice.id || id,
+            voucher_number: invoice.invoice_number,
+            voucher_date: invoice.invoice_date,
+            voucher_type: invoice.voucher_type || 'Sales',
+            party_name: invoice.party_ledger_name,
+            party_gstin: invoice.party_gstin,
+            party_phone: invoice.party_phone || invoice.phone,
+            party_address: invoice.party_address,
+            taxable_amount: invoice.taxable_amount,
+            cgst_amount: invoice.cgst_amount,
+            sgst_amount: invoice.sgst_amount,
+            igst_amount: invoice.igst_amount,
+            round_off: invoice.round_off,
+            grand_total: invoice.net_amount,
+            narration: invoice.narration,
+            items: (items || []).map(i => ({
+                name: i.stock_item_name || i.item_name || i.name || 'Item',
+                quantity: i.quantity,
+                unit: i.unit || '',
+                rate: i.rate || 0,
+                amount: i.amount || (Number(i.quantity) * Number(i.rate)),
+                gstRate: i.gst_rate || 0,
+                hsnCode: i.hsn_code || '',
+                discount: i.discount_percent || i.discount || 0
+            }))
+        };
+        shareVoucherOnWhatsApp(voucherData, {
+            name: companyInfo?.name || selectedCompany?.name,
+            gstin: companyInfo?.gstin || selectedCompany?.gstin,
+            phone: companyInfo?.phone || companyInfo?.phone_number || selectedCompany?.phone,
+            address: companyInfo?.address || selectedCompany?.address,
+            state: companyInfo?.state || selectedCompany?.state,
+            bank_name: companyInfo?.bank_name || (companyInfo?.bank_details ? String(companyInfo.bank_details) : ''),
+            account_number: companyInfo?.bank_account || '',
+            ifsc_code: companyInfo?.bank_ifsc || '',
+            upi_id: upiId || companyInfo?.upi_id || ''
+        });
     };
 
     if (!selectedCompany) {
         return <div className="page-m3 flex justify-center items-center"><p>Please select a company first</p></div>;
     }
 
-    if (loading) {
+    if (loading && !invoice) {
         return (
             <div className="page-m3">
                 <div className="page-m3__loading">
@@ -908,211 +1458,290 @@ export default function InvoicePDFPage() {
     }
 
     const totalQty = items.reduce((sum, i) => sum + (i.quantity || 0), 0);
+    const vTypeL = (invoice?.voucher_type || '').toLowerCase();
+    const isPurchaseVch = vTypeL.includes('purchase');
+    const isReceiptVch = vTypeL.includes('receipt');
+    const isRcpPay = vTypeL.includes('receipt') || vTypeL.includes('payment');
+    // Receipt/Payment: Dr/Cr ledger lines (Tally voucher view)
+    const isDrRow = (l) => l.is_debit === true || l.is_debit === 'true';
+    const rcpLedgers = ledgerLineEntries.filter(l => l.ledger_name && Math.abs(Number(l.amount) || 0) > 0);
+    const rcpDrTotal = rcpLedgers.filter(isDrRow).reduce((s, l) => s + Math.abs(Number(l.amount) || 0), 0);
+    const rcpCrTotal = rcpLedgers.filter(l => !isDrRow(l)).reduce((s, l) => s + Math.abs(Number(l.amount) || 0), 0);
+    const rcpParty = invoice?.party_ledger_name
+        || rcpLedgers.find(l => !isDrRow(l))?.ledger_name
+        || rcpLedgers.find(isDrRow)?.ledger_name || '';
 
     return (
         <div className="bg-[#f8f9fa] min-h-screen pb-10 font-sans">
             {/* Header Actions Portal */}
+            <HeaderPortal type="title">
+                <div className="flex flex-col">
+                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Invoice #{invoice?.invoice_number}</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{invoice?.voucher_type} - {formatDate(invoice?.invoice_date)}</p>
+                </div>
+            </HeaderPortal>
+
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-1 md:gap-2">
                     <button
                         onClick={handleWhatsAppShare}
-                        className="p-2 md:px-4 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="WhatsApp Share"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="WhatsApp"
                     >
-                        <MessageCircle size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">WhatsApp</span>
+                        <MessageCircle size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">WhatsApp</span>
                     </button>
                     <button
                         onClick={() => generatePDF('share')}
-                        className="p-2 md:px-4 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="Share PDF"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Share"
                     >
-                        <Share size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Share</span>
+                        <Share size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Share</span>
+                    </button>
+                    <button
+                        onClick={() => generatePDF('download')}
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Download"
+                    >
+                        <Download size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
                     </button>
                     <button
                         onClick={() => navigate(`/edit-invoice/${id}`)}
-                        className="p-2 md:px-4 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-all active:scale-95"
-                        title="Edit Invoice"
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Edit"
                     >
-                        <Edit size={18} />
-                        <span className="hidden md:inline text-xs font-bold uppercase tracking-wider">Edit</span>
+                        <Edit size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
                     </button>
                 </div>
             </HeaderPortal>
 
-            {/* Sticky Local Header */}
-            <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 py-3 mb-6 flex items-center justify-between">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
-                    <ArrowLeft size={20} className="text-gray-600" />
-                </button>
-                <div className="flex-1 px-4">
-                    <h1 className="text-sm font-black text-gray-800 uppercase tracking-widest">Invoice #{invoice.invoice_number}</h1>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{invoice.voucher_type} • {formatDate(invoice.invoice_date)}</p>
-                </div>
-                <button
-                    onClick={() => generatePDF('download')}
-                    className="p-2 rounded-full hover:bg-gray-100 transition-colors text-blue-500"
-                    title="Download"
-                >
-                    <Download size={20} />
-                </button>
-            </div>
-
             {/* Universal Document Preview (Scales for Mobile) */}
-            <div className="w-full flex justify-center items-start p-0 md:p-8 overflow-hidden" style={{ minHeight: containerHeight }}>
-                <div
-                    className="relative"
-                    style={{
-                        width: `${210 * scale}mm`,
-                        height: containerHeight === 'auto' ? 'auto' : containerHeight,
-                    }}
-                >
+            <div className="w-full flex justify-center items-start overflow-hidden">
+                <div className="relative w-full">
                     <div
-                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content"
+                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900 mx-auto"
                         style={{
-                            width: '210mm',
-                            minHeight: '297mm',
-                            transform: `scale(${scale})`,
-                            transformOrigin: 'top left',
-                            transition: 'transform 0.2s ease-out'
+                            width: isMobile ? '100%' : `${210 * scale}mm`,
+                            transformOrigin: 'top center',
+                            transition: 'width 0.2s ease-out',
+                            color: '#0f172a',
+                            WebkitTextFillColor: '#0f172a'
                         }}
                     >
-                        <div className="p-8 h-full flex flex-col relative">
+                        <div className={`${isMobile ? 'p-2' : 'p-6 md:p-8'} h-full flex flex-col relative`}>
                             {/* Tally Style Border Container */}
-                            <div className="border-2 border-black h-full flex flex-col">
+                            <div className="border-2 border-black h-full flex flex-col text-[10px] md:text-xs">
 
-                                {/* Header Section — Tally Style: Only show fields that have data */}
-                                <div className="grid grid-cols-2 border-b-2 border-black">
-                                    {/* Company Info - Left */}
-                                    <div className="p-4 border-r-2 border-black flex flex-col justify-center">
-                                        <h1 className="text-xl font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
-
-                                        {(companyInfo?.address) && (
-                                            <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
-                                                {companyInfo?.address}
-                                            </p>
-                                        )}
-
-                                        <div className="text-xs space-y-0.5">
-                                            {(companyInfo?.gstin) && (
-                                                <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
-                                            )}
-                                            {(companyInfo?.state) && (
-                                                <p><span className="font-semibold">State Name:</span> {companyInfo.state}</p>
-                                            )}
-                                            {(companyInfo?.email) && (
-                                                <p><span className="font-semibold">E-Mail:</span> {companyInfo.email}</p>
-                                            )}
-                                            {(companyInfo?.phone) && (
-                                                <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
-                                            )}
+                                {/* Header Section - Tally Style: Only show fields that have data */}
+                                <div className="border-b-2 border-black">
+                                    {/* Mobile: All-in-one compact row */}
+                                    <div className="md:hidden">
+                                        <div className="flex items-center justify-between p-1 border-b border-black bg-gray-50">
+                                            <span className="text-[8px] font-bold uppercase">{isPurchaseVch ? 'Purchase Voucher' : 'Tax Invoice'}</span>
+                                            <span className="text-[7px] font-bold">#{invoice.invoice_number}</span>
+                                            <span className="text-[7px]">{formatDate(invoice.invoice_date)}</span>
                                         </div>
-                                    </div>
-
-                                    {/* Invoice Info - Right (Tally: only show filled fields) */}
-                                    <div className="flex flex-col">
-                                        <div className="p-2 border-b-2 border-black text-center bg-gray-50">
-                                            <h2 className="text-base font-bold uppercase tracking-wider">
-                                                {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
-                                            </h2>
-                                        </div>
-                                        <div className="flex-grow text-xs">
-                                            {/* Invoice No & Date — always shown */}
-                                            <div className="grid grid-cols-2">
-                                                <div className="p-2 border-r border-black border-b border-black">
-                                                    <p className="font-semibold">Invoice No.</p>
-                                                    <p className="font-bold text-sm">{invoice.invoice_number}</p>
-                                                </div>
-                                                <div className="p-2 border-b border-black">
-                                                    <p className="font-semibold">Dated</p>
-                                                    <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
-                                                </div>
+                                        <div className="grid grid-cols-[1fr_auto] gap-x-2 p-1">
+                                            <div className="min-w-0">
+                                                {isPurchaseVch ? (
+                                                    <>
+                                                        <p className="text-[9px] font-black uppercase truncate">{invoice.party_ledger_name}</p>
+                                                        {invoice.party_gstin && <p className="text-[7px]"><span className="font-semibold">GSTIN:</span> {invoice.party_gstin}</p>}
+                                                        {(invoice.party_state || invoice.place_of_supply) && <p className="text-[7px]">{invoice.party_state || invoice.place_of_supply}</p>}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-[9px] font-black uppercase truncate">{companyInfo?.name}</p>
+                                                        {companyInfo?.gstin && <p className="text-[7px]"><span className="font-semibold">GSTIN:</span> {companyInfo.gstin}</p>}
+                                                        {companyInfo?.state && <p className="text-[7px]">{companyInfo.state}</p>}
+                                                    </>
+                                                )}
                                             </div>
-                                            {/* Only show Delivery Note / Mode of Payment if data exists */}
-                                            {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
-                                                <div className="grid grid-cols-2">
-                                                    {invoice.delivery_note ? (
-                                                        <div className="p-2 border-r border-black border-b border-black">
-                                                            <p className="font-semibold">Delivery Note</p>
-                                                            <p>{invoice.delivery_note}</p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="p-2 border-r border-black border-b border-black"></div>
+                                            <div className="text-right text-[7px] space-y-px">
+                                                {companyInfo?.address && <p className="truncate max-w-[120px]">{companyInfo.address}</p>}
+                                                {invoice.payment_mode && <p className="font-semibold">{invoice.payment_mode}</p>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Desktop: Full Tally-style layout */}
+                                    <div className="hidden md:grid md:grid-cols-2">
+                                        {/* Header-left: sale firm info, purchase me party (supplier) upar */}
+                                        <div className={`p-4 border-r-2 border-black flex flex-col justify-center ${isPurchaseVch ? 'bg-gray-50' : ''}`}>
+                                            {isPurchaseVch ? (
+                                                <>
+                                                    <div className="text-[10px] font-bold text-gray-500 border-b border-gray-300 mb-1">Party (Supplier)</div>
+                                                    <h1 className="text-lg font-bold uppercase tracking-tight mb-1">{invoice.party_ledger_name}</h1>
+                                                    {invoice.party_address && <p className="text-xs whitespace-pre-wrap leading-tight mb-2">{invoice.party_address}</p>}
+                                                    <div className="text-xs space-y-0">
+                                                        {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
+                                                        {(invoice.party_state || invoice.place_of_supply) && <p><span className="font-semibold">State:</span> {invoice.party_state || invoice.place_of_supply}</p>}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <h1 className="text-lg font-bold uppercase tracking-tight mb-1">{companyInfo?.name}</h1>
+                                                    {(companyInfo?.address) && (
+                                                        <p className="text-xs whitespace-pre-wrap leading-tight mb-2">
+                                                            {companyInfo?.address}
+                                                        </p>
                                                     )}
-                                                    <div className="p-2 border-b border-black">
-                                                        <p className="font-semibold">Mode/Terms</p>
-                                                        <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                    <div className="text-xs space-y-0">
+                                                        {(companyInfo?.gstin) && (
+                                                            <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>
+                                                        )}
+                                                        {(companyInfo?.state) && (
+                                                            <p><span className="font-semibold">State:</span> {companyInfo.state}</p>
+                                                        )}
+                                                        {(companyInfo?.email) && (
+                                                            <p><span className="font-semibold">Email:</span> {companyInfo.email}</p>
+                                                        )}
+                                                        {(companyInfo?.phone) && (
+                                                            <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>
+                                                        )}
                                                     </div>
-                                                </div>
+                                                </>
                                             )}
-                                            {/* Buyer's Order — only if exists */}
-                                            {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
+                                        </div>
+
+                                        {/* Invoice Info - Right (Tally: only show filled fields) */}
+                                        <div className="flex flex-col">
+                                            <div className="p-2 border-b-2 border-black text-center bg-gray-50">
+                                                <h2 className="text-base font-bold uppercase tracking-wider">
+                                                    {invoice.voucher_type?.toLowerCase().includes('purchase') ? 'Purchase Voucher' : 'Tax Invoice'}
+                                                </h2>
+                                            </div>
+                                            <div className="flex-grow text-xs">
+                                                {/* Invoice No & Date - always shown */}
                                                 <div className="grid grid-cols-2">
-                                                    <div className="p-2 border-r border-black">
-                                                        {invoice.buyers_order_number && (
-                                                            <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
-                                                        )}
-                                                        {invoice.dispatch_through && (
-                                                            <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
-                                                        )}
+                                                    <div className="p-2 border-r border-black border-b border-black">
+                                                        <p className="font-semibold">Invoice No.</p>
+                                                        <p className="font-bold text-sm">{invoice.invoice_number}</p>
                                                     </div>
-                                                    <div className="p-2">
-                                                        {invoice.destination && (
-                                                            <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
-                                                        )}
+                                                    <div className="p-2 border-b border-black">
+                                                        <p className="font-semibold">Dated</p>
+                                                        <p className="font-bold">{formatDate(invoice.invoice_date)}</p>
                                                     </div>
                                                 </div>
-                                            )}
+                                                {/* Only show Delivery Note / Mode of Payment if data exists */}
+                                                {(invoice.delivery_note || invoice.payment_mode || invoice.voucher_type) && (
+                                                    <div className="grid grid-cols-2">
+                                                        {invoice.delivery_note ? (
+                                                            <div className="p-2 border-r border-black border-b border-black">
+                                                                <p className="font-semibold">Delivery Note</p>
+                                                                <p>{invoice.delivery_note}</p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-2 border-r border-black border-b border-black"></div>
+                                                        )}
+                                                        <div className="p-2 border-b border-black">
+                                                            <p className="font-semibold">Mode/Terms</p>
+                                                            <p>{invoice.payment_mode || invoice.voucher_type}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {/* Buyer's Order - only if exists */}
+                                                {(invoice.buyers_order_number || invoice.dispatch_through || invoice.destination) && (
+                                                    <div className="grid grid-cols-2">
+                                                        <div className="p-2 border-r border-black">
+                                                            {invoice.buyers_order_number && (
+                                                                <><p className="font-semibold">Buyer's Order No.</p><p>{invoice.buyers_order_number}</p></>
+                                                            )}
+                                                            {invoice.dispatch_through && (
+                                                                <><p className="font-semibold mt-1">Dispatch Through</p><p>{invoice.dispatch_through}</p></>
+                                                            )}
+                                                        </div>
+                                                        <div className="p-2">
+                                                            {invoice.destination && (
+                                                                <><p className="font-semibold">Destination</p><p>{invoice.destination}</p></>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Buyer Info */}
+                                {!isRcpPay && (<>
+                                {/* Band below header: sale = Buyer (party), purchase = Firm details (apna) */}
                                 <div className="border-b-2 border-black p-0">
-                                    <div className="bg-gray-100 px-2 py-1 text-xs font-bold border-b border-black uppercase">Buyer (Bill to)</div>
-                                    <div className="p-3 text-xs">
-                                        <p
-                                            className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
-                                            onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
-                                        >
-                                            {invoice.party_ledger_name}
-                                        </p>
-                                        <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
-                                        <div className="flex gap-4 mt-2">
-                                            {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
-                                            {(invoice.party_state || invoice.place_of_supply) && (
-                                                <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
+                                    {/* Mobile: Compact single-line */}
+                                    <div className="md:hidden flex items-center justify-between p-1 bg-gray-100 border-b border-black">
+                                        <div className="min-w-0 flex-1">
+                                            <span className="text-[7px] font-bold uppercase">{isPurchaseVch ? 'Purchaser: ' : 'Buyer: '}</span>
+                                            <span className="text-[8px] font-black uppercase truncate">{isPurchaseVch ? (companyInfo?.name || '') : invoice.party_ledger_name}</span>
+                                            {isPurchaseVch
+                                                ? companyInfo?.gstin && <span className="text-[7px] ml-1">GSTIN: {companyInfo.gstin}</span>
+                                                : invoice.party_gstin && <span className="text-[7px] ml-1">GSTIN: {invoice.party_gstin}</span>}
+                                        </div>
+                                        {!isPurchaseVch && (invoice.party_state || invoice.place_of_supply) && (
+                                            <span className="text-[7px] shrink-0 ml-1">{invoice.party_state || invoice.place_of_supply}</span>
+                                        )}
+                                    </div>
+                                    {/* Desktop: Full details */}
+                                    <div className="hidden md:block">
+                                        <div className="bg-gray-100 px-2 py-1 text-[10px] font-bold border-b border-black uppercase">{isPurchaseVch ? 'Firm Details (Purchaser)' : 'Buyer (Bill to)'}</div>
+                                        <div className="p-2 text-[10px]">
+                                            {isPurchaseVch ? (
+                                                <>
+                                                    <p className="font-bold text-sm uppercase">{companyInfo?.name}</p>
+                                                    <p className="whitespace-pre-wrap max-w-md my-1">{companyInfo?.address || ''}</p>
+                                                    <div className="flex gap-4 mt-2">
+                                                        {companyInfo?.gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {companyInfo.gstin}</p>}
+                                                        {companyInfo?.phone && <p><span className="font-semibold">Contact:</span> {companyInfo.phone}</p>}
+                                                        {companyInfo?.email && <p><span className="font-semibold">Email:</span> {companyInfo.email}</p>}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p
+                                                        className="font-bold text-sm uppercase cursor-pointer hover:text-blue-600 transition-colors"
+                                                        onClick={() => invoice.party_ledger_id && navigate(`/ledgers/${invoice.party_ledger_id}`)}
+                                                    >
+                                                        {invoice.party_ledger_name}
+                                                    </p>
+                                                    <p className="whitespace-pre-wrap max-w-md my-1">{invoice.party_address || ''}</p>
+                                                    <div className="flex gap-4 mt-2">
+                                                        {invoice.party_gstin && <p><span className="font-semibold">GSTIN/UIN:</span> {invoice.party_gstin}</p>}
+                                                        {(invoice.party_state || invoice.place_of_supply) && (
+                                                            <p><span className="font-semibold">State Name:</span> {invoice.party_state || invoice.place_of_supply}</p>
+                                                        )}
+                                                    </div>
+                                                </>
                                             )}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Items Table — Tally Style: only show columns that have data */}
-                                <div className="flex-grow flex flex-col border-b-2 border-black relative">
+                                {/* Items Table - Tally Style: only show columns that have data */}
+                                <div className="flex-grow flex flex-col border-b-2 border-black relative overflow-x-auto">
                                     {/* Table Header */}
-                                    <div className="flex text-xs font-bold border-b border-black text-center bg-gray-50">
-                                        <div className="w-10 p-2 border-r border-black">SI No.</div>
-                                        <div className="flex-1 p-2 border-r border-black text-left">Description of Goods</div>
-                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black">HSN/SAC</div>}
-                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black">GST Rate</div>}
-                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black">Quantity</div>}
-                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black">Rate</div>}
-                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black">Per</div>}
-                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black">Disc %</div>}
-                                        <div className="w-24 p-2 text-right">Amount</div>
+                                    <div className={`flex text-[7px] md:text-[10px] font-bold border-b border-black text-center bg-gray-50 ${isMobile ? 'overflow-x-auto' : 'min-w-[400px]'}`}>
+                                        <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black">#</div>
+                                        <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black text-left">Description</div>
+                                        {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden sm:block">HSN</div>}
+                                        {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black hidden md:block">GST</div>}
+                                        {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black">Qty</div>}
+                                        {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black">Rate</div>}
+                                        {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black">Per</div>}
+                                        {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden lg:block">Disc</div>}
+                                        <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right">Amount</div>
                                     </div>
 
                                     {/* Table Body - Rows */}
-                                    <div className="flex-grow text-xs relative">
+                                    <div className={`flex-grow text-[8px] md:text-[10px] relative ${isMobile ? '' : 'min-w-[400px]'}`}>
                                         {items.map((item, idx) => {
                                             const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
                                             const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
 
                                             return (
                                                 <div key={idx} className="flex border-b border-gray-300 last:border-0 sticky-row">
-                                                    <div className="w-10 p-2 border-r border-black text-center">{idx + 1}</div>
-                                                    <div className="flex-1 p-2 border-r border-black font-semibold text-left">
+                                                    <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center">{idx + 1}</div>
+                                                    <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black font-semibold text-left">
                                                         <span
                                                             className="cursor-pointer hover:text-blue-600 transition-colors"
                                                             onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
@@ -1120,73 +1749,142 @@ export default function InvoicePDFPage() {
                                                             {item.stock_item_name}
                                                         </span>
                                                     </div>
-                                                    {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black text-center">{item.hsn_code || ''}</div>}
-                                                    {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black text-center">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
-                                                    {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{item.quantity}</div>}
-                                                    {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black text-right">{formatNumber(item.rate)}</div>}
-                                                    {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black text-center">{item.unit}</div>}
-                                                    {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black text-right">
+                                                    {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black text-center hidden sm:block">{item.hsn_code || ''}</div>}
+                                                    {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black text-center hidden md:block">{displayGstRate > 0 ? `${displayGstRate}%` : ''}</div>}
+                                                    {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black text-center font-bold">{item.quantity}</div>}
+                                                    {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black text-right">{formatNumber(item.rate)}</div>}
+                                                    {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center">{item.unit}</div>}
+                                                    {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black text-right hidden lg:block">
                                                         {(Number(item.discount) > 0 || Number(item.discount_percent) > 0) ? (item.discount || item.discount_percent) + '%' : ''}
                                                     </div>}
-                                                    <div className="w-24 p-2 text-right font-bold">{formatNumber(item.amount)}</div>
+                                                    <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right font-bold">{formatNumber(item.amount)}</div>
                                                 </div>
                                             );
                                         })}
                                     </div>
 
                                     {/* Totals Row */}
-                                    <div className="flex border-t-2 border-black font-bold text-xs bg-gray-50">
-                                        <div className="w-10 p-2 border-r border-black text-center"></div>
-                                        <div className="flex-1 p-2 border-r border-black text-right font-bold">Total</div>
-                                        {columnVisibility.hasHSN && <div className="w-16 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasGST && <div className="w-12 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasQty && <div className="w-14 p-2 border-r border-black text-center font-bold">{totalQty}</div>}
-                                        {columnVisibility.hasRate && <div className="w-20 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasUnit && <div className="w-10 p-2 border-r border-black"></div>}
-                                        {columnVisibility.hasDiscount && <div className="w-16 p-2 border-r border-black"></div>}
-                                        <div className="w-24 p-2 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
+                                    <div className="flex border-t-2 border-black font-bold text-[8px] md:text-[10px] bg-gray-50">
+                                        <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black text-center"></div>
+                                        <div className="flex-1 min-w-[60px] p-0.5 md:p-1.5 border-r border-black text-right font-bold">Total</div>
+                                        {columnVisibility.hasHSN && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden sm:block"></div>}
+                                        {columnVisibility.hasGST && <div className="w-7 md:w-12 p-0.5 md:p-1.5 border-r border-black hidden md:block"></div>}
+                                        {columnVisibility.hasQty && <div className="w-7 md:w-14 p-0.5 md:p-1.5 border-r border-black text-center font-bold">{totalQty}</div>}
+                                        {columnVisibility.hasRate && <div className="w-10 md:w-20 p-0.5 md:p-1.5 border-r border-black"></div>}
+                                        {columnVisibility.hasUnit && <div className="w-5 md:w-10 p-0.5 md:p-1.5 border-r border-black hidden md:block"></div>}
+                                        {columnVisibility.hasDiscount && <div className="w-8 md:w-16 p-0.5 md:p-1.5 border-r border-black hidden lg:block"></div>}
+                                        <div className="w-12 md:w-24 p-0.5 md:p-1.5 text-right font-bold">{formatNumber(invoice.taxable_amount)}</div>
                                     </div>
                                 </div>
 
                                 {/* Bottom Section: Words & Tax Breakdown */}
-                                <div className="grid grid-cols-2 border-b-2 border-black text-xs">
+                                <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-black text-[8px] md:text-[10px]">
                                     {/* Left: Amount in Words */}
-                                    <div className="p-2 border-r-2 border-black">
-                                        <p className="text-[10px] text-gray-500 mb-1">Amount Chargeable (in words)</p>
-                                        <p className="font-bold italic text-sm">{numberToWords(invoice.net_amount)}</p>
+                                    <div className="p-1 md:p-2 border-r-0 md:border-r-2 border-black">
+                                        <p className="text-[7px] md:text-[10px] text-gray-500 mb-0.5">Amount Chargeable (in words)</p>
+                                        <p className="font-bold italic text-[9px] md:text-sm">{numberToWords(invoice.net_amount)}</p>
                                     </div>
 
                                     {/* Right: Tax Amounts */}
                                     <div className="text-right">
                                         {invoice.cgst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">CGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.cgst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">CGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.cgst_amount)}</span>
                                             </div>
                                         )}
                                         {invoice.sgst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">SGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.sgst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">SGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.sgst_amount)}</span>
                                             </div>
                                         )}
                                         {invoice.igst_amount > 0 && (
-                                            <div className="flex justify-between p-1.5 border-b border-dotted border-gray-400">
-                                                <span className="italic px-2">IGST Amount</span>
-                                                <span className="font-semibold px-2">{formatNumber(invoice.igst_amount)}</span>
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">IGST Amount</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.igst_amount)}</span>
                                             </div>
                                         )}
-                                        <div className="flex justify-between p-2 bg-gray-100 font-bold text-sm border-t border-black">
+                                        {columnVisibility.hasRoundOff && (
+                                            <div className="flex justify-between p-0.5 md:p-1.5 border-b border-dotted border-gray-400">
+                                                <span className="italic px-1 md:px-2">Round Off</span>
+                                                <span className="font-semibold px-1 md:px-2">{formatNumber(invoice.round_off)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between p-1 md:p-2 bg-gray-100 font-bold text-[9px] md:text-sm border-t border-black">
                                             <span>Total (INR)</span>
-                                            <span>₹ {formatNumber(invoice.net_amount)}</span>
+                                            <span>INR {formatNumber(invoice.net_amount)}</span>
+                                        </div>
+                                </div>
+                                </div>
+                                </>)}
+
+                                {/* Receipt / Payment: Tally-style Dr/Cr voucher */}
+                                {isRcpPay && (
+                                    <div className="flex-grow flex flex-col border-b-2 border-black">
+                                        {/* Title strip */}
+                                        <div className="flex justify-between items-center p-1.5 md:p-2 border-b border-black bg-gray-50">
+                                            <span className="font-bold uppercase text-sm">{isReceiptVch ? 'Receipt Voucher' : 'Payment Voucher'}</span>
+                                            <span className="text-[9px] md:text-xs">Vch No: <b>{invoice.invoice_number}</b> &nbsp; Dated: {formatDate(invoice.invoice_date)}</span>
+                                        </div>
+                                        {/* Particulars Dr/Cr table */}
+                                        <table className="w-full text-[9px] md:text-xs border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-100 border-b border-black">
+                                                    <th className="border-r border-black p-1.5 text-left">Particulars</th>
+                                                    <th className="border-r border-black p-1.5 text-right w-24 md:w-32">Debit (Dr)</th>
+                                                    <th className="p-1.5 text-right w-24 md:w-32">Credit (Cr)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {rcpLedgers.length === 0 && (
+                                                    <tr><td colSpan="3" className="p-2 text-center text-gray-500">No ledger entries</td></tr>
+                                                )}
+                                                {rcpLedgers.map((l, i) => {
+                                                    const dr = isDrRow(l);
+                                                    const amt = Math.abs(Number(l.amount) || 0);
+                                                    return (
+                                                        <tr key={i} className="border-b border-gray-300">
+                                                            <td className="border-r border-black p-1.5">
+                                                                <span className="font-semibold">{dr ? <><span className="mr-1">Dr</span>{l.ledger_name}</> : <>{l.ledger_name}<span className="ml-1">Cr</span></>}</span>
+                                                            </td>
+                                                            <td className="border-r border-black p-1.5 text-right">{dr ? formatNumber(amt) : ''}</td>
+                                                            <td className="p-1.5 text-right">{!dr ? formatNumber(amt) : ''}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                <tr className="border-t-2 border-black font-bold bg-gray-50">
+                                                    <td className="border-r border-black p-1.5 text-right">Total</td>
+                                                    <td className="border-r border-black p-1.5 text-right">{formatNumber(rcpDrTotal)}</td>
+                                                    <td className="p-1.5 text-right">{formatNumber(rcpCrTotal)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                        {/* Statement line */}
+                                        <div className="p-2 md:p-3 text-[9px] md:text-xs">
+                                            {isReceiptVch ? (
+                                                <p>Received with thanks from <b className="uppercase">{rcpParty}</b> a sum of <b>Rs. {formatNumber(invoice.net_amount)}</b>{invoice.payment_mode ? <> by {invoice.payment_mode}</> : null}.</p>
+                                            ) : (
+                                                <p>Paid to <b className="uppercase">{rcpParty}</b> a sum of <b>Rs. {formatNumber(invoice.net_amount)}</b>{invoice.payment_mode ? <> by {invoice.payment_mode}</> : null}.</p>
+                                            )}
+                                        </div>
+                                        {/* Words + Narration */}
+                                        <div className="mt-auto p-2 border-t border-gray-300 text-[9px] md:text-xs">
+                                            <p>
+                                                <span className="text-gray-500">Amount (in words): </span>
+                                                <span className="font-bold italic">{numberToWords(invoice.net_amount)}</span>
+                                            </p>
+                                            {invoice.narration && <p className="mt-1"><span className="text-gray-500">Narration: </span><span className="italic">{invoice.narration}</span></p>}
                                         </div>
                                     </div>
-                                </div>
+                                )}
+
                                 {/* HSN/SAC Summary (If GST) */}
                                 {columnVisibility.hasGST && (
-                                    <div className="border-b-2 border-black p-2">
-                                        <p className="text-[10px] font-bold underline mb-1">Tax Analysis:</p>
-                                        <table className="w-full text-[10px] border border-black text-center">
+                                    <div className="border-b-2 border-black p-1 md:p-2">
+                                        <p className="text-[7px] md:text-[10px] font-bold underline mb-1">Tax Analysis:</p>
+                                        <div className="overflow-x-auto">
+                                        <table className="w-full text-[7px] md:text-[9px] border border-black text-center min-w-[300px]">
                                             <thead>
                                                 <tr className="bg-gray-100 border-b border-black">
                                                     <th className="border-r border-black">HSN/SAC</th>
@@ -1233,7 +1931,7 @@ export default function InvoicePDFPage() {
                                                             <>
                                                                 <td className="border-r border-black p-1">{row.gst_rate}%</td>
                                                                 <td className="border-r border-black p-1 text-right">{formatNumber(row.igst)}</td>
-                                                                <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                                <td className="p-1 text-right">{formatNumber(row.igst)}</td>
                                                             </>
                                                         ) : (
                                                             <>
@@ -1241,20 +1939,52 @@ export default function InvoicePDFPage() {
                                                                 <td className="border-r border-black p-1 text-right">{formatNumber(row.cgst)}</td>
                                                                 <td className="border-r border-black p-1">{row.gst_rate / 2}%</td>
                                                                 <td className="border-r border-black p-1 text-right">{formatNumber(row.sgst)}</td>
-                                                                <td className="p-1 text-right">{formatNumber(row.total)}</td>
+                                                                <td className="p-1 text-right">{formatNumber(row.cgst + row.sgst)}</td>
                                                             </>
                                                         )}
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
+                                        </div>
                                     </div>
                                 )}
 
-                                {/* Footer Section — Tally: only show bank if filled */}
-                                <div className="grid grid-cols-5 flex-grow h-32">
+                                {/* Footer Section - Tally: only show bank if filled */}
+                                {/* Mobile: Compact footer */}
+                                <div className="md:hidden min-h-[3rem]">
+                                    <div className="grid grid-cols-2 gap-0 text-[7px]">
+                                        {/* Left: Bank + Declaration */}
+                                        <div className="p-1 border-r border-b border-black">
+                                            {(companyInfo?.bank_name || companyInfo?.bank_account) && (
+                                                <div className="mb-0.5">
+                                                    <p className="font-bold underline">Bank Details:</p>
+                                                    {companyInfo?.bank_name && <p>{companyInfo.bank_name}</p>}
+                                                    {companyInfo?.bank_account && <p>A/C: {companyInfo.bank_account}</p>}
+                                                    {companyInfo?.bank_ifsc && <p>IFSC: {companyInfo.bank_ifsc}</p>}
+                                                </div>
+                                            )}
+                                            <p className="text-[6px] opacity-70">We declare that this invoice shows the actual price of the goods described.</p>
+                                        </div>
+                                        {/* Right: QR + Signatory */}
+                                        <div className="p-1 flex flex-col items-center justify-between">
+                                            {upiId && (
+                                                <img
+                                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
+                                                    alt="UPI QR"
+                                                    className="w-8 h-8 mix-blend-multiply"
+                                                    crossOrigin="anonymous"
+                                                />
+                                            )}
+                                            <p className="text-right w-full text-[6px] mt-0.5">for <span className="font-bold">{companyInfo?.name}</span></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Desktop: Full footer */}
+                                <div className="hidden md:grid md:grid-cols-5 flex-grow min-h-[8rem]">
                                     {/* Bank & Terms (40%) */}
-                                    <div className="col-span-2 border-r-2 border-black p-2 text-xs flex flex-col justify-between h-full">
+                                    <div className="col-span-2 border-r-2 border-black p-2 text-[10px] flex flex-col justify-between h-full">
                                         {(companyInfo?.bank_name || companyInfo?.bank_account) ? (
                                             <div>
                                                 <p className="font-bold underline mb-1">Company's Bank Details:</p>
@@ -1273,11 +2003,11 @@ export default function InvoicePDFPage() {
                                     <div className="col-span-1 border-r-2 border-black flex flex-col items-center justify-center p-2">
                                         {upiId && (
                                             <>
-                                                <div className="bg-white p-1">
+                                                <div className="bg-white p-0.5">
                                                     <img
                                                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${upiId}&pn=${encodeURIComponent(companyInfo?.name || '')}&am=${invoice.net_amount}&cu=INR`)}`}
                                                         alt="UPI QR"
-                                                        className="w-20 h-20 mix-blend-multiply"
+                                                        className="w-16 h-16 mix-blend-multiply"
                                                         crossOrigin="anonymous"
                                                     />
                                                 </div>
@@ -1297,7 +2027,7 @@ export default function InvoicePDFPage() {
                                 </div>
                             </div>
 
-                            <div className="text-center text-[10px] text-gray-400 mt-2">
+                            <div className="text-center text-[7px] md:text-[10px] text-gray-400 mt-1 md:mt-2">
                                 SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
                             </div>
                         </div>

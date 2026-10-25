@@ -22,6 +22,7 @@ namespace TallySyncApp.Services
         private readonly AppSettings _settings;
         private TallyConnector? _tallyConnector;
         private ApiClient? _apiClient;
+        private TallyVoucherPusher? _voucherPusher;
         private OfflineQueueService? _offlineQueue;
         private System.Timers.Timer? _syncTimer;
         private CancellationTokenSource? _cancellationTokenSource;
@@ -29,6 +30,9 @@ namespace TallySyncApp.Services
         private bool _isFirstRun = true;
         private readonly object _syncLock = new object();
         private Dictionary<string, string> _hsnCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // Vouchers per Tally request. Small batches keep Tally (and low-end PCs) alive.
+        private const int TALLY_BATCH_SIZE = 100;
 
         public SyncStatus Status { get; private set; } = new();
         public Company? CurrentCompany { get; private set; }
@@ -125,7 +129,7 @@ namespace TallySyncApp.Services
             // Set User Token if logged in
             if (App.AuthService != null && App.AuthService.IsLoggedIn)
             {
-                _apiClient.SetUserToken(App.AuthService.GetAccessToken() ?? "");
+                _apiClient.SetUserToken(App.AuthService.GetAccessToken() ?? "", App.AuthService.CurrentSession?.UserId);
             }
 
             _offlineQueue = new OfflineQueueService(_settings.Database.Path);
@@ -333,13 +337,21 @@ namespace TallySyncApp.Services
                         var freshToken = await App.AuthService.RefreshTokenIfNeededAsync();
                         if (!string.IsNullOrEmpty(freshToken))
                         {
-                            _apiClient!.SetUserToken(freshToken);
+                            _apiClient!.SetUserToken(freshToken, App.AuthService.CurrentSession?.UserId);
+                        }
+                        else
+                        {
+                            AddLog("⚠️ Auth token unavailable (refresh failed) — uploads may fail with 401 this cycle");
                         }
                     }
                     catch (Exception refreshEx)
                     {
                         AddLog($"⚠️ Token refresh failed: {refreshEx.Message} — continuing with existing token");
                     }
+                }
+                else
+                {
+                    AddLog("⚠️ Not logged in — token refresh skipped (401s expected)");
                 }
 
                 // Test connections first
@@ -414,23 +426,6 @@ namespace TallySyncApp.Services
                         CurrentCompany = company;
                         UpdateStatus(SyncState.Syncing, $"Processing: {company.Name}");
 
-                        // Cleanup any stale 'running' syncs from previous sessions
-                        await _apiClient!.FailRunningSyncsAsync(company.Id);
-
-                        // 1. Determine Sync Type accurately
-                        // Check last sync state BEFORE starting history
-                        long lastVoucherAlterId = await _apiClient!.GetMaxAlterIdAsync(company.Id, "vouchers");
-                        long lastLedgerAlterId = await _apiClient.GetMaxAlterIdAsync(company.Id, "ledgers");
-                        
-                        bool isFirstSync = lastVoucherAlterId == 0 || forceResync;
-                        
-                        if (forceResync) syncType = "force";
-                        else if (isFirstSync) syncType = "full";
-                        else syncType = "incremental"; // Even manual clicks are incremental if data exists
-
-                        // Start sync history record
-                        syncHistoryId = await _apiClient!.StartSyncHistoryAsync(company.Id, syncType);
-
                         // Sync company info first
                         if (serverOk)
                         {
@@ -470,6 +465,24 @@ namespace TallySyncApp.Services
                                 SyncLogger.Log($"⚠️ Company sync warning: {compResult.Error}");
                             }
                         }
+
+                        // NOTE: ye check company sync ke BAAD hi hona chahiye — SyncCompanyAsync
+                        // company.Id ko deterministic UUID me convert karta hai. Pehle karne se query
+                        // purane (Tally wale) id pe chalti thi, 0 rows aati thi aur har sync
+                        // "first sync" banke poora history dobara uthata tha.
+                        await _apiClient!.FailRunningSyncsAsync(company.Id);
+
+                        long lastVoucherAlterId = await _apiClient!.GetMaxAlterIdAsync(company.Id, "vouchers");
+                        long lastLedgerAlterId = await _apiClient.GetMaxAlterIdAsync(company.Id, "ledgers");
+
+                        bool isFirstSync = lastVoucherAlterId == 0 || forceResync;
+
+                        if (forceResync) syncType = "force";
+                        else if (isFirstSync) syncType = "full";
+                        else syncType = "incremental";
+
+                        syncHistoryId = await _apiClient!.StartSyncHistoryAsync(company.Id, syncType);
+                        AddLog($"🔎 Sync type: {syncType} (last voucher ALTERID: {lastVoucherAlterId}, ledger: {lastLedgerAlterId})");
 
                         /* 
                         // FIX 2: Disable GetRecordCountsAsync - It hits Tally too hard for vouchers
@@ -674,39 +687,36 @@ namespace TallySyncApp.Services
                                 continue;
                             }
 
-                            // Full historical voucher sync (date-based for first time)
-                            DateTime booksStart = new DateTime(2024, 4, 1); 
-                            DateTime toDate = DateTime.Today;
-                            
-                            int totalMonths = ((toDate.Year - booksStart.Year) * 12) + toDate.Month - booksStart.Month + 1;
-                            Status.TotalRecords = totalMonths; // Use months as progress units for historical sync
-                            Status.ProcessedRecords = 0;
-                            
-                            UpdateStatus(SyncState.Syncing, $"First Sync: {booksStart:MMM yyyy} to {toDate:MMM yyyy} ({totalMonths} months)");
-                            AddLog($"📚 Historical sync: {booksStart:dd-MMM-yy} → {toDate:dd-MMM-yy}");
-                            
-                            DateTime current = booksStart;
+                            // Full historical voucher sync: 100 vouchers per Tally request.
+                            // Small batches keep Tally memory low and let weak PCs keep up.
                             bool allChunksSuccessful = true;
                             int totalVouchersFound = 0;
-                            int monthsProcessed = 0;
 
-                            while (current <= toDate)
+                            UpdateStatus(SyncState.Syncing, "First Sync: reading voucher index...");
+                            var alterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);
+
+                            if (alterIds.Count == 0)
                             {
-                                // CRITICAL: Reduced chunk size to 7 days (instead of 30) to prevent Tally memory crashes
-                                DateTime rangeEnd = current.AddDays(7);
-                                if (rangeEnd > toDate) rangeEnd = toDate;
-                                
-                                string rangeDisplay = $"{current:dd-MMM} to {rangeEnd:dd-MMM-yy}";
-                                UpdateStatus(SyncState.FetchingData, $"Historical: {rangeDisplay}", "vouchers");
-                                
+                                AddLog("⚠️ No vouchers found in Tally");
+                                continue;
+                            }
+
+                            int totalBatches = (alterIds.Count + TALLY_BATCH_SIZE - 1) / TALLY_BATCH_SIZE;
+                            Status.TotalRecords = alterIds.Count;
+                            Status.ProcessedRecords = 0;
+
+                            AddLog($"📚 Historical voucher sync: {alterIds.Count} vouchers in {totalBatches} batches of {TALLY_BATCH_SIZE}");
+
+                            for (int batchNo = 0; batchNo < totalBatches; batchNo++)
+                            {
+                                var ids = alterIds.Skip(batchNo * TALLY_BATCH_SIZE).Take(TALLY_BATCH_SIZE).ToList();
+                                string rangeDisplay = $"batch {batchNo + 1}/{totalBatches}";
+
                                 try 
                                 {
-                                    // OPTIMIZATION: Fetch ALL vouchers for this period ONCE.
-                                    // This prevents Tally from generating heavy XMLs 3 times per period.
-                                    var allVouchers = await _tallyConnector!.GetVouchersAsync(current, rangeEnd, company.Name, hsnCache);
-                                    
-                                    if (allVouchers != null && allVouchers.Count > 0)
-                                    {
+                                    var allVouchers = await _tallyConnector!.GetVouchersByAlterRangeAsync(company.Name, ids.First(), ids.Last(), hsnCache);
+                                    if (allVouchers.Count == 0) continue;
+
                                         totalVouchersFound += allVouchers.Count;
                                         
                                         // 1. Upload all vouchers (General list)
@@ -777,7 +787,6 @@ namespace TallySyncApp.Services
                                             if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
                                             AddLog($"   🛒 {purchaseVouchers.Count} purchases synced");
                                         }
-                                    }
 
                                     // 4. Extract Allocations & Notes (Batched Vouchers)
                                     if (allVouchers.Count > 0)
@@ -788,17 +797,12 @@ namespace TallySyncApp.Services
                                         var bankAllocations = _tallyConnector.ExtractBankAllocations(allVouchers, company.Name);
                                         if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
 
-                                        var notes = _tallyConnector.ExtractDebitCreditNotes(allVouchers, company.Name);
-                                        if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
+                                        // debit_credit_notes table does not exist in this project's schema - skip it.
                                     }
 
                                     // Track Progress
-                                    if (current.Month != rangeEnd.Month || rangeEnd == toDate)
-                                    {
-                                        monthsProcessed++;
-                                        Status.ProcessedRecords = monthsProcessed;
-                                        UpdateStatus(SyncState.Syncing, $"Synced {monthsProcessed}/{totalMonths} months...");
-                                    }
+                                    Status.ProcessedRecords = totalVouchersFound;
+                                    UpdateStatus(SyncState.Syncing, $"Synced {totalVouchersFound} vouchers...");
                                 } 
                                 catch (Exception ex) 
                                 {
@@ -806,9 +810,16 @@ namespace TallySyncApp.Services
                                     AddLog($"❌ {rangeDisplay}: {ex.Message}");
                                 }
 
-                                // 2-second delay to let Tally memory settle
-                                await Task.Delay(2000);
-                                current = rangeEnd.AddDays(1);
+                                // Tally stops answering when it is overloaded (big company, huge export).
+                                // Marching through the remaining batches then keeps it hung, so bail out.
+                                if (_tallyConnector!.ConsecutiveFailures >= 3)
+                                {
+                                    AddLog("❌ Tally is not responding - historical sync aborted. Will retry on next cycle.");
+                                    break;
+                                }
+
+                                // Short pause so Tally can release memory between batches
+                                await Task.Delay(500);
                             }
 
                             AddLog($"📊 First sync complete: {totalVouchersFound} vouchers");
@@ -853,6 +864,7 @@ namespace TallySyncApp.Services
                             {
                                 await UploadListAsync("ledgers", finalLedgers, "id");
                                 ledgersSynced += finalLedgers.Count;
+                                Status.ProcessedRecords += finalLedgers.Count;
                                 AddLog($"📝 Updated {finalLedgers.Count} modified ledgers");
                                 foreach (var l in finalLedgers.Take(3))
                                 {
@@ -872,6 +884,7 @@ namespace TallySyncApp.Services
                             {
                                 await UploadListAsync("vouchers", finalVouchers, "id");
                                 vouchersSynced += finalVouchers.Count;
+                                Status.ProcessedRecords += finalVouchers.Count;
                                 AddLog($"📝 Synced {finalVouchers.Count} modified vouchers");
                                 
                                 // Sync voucher line items (ledger entries and stock entries)
@@ -1234,8 +1247,16 @@ namespace TallySyncApp.Services
                         SyncLogger.Log($"❌ BATCH FAILED {dataType}: {result.Error}");
                     }
 
-                    Status.ProcessedRecords += batch.Count;
                     UpdateStatus(SyncState.Uploading, $"Syncing {dataType}: {successCount + failedCount}/{data.Count}", dataType);
+
+                    // Sync Status page isi event se bharta hai (pehle kabhi raise hi nahi hota tha -> page hamesha khaali).
+                    ItemSynced?.Invoke(this, new SyncItemStatus
+                    {
+                        Name = $"{dataType} ({batch.Count})",
+                        Type = dataType,
+                        Status = result.Success ? "Success" : "Error",
+                        Error = result.Success ? null : result.Error
+                    });
                 }
 
                 stopwatch.Stop();
@@ -1425,119 +1446,11 @@ namespace TallySyncApp.Services
         /// </summary>
         private async Task ProcessPendingTransactionsAsync(Company company)
         {
-            try
-            {
-                if (_apiClient == null || _tallyConnector == null) return;
-
-                // Fetch pending transactions from cloud
-                var pending = await _apiClient.GetPendingTransactionsAsync(company.Id);
-
-                if (pending.Count == 0)
-                {
-                    // No pending - that's fine, silent return
-                    return;
-                }
-
-                AddLog($"📤 Found {pending.Count} pending entries to push to Tally");
-                UpdateStatus(SyncState.Syncing, $"Pushing {pending.Count} entries to Tally...");
-
-                int successCount = 0;
-                int failCount = 0;
-
-                foreach (var transaction in pending)
-                {
-                    try
-                    {
-                        // Parse voucher data from JSON
-                        var voucherData = transaction.VoucherData;
-                        
-                        if (voucherData == null)
-                        {
-                            await _apiClient.UpdatePendingTransactionStatusAsync(
-                                transaction.Id, "failed", null, "No voucher data provided");
-                            failCount++;
-                            continue;
-                        }
-
-                        // Extract fields from voucher data
-                        string partyLedger = voucherData.party_ledger_name?.ToString() ?? 
-                                            voucherData.partyLedgerName?.ToString() ?? 
-                                            voucherData.party_name?.ToString() ?? "";
-                        
-                        decimal amount = 0;
-                        if (voucherData.net_amount != null)
-                            decimal.TryParse(voucherData.net_amount.ToString(), out amount);
-                        else if (voucherData.amount != null)
-                            decimal.TryParse(voucherData.amount.ToString(), out amount);
-                        else if (voucherData.total_amount != null)
-                            decimal.TryParse(voucherData.total_amount.ToString(), out amount);
-
-                        DateTime voucherDate = DateTime.Today;
-                        if (voucherData.invoice_date != null)
-                            DateTime.TryParse(voucherData.invoice_date.ToString(), out voucherDate);
-                        else if (voucherData.voucher_date != null)
-                            DateTime.TryParse(voucherData.voucher_date.ToString(), out voucherDate);
-
-                        string narration = voucherData.narration?.ToString() ?? 
-                                          $"Created from TallySync App";
-
-                        // CRITICAL FIX: Normalize the voucher type 
-                        // Database may store "VOUCHERS" (table name) instead of valid Tally types
-                        string normalizedType = NormalizeTallyVoucherType(transaction.TransactionType, voucherData);
-
-                        AddLog($"   → {normalizedType}: {partyLedger} ₹{amount:N0}");
-
-                        // Push to Tally with normalized type
-                        var (success, voucherNumber, error) = await _tallyConnector.PushVoucherToTallyAsync(
-                            company.Name,
-                            normalizedType,
-                            voucherDate,
-                            partyLedger,
-                            amount,
-                            narration
-                        );
-
-                        if (success)
-                        {
-                            // Mark as synced in cloud
-                            await _apiClient.UpdatePendingTransactionStatusAsync(
-                                transaction.Id, "synced", voucherNumber);
-                            AddLog($"   ✅ Created in Tally: {voucherNumber}");
-                            successCount++;
-                        }
-                        else
-                        {
-                            // Mark as failed
-                            await _apiClient.UpdatePendingTransactionStatusAsync(
-                                transaction.Id, "failed", null, error);
-                            AddLog($"   ❌ Failed: {error}");
-                            failCount++;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        await _apiClient.UpdatePendingTransactionStatusAsync(
-                            transaction.Id, "failed", null, ex.Message);
-                        failCount++;
-                    }
-
-                    // Brief delay between pushes
-                    await Task.Delay(200);
-                }
-
-                if (successCount > 0)
-                {
-                    AddLog($"✅ Two-Way Sync: {successCount} entries pushed to Tally");
-                }
-                if (failCount > 0)
-                {
-                    AddLog($"⚠️ {failCount} entries failed - will retry on next sync");
-                }
-            }
-            catch (Exception ex)
-            {
-                SyncLogger.Log($"❌ ProcessPendingTransactionsAsync error: {ex.Message}");
-            }
+            // Two-way push delegates to TallyVoucherPusher: rich voucher XML (items,
+            // GST split, resolved real Sales ledger) instead of the old stub push.
+            if (_tallyConnector == null || _apiClient == null) return;
+            _voucherPusher ??= new TallyVoucherPusher(_tallyConnector, _apiClient);
+            await _voucherPusher.ProcessPendingTransactionsAsync(company.Id, company.Name);
         }
 
         /// <summary>

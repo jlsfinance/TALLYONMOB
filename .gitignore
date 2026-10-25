@@ -102,3 +102,11 @@ tally_response.xml
 .windsurf
 
 .vercel
+
+backups/
+*.BAK*
+*.bak*
+
+
+.cursor/
+

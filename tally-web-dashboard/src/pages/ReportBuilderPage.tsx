@@ -1,15 +1,11 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import toast from 'react-hot-toast';
 import {
     Table2, Play, Download, Filter, Columns, BarChart3,
-    Save, Trash2, RefreshCw, ChevronDown, X, FileSpreadsheet, Settings2, PieChart
+    Save, Trash2, RefreshCw, ChevronDown, X, FileSpreadsheet, Settings2
 } from 'lucide-react';
-import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-    ResponsiveContainer, PieChart as RePieChart, Pie, Cell, Legend
-} from 'recharts';
 
 interface TableConfig {
     name: string;
@@ -71,18 +67,6 @@ interface SavedReport {
     sortDir: 'asc' | 'desc';
 }
 
-const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#06B6D4', '#6366F1'];
-
-const CHART_THEME = ['#667eea', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
-
-const formatCompact = (n) => {
-    const abs = Math.abs(n || 0);
-    if (abs >= 10000000) return `₹${(abs / 10000000).toFixed(1)}Cr`;
-    if (abs >= 100000) return `₹${(abs / 100000).toFixed(1)}L`;
-    if (abs >= 1000) return `₹${(abs / 1000).toFixed(1)}K`;
-    return `₹${abs.toFixed(0)}`;
-};
-
 export default function ReportBuilderPage() {
     const [companyId] = useState(() => localStorage.getItem('selectedCompanyId') || '');
     const [selectedTable, setSelectedTable] = useState<string>('vouchers');
@@ -95,7 +79,6 @@ export default function ReportBuilderPage() {
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [limit, setLimit] = useState(100);
-    const [chartMode, setChartMode] = useState<'bar' | 'pie' | 'off'>('off');
 
     // Saved reports
     const [savedReports, setSavedReports] = useState<SavedReport[]>(() => {
@@ -252,39 +235,6 @@ export default function ReportBuilderPage() {
         const field = tableConfig?.fields.find(tf => tf.key === f);
         return field && (field.type === 'currency' || field.type === 'number');
     });
-
-    // Chart data: group by first text/date field, sum first numeric field
-    const chartData = useMemo(() => {
-        if (!results.length || chartMode === 'off') return [];
-
-        const textFields = selectedFields.filter(f => {
-            const field = tableConfig?.fields.find(tf => tf.key === f);
-            return field && (field.type === 'text' || field.type === 'date');
-        });
-        const numFields = selectedFields.filter(f => {
-            const field = tableConfig?.fields.find(tf => tf.key === f);
-            return field && (field.type === 'currency' || field.type === 'number');
-        });
-
-        if (!textFields.length || !numFields.length) return [];
-
-        const groupBy = textFields[0];
-        const sumField = numFields[0];
-        const fieldCfg = tableConfig?.fields.find(tf => tf.key === sumField);
-        const isNeg = results[0]?.[sumField] < 0;
-
-        const grouped = {};
-        results.forEach(r => {
-            const key = r[groupBy] || 'Other';
-            if (!grouped[key]) grouped[key] = 0;
-            grouped[key] += Math.abs(Number(r[sumField]) || 0);
-        });
-
-        return Object.entries(grouped)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 15)
-            .map(([name, value]) => ({ name, value: Math.round(value) }));
-    }, [results, chartMode, selectedFields, tableConfig]);
 
     return (
         <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -521,107 +471,7 @@ export default function ReportBuilderPage() {
                                 <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
                                     Results ({results.length} records)
                                 </span>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                    {chartData.length > 0 && (
-                                        <>
-                                            <button onClick={() => setChartMode(chartMode === 'bar' ? 'off' : 'bar')}
-                                                style={{
-                                                    padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600,
-                                                    background: chartMode === 'bar' ? '#667eea' : '#f3f4f6',
-                                                    color: chartMode === 'bar' ? '#fff' : '#666',
-                                                    border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                                }}>
-                                                <BarChart3 size={14} /> Bar
-                                            </button>
-                                            <button onClick={() => setChartMode(chartMode === 'pie' ? 'off' : 'pie')}
-                                                style={{
-                                                    padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600,
-                                                    background: chartMode === 'pie' ? '#667eea' : '#f3f4f6',
-                                                    color: chartMode === 'pie' ? '#fff' : '#666',
-                                                    border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                                }}>
-                                                <PieChart size={14} /> Pie
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
                             </div>
-
-                            {/* Chart Visualization */}
-                            {chartData.length > 0 && chartMode !== 'off' && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: 'auto' }}
-                                    style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', background: '#fafbff' }}
-                                >
-                                    {chartMode === 'bar' ? (
-                                        <div style={{ height: '280px' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={chartData}>
-                                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                                    <XAxis
-                                                        dataKey="name"
-                                                        tick={{ fontSize: 10, fill: '#888' }}
-                                                        angle={-25}
-                                                        textAnchor="end"
-                                                        height={60}
-                                                    />
-                                                    <YAxis tickFormatter={formatCompact} tick={{ fontSize: 11, fill: '#888' }} />
-                                                    <Tooltip
-                                                        formatter={(value: number) => [formatCompact(value), 'Amount']}
-                                                        contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                                                    />
-                                                    <Bar
-                                                        dataKey="value"
-                                                        radius={[4, 4, 0, 0]}
-                                                        animationBegin={0}
-                                                        animationDuration={1000}
-                                                    >
-                                                        {chartData.map((_, i) => (
-                                                            <Cell key={i} fill={CHART_THEME[i % CHART_THEME.length]} />
-                                                        ))}
-                                                    </Bar>
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    ) : (
-                                        <div style={{ height: '300px', display: 'flex', justifyContent: 'center' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <RePieChart>
-                                                    <Pie
-                                                        data={chartData}
-                                                        dataKey="value"
-                                                        nameKey="name"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        outerRadius={100}
-                                                        innerRadius={40}
-                                                        paddingAngle={2}
-                                                        animationBegin={0}
-                                                        animationDuration={1000}
-                                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                                        labelLine
-                                                    >
-                                                        {chartData.map((_, i) => (
-                                                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                                                        ))}
-                                                    </Pie>
-                                                    <Tooltip formatter={(value: number) => [formatCompact(value), 'Amount']} />
-                                                </RePieChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    )}
-                                    <p style={{ fontSize: '10px', color: '#999', textAlign: 'center', marginTop: '8px' }}>
-                                        Grouped by <strong>{selectedFields.find(f => {
-                                            const field = tableConfig?.fields.find(tf => tf.key === f);
-                                            return field && (field.type === 'text' || field.type === 'date');
-                                        }) || 'first field'}</strong> • summing <strong>{selectedFields.find(f => {
-                                            const field = tableConfig?.fields.find(tf => tf.key === f);
-                                            return field && (field.type === 'currency' || field.type === 'number');
-                                        }) || 'first numeric field'}</strong>
-                                    </p>
-                                </motion.div>
-                            )}
 
                             <div style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto' }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -732,3 +582,4 @@ export default function ReportBuilderPage() {
         </div>
     );
 }
+

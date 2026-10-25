@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import { useState, useEffect } from 'react';
+import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -8,8 +8,8 @@ import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 
 export default function SelectCompanyPage() {
-    const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode } = useAuth() as AuthContextType;
-    const navigate = useNavigate();
+    const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
+    const { navigate } = useSafeNavigate();
 
     useEffect(() => {
         refreshCompanies();
@@ -22,7 +22,7 @@ export default function SelectCompanyPage() {
 
     const handleSelect = (company: any) => {
         selectCompany(company);
-        navigate('/dashboard');
+        navigate(appMode === 'billing' ? '/billing' : '/dashboard');
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
@@ -166,3 +166,5 @@ export default function SelectCompanyPage() {
         </div>
     );
 }
+
+

@@ -11,7 +11,7 @@ import {
     BarChart3,
     IndianRupee
 } from 'lucide-react';
-import supabase from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import { useAuth } from '../contexts/AuthContext';
 
 const TopAnalyticsSection = () => {
@@ -63,7 +63,7 @@ const TopAnalyticsSection = () => {
             let vouchersQuery = supabase
                 .from('vouchers')
                 .select('party_name, voucher_type, net_amount, invoice_date')
-                .eq('company_id', selectedCompany.id);
+                .eq('company_id', selectedCompany.id).limit(50000);
 
             if (dateFilter) {
                 vouchersQuery = vouchersQuery.gte('invoice_date', dateFilter);
@@ -448,3 +448,4 @@ const TopAnalyticsSection = () => {
 };
 
 export default TopAnalyticsSection;
+

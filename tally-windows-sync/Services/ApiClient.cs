@@ -19,6 +19,7 @@ namespace TallySyncApp.Services
         private readonly string _supabaseUrl;
         private readonly string _apiKey; // Anon Key
         private string? _userToken; // Bearer Token for Auth
+        private string? _ownerId;   // auth.uid() - RLS on every sync table is `owner_id = auth.uid()`
         private readonly string _telegramBotToken;
 
         public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "")
@@ -44,9 +45,11 @@ namespace TallySyncApp.Services
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
 
-        public void SetUserToken(string token)
+        public void SetUserToken(string token, string? ownerId = null)
         {
             _userToken = token;
+            if (!string.IsNullOrEmpty(ownerId))
+                _ownerId = ownerId;
         }
 
         private void AddAuthHeader()
@@ -109,13 +112,23 @@ namespace TallySyncApp.Services
             var companyData = new Dictionary<string, object?>
             {
                 ["id"] = companyUuid,
-                ["name"] = company.Name,
-                ["gstin"] = company.Gstin,
-                ["address"] = company.Address,
-                ["state"] = company.State,
-                ["phone"] = company.Phone,
-                ["email"] = company.Email
+                ["name"] = company.Name
             };
+
+            // Tally me jo field khaali hai wo bhejna hi nahi, warna web app se daali hui
+            // GSTIN/address next sync pe null ho jati hai (Tally me GST number set hi nahi hota).
+            if (!string.IsNullOrWhiteSpace(company.Gstin)) companyData["gstin"] = company.Gstin.Trim();
+            if (!string.IsNullOrWhiteSpace(company.Address)) companyData["address"] = company.Address.Trim();
+            if (!string.IsNullOrWhiteSpace(company.State)) companyData["state"] = company.State.Trim();
+            if (!string.IsNullOrWhiteSpace(company.Phone)) companyData["phone"] = company.Phone.Trim();
+            if (!string.IsNullOrWhiteSpace(company.Email)) companyData["email"] = company.Email.Trim();
+
+            // RLS on companies is `owner_id = auth.uid()`; without it the insert is rejected (42501)
+            var owner = !string.IsNullOrEmpty(company.OwnerId) ? company.OwnerId : _ownerId;
+            if (!string.IsNullOrEmpty(owner))
+            {
+                companyData["owner_id"] = owner;
+            }
 
             // Store the UUID back for other operations
             company.Id = companyUuid;
@@ -179,6 +192,7 @@ namespace TallySyncApp.Services
                 if (dict != null)
                 {
                     dict["company_id"] = companyUuid;
+                    if (!string.IsNullOrEmpty(_ownerId)) dict["owner_id"] = _ownerId;
                     
                     // =============================================
                     // VOUCHERS TABLE MAPPING
@@ -190,6 +204,12 @@ namespace TallySyncApp.Services
                         // Keep voucher_date as-is (correct column name)
                         // Keep total_amount as-is (correct column name)
                         // Keep party_name as-is (correct column name)
+
+                        // Supabase `vouchers.vch_date` is NOT NULL, the model sends it as voucher_date
+                        if (dict.ContainsKey("voucher_date") && !dict.ContainsKey("vch_date"))
+                        {
+                            dict["vch_date"] = dict["voucher_date"];
+                        }
                         
                         // Remove nested data - will be synced separately to voucher_ledger_entries/voucher_stock_entries
                         dict.Remove("ledger_entries");
@@ -239,7 +259,7 @@ namespace TallySyncApp.Services
                             // If it's not a valid UUID, generate deterministic one
                             if (!Guid.TryParse(ledgerId, out _))
                             {
-                                dict["id"] = GenerateDeterministicGuid(ledgerId).ToString();
+                                dict["id"] = OwnerScopedGuid(ledgerId).ToString();
                             }
                         }
                         
@@ -288,7 +308,7 @@ namespace TallySyncApp.Services
                             // If it's not a valid UUID, generate deterministic one
                             if (!Guid.TryParse(stockId, out _))
                             {
-                                dict["id"] = GenerateDeterministicGuid(stockId).ToString();
+                                dict["id"] = OwnerScopedGuid(stockId).ToString();
                             }
                         }
                         
@@ -325,6 +345,18 @@ namespace TallySyncApp.Services
                             if (!string.IsNullOrEmpty(vId) && !Guid.TryParse(vId, out _))
                             {
                                 dict["voucher_id"] = GenerateDeterministicGuid(vId).ToString();
+                            }
+                        }
+
+                        // sales_items.sale_id / purchase_items.purchase_id are FK to
+                        // sales.id / purchases.id, which the block above rewrites to a UUID.
+                        foreach (var childKey in new[] { "sale_id", "purchase_id" })
+                        {
+                            if (!dict.ContainsKey(childKey)) continue;
+                            string cId = dict[childKey]?.ToString() ?? "";
+                            if (!string.IsNullOrEmpty(cId) && !Guid.TryParse(cId, out _))
+                            {
+                                dict[childKey] = GenerateDeterministicGuid(cId).ToString();
                             }
                         }
                     }
@@ -381,11 +413,15 @@ namespace TallySyncApp.Services
                     if (voucher.LedgerEntries != null && voucher.LedgerEntries.Count > 0)
                     {
                         int ledgerIdx = 0;
+                        // Tally XML kabhi ek hi ledger line do baar deta hai (voucher phir bhi balance hota hai
+                        // aur duplicate hataane pe hee debit=credit milta hai) -> identical lines ek hi baar bhejo.
+                        var seenEntries = new HashSet<string>();
                         foreach (var entry in voucher.LedgerEntries)
                         {
+                            if (!seenEntries.Add($"{entry.LedgerName}|{entry.Amount}|{entry.IsDebit}")) continue;
                             // Generate deterministic ID from voucher+ledger+index for uniqueness
                             string entryKey = $"{voucher.VoucherId}|ledger|{entry.LedgerName}|{ledgerIdx}";
-                            allLedgerEntries.Add(new Dictionary<string, object>
+                            var ledgerRow = new Dictionary<string, object>
                             {
                                 ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
                                 ["company_id"] = companyUuid,
@@ -393,7 +429,9 @@ namespace TallySyncApp.Services
                                 ["ledger_name"] = entry.LedgerName ?? "",
                                 ["amount"] = entry.Amount,
                                 ["is_debit"] = entry.IsDebit
-                            });
+                            };
+                            AddOwnerId(ledgerRow);
+                            allLedgerEntries.Add(ledgerRow);
                             ledgerIdx++;
                         }
                     }
@@ -420,7 +458,7 @@ namespace TallySyncApp.Services
                             
                             // Generate deterministic ID from voucher+item+index for uniqueness
                             string entryKey = $"{voucher.VoucherId}|stock|{entry.StockItemName}|{stockIdx}";
-                            allStockEntries.Add(new Dictionary<string, object>
+                            var stockRow = new Dictionary<string, object>
                             {
                                 ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
                                 ["company_id"] = companyUuid,
@@ -434,7 +472,9 @@ namespace TallySyncApp.Services
                                 ["is_inward"] = isInward,
                                 ["discount_percent"] = entry.DiscountPercent,
                                 ["tax_rate"] = entry.TaxRate ?? 0m
-                            });
+                            };
+                            AddOwnerId(stockRow);
+                            allStockEntries.Add(stockRow);
                             stockIdx++;
                         }
                     }
@@ -839,6 +879,7 @@ namespace TallySyncApp.Services
                     ["started_at"] = DateTime.UtcNow.ToString("o"),
                     ["status"] = "running"
                 };
+                AddOwnerId(record);
                 
                 var json = JsonConvert.SerializeObject(record);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -969,9 +1010,26 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Every sync table has RLS `owner_id = auth.uid()`. Tally data has no owner, so the
+        /// logged-in user is stamped on each row here - omitting it gets the insert rejected (42501).
+        /// </summary>
+        private void AddOwnerId(Dictionary<string, object> row)
+        {
+            if (!string.IsNullOrEmpty(_ownerId))
+                row["owner_id"] = _ownerId;
+        }
+
+        /// <summary>
         /// Generate a deterministic GUID from a string using MD5 hash
         /// This ensures the same input always produces the same UUID
         /// </summary>
+        /// <summary>
+        /// Master rows are keyed per owner. Tally GUIDs repeat across accounts (demo companies),
+        /// so a global deterministic id hits another owner's row and the upsert dies with RLS 403.
+        /// </summary>
+        private Guid OwnerScopedGuid(string raw) =>
+            GenerateDeterministicGuid(string.IsNullOrEmpty(_ownerId) ? raw : $"{_ownerId}|{raw}");
+
         private static Guid GenerateDeterministicGuid(string input)
         {
             using (var md5 = System.Security.Cryptography.MD5.Create())

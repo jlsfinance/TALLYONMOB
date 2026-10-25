@@ -45,7 +45,9 @@ namespace TallySyncApp.Services
 
         static LoggingService()
         {
-            LogDirectory = Path.Combine(AppContext.BaseDirectory, LogFolderName);
+            // Stable location: AppContext.BaseDirectory is %TEMP%\.net\... for the single-file bundle
+            LogDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TallySync", "Logs");
             EnsureLogDirectory();
             Configure();
         }

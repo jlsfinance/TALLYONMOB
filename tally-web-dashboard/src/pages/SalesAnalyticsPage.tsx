@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth, subDays, eachMonthOfInterval } from 'date-fns';
@@ -11,8 +11,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const formatCurrency = (amount: number) => {
     const absAmount = Math.abs(amount || 0);
-    if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(2)} Cr`;
-    if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(2)} L`;
+    if (absAmount >= 10000000) return `â‚¹${(absAmount / 10000000).toFixed(2)} Cr`;
+    if (absAmount >= 100000) return `â‚¹${(absAmount / 100000).toFixed(2)} L`;
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(absAmount);
 };
 
@@ -89,7 +89,7 @@ export default function SalesAnalyticsPage() {
             // Fetch stock entries from vouchers for product analysis
             const { data: stockEntries } = await supabase
                 .from('voucher_stock_entries')
-                .select('stock_item_name, quantity, amount')
+                .select('stock_item_name, quantity, amount').eq('is_deleted', false)
                 .eq('company_id', selectedCompany.id)
                 .limit(10000);
 
@@ -176,7 +176,7 @@ export default function SalesAnalyticsPage() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-[var(--on-surface)] tracking-tighter">Sales Analytics</h1>
-                    <p className="text-xs text-[var(--text-muted)] mt-1">{selectedCompany.name} • Real-time business intelligence</p>
+                    <p className="text-xs text-[var(--text-muted)] mt-1">{selectedCompany.name} ? Real-time business intelligence</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {(['month', 'quarter', 'year'] as const).map(p => (

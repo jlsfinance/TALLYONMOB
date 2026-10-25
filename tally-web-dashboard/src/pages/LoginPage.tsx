@@ -14,8 +14,14 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [loading, setLoading] = useState(false);
-
-    const { signIn, signUp, signInWithGoogle } = useAuth() as AuthContextType;
+    const [otpSent, setOtpSent] = useState(false);
+    const [otpCode, setOtpCode] = useState('');
+    const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+    const [twoFactorCode, setTwoFactorCode] = useState('');
+    const [tempToken, setTempToken] = useState('');
+    const [tempUserId, setTempUserId] = useState('');
+    const [tempEmail, setTempEmail] = useState('');
+    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, verify2FALogin } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any };
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
 
@@ -23,22 +29,68 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            if (isLogin) {
-                const { error } = await signIn(email, password);
+            if (twoFactorRequired) {
+                const { error } = await verify2FALogin(tempToken, tempUserId, tempEmail, twoFactorCode);
                 if (error) throw error;
                 toast.success('Welcome back!');
                 navigate('/dashboard');
-            } else {
-                const { error } = await signUp(email, password, fullName);
+                return;
+            }
+
+            if (otpSent) {
+                const { error } = await verifyOtp(email, otpCode, 'signup');
                 if (error) throw error;
-                toast.success('Account created! Please check your email.');
+                toast.success('Account verified!');
+                navigate('/dashboard');
+            } else if (isLogin) {
+                const result = await signIn(email, password);
+                if (result.data?.two_factor_required) {
+                    setTwoFactorRequired(true);
+                    setTempToken(result.data.temp_token);
+                    setTempUserId(result.data.user_id);
+                    setTempEmail(result.data.email);
+                    toast.success('Two-factor authentication code required.');
+                    setLoading(false);
+                    return;
+                }
+                const { error } = result;
+                if (error) {
+                    if (error.message?.toLowerCase().includes('not verified') || error.message?.toLowerCase().includes('verify')) {
+                        const { error: sendError } = await sendVerificationEmail(email);
+                        if (sendError) throw sendError;
+                        setOtpSent(true);
+                        setIsLogin(false);
+                        toast.error('Email not verified. We sent a new OTP to your email.');
+                        return;
+                    }
+                    throw error;
+                }
+                toast.success('Welcome back!');
+                navigate('/dashboard');
+            } else {
+                const { data, error } = await signUp(email, password, fullName);
+                if (error) {
+                    if (error.message?.toLowerCase().includes('already exists') || error.message?.toLowerCase().includes('already registered')) {
+                        toast.error('User already exists! Please sign in instead.');
+                        setIsLogin(true);
+                        return;
+                    }
+                    throw error;
+                }
+                
+                // If autoconfirm is enabled on Supabase, the session is returned directly
+                if (data?.session) {
+                    toast.success('Account created and signed in successfully!');
+                    navigate('/dashboard');
+                } else {
+                    setOtpSent(true);
+                    toast.success('Account created! Please check your email for the OTP.');
+                }
             }
         } catch (error: any) {
             console.error('Login Error:', error);
             const errorMsg = error.message || 'Unknown error';
-            toast.error(`Login Failed: ${errorMsg}`);
-            // DEBUG: Show detailed error
-            alert(`Debug Error: ${JSON.stringify(error)} \nMsg: ${errorMsg}`);
+            toast.error(`Request Failed: ${errorMsg}`);
         } finally {
             setLoading(false);
         }
@@ -65,12 +117,12 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
             <SEO
-                title={isLogin ? "Client Login | TallyLink" : "Create Account | TallyLink"}
-                description="Securely access your TallyLink business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
+                title={isLogin ? "Client Login | SYNCORA TallyOnMobile" : "Create Account | SYNCORA TallyOnMobile"}
+                description="Securely access your SYNCORA TallyOnMobile business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
-            {/* Theme Toggle — Top Right */}
+            {/* Theme Toggle ? Top Right */}
             <button
                 onClick={toggleTheme}
                 className="fixed top-5 right-5 z-50 w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] transition-all"
@@ -79,7 +131,7 @@ export default function LoginPage() {
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Left — Auth Form */}
+            {/* Left ? Auth Form */}
             <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 z-10">
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
@@ -95,7 +147,7 @@ export default function LoginPage() {
                             </svg>
                         </div>
                         <div>
-                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">TallyLink</h1>
+                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">SYNCORA TallyOnMobile</h1>
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
                         </div>
                     </div>
@@ -116,13 +168,13 @@ export default function LoginPage() {
                             <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
                                 {isLogin
                                     ? 'Sign in to access your business dashboard'
-                                    : 'Get started with TallyLink in under a minute'
+                                    : 'Get started with SYNCORA TallyOnMobile in under a minute'
                                 }
                             </p>
                         </motion.div>
                     </AnimatePresence>
 
-                    {/* Google Login — Show first for quick access */}
+                    {/* Google Login ? Show first for quick access */}
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
@@ -148,61 +200,111 @@ export default function LoginPage() {
                     {/* Auth Form */}
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <AnimatePresence>
-                            {!isLogin && (
+                            {!isLogin && !otpSent && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0 }}
                                     animate={{ opacity: 1, height: 'auto' }}
                                     exit={{ opacity: 0, height: 0 }}
                                     className="overflow-hidden"
                                 >
-                                    <label htmlFor="login-fullName" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
                                     <div className="relative">
                                         <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                                         <input
-                                            id="login-fullName"
                                             type="text"
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
                                             className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
                                             placeholder="Your full name"
-                                            required={!isLogin}
+                                            required={!isLogin && !otpSent}
                                         />
                                     </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
 
-                        <div>
-                            <label htmlFor="login-email" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
-                            <div className="relative">
-                                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                                <input
-                                    id="login-email"
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                    placeholder="you@company.com"
-                                    required
-                                />
-                            </div>
-                        </div>
+                        {!otpSent && !twoFactorRequired && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
+                                    <div className="relative">
+                                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            placeholder="you@company.com"
+                                            required
+                                        />
+                                    </div>
+                                </div>
 
-                        <div>
-                            <label htmlFor="login-password" className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
-                            <div className="relative">
-                                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                                <input
-                                    id="login-password"
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                    placeholder="••••••••"
-                                    required
-                                />
-                            </div>
-                        </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
+                                    <div className="relative">
+                                        <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <input
+                                            type="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            placeholder="????????"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {otpSent && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="overflow-hidden"
+                            >
+                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Verification Code</label>
+                                <div className="text-sm text-[var(--text-muted)] mb-3">
+                                    We sent a code to <span className="font-medium text-[var(--on-surface)]">{email}</span>.
+                                </div>
+                                <div className="relative">
+                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <input
+                                        type="text"
+                                        value={otpCode}
+                                        onChange={(e) => setOtpCode(e.target.value)}
+                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                        placeholder="Enter the 6-digit OTP"
+                                        required
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {twoFactorRequired && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="overflow-hidden"
+                            >
+                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5 font-bold">2FA Security Code</label>
+                                <div className="text-sm text-[var(--text-muted)] mb-3">
+                                    Enter the 6-digit code from your Google Authenticator or other 2FA app.
+                                </div>
+                                <div className="relative">
+                                    <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <input
+                                        type="text"
+                                        maxLength={6}
+                                        value={twoFactorCode}
+                                        onChange={(e) => setTwoFactorCode(e.target.value)}
+                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm font-mono tracking-widest text-center"
+                                        placeholder="000000"
+                                        required
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
 
                         <button
                             type="submit"
@@ -213,7 +315,7 @@ export default function LoginPage() {
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    {isLogin ? 'Sign In' : 'Create Account'}
+                                    {isLogin ? (twoFactorRequired ? 'Verify 2FA' : 'Sign In') : (otpSent ? 'Verify Account' : 'Create Account')}
                                     <ArrowRight size={16} />
                                 </>
                             )}

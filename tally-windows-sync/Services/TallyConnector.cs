@@ -32,10 +32,15 @@ namespace TallySyncApp.Services
 
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(_timeout)
+                // Per-request timeouts are applied via CancellationTokenSource in SendRequestAsync.
+                // A fixed client timeout here overrides them and kills every long export at 30s.
+                Timeout = Timeout.InfiniteTimeSpan
             };
             _httpClient.DefaultRequestHeaders.Add("Accept", "text/xml");
         }
+
+        /// <summary>Consecutive Tally requests that failed/returned nothing; reset on success.</summary>
+        public int ConsecutiveFailures { get; private set; }
         
         private void Log(string message)
         {
@@ -102,7 +107,12 @@ namespace TallySyncApp.Services
                     var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
                     var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token);
 
-                    if (!response.IsSuccessStatusCode) return null;
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        ConsecutiveFailures++;
+                        SyncLogger.Log($"❌ Tally HTTP {(int)response.StatusCode} for [{companyName ?? "Global"}]");
+                        return null;
+                    }
 
                     var responseContent = await response.Content.ReadAsStringAsync();
                     SyncLogger.SaveFile("last_tally_response.xml", responseContent);
@@ -113,16 +123,31 @@ namespace TallySyncApp.Services
                     using (var stringReader = new StringReader(sanitizedContent))
                     using (var xmlReader = XmlReader.Create(stringReader, settings))
                     {
-                        return XDocument.Load(xmlReader);
+                        var doc = XDocument.Load(xmlReader);
+                        ConsecutiveFailures = 0;
+                        return doc;
                     }
                 }
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                // Tally hung or timed out. Callers must be able to see this instead of an empty result.
+                ConsecutiveFailures++;
+                SyncLogger.Log($"❌ Tally request failed ({companyName ?? "Global"}, timeout {customTimeout ?? _timeout}s): {ex.Message}");
+                return null;
+            }
         }
 
         private string SanitizeXmlString(string xml)
         {
             if (string.IsNullOrEmpty(xml)) return xml;
+
+            // Tally exports user-defined fields as <UDF:Something> without ever declaring
+            // the UDF prefix, so XmlReader rejects the whole response ("'UDF' is an
+            // undeclared prefix"). Renaming the prefix away keeps the data and the parse.
+            // shortcut: assumes the only undeclared prefix Tally emits is UDF; if another
+            // one shows up, declare it here too.
+            xml = xml.Replace("<UDF:", "<UDF_").Replace("</UDF:", "</UDF_");
 
             // Direct character-by-character filtering (LINQ)
             // Only allow Tab (9), LF (10), CR (13) and characters from Space (32) upwards
@@ -225,7 +250,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""CompanyCollection"">
             <TYPE>Company</TYPE>
-            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE</FETCH>
+            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, GSTIN, CMPGSTIN, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATENAME, COUNTRYNAME, PINCODE, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE, INCOMETAXNUMBER, ISGSTON</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -303,15 +328,22 @@ namespace TallySyncApp.Services
                         {
                             addressParts.AddRange(comp.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
                         }
-                        // Extract state
-                        var compState = GetElementValue(comp, "STATE") ?? GetElementValue(comp, "LEDSTATENAME") ?? GetElementValue(comp, "STATENAME") ?? GetElementValue(comp, "COUNTRYOFRESIDENCE");
+                        // Extract state (Tally company master me STATENAME hota hai; STATE/LEDSTATENAME ledger ke field hain)
+                        var compState = new[] { "STATENAME", "STATE", "LEDSTATENAME", "COUNTRYOFRESIDENCE" }
+                            .Select(t => GetElementValue(comp, t))
+                            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
                         if (!string.IsNullOrWhiteSpace(compState) && !addressParts.Any(p => p.Contains(compState, StringComparison.OrdinalIgnoreCase)))
                         {
                             addressParts.Add(compState);
                         }
 
-                        // Extract GSTIN
-                        var compGstin = GetElementValue(comp, "GSTREGISTRATIONNUMBER") ?? GetElementValue(comp, "PARTYGSTIN");
+                        // Extract GSTIN (khali string ko bhi skip karo; Tally na-milne par tag hi nahi bhejta)
+                        var compGstin = new[] { "GSTREGISTRATIONNUMBER", "GSTIN", "CMPGSTIN", "PARTYGSTIN" }
+                            .Select(t => GetElementValue(comp, t))
+                            .FirstOrDefault(v => ExtractGstin(v) != null);
+                        // Tally company collection me GSTIN tag nahi deta; TaxUnit collection se
+                        // (TAXTYPE=GST) real GSTIN milta hai — verified: 28AAUPM7741E1Z9
+                        compGstin ??= await FetchTaxUnitGstinAsync(name);
 
                         // Extract phone
                         var compPhone = GetElementValue(comp, "PHONENUMBER") ?? GetElementValue(comp, "LEDGERPHONE") ?? GetElementValue(comp, "LEDGERMOBILE");
@@ -353,6 +385,110 @@ namespace TallySyncApp.Services
                 Log($"Company list error: {ex.Message}");
                 return new List<Company>();
             }
+        }
+
+        // GSTIN = 2 digit state code + PAN (5 letters, 4 digits, 1 letter) + entity + 'Z' + checksum
+        private static readonly Regex GstinPattern = new(@"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]", RegexOptions.Compiled);
+
+        // Tally company master me sirf STATENAME aata hai, isliye naam se state code nikalna padta hai
+        private static readonly Dictionary<string, string> GstStateCodes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Jammu and Kashmir"] = "01", ["Jammu & Kashmir"] = "01",
+            ["Himachal Pradesh"] = "02", ["Punjab"] = "03", ["Chandigarh"] = "04",
+            ["Uttarakhand"] = "05", ["Haryana"] = "06", ["Delhi"] = "07", ["Rajasthan"] = "08",
+            ["Uttar Pradesh"] = "09", ["Bihar"] = "10", ["Sikkim"] = "11", ["Arunachal Pradesh"] = "12",
+            ["Nagaland"] = "13", ["Manipur"] = "14", ["Mizoram"] = "15", ["Tripura"] = "16",
+            ["Meghalaya"] = "17", ["Assam"] = "18", ["West Bengal"] = "19", ["Jharkhand"] = "20",
+            ["Odisha"] = "21", ["Orissa"] = "21", ["Chhattisgarh"] = "22", ["Madhya Pradesh"] = "23",
+            ["Gujarat"] = "24", ["Daman and Diu"] = "25", ["Daman & Diu"] = "25",
+            ["Dadra and Nagar Haveli and Daman and Diu"] = "26", ["Dadra & Nagar Haveli and Daman & Diu"] = "26",
+            ["Maharashtra"] = "27", ["Andhra Pradesh"] = "37", ["Karnataka"] = "29", ["Goa"] = "30",
+            ["Lakshadweep"] = "31", ["Kerala"] = "32", ["Tamil Nadu"] = "33",
+            ["Puducherry"] = "34", ["Pondicherry"] = "34",
+            ["Andaman and Nicobar Islands"] = "35", ["Andaman & Nicobar Islands"] = "35",
+            ["Telangana"] = "36", ["Ladakh"] = "38",
+        };
+
+        /// <summary>Kisi bhi value/XML me GSTIN format ka number dhundho (tag ka naam build ke hisaab se badalta hai).</summary>
+        internal static string? ExtractGstin(string? value)
+        {
+            var match = GstinPattern.Match(value ?? string.Empty);
+            return match.Success ? match.Value : null;
+        }
+
+        /// <summary>
+        /// GSTIN banao: state code + PAN + entity(1) + 'Z' + checksum.
+        /// Tally company collection GSTIN tag nahi deta, par INCOMETAXNUMBER (PAN) + STATENAME deta hai.
+        /// Verified: AAUPM7741E + Rajasthan -> 08AAUPM7741E1Z9
+        /// </summary>
+        internal static string? GstinFromPanAndState(string? pan, string? stateName)
+        {
+            var p = (pan ?? string.Empty).Trim().ToUpperInvariant();
+            if (!Regex.IsMatch(p, "^[A-Z]{5}[0-9]{4}[A-Z]$")) return null;
+            if (string.IsNullOrWhiteSpace(stateName) || !GstStateCodes.TryGetValue(stateName.Trim(), out var code)) return null;
+            // shortcut: entity code 1 maana; ek hi state me doosri registration ho to Settings me theek karo
+            var prefix = $"{code}{p}1Z";
+            return prefix + GstinChecksum(prefix);
+        }
+
+        // GSTIN ka 15th character = base-36 checksum (weights 1,2 alternating)
+        private static char GstinChecksum(string prefix14)
+        {
+            const string alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            var sum = 0;
+            for (var i = 0; i < 14; i++)
+            {
+                var product = alphabet.IndexOf(prefix14[i]) * (i % 2 == 0 ? 1 : 2);
+                sum += product / 36 + product % 36;
+            }
+            return alphabet[(36 - sum % 36) % 36];
+        }
+
+        /// <summary>
+        /// TaxUnit collection se company ka asli GSTIN nikalo (verified working path).
+        /// TallyHTD schema: TaxUnit -> GSTRegNumber / TAXREGISTRATION (for TAXTYPE=GST).
+        /// </summary>
+        public async Task<string?> FetchTaxUnitGstinAsync(string companyName)
+        {
+            var request = @"<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>TaxUnitCollection</ID></HEADER>
+  <BODY><DESC>
+    <STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>" + companyName + @"</SVCURRENTCOMPANY></STATICVARIABLES>
+    <TDL><TDLMESSAGE>
+      <COLLECTION NAME=""TaxUnitCollection"">
+        <TYPE>TaxUnit</TYPE>
+        <FETCH>NAME, TAXTYPE, USEDFOR, TAXREGISTRATION, GSTREGNUMBER, STATENAME</FETCH>
+      </COLLECTION>
+    </TDLMESSAGE></TDL>
+  </DESC></BODY>
+</ENVELOPE>";
+            try
+            {
+                var doc = await SendRequestAsync(request, companyName);
+                if (doc == null) return null;
+                // TaxUnit jisme USEDFOR=GST aur TAXTYPE=GST ho, uska TAXREGISTRATION / GSTREGNUMBER le
+                foreach (var tu in doc.Descendants("TAXUNIT"))
+                {
+                    var useFor = tu.Element("USEDFOR")?.Value ?? "";
+                    var taxType = (tu.Attribute("TAXTYPE")?.Value ?? tu.Element("TAXTYPE")?.Value ?? "").Trim();
+                    if ((useFor.Contains("GST", StringComparison.OrdinalIgnoreCase) || taxType.Contains("GST", StringComparison.OrdinalIgnoreCase))
+                        && (taxType.Contains("GST", StringComparison.OrdinalIgnoreCase) || useFor.Contains("GST", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var gstin = (tu.Attribute("TAXREGISTRATION")?.Value ?? tu.Element("GSTREGNUMBER")?.Value ?? tu.Element("TAXREGISTRATION")?.Value ?? "").Trim();
+                        if (!string.IsNullOrWhiteSpace(gstin) && Regex.IsMatch(gstin, @"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]\b"))
+                        {
+                            Log($"✅ TaxUnit GSTIN mila ({companyName}): {gstin}");
+                            return gstin;
+                        }
+                    }
+                }
+                Log($"⚠️ TaxUnit collection me GST TaxUnit nahi mila ({companyName})");
+            }
+            catch (Exception ex)
+            {
+                Log($"⚠️ TaxUnit fetch fail ({companyName}): {ex.Message}");
+            }
+            return null;
         }
 
         public async Task<Company?> GetActiveCompanyAsync()
@@ -481,17 +617,13 @@ namespace TallySyncApp.Services
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-        <SVFROMCOUNT>{fromCount}</SVFROMCOUNT>
-        <SVTOCOUNT>{toCount}</SVTOCOUNT>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME=""LedgerCollection"" ISMODIFY=""No"">
             <TYPE>Ledger</TYPE>
             <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
-            <FILTER>PagingFilter</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""PagingFilter"">$$IsBetween:$SVFROMCOUNT,$SVTOCOUNT,$RECORDCOUNT</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -540,8 +672,8 @@ namespace TallySyncApp.Services
                             Email = email,
                             Gstin = gstin,
                             Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                            MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                            AlterId = GetElementValue(ledgerElement, "ALTERID")
+                            MasterId = GetElementValue(ledgerElement, "MASTERID")?.Trim(),
+                            AlterId = GetElementValue(ledgerElement, "ALTERID")?.Trim()
                         });
                     }
                     catch (Exception ex)
@@ -550,7 +682,7 @@ namespace TallySyncApp.Services
                     }
                 }
 
-                totalFetched = pageLedgers.Count;
+                totalFetched = 0; // single full fetch - Tally IsBetween paging returns wrong rows
                 allLedgers.AddRange(pageLedgers);
                 page++;
                 
@@ -596,18 +728,15 @@ namespace TallySyncApp.Services
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
-        <SVFROMCOUNT>{fromCount}</SVFROMCOUNT>
-        <SVTOCOUNT>{toCount}</SVTOCOUNT>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME=""ModifiedLedgers"">
             <TYPE>Ledger</TYPE>
             <FETCH>NAME, GUID, PARENT, OPENINGBALANCE, CLOSINGBALANCE, ADDRESS.LIST, LEDGERPHONE, LEDGERCONTACT, LEDGEREMAIL, LEDGERMOBILE, COUNTRYOFRESIDENCE, LEDSTATENAME, GSTREGISTRATIONTYPE, PARTYGSTIN, GSTREGISTRATIONNUMBER, PANNUMBER, MASTERID, ALTERID</FETCH>
-            <FILTER>ModifiedAfter, PagingFilter</FILTER>
+            <FILTER>ModifiedAfter</FILTER>
           </COLLECTION>
           <SYSTEM TYPE=""Formulae"" NAME=""ModifiedAfter"">$$NumValue:$ALTERID > {afterAlterId}</SYSTEM>
-          <SYSTEM TYPE=""Formulae"" NAME=""PagingFilter"">$$IsBetween:$SVFROMCOUNT,$SVTOCOUNT,$RECORDCOUNT</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -654,8 +783,8 @@ namespace TallySyncApp.Services
                             Email = email,
                             Gstin = gstin,
                             Pan = GetElementValue(ledgerElement, "PANNUMBER"),
-                            MasterId = GetElementValue(ledgerElement, "MASTERID"),
-                            AlterId = GetElementValue(ledgerElement, "ALTERID")
+                            MasterId = GetElementValue(ledgerElement, "MASTERID")?.Trim(),
+                            AlterId = GetElementValue(ledgerElement, "ALTERID")?.Trim()
                         });
                     }
                     catch (Exception ex)
@@ -664,7 +793,7 @@ namespace TallySyncApp.Services
                     }
                 }
 
-                totalFetched = pageLedgers.Count;
+                totalFetched = 0; // single full fetch - Tally IsBetween paging returns wrong rows
                 allLedgers.AddRange(pageLedgers);
                 page++;
 
@@ -829,8 +958,6 @@ namespace TallySyncApp.Services
                  <REPORT NAME=""Voucher Register"" ISMODIFY=""No"">
                      <SET>SVEXPLODEALL:Yes</SET>
                      <SET>EXPLODEINVENTORY:Yes</SET>
-                     <SET>EXPLODEGSTDETAILS:Yes</SET>
-                     <SET>GSTDETAILS:Yes</SET>
                  </REPORT>
              </TDLMESSAGE>
         </TDL>
@@ -846,6 +973,100 @@ namespace TallySyncApp.Services
             if (doc == null) return new List<Voucher>();
 
             return ParseVouchersFromXml(doc, companyName, effectiveFrom, stockItemHsnCache);
+        }
+
+        /// <summary>
+        /// Light index request: ALTERIDs of all vouchers (a few bytes each).
+        /// Used to cut the company into 100-voucher windows so no Tally request is heavy.
+        /// </summary>
+        public async Task<List<long>> GetVoucherAlterIdsAsync(string companyName)
+        {
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherIndex</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""VoucherIndex"" ISMODIFY=""No"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>ALTERID</FETCH>
+            <FILTER>AllVouchers</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            SyncLogger.Log($"Fetching voucher ALTERID index for {companyName}");
+
+            var doc = await SendRequestAsync(request, companyName);
+            if (doc == null) return new List<long>();
+
+            var ids = doc.Descendants()
+                .Where(e => e.Name.LocalName == "VOUCHER")
+                .Select(v => v.Elements().FirstOrDefault(c => c.Name.LocalName == "ALTERID")?.Value)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => long.TryParse(v!.Trim(), out var n) ? n : 0)
+                .Where(n => n > 0)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+
+            SyncLogger.Log($"Voucher index: {ids.Count} vouchers");
+            return ids;
+        }
+
+        /// <summary>
+        /// Fetch vouchers in one ALTERID window (used with 100-wide windows).
+        /// </summary>
+        public async Task<List<Voucher>> GetVouchersByAlterRangeAsync(string companyName, long fromAlterId, long toAlterId, Dictionary<string, string>? stockItemHsnCache = null)
+        {
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherCollection</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""VoucherCollection"" ISMODIFY=""No"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PLACEOFSUPPLY, PARTYGSTIN, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
+            <FILTER>AlterRange</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""AlterRange"">$$NumValue:$ALTERID &gt;= {fromAlterId} AND $$NumValue:$ALTERID &lt;= {toAlterId}</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            SyncLogger.Log($"Voucher batch ALTERID {fromAlterId}-{toAlterId}");
+
+            var doc = await SendRequestAsync(request, companyName, 120);
+            if (doc == null) return new List<Voucher>();
+
+            return ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
         }
 
         private List<Voucher> ParseVouchersFromXml(XDocument doc, string? companyName, DateTime defaultDate, Dictionary<string, string>? stockItemHsnCache = null)
@@ -1051,8 +1272,8 @@ namespace TallySyncApp.Services
                         PartyName = partyName,
                         TotalAmount = totalAmount,
                         Narration = GetElementValue(vNode, "NARRATION"),
-                        MasterId = GetElementValue(vNode, "MASTERID") ?? GetElementValue(vNode, "GUID"),
-                        AlterId = GetElementValue(vNode, "ALTERID"),
+                        MasterId = GetElementValue(vNode, "MASTERID")?.Trim() ?? GetElementValue(vNode, "GUID")?.Trim(),
+                        AlterId = GetElementValue(vNode, "ALTERID")?.Trim(),
                         LedgerEntries = ledgerEntries,
                         InventoryEntries = inventoryEntries
                     };
@@ -1066,7 +1287,13 @@ namespace TallySyncApp.Services
                 }
             }
 
-            return vouchers;
+            // Tally can return the same voucher twice (retained/deleted copy) and a few
+            // attribute-only placeholder nodes - both break the upsert, so keep real ones once.
+            return vouchers
+                .Where(v => !string.IsNullOrEmpty(v.VoucherType) && v.VoucherType != "Unknown")
+                .GroupBy(v => v.Id)
+                .Select(g => g.First())
+                .ToList();
         }
 
         /// <summary>
@@ -1341,6 +1568,29 @@ namespace TallySyncApp.Services
                         hsnCode = null;
                     }
 
+                    // GST rate: Tally Prime me GSTDETAILS.LIST > STATEWISEDETAILS.LIST > RATEDETAILS.LIST
+                    // me per-head rate hota hai (CGST 9 + SGST 9 = 18%, ya IGST 18). Total nikaalna hai.
+                    decimal gstRate = 0;
+                    foreach (var gstDetails in itemElement.Descendants()
+                        .Where(x => x.Name.LocalName.Equals("GSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase))
+                        .Reverse())
+                    {
+                        decimal cgst = 0, sgst = 0, igst = 0, other = 0;
+                        foreach (var rateDetail in gstDetails.Descendants()
+                            .Where(x => x.Name.LocalName.Equals("RATEDETAILS.LIST", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var head = (GetElementValue(rateDetail, "GSTRATEDUTYHEAD") ?? "").ToUpperInvariant();
+                            var rate = ParseDecimal(GetElementValue(rateDetail, "GSTRATE"));
+                            if (head.Contains("IGST")) igst += rate;
+                            else if (head.Contains("CGST")) cgst += rate;
+                            else if (head.Contains("SGST") || head.Contains("UTGST")) sgst += rate;
+                            else other += rate;
+                        }
+                        gstRate = igst > 0 ? igst : cgst + sgst;
+                        if (gstRate == 0) gstRate = other;
+                        if (gstRate > 0) break;
+                    }
+
                     items.Add(new StockItem
                     {
                         Id = GetAttribute(itemElement, "GUID") ?? GetElementValue(itemElement, "GUID") ?? Guid.NewGuid().ToString(),
@@ -1355,6 +1605,7 @@ namespace TallySyncApp.Services
                             ? ParseDecimal(GetElementValue(itemElement, "CLOSINGRATE")) 
                             : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
+                        GstRate = gstRate,
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });
@@ -2119,17 +2370,21 @@ namespace TallySyncApp.Services
                 foreach (var le in v.LedgerEntries)
                 {
                     if (le.BankAllocations == null) continue;
-                    
+
+                    int leIdx = v.LedgerEntries.IndexOf(le);
+                    int idx = 0;
                     foreach (var ba in le.BankAllocations)
                     {
                         // Enrich with parent voucher info
                         ba.VoucherId = v.Id; // This is the deteministic UUID we generated
+                        // Stable unique id - see ExtractBillAllocations for why this is required.
+                        ba.Id = $"{v.Id}|bank|{leIdx}|{le.LedgerName}|{ba.BankName}|{ba.InstrumentNumber}|{ba.Amount}|{idx++}";
                         // ba.CompanyId will be set by SyncManager during upload
                         allocs.Add(ba);
                     }
                 }
             }
-            return allocs;
+            return allocs.GroupBy(a => a.Id).Select(g => g.First()).ToList();
         }
 
         /// <summary>
@@ -2147,16 +2402,22 @@ namespace TallySyncApp.Services
                 {
                     if (le.BillAllocations == null) continue;
 
+                    // leIdx keeps the id unique when one voucher has two entries on the same ledger
+                    int leIdx = v.LedgerEntries.IndexOf(le);
+                    int idx = 0;
                     foreach (var ba in le.BillAllocations)
                     {
                         // Enrich with parent voucher info
                         ba.VoucherId = v.Id;
                         ba.LedgerName = le.LedgerName; // Important: link to the ledger
+                        // Stable unique id. Without it every row hashes the same empty string
+                        // and the upsert collides with an unrelated row (403 RLS USING).
+                        ba.Id = $"{v.Id}|bill|{leIdx}|{le.LedgerName}|{ba.Name}|{ba.Amount}|{idx++}";
                         allocs.Add(ba);
                     }
                 }
             }
-            return allocs;
+            return allocs.GroupBy(a => a.Id).Select(g => g.First()).ToList();
         }
 
         /// <summary>

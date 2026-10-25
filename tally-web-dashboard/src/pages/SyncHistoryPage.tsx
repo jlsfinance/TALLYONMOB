@@ -19,6 +19,7 @@ export default function SyncHistoryPage() {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [selectedSync, setSelectedSync] = useState<any>(null);
     const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+    const [syncHistoryUnavailable, setSyncHistoryUnavailable] = useState(false);
 
     useEffect(() => {
         if (selectedCompany?.id) {
@@ -27,31 +28,77 @@ export default function SyncHistoryPage() {
     }, [selectedCompany, activeTab]);
 
     const loadData = async () => {
+        if (activeTab === 'sync' && syncHistoryUnavailable) {
+            setSyncHistory([]);
+            setStats({
+                totalSyncs: 0,
+                successCount: 0,
+                failedCount: 0,
+                totalRecordsSynced: 0,
+                lastSync: null
+            });
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             if (activeTab === 'sync') {
-                const [historyRes, statsRes] = await Promise.all([
-                    syncHistoryApi.list(selectedCompany.id),
-                    syncHistoryApi.getStats(selectedCompany.id)
-                ]);
-                setSyncHistory(historyRes.data || []);
-                setStats(statsRes.data);
+                const historyRes = await syncHistoryApi.list(selectedCompany.id);
+
+                const historyError = historyRes?.error as any;
+                if (historyError) {
+                    const historyMessage = String(historyError?.message || '').toLowerCase();
+                    if (historyMessage.includes('sync_history') || historyMessage.includes('404')) {
+                        setSyncHistoryUnavailable(true);
+                        setSyncHistory([]);
+                        setStats({
+                            totalSyncs: 0,
+                            successCount: 0,
+                            failedCount: 0,
+                            totalRecordsSynced: 0,
+                            lastSync: null
+                        });
+                        toast.error('sync_history table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                        return;
+                    }
+                    throw historyError;
+                }
+
+                const rows = historyRes?.data || [];
+                setSyncHistory(rows);
+                setStats({
+                    totalSyncs: rows.length,
+                    successCount: rows.filter((s: any) => s?.status === 'completed').length,
+                    failedCount: rows.filter((s: any) => s?.status === 'failed').length,
+                    totalRecordsSynced: rows.reduce((sum: number, s: any) => sum + Number(s?.total_records || 0), 0),
+                    lastSync: rows[0] || null
+                });
             } else {
-                // Load Pending Transactions (Audit Log)
                 const { data, error } = await supabase
                     .from('pending_transactions')
                     .select('*')
                     .eq('company_id', selectedCompany.id)
                     .order('created_at', { ascending: false });
 
-                if (error) throw error;
+                if (error) {
+                    const message = String(error?.message || '').toLowerCase();
+                    if (message.includes('pending_transactions') || message.includes('404')) {
+                        setPendingTxns([]);
+                        toast.error('pending_transactions table missing. Run INSFORGE_OPTIONAL_TABLES_ADDITIVE.sql');
+                        return;
+                    }
+                    throw error;
+                }
+
                 setPendingTxns(data || []);
             }
         } catch (error) {
             console.error('Error loading data:', error);
             toast.error('Failed to load data');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleDeleteSync = async (sync: any) => {
@@ -276,7 +323,7 @@ export default function SyncHistoryPage() {
                                                 <div className="text-sm text-gray-300">
                                                     <p className="font-bold text-white">{txn.voucher_data?.party_name || 'Unknown Party'}</p>
                                                     <p className="text-xs">
-                                                        {txn.voucher_data?.voucher_type_name} • ₹{txn.voucher_data?.grand_total?.toLocaleString('en-IN')}
+                                                        {txn.voucher_data?.voucher_type_name} ? ₹{txn.voucher_data?.grand_total?.toLocaleString('en-IN')}
                                                     </p>
                                                     {txn.voucher_data?.original_voucher_number && (
                                                         <p className="text-[10px] text-gray-500">Ref: #{txn.voucher_data.original_voucher_number}</p>
@@ -348,11 +395,11 @@ export default function SyncHistoryPage() {
                             This will permanently delete <strong className="text-white">ALL</strong> data for <strong className="text-white">{selectedCompany.name}</strong>:
                         </p>
                         <ul className="text-sm text-gray-400 mb-4 space-y-1">
-                            <li>• All vouchers</li>
-                            <li>• All sales & purchases</li>
-                            <li>• All ledgers</li>
-                            <li>• All stock items</li>
-                            <li>• All sync history</li>
+                            <li>? All vouchers</li>
+                            <li>? All sales & purchases</li>
+                            <li>? All ledgers</li>
+                            <li>? All stock items</li>
+                            <li>? All sync history</li>
                         </ul>
                         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4">
                             <p className="text-sm text-red-400">Run "Sync Now" in Windows App to re-sync everything after deleting.</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,16 +25,7 @@ export default function PurchaseDetailPage() {
                 .select('*')
                 .eq('id', id)
                 .single();
-
-            if (!voucherData && id) {
-                // Try by voucher_id field
-                const { data: fallback } = await supabase
-                    .from('vouchers')
-                    .select('*')
-                    .eq('voucher_id', id)
-                    .single();
-                voucherData = fallback;
-            }
+            // Legacy voucher_id fallback removed because current vouchers schema uses only id.
 
             if (voucherData) {
                 // Map voucher fields to purchase format
@@ -43,6 +34,7 @@ export default function PurchaseDetailPage() {
                     invoice_number: voucherData.voucher_number,
                     invoice_date: voucherData.voucher_date,
                     party_ledger_name: voucherData.party_name,
+                    party_ledger_id: voucherData.party_ledger_id,
                     net_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     gross_amount: Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
                     taxable_amount: Math.abs(Number(voucherData.taxable_value) || Number(voucherData.total_amount) || 0),
@@ -57,13 +49,13 @@ export default function PurchaseDetailPage() {
                 // Fetch voucher_stock_entries for line items
                 const { data: stockEntries } = await supabase
                     .from('voucher_stock_entries')
-                    .select('*')
+                    .select('*').eq('is_deleted', false)
                     .eq('voucher_id', voucherData.id);
 
                 // Get stock items lookup
                 const { data: stockItems } = await supabase
                     .from('stock_items')
-                    .select('name, hsn_code, unit')
+                    .select('id, name, hsn_code, unit')
                     .eq('company_id', voucherData.company_id);
 
                 const stockLookup: any = {};
@@ -72,13 +64,29 @@ export default function PurchaseDetailPage() {
                 // Map entries to items format
                 purchaseData.purchase_items = (stockEntries || []).map((item: any) => ({
                     ...item,
+                    stock_item_id: stockLookup[item.item_name || item.stock_item_name]?.id,
                     stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
-                    hsn_code: item.hsn_code || stockLookup[item.item_name]?.hsn_code || '-',
+                    hsn_code: (() => {
+                        const raw = item.hsn_code || '';
+                        const isValid = (v: string) => v && v !== 'NIL' && v !== 'NA' && v !== '-' && v.trim() !== '' && v.trim().length >= 4;
+                        return isValid(raw) ? raw : (stockLookup[item.item_name]?.hsn_code || '-');
+                    })(),
                     unit: item.unit || stockLookup[item.item_name]?.unit || '',
                     quantity: item.quantity || item.billed_qty || 0,
                     rate: item.rate || item.unit_price || 0,
                     amount: item.amount || (item.quantity * item.rate) || 0
                 }));
+
+                // Fallback for party_ledger_id
+                if (!purchaseData.party_ledger_id && purchaseData.party_ledger_name) {
+                    const { data: pData } = await supabase
+                        .from('ledgers')
+                        .select('id')
+                        .eq('company_id', voucherData.company_id)
+                        .ilike('name', purchaseData.party_ledger_name.trim())
+                        .maybeSingle();
+                    if (pData) purchaseData.party_ledger_id = pData.id;
+                }
 
                 setPurchase(purchaseData);
             } else {
@@ -114,7 +122,7 @@ export default function PurchaseDetailPage() {
                 <FileText size={48} className="mx-auto mb-4 opacity-30" />
                 <p className="font-medium">Purchase not found</p>
                 <button onClick={() => navigate('/purchases')} className="mt-4 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10">
-                    ← Back to Purchases
+                    â† Back to Purchases
                 </button>
             </div>
         );
@@ -161,7 +169,12 @@ export default function PurchaseDetailPage() {
                 <div className="p-6 grid md:grid-cols-2 gap-6 border-b border-white/5">
                     <div className="bg-white/[0.02] rounded-xl p-4 border border-white/5 print:border-gray-200">
                         <p className="text-xs text-gray-500 uppercase font-bold mb-2 flex items-center gap-1"><User size={12} /> Vendor</p>
-                        <p className="font-semibold text-white text-lg print:text-gray-900">{purchase.party_ledger_name}</p>
+                        <p
+                            className="font-semibold text-white text-lg print:text-gray-900 cursor-pointer hover:text-orange-400 transition-colors"
+                            onClick={() => purchase.party_ledger_id && navigate(`/ledgers/${purchase.party_ledger_id}`)}
+                        >
+                            {purchase.party_ledger_name}
+                        </p>
                         {purchase.party_gstin && <p className="text-sm text-gray-400 font-mono mt-1">GSTIN: {purchase.party_gstin}</p>}
                     </div>
                     <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4 text-right print:bg-orange-50">
@@ -188,7 +201,14 @@ export default function PurchaseDetailPage() {
                                 {purchase.purchase_items.map((item: any, idx: number) => (
                                     <tr key={item.id || idx} className="hover:bg-white/[0.02]">
                                         <td className="px-6 py-4 text-gray-500">{idx + 1}</td>
-                                        <td className="px-6 py-4 font-medium text-white print:text-gray-900">{item.stock_item_name || item.name}</td>
+                                        <td className="px-6 py-4 font-medium text-white print:text-gray-900">
+                                            <span
+                                                className="cursor-pointer hover:text-orange-400 transition-colors"
+                                                onClick={() => item.stock_item_id && navigate(`/stock/${item.stock_item_id}`)}
+                                            >
+                                                {item.stock_item_name || item.name}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-4 text-center text-gray-400 font-mono">{item.hsn_code}</td>
                                         <td className="px-6 py-4 text-center"><span className="font-semibold text-white print:text-gray-900">{item.quantity}</span><span className="text-xs text-gray-500 ml-1">{item.unit}</span></td>
                                         <td className="px-6 py-4 text-right font-mono text-gray-300">{formatCurrency(item.rate)}</td>

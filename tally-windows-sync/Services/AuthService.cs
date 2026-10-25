@@ -333,12 +333,20 @@ namespace TallySyncApp.Services
                     }
                 }
 
-                // Refresh failed, clear session
-                SignOut();
+                // Refresh failed — log the reason. Only sign out when the refresh
+                // token itself is rejected (400/401); transient network/5xx failures
+                // must keep the session so the next sync can retry.
+                var failCode = (int)response.StatusCode;
+                SyncLogger.Log($"⚠️ Token refresh failed: HTTP {failCode}");
+                if (failCode == 400 || failCode == 401)
+                {
+                    SignOut();
+                }
                 return false;
             }
-            catch
+            catch (Exception rex)
             {
+                SyncLogger.Log($"⚠️ Token refresh error: {rex.Message}");
                 return false;
             }
         }
@@ -354,10 +362,18 @@ namespace TallySyncApp.Services
             // Refresh if token expires in less than 5 minutes
             if (CurrentSession.ExpiresAt <= DateTime.UtcNow.AddMinutes(5))
             {
-                var success = await RefreshTokenAsync();
-                if (success)
+                // Two attempts: transient network blips were silently killing the
+                // session and leaving every upload with an expired JWT for an hour.
+                for (int attempt = 1; attempt <= 2; attempt++)
                 {
-                    return CurrentSession.AccessToken;
+                    var success = await RefreshTokenAsync();
+                    if (success)
+                    {
+                        SyncLogger.Log("🔑 Auth token refreshed");
+                        return CurrentSession.AccessToken;
+                    }
+                    if (CurrentSession == null) return null; // refresh token revoked
+                    if (attempt < 2) await Task.Delay(2000);
                 }
                 return null;
             }
@@ -400,8 +416,8 @@ namespace TallySyncApp.Services
                     var json = File.ReadAllText(_sessionFilePath);
                     CurrentSession = JsonSerializer.Deserialize<UserSession>(json);
                     
-                    // Check if session is still valid
-                    if (CurrentSession != null && !CurrentSession.IsLoggedIn)
+                    // Check if session is still valid or can be refreshed via RefreshToken
+                    if (CurrentSession != null && string.IsNullOrEmpty(CurrentSession.RefreshToken) && CurrentSession.ExpiresAt <= DateTime.UtcNow)
                     {
                         CurrentSession = null;
                     }

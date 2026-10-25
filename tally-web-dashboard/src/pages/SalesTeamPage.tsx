@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/insforge';
 import {
     MapPin, Clock, CheckCircle, Users, Loader2, Calendar,
     Navigation, ArrowRight, Phone, User, Target, BarChart3,
@@ -48,7 +48,7 @@ export default function SalesTeamPage() {
             .eq('company_id', selectedCompany.id)
             .in('parent', ['Sundry Debtors', 'sundry debtors', 'SUNDRY DEBTORS'])
             .order('name')
-            .limit(1000);
+            .limit(100000);
         setParties(data || []);
     };
 
@@ -312,3 +312,4 @@ export default function SalesTeamPage() {
         </div>
     );
 }
+

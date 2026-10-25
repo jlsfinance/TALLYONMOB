@@ -54,6 +54,7 @@ namespace TallySyncApp
                     );
 
                     base.OnStartup(e);
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             // 1. Settings first (needed by several services below)
             LoadSettings();
@@ -80,7 +81,7 @@ namespace TallySyncApp
             _ = Task.Run(async () => await CheckForUpdates());
 
             // 3. Parse command line: /auto (login autostart) and /installation@1 (post-install)
-            var cmd = CommandLineOptions.Parse(e.Args);
+            var cmd = CommandLineOptions.ParseFromEnvironment();
 
             // 4. Single-instance guard. If another instance is running, activate it and exit.
             _singleInstance = new SingleInstanceGuard();
@@ -217,6 +218,15 @@ namespace TallySyncApp
                 if (_authService!.IsLoggedIn) ShowMainWindow();
                 else ShowLoginWindow();
             }
+
+            // 13. Auto-sync must survive a restart: StartSync() used to be reachable only
+            // from the tray "Sync Now", the UI button, or a SignalR force_sync push which
+            // meant a relaunched app silently did nothing until the user clicked something.
+            if (_authService!.IsLoggedIn)
+            {
+                try { GetSyncManager().StartSync(); }
+                catch (Exception ex) { _logger?.LogWarning(ex, "Auto-sync start failed"); }
+            }
         }
 
         /// <summary>
@@ -226,10 +236,12 @@ namespace TallySyncApp
         {
             try
             {
-                string runtimePath = Path.Combine(
+                // Installed folders are versioned (8.0.23), never a bare "8.0".
+                string runtimeRoot = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                    "dotnet", "shared", "Microsoft.WindowsDesktop.App", "8.0");
-                return Directory.Exists(runtimePath);
+                    "dotnet", "shared", "Microsoft.WindowsDesktop.App");
+                return Directory.Exists(runtimeRoot) && Directory.EnumerateDirectories(runtimeRoot)
+                    .Any(d => Version.TryParse(Path.GetFileName(d), out var v) && v.Major == 8);
             }
             catch
             {
@@ -327,8 +339,6 @@ private async Task CheckForUpdates()
             {
                 _logger?.LogInformation($"User logged in: {_authService!.CurrentSession?.Email}");
                 ShowMainWindow();
-                // Main window is up: from now on closing it should end the app as before.
-                ShutdownMode = ShutdownMode.OnLastWindowClose;
             }
             else
             {
@@ -390,6 +400,9 @@ private async Task CheckForUpdates()
             // NLog (structured, file + optional network targets)
             try { LoggingService.Configure(); } catch { }
 
+            // First line, so the log folder is never empty on a fresh install.
+            try { LoggingService.AppLogger.Info($"TallyLink started {DateTime.Now:O}"); } catch { }
+
             // Keep a simple ILogger<App> alive (do NOT dispose the factory in a using block).
             _loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -403,7 +416,7 @@ private async Task CheckForUpdates()
         private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             var exception = e.ExceptionObject as Exception;
-            _logger?.LogError(exception, "Unhandled exception occurred");
+            try { LoggingService.AppLogger.Error(exception, "Unhandled exception occurred"); } catch { }
 
             MessageBox.Show(
                 $"An unexpected error occurred:\n\n{exception?.Message}\n\nThe application will now close.",
@@ -416,6 +429,7 @@ private async Task CheckForUpdates()
             System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
         {
             _logger?.LogError(e.Exception, "Dispatcher unhandled exception");
+            try { LoggingService.AppLogger.Error(e.Exception, "Dispatcher unhandled exception"); } catch { }
 
             MessageBox.Show(
                 $"An error occurred:\n\n{e.Exception.Message}",

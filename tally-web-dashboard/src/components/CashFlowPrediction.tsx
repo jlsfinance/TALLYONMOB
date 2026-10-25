@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/insforge';
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 
 interface Prediction {
@@ -161,3 +161,4 @@ export default function CashFlowPrediction() {
         </div>
     );
 }
+

@@ -21,6 +21,7 @@ namespace TallySyncApp.ViewModels
         public ICommand StartSyncCommand { get; }
         public ICommand StopSyncCommand { get; }
         public ICommand ManualSyncCommand { get; }
+        public ICommand FullResyncCommand { get; }
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
 
@@ -86,6 +87,7 @@ namespace TallySyncApp.ViewModels
             StartSyncCommand = new RelayCommand(async () => await StartSync());
             StopSyncCommand = new RelayCommand(StopSync);
             ManualSyncCommand = new RelayCommand(async () => await ManualSync());
+            FullResyncCommand = new RelayCommand(async () => await FullResync());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
 
@@ -124,8 +126,25 @@ namespace TallySyncApp.ViewModels
             if (!await CheckSerialAndConfirmAsync()) return;
 
             IsSyncing = true;
-            Log("Starting manual sync...");
+            Log("Starting incremental sync (naya/badla hua data)...");
             await _syncManager.RunManualSyncAsync();
+            await LoadLogs();
+            IsSyncing = false;
+        }
+
+        // Full Resync: ALTERID tracking ignore karke poora data dobara bharta hai.
+        private async Task FullResync()
+        {
+            if (!await CheckSerialAndConfirmAsync()) return;
+
+            var confirm = MessageBox.Show(
+                "Full resync poora historical data dobara upload karega (thoda time lagega).\n\nChalana hai?",
+                "Full Resync", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            IsSyncing = true;
+            Log("Starting FULL resync (poora data dobara)...");
+            await _syncManager.RunManualSyncAsync(forceResync: true);
             await LoadLogs();
             IsSyncing = false;
         }

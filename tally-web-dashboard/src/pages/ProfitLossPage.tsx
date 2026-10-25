@@ -9,13 +9,7 @@ import {
 import { format, startOfYear, endOfYear, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
-import { motion } from 'framer-motion';
-import {
-    PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend
-} from 'recharts';
 import toast from 'react-hot-toast';
-
-const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
 const formatCurrency = (amount: number) => {
     const absAmount = Math.abs(amount || 0);
@@ -23,14 +17,6 @@ const formatCurrency = (amount: number) => {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     }).format(absAmount);
-};
-
-const formatCompact = (amount: number) => {
-    const absAmount = Math.abs(amount || 0);
-    if (absAmount >= 10000000) return `₹${(absAmount / 10000000).toFixed(1)}Cr`;
-    if (absAmount >= 100000) return `₹${(absAmount / 100000).toFixed(1)}L`;
-    if (absAmount >= 1000) return `₹${(absAmount / 1000).toFixed(1)}K`;
-    return `₹${absAmount.toFixed(0)}`;
 };
 
 // Clickable row component
@@ -113,37 +99,43 @@ export default function ProfitLossPage() {
             // Fetch all ledgers with their groups
             const { data: ledgers, error: ledgersError } = await supabase
                 .from('ledgers')
-                .select('id, name, parent, opening_balance, current_balance')
+                .select('*')
                 .eq('company_id', selectedCompany.id);
 
             if (ledgersError) throw ledgersError;
 
-            // Group mapping based on standard Tally primary groups
-            const plData: any = {
-                // Left Side (Expenses)
-                openingStock: 0,
-                purchaseAccounts: { total: 0, ledgers: [] },
-                directExpenses: { total: 0, ledgers: [] },
-                grossProfitCo: 0,
-                indirectExpenses: { total: 0, ledgers: [] },
-                nettProfit: 0,
+            // Fetch stock items
+            const { data: stockItems } = await supabase
+                .from('stock_items')
+                .select('*')
+                .eq('company_id', selectedCompany.id);
 
-                // Right Side (Income)
-                salesAccounts: { total: 0, ledgers: [] },
-                directIncomes: { total: 0, ledgers: [] },
+            // Calculate P&L directly (no Web Worker to avoid CSP issues)
+            const plData = {
+                openingStock: 0,
+                purchaseAccounts: { total: 0, ledgers: [] as any[] },
+                directExpenses: { total: 0, ledgers: [] as any[] },
+                grossProfitCo: 0,
+                indirectExpenses: { total: 0, ledgers: [] as any[] },
+                nettProfit: 0,
+                salesAccounts: { total: 0, ledgers: [] as any[] },
+                directIncomes: { total: 0, ledgers: [] as any[] },
                 closingStock: 0,
                 grossProfitBf: 0,
-                indirectIncomes: { total: 0, ledgers: [] },
-                nettLoss: 0
+                indirectIncomes: { total: 0, ledgers: [] as any[] },
+                nettLoss: 0,
+                tradingDebitTotal: 0,
+                tradingCreditTotal: 0,
+                plDebitTotal: 0,
+                plCreditTotal: 0,
             };
 
-            // Process Ledgers
-            ledgers?.forEach(l => {
-                const balance = Number(l.current_balance) || 0;
+            (ledgers || []).forEach(l => {
+                const balance = Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0;
                 const absBalance = Math.abs(balance);
                 if (absBalance === 0) return;
 
-                const group = l.parent || '';
+                const group = l.parent || l.parent_group || l.ledger_type || l.ledger_group || '';
 
                 if (group.includes('Sales Accounts')) {
                     plData.salesAccounts.total += absBalance;
@@ -168,29 +160,22 @@ export default function ProfitLossPage() {
                 }
             });
 
-            // Get stock values from stock_items table
-            const { data: stockItems } = await supabase
-                .from('stock_items')
-                .select('opening_stock, current_stock, rate, opening_value, closing_value')
-                .eq('company_id', selectedCompany.id);
-
             if (stockItems && stockItems.length > 0) {
-                const openingVal = stockItems.reduce((sum, item) => sum + (Number(item.opening_value) || 0), 0);
-                const closingVal = stockItems.reduce((sum, item) => sum + (Number(item.closing_value) || 0), 0);
+                const openingVal = stockItems.reduce((sum: number, item: any) => sum + (Number(item.opening_value) || 0), 0);
+                const closingVal = stockItems.reduce((sum: number, item: any) => sum + (Number(item.closing_value) || 0), 0);
 
                 if (openingVal > 0 || closingVal > 0) {
                     plData.openingStock = openingVal;
                     if (plData.closingStock === 0) plData.closingStock = closingVal;
                 } else {
-                    plData.openingStock = stockItems.reduce((sum, item) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
-                    const itemsClosingValue = stockItems.reduce((sum, item) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    plData.openingStock = stockItems.reduce((sum: number, item: any) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
+                    const itemsClosingValue = stockItems.reduce((sum: number, item: any) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
                     if (itemsClosingValue > 0 && plData.closingStock === 0) {
                         plData.closingStock = itemsClosingValue;
                     }
                 }
             }
 
-            // Calculate Gross Profit
             const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
             const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
 
@@ -202,7 +187,6 @@ export default function ProfitLossPage() {
                 plData.grossLossBf = plData.grossLossCo;
             }
 
-            // Calculate Net Profit
             const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
             const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
 
@@ -212,19 +196,108 @@ export default function ProfitLossPage() {
                 plData.nettLoss = plDebit - plCredit;
             }
 
-            // Calculate totals for balancing
             plData.tradingDebitTotal = tradingDebit + (plData.grossProfitCo || 0);
             plData.tradingCreditTotal = tradingCredit + (plData.grossLossCo || 0);
             plData.plDebitTotal = plDebit + (plData.nettProfit || 0);
             plData.plCreditTotal = plCredit + (plData.nettLoss || 0);
 
             setData(plData);
+            setLoading(false);
         } catch (error) {
             console.error('Error loading P&L data:', error);
             toast.error('Failed to load Profit & Loss');
-        } finally {
             setLoading(false);
         }
+    };
+
+    const fallbackPLCalculation = (ledgers: any[], stockItems: any[]) => {
+        const plData: any = {
+            openingStock: 0,
+            purchaseAccounts: { total: 0, ledgers: [] },
+            directExpenses: { total: 0, ledgers: [] },
+            grossProfitCo: 0,
+            indirectExpenses: { total: 0, ledgers: [] },
+            nettProfit: 0,
+            salesAccounts: { total: 0, ledgers: [] },
+            directIncomes: { total: 0, ledgers: [] },
+            closingStock: 0,
+            grossProfitBf: 0,
+            indirectIncomes: { total: 0, ledgers: [] },
+            nettLoss: 0
+        };
+
+        ledgers?.forEach(l => {
+            const balance = Number(l.current_balance ?? l.closing_balance ?? l.opening_balance) || 0;
+            const absBalance = Math.abs(balance);
+            if (absBalance === 0) return;
+
+            const group = l.parent || l.parent_group || l.ledger_type || l.ledger_group || '';
+
+            if (group.includes('Sales Accounts')) {
+                plData.salesAccounts.total += absBalance;
+                plData.salesAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Purchase Accounts')) {
+                plData.purchaseAccounts.total += absBalance;
+                plData.purchaseAccounts.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Direct Expenses')) {
+                plData.directExpenses.total += absBalance;
+                plData.directExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Direct Incomes')) {
+                plData.directIncomes.total += absBalance;
+                plData.directIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Indirect Expenses')) {
+                plData.indirectExpenses.total += absBalance;
+                plData.indirectExpenses.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Indirect Incomes')) {
+                plData.indirectIncomes.total += absBalance;
+                plData.indirectIncomes.ledgers.push({ name: l.name, amount: absBalance, id: l.id });
+            } else if (group.includes('Stock-in-Hand')) {
+                plData.closingStock += absBalance;
+            }
+        });
+
+        if (stockItems && stockItems.length > 0) {
+            const openingVal = stockItems.reduce((sum, item) => sum + (Number(item.opening_value) || 0), 0);
+            const closingVal = stockItems.reduce((sum, item) => sum + (Number(item.closing_value) || 0), 0);
+
+            if (openingVal > 0 || closingVal > 0) {
+                plData.openingStock = openingVal;
+                if (plData.closingStock === 0) plData.closingStock = closingVal;
+            } else {
+                plData.openingStock = stockItems.reduce((sum, item) => sum + ((Number(item.opening_stock) || 0) * (Number(item.rate) || 0)), 0);
+                const itemsClosingValue = stockItems.reduce((sum, item) => sum + ((Number(item.current_stock) || 0) * (Number(item.rate) || 0)), 0);
+                if (itemsClosingValue > 0 && plData.closingStock === 0) {
+                    plData.closingStock = itemsClosingValue;
+                }
+            }
+        }
+
+        const tradingCredit = plData.salesAccounts.total + plData.directIncomes.total + plData.closingStock;
+        const tradingDebit = plData.openingStock + plData.purchaseAccounts.total + plData.directExpenses.total;
+
+        if (tradingCredit >= tradingDebit) {
+            plData.grossProfitCo = tradingCredit - tradingDebit;
+            plData.grossProfitBf = plData.grossProfitCo;
+        } else {
+            plData.grossLossCo = tradingDebit - tradingCredit;
+            plData.grossLossBf = plData.grossLossCo;
+        }
+
+        const plCredit = (plData.grossProfitBf || 0) + plData.indirectIncomes.total;
+        const plDebit = (plData.grossLossBf || 0) + plData.indirectExpenses.total;
+
+        if (plCredit >= plDebit) {
+            plData.nettProfit = plCredit - plDebit;
+        } else {
+            plData.nettLoss = plDebit - plCredit;
+        }
+
+        plData.tradingDebitTotal = tradingDebit + (plData.grossProfitCo || 0);
+        plData.tradingCreditTotal = tradingCredit + (plData.grossLossCo || 0);
+        plData.plDebitTotal = plDebit + (plData.nettProfit || 0);
+        plData.plCreditTotal = plCredit + (plData.nettLoss || 0);
+
+        setData(plData);
     };
 
     const toggleGroup = (groupName: string) => {
@@ -237,21 +310,6 @@ export default function ProfitLossPage() {
     const navigateToLedger = (ledgerId: string) => {
         navigate(`/ledgers/${ledgerId}`);
     };
-
-    // Pie chart data for income/collections breakdown
-    const collectionPieData = useMemo(() => {
-        if (!data) return [];
-        const items = [
-            { name: 'Sales', value: data.salesAccounts?.total || 0 },
-            { name: 'Direct Incomes', value: data.directIncomes?.total || 0 },
-            { name: 'Indirect Incomes', value: data.indirectIncomes?.total || 0 },
-            { name: 'Closing Stock', value: data.closingStock || 0 },
-        ];
-        return items.filter(i => i.value > 0).map(i => ({
-            ...i,
-            value: Math.round(i.value)
-        }));
-    }, [data]);
 
     if (loading) {
         return (
@@ -311,61 +369,6 @@ export default function ProfitLossPage() {
                 </button>
             </HeaderPortal>
 
-            {/* Collections Pie Chart */}
-            {collectionPieData.length > 0 && (
-                <div className="max-w-7xl mx-auto px-4 pt-4">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, ease: 'easeOut' }}
-                        className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5"
-                    >
-                        <div className="flex items-center gap-2 mb-4">
-                            <BarChart3 size={16} className="text-emerald-400" />
-                            <h3 className="text-sm font-bold text-[var(--on-surface)] uppercase tracking-wider">Collections Breakdown</h3>
-                        </div>
-                        <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={collectionPieData}
-                                        dataKey="value"
-                                        nameKey="name"
-                                        cx="50%"
-                                        cy="50%"
-                                        outerRadius={90}
-                                        innerRadius={35}
-                                        paddingAngle={3}
-                                        animationBegin={0}
-                                        animationDuration={1200}
-                                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                        labelLine={{ stroke: '#666', strokeWidth: 1 }}
-                                    >
-                                        {collectionPieData.map((_, i) => (
-                                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        formatter={(value: number) => [formatCompact(value), 'Amount']}
-                                        contentStyle={{
-                                            borderRadius: '8px',
-                                            border: '1px solid var(--border)',
-                                            background: 'var(--surface)',
-                                        }}
-                                    />
-                                    <Legend
-                                        verticalAlign="bottom"
-                                        iconType="circle"
-                                        formatter={(value: string) => (
-                                            <span style={{ color: 'var(--on-surface)', fontSize: '11px', fontWeight: 600 }}>{value}</span>
-                                        )}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </motion.div>
-                </div>
-            )}
 
             {/* T-Account Layout */}
             <div className="max-w-7xl mx-auto p-4">

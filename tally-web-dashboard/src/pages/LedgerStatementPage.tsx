@@ -163,8 +163,8 @@ Generated via TallySync`;
                     </p>
                     <p className="text-xs text-gray-500 mt-1">{openingBalance >= 0 ? 'Dr' : 'Cr'}</p>
                 </GlassCard>
-                <MetricCard title="Total Debit" value={formatCurrency(summary.debit)} icon={<TrendingUp size={20} />} color="green" />
-                <MetricCard title="Total Credit" value={formatCurrency(summary.credit)} icon={<TrendingDown size={20} />} color="orange" />
+                <MetricCard title="Total Debit" value={formatCurrency(summary.debit)} icon={<TrendingUp size={20} />} color="success" />
+                <MetricCard title="Total Credit" value={formatCurrency(summary.credit)} icon={<TrendingDown size={20} />} color="warning" />
                 <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/20 rounded-2xl p-4">
                     <p className="text-sm text-blue-400">Closing Balance</p>
                     <p className="text-xl font-bold text-white mt-1">{formatCurrency(summary.closing)}</p>

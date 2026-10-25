@@ -1,20 +1,15 @@
-// Redesigned: JLS-4 CRED-style premium dashboard
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
-import { Link, useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subDays, startOfYear } from 'date-fns';
 import {
     TrendingUp, TrendingDown, Wallet, CreditCard, FileText, Users,
     BarChart3, Plus, RefreshCw, ArrowRight, Activity, Calendar, Zap,
-    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle, Clock,
-    Sun, Moon, Sunrise, Sparkles
+    ArrowUpRight, ArrowDownRight, IndianRupee, MessageCircle, Clock
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Spinner } from '../components/ui/GlassUI';
 import { BarChart3D } from '../components/3d';
-import BillingDashboard from './BillingDashboard';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { subMonths, startOfMonth as startOfMonthDate, endOfMonth as endOfMonthDate } from 'date-fns';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -24,202 +19,16 @@ import {
 } from 'recharts';
 import { toast } from 'react-hot-toast';
 import { sendEodReport } from '../lib/whatsapp';
+import SafeLink from '../components/common/SafeLink';
+import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 
 const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
-// ── Stagger animation variants ──
-const staggerContainer = {
-    hidden: {},
-    show: {
-        transition: { staggerChildren: 0.08 }
-    }
-};
-
-const fadeUpItem = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } }
-};
-
-// ── Daily Briefing Widget ──
-function DailyBriefing({ companyName, todaySales }: { companyName: string; todaySales: number }) {
-    const now = new Date();
-    const hour = now.getHours();
-    let greeting: string;
-    let GreetingIcon: any;
-
-    if (hour < 12) {
-        greeting = 'Good Morning';
-        GreetingIcon = Sunrise;
-    } else if (hour < 17) {
-        greeting = 'Good Afternoon';
-        GreetingIcon = Sun;
-    } else if (hour < 21) {
-        greeting = 'Good Evening';
-        GreetingIcon = Moon;
-    } else {
-        greeting = 'Good Night';
-        GreetingIcon = Moon;
-    }
-
-    const dateStr = now.toLocaleDateString('en-IN', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-    });
-
-    const formatCurrency = (amount: number) => {
-        if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-        if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-    };
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-            className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-purple-600/20 p-5 backdrop-blur-xl"
-        >
-            <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl" />
-            <div className="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-purple-500/10 blur-xl" />
-
-            <div className="relative z-10 flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="rounded-lg bg-white/10 p-2 backdrop-blur-sm">
-                            <GreetingIcon size={18} className="text-blue-300" />
-                        </div>
-                        <div>
-                            <p className="text-lg font-bold text-white">{greeting}</p>
-                            <p className="text-xs font-medium text-white/50">{dateStr}</p>
-                        </div>
-                    </div>
-                    <div className="hidden items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 sm:flex">
-                        <Sparkles size={12} className="text-amber-300" />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
-                            Daily Briefing
-                        </span>
-                    </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
-                    <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-white/50">
-                            {companyName}
-                        </p>
-                        <p className="mt-1 text-base font-semibold text-white/90">
-                            Here's your financial snapshot for today
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2">
-                        <IndianRupee size={16} className="text-emerald-400" />
-                        <div>
-                            <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70">
-                                Today's Sales
-                            </p>
-                            <p className="text-lg font-bold text-emerald-300">
-                                {formatCurrency(todaySales)}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </motion.div>
-    );
-}
-
-// ── Glass Metric Card ──
-function GlassMetricCard({ title, value, icon, subtitle, trend, onClick, color = 'blue' }: any) {
-    const gradMap: any = {
-        blue: 'from-blue-600/80 to-blue-900/60',
-        teal: 'from-teal-600/80 to-teal-900/60',
-        amber: 'from-amber-600/80 to-amber-900/60',
-        red: 'from-red-600/80 to-red-900/60',
-    };
-
-    return (
-        <motion.div
-            variants={fadeUpItem}
-            onClick={onClick}
-            className="relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br p-5 backdrop-blur-xl transition-transform duration-200 hover:scale-[1.02] hover:shadow-xl"
-            style={{ backgroundImage: `linear-gradient(to bottom right, var(--tw-gradient-stops))` }}
-        >
-            <div className={`absolute inset-0 bg-gradient-to-br ${gradMap[color] || gradMap.blue}`} />
-            <div className="absolute -bottom-4 -right-4 h-20 w-20 rounded-full bg-white/5" />
-            <div className="absolute -bottom-8 -right-8 h-16 w-16 rounded-full bg-white/5" />
-
-            <div className="relative z-10">
-                <div className="flex items-start justify-between">
-                    <div className="space-y-1.5">
-                        <p className="text-xs font-medium uppercase tracking-wider text-white/70">{title}</p>
-                        <p className="text-2xl font-bold text-white">{formatCurrencyCurried(value)}</p>
-                        {subtitle && <p className="text-xs text-white/60">{subtitle}</p>}
-                    </div>
-                    <div className="rounded-lg bg-white/10 p-2.5 backdrop-blur-sm">{icon}</div>
-                </div>
-                {trend && trend.value !== 0 && (
-                    <div className="mt-3 flex items-center gap-1.5">
-                        {trend.direction === 'up' ? (
-                            <ArrowUpRight size={14} className="text-green-300" />
-                        ) : (
-                            <ArrowDownRight size={14} className="text-red-300" />
-                        )}
-                        <span className={`text-xs font-medium ${trend.direction === 'up' ? 'text-green-300' : 'text-red-300'}`}>
-                            {Math.abs(trend.value)}%
-                        </span>
-                    </div>
-                )}
-            </div>
-        </motion.div>
-    );
-}
-
-const formatCurrencyCurried = (amount: number) => {
-    if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-    if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-};
-
-// ── Glass Chart Card ──
-function GlassChartCard({ title, icon, children, className = '' }: any) {
-    return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-            className={`rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl ${className}`}
-        >
-            <div className="mb-4 flex items-center gap-2">
-                <div className="text-blue-400">{icon}</div>
-                <h3 className="text-sm font-semibold text-white/90">{title}</h3>
-            </div>
-            {children}
-        </motion.div>
-    );
-}
-
-// ── Glass Quick Action ──
-function GlassQuickAction({ title, icon, to }: any) {
-    return (
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Link to={to} className="group block">
-                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm transition-all duration-200 hover:border-blue-500/30 hover:bg-blue-500/10 hover:shadow-lg">
-                    <span className="text-blue-400 transition-transform group-hover:scale-110">{icon}</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 group-hover:text-white/90">
-                        {title}
-                    </span>
-                </div>
-            </Link>
-        </motion.div>
-    );
-}
-
 export default function DashboardPage() {
-    const { selectedCompany, user, appMode } = useAuth() as any;
+    const { selectedCompany, user } = useAuth() as any;
     const { t } = useLanguage();
     const { isDark } = useTheme();
-    const navigate = useNavigate();
+    const { navigate } = useSafeNavigate();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [period, setPeriod] = useState('year');
@@ -233,17 +42,93 @@ export default function DashboardPage() {
     const [salesTrend, setSalesTrend] = useState({ value: 0, direction: 'neutral' });
     const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
+    const [dataFyStart, setDataFyStart] = useState<string | null>(null);
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const defaultFyStartYear = currentMonth < 3 ? currentYear - 1 : currentYear;
+    const [fyYear, setFyYear] = useState(() => {
+        const saved = localStorage.getItem('dashboard_fy_year');
+        return saved ? Number(saved) : defaultFyStartYear;
+    });
+    const fyButtonRef = useRef<HTMLButtonElement>(null);
+    const [showFyDropdown, setShowFyDropdown] = useState(false);
+    const [fyDropdownStyle, setFyDropdownStyle] = useState<React.CSSProperties>({});
+    const fyOptions = Array.from({ length: 10 }, (_, i) => defaultFyStartYear - i);
+
+    useEffect(() => {
+        localStorage.setItem('dashboard_fy_year', String(fyYear));
+    }, [fyYear]);
+
+    const toggleFyDropdown = () => {
+        if (!showFyDropdown && fyButtonRef.current) {
+            const rect = fyButtonRef.current.getBoundingClientRect();
+            setFyDropdownStyle({
+                position: 'fixed',
+                top: rect.bottom + 4,
+                left: rect.left,
+                zIndex: 9999,
+            });
+        }
+        setShowFyDropdown(prev => !prev);
+    };
 
     const periodFilters = [
         { key: 'today', label: 'Today', icon: <Clock size={12} /> },
         { key: 'month', label: 'Month', icon: <Calendar size={12} /> },
         { key: '30days', label: '30 Days', icon: <Activity size={12} /> },
-        { key: 'year', label: 'FY', icon: <TrendingUp size={12} /> },
     ];
+
+    const openVoucher = (voucher: any) => {
+        const targetId = voucher?.id || voucher?.voucher_id;
+        if (!targetId) return;
+
+        const type = String(voucher?.voucher_type || voucher?.transaction_type || '').trim().toLowerCase();
+        const encodedId = encodeURIComponent(targetId);
+        navigate(`/invoice/${encodedId}`, {
+            state: { voucher, from: '/dashboard' }
+        });
+    };
+
+    useEffect(() => {
+        if (selectedCompany) detectDataFy();
+    }, [selectedCompany]);
 
     useEffect(() => {
         if (selectedCompany) loadDashboardData();
-    }, [selectedCompany, period]);
+    }, [selectedCompany, period, dataFyStart, fyYear]);
+
+    const detectDataFy = async () => {
+        if (!selectedCompany) return;
+        try {
+            const { data } = await supabase
+                .from('vouchers')
+                .select('voucher_date')
+                .eq('company_id', selectedCompany.id)
+                .eq('is_deleted', false)
+                .order('voucher_date', { ascending: false })
+                .limit(1);
+            if (data && data.length > 0 && data[0].voucher_date) {
+                const latestDate = new Date(data[0].voucher_date);
+                const month = latestDate.getMonth();
+                const year = latestDate.getFullYear();
+                const fyStartYear = month >= 3 ? year : year - 1;
+                const fyStart = `${fyStartYear}-04-01`;
+                const currentFyStart = (() => {
+                    const now = new Date();
+                    const cm = now.getMonth();
+                    const cy = now.getFullYear();
+                    const sy = cm < 3 ? cy - 1 : cy;
+                    return `${sy}-04-01`;
+                })();
+                if (fyStart !== currentFyStart) {
+                    setDataFyStart(fyStart);
+                }
+            }
+        } catch (e) {
+            console.error('FY detection failed', e);
+        }
+    };
 
     useEffect(() => {
         const handleGlobalRefresh = () => { handleRefresh(); };
@@ -253,19 +138,33 @@ export default function DashboardPage() {
 
     const getDateRange = () => {
         const now = new Date();
+        const fyStartStr = `${fyYear}-04-01`;
+        const fyEndStr = `${fyYear + 1}-03-31`;
         switch (period) {
             case 'today': return { from: format(now, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
             case 'month': return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') };
             case '30days': return { from: format(subDays(now, 30), 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
-            case 'year': {
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
-                const startYear = currentMonth < 3 ? currentYear - 1 : currentYear;
-                const fyStart = new Date(startYear, 3, 1);
-                return { from: format(fyStart, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+            default: {
+                const to = fyEndStr < format(now, 'yyyy-MM-dd') ? fyEndStr : format(now, 'yyyy-MM-dd');
+                return { from: fyStartStr, to };
             }
-            default: return { from: format(startOfMonth(now), 'yyyy-MM-dd'), to: format(endOfMonth(now), 'yyyy-MM-dd') };
         }
+    };
+
+    const resolveRows = async (query: any) => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+    };
+
+    const fetchAllRows = async (buildQuery: (fromIndex: number, toIndex: number) => any, pageSize = 1000) => {
+        const rows: any[] = [];
+        for (let fromIndex = 0; ; fromIndex += pageSize) {
+            const batch = await resolveRows(buildQuery(fromIndex, fromIndex + pageSize - 1));
+            rows.push(...batch);
+            if (batch.length < pageSize) break;
+        }
+        return rows;
     };
 
     const loadDashboardData = async () => {
@@ -275,56 +174,153 @@ export default function DashboardPage() {
 
         try {
             let sales = 0, purchases = 0, salesCount = 0, purchaseCount = 0, receivables = 0, payables = 0;
+            const sixMonthsAgo = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            const last30DaysFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+            const lastMonth = subMonths(new Date(), 1);
+            const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
+            const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
 
-            const { data: vSales, count: sCount } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false)
-                .limit(50000);
-
-            const { data: vPurchases, count: pCount } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date', { count: 'exact' })
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Purchase')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false)
-                .limit(50000);
+            const [
+                vSales,
+                vPurchases,
+                debtorLedgers,
+                creditorLedgers,
+                vReceipts,
+                trendData,
+                expenseEntries,
+                cfData,
+                tSales,
+                lmSales,
+                recent
+            ] = await Promise.all([
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount, grand_total, voucher_date')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Sales')
+                        .gte('voucher_date', from)
+                        .lte('voucher_date', to)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount, grand_total, voucher_date')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Purchase')
+                        .gte('voucher_date', from)
+                        .lte('voucher_date', to)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('ledgers')
+                        .select('id, current_balance')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('parent', 'Sundry Debtors')
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('ledgers')
+                        .select('id, current_balance')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('parent', 'Sundry Creditors')
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Receipt')
+                        .gte('voucher_date', from)
+                        .lte('voucher_date', to)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount, grand_total, voucher_date')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Sales')
+                        .gte('voucher_date', sixMonthsAgo)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('voucher_ledger_entries')
+                        .select('id, ledger_name, amount, voucher_id').eq('is_deleted', false)
+                        .eq('company_id', selectedCompany.id)
+                        .eq('is_debit', true)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, voucher_date, voucher_type, total_amount, grand_total')
+                        .eq('company_id', selectedCompany.id)
+                        .in('voucher_type', ['Receipt', 'Payment'])
+                        .gte('voucher_date', last30DaysFrom)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount, grand_total')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Sales')
+                        .eq('voucher_date', todayStr)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, total_amount, grand_total')
+                        .eq('company_id', selectedCompany.id)
+                        .eq('voucher_type', 'Sales')
+                        .gte('voucher_date', lmStart)
+                        .lte('voucher_date', lmEnd)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                resolveRows(
+                    supabase
+                        .from('vouchers')
+                        .select('*')
+                        .eq('company_id', selectedCompany.id)
+                        .order('voucher_date', { ascending: false })
+                        .limit(6)
+                )
+            ]);
 
             const sData = vSales || [];
             const pData = vPurchases || [];
             sales = sData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             purchases = pData.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
-            salesCount = sCount || 0;
-            purchaseCount = pCount || 0;
+            salesCount = sData.length;
+            purchaseCount = pData.length;
 
-            const { data: debtorLedgers } = await supabase
-                .from('ledgers')
-                .select('current_balance')
-                .eq('company_id', selectedCompany.id)
-                .eq('parent', 'Sundry Debtors');
             receivables = (debtorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
-
-            const { data: creditorLedgers } = await supabase
-                .from('ledgers')
-                .select('current_balance')
-                .eq('company_id', selectedCompany.id)
-                .eq('parent', 'Sundry Creditors');
             payables = (creditorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
-
-            const { data: vReceipts } = await supabase
-                .from('vouchers')
-                .select('total_amount')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Receipt')
-                .gte('voucher_date', from)
-                .lte('voucher_date', to)
-                .eq('is_deleted', false);
 
             const receipts = (vReceipts || []).reduce((sum, v) => sum + Math.abs(Number(v.total_amount) || 0), 0);
             const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
@@ -336,16 +332,6 @@ export default function DashboardPage() {
                 expense: Math.min(expenseRate, 100),
                 profit: profitMargin
             });
-
-            const sixMonthsAgo = format(subMonths(new Date(), 6), 'yyyy-MM-dd');
-            const { data: trendData } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total, voucher_date')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', sixMonthsAgo)
-                .eq('is_deleted', false)
-                .limit(50000);
 
             const monthlyData: any[] = [];
             for (let i = 5; i >= 0; i--) {
@@ -359,20 +345,26 @@ export default function DashboardPage() {
             }
             setMonthlySales(monthlyData);
 
-            // Fetch Expense Groups for Pie Chart
-            const { data: expenseEntries } = await supabase
-                .from('voucher_ledger_entries')
-                .select('ledger_name, amount, vouchers!inner(voucher_type, voucher_date)')
-                .eq('company_id', selectedCompany.id)
-                .in('vouchers.voucher_type', ['Payment', 'Purchase'])
-                .gte('vouchers.voucher_date', from)
-                .lte('vouchers.voucher_date', to)
-                .eq('is_debit', true)
-                .limit(1000);
+            const expenseVoucherRows = await fetchAllRows((fromIndex, toIndex) =>
+                supabase
+                    .from('vouchers')
+                    .select('id')
+                    .eq('company_id', selectedCompany.id)
+                    .in('voucher_type', ['Payment', 'Purchase'])
+                    .gte('voucher_date', from)
+                    .lte('voucher_date', to)
+                    .eq('is_deleted', false)
+                    .order('id', { ascending: true })
+                    .range(fromIndex, toIndex)
+            );
 
-            const groupedExpenses = (expenseEntries || []).reduce((acc: any, entry: any) => {
+            const allowedExpenseVoucherIds = new Set((expenseVoucherRows || []).map((row: any) => row.id));
+            const filteredExpenseEntries = (expenseEntries || []).filter((entry: any) => (
+                allowedExpenseVoucherIds.size === 0 || allowedExpenseVoucherIds.has(entry.voucher_id)
+            ));
+
+            const groupedExpenses = filteredExpenseEntries.reduce((acc: any, entry: any) => {
                 let name = entry.ledger_name;
-                // Basic characterization
                 if (name.toLowerCase().includes('salary')) name = 'Salaries';
                 else if (name.toLowerCase().includes('rent')) name = 'Rent';
                 else if (name.toLowerCase().includes('electricity') || name.toLowerCase().includes('power')) name = 'Utilities';
@@ -388,21 +380,9 @@ export default function DashboardPage() {
                 .map(([name, value]) => ({ name, value }))
                 .sort((a: any, b: any) => (b.value as number) - (a.value as number))
                 .slice(0, 6);
-
             setExpenseGroups(pieData);
 
-            // Fetch Cash Flow Trend (Last 30 days)
-            const { data: cfData } = await supabase
-                .from('vouchers')
-                .select('voucher_date, voucher_type, total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .in('voucher_type', ['Receipt', 'Payment'])
-                .gte('voucher_date', subDays(new Date(), 30).toISOString())
-                .eq('is_deleted', false)
-                .order('voucher_date', { ascending: true });
-
             const dailyFlow: any = {};
-            // Initialize last 30 days
             for (let i = 29; i >= 0; i--) {
                 const date = format(subDays(new Date(), i), 'MMM dd');
                 dailyFlow[date] = { date, income: 0, expense: 0 };
@@ -416,45 +396,19 @@ export default function DashboardPage() {
                     else dailyFlow[dateKey].expense += amt;
                 }
             });
-
             setCashFlowTrend(Object.values(dailyFlow));
 
-            const todayStr = format(new Date(), 'yyyy-MM-dd');
-            const { data: tSales } = await supabase
-                .from('vouchers')
-                .select('total_amount, grand_total')
-                .eq('company_id', selectedCompany.id)
-                .eq('voucher_type', 'Sales')
-                .eq('voucher_date', todayStr)
-                .eq('is_deleted', false);
             setTodaySales((tSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0));
 
             try {
-                const today = new Date();
-                const lastMonth = subMonths(today, 1);
-                const lmStart = format(startOfMonthDate(lastMonth), 'yyyy-MM-dd');
-                const lmEnd = format(endOfMonthDate(lastMonth), 'yyyy-MM-dd');
-                const { data: lmSales } = await supabase
-                    .from('vouchers')
-                    .select('total_amount, grand_total')
-                    .eq('company_id', selectedCompany.id)
-                    .eq('voucher_type', 'Sales')
-                    .gte('voucher_date', lmStart)
-                    .lte('voucher_date', lmEnd)
-                    .eq('is_deleted', false);
                 const pastSales = (lmSales || []).reduce((sum, s) => sum + Math.abs(Number(s.grand_total) || Number(s.total_amount) || 0), 0);
                 if (pastSales > 0) {
                     const diff = ((sales - pastSales) / pastSales) * 100;
                     setSalesTrend({ value: Math.abs(Math.round(diff * 10) / 10), direction: diff >= 0 ? 'up' : 'down' });
                 }
-            } catch (e) { console.error("Trend calculation failed", e); }
-
-            const { data: recent } = await supabase
-                .from('vouchers')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
-                .order('voucher_date', { ascending: false })
-                .limit(6);
+            } catch (e) {
+                console.error('Trend calculation failed', e);
+            }
 
             setStats({ sales, purchases, receivables, payables, salesCount, purchaseCount });
             setRecentVouchers(recent || []);
@@ -465,12 +419,13 @@ export default function DashboardPage() {
     };
 
     const formatCurrency = (amount: number) => {
-        if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-        if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)} L`;
+        if (amount >= 10000000) return `â‚¹${(amount / 10000000).toFixed(2)} Cr`;
+        if (amount >= 100000) return `â‚¹${(amount / 100000).toFixed(2)} L`;
         return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
     };
 
     const handleRefresh = async () => {
+        if (refreshing) return;
         setRefreshing(true);
         await loadDashboardData();
         setRefreshing(false);
@@ -478,30 +433,82 @@ export default function DashboardPage() {
 
     if (!selectedCompany) return null;
 
+    // Stat Card Component (Native App styled)
+    const MetricCard = ({ title, value, icon, subtitle, trend, onClick, color = 'blue' }: any) => {
+        const colorMap: any = {
+            blue: { bg: 'bg-blue-50 dark:bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400', border: 'hover:border-blue-200 dark:hover:border-blue-800', accent: 'bg-blue-500' },
+            teal: { bg: 'bg-teal-50 dark:bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'hover:border-teal-200 dark:hover:border-teal-800', accent: 'bg-teal-500' },
+            amber: { bg: 'bg-amber-50 dark:bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'hover:border-amber-200 dark:hover:border-amber-800', accent: 'bg-amber-500' },
+            red: { bg: 'bg-red-50 dark:bg-red-500/10', text: 'text-red-600 dark:text-red-400', border: 'hover:border-red-200 dark:hover:border-red-800', accent: 'bg-red-500' },
+        };
+        const c = colorMap[color] || colorMap.blue;
+
+        return (
+            <div
+                onClick={onClick}
+                className={`bg-[var(--surface)] border border-[var(--border)] rounded-3xl md:rounded-[var(--radius-lg)] p-4 md:p-5 flex flex-col justify-between cursor-pointer ${c.border} shadow-sm hover:shadow-[var(--shadow-md)] transition-all duration-300 group relative overflow-hidden w-full h-full min-h-[120px] md:min-h-auto`}
+            >
+                {/* Subtle Glow Effect */}
+                <div className={`absolute -right-4 -top-4 w-16 h-16 opacity-10 blur-2xl rounded-full ${c.accent} group-hover:opacity-20 transition-opacity`}></div>
+
+                <div className="flex items-start justify-between relative z-10">
+                    <div className={`w-9 h-9 md:w-10 md:h-10 rounded-2xl ${c.bg} ${c.text} flex items-center justify-center shadow-inner`}>
+                        {icon}
+                    </div>
+                    {trend && trend.value !== 0 && (
+                        <span className={`inline-flex items-center gap-0.5 text-[10px] md:text-[11px] font-black px-2 py-1 rounded-full ${trend.direction === 'up'
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                            }`}>
+                            {trend.direction === 'up' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                            {trend.value}%
+                        </span>
+                    )}
+                </div>
+
+                <div className="relative z-10 mt-3 md:mt-4">
+                    <p className="text-[10px] md:text-xs font-bold text-[var(--text-muted)] uppercase tracking-[0.05em] mb-0.5 truncate">{title}</p>
+                    <p className="text-lg md:text-2xl font-black text-[var(--on-surface)] tracking-tighter truncate leading-none mb-1">{formatCurrency(value)}</p>
+                    <p className="text-[9px] md:text-[11px] text-[var(--text-muted)] font-medium truncate opacity-70">{subtitle}</p>
+                </div>
+            </div>
+        );
+    };
+
+    // Quick Action
+    const QuickAction = ({ title, icon, to }: any) => (
+        <SafeLink to={to} className="group">
+            <div className="bg-[var(--surface)] border border-dashed border-[var(--outline-variant)] rounded-[var(--radius-md)] p-4 flex flex-col items-center justify-center gap-2 h-24 hover:border-solid hover:border-[var(--primary)] hover:bg-[var(--primary-glow)] transition-all duration-150">
+                <span className="text-[var(--primary)] group-hover:scale-110 transition-transform">{icon}</span>
+                <span className="text-xs font-medium text-[var(--on-surface-variant)] group-hover:text-[var(--primary)]">{title}</span>
+            </div>
+        </SafeLink>
+    );
+
     return (
-        <div className="min-h-screen bg-black px-4 pb-20 pt-6 sm:px-6 lg:px-8">
+        <div className="max-w-[1400px] mx-auto space-y-4 md:space-y-6">
             <HeaderPortal type="title">
                 <div>
-                    <h1 className="text-sm md:text-xl font-bold text-white tracking-tight">
+                    <h1 className="text-sm md:text-xl font-bold text-[var(--on-surface)] tracking-tight">
                         {t('dashboard.title')}
                     </h1>
-                    <p className="hidden md:block text-white/50 text-[9px] font-bold uppercase tracking-widest mt-0.5">
+                    <p className="hidden md:block text-[var(--text-muted)] text-[9px] font-bold uppercase tracking-widest mt-0.5">
                         {selectedCompany.name}
                     </p>
                 </div>
             </HeaderPortal>
 
             <HeaderPortal type="filters">
-                <div className="flex overflow-hidden rounded-lg border border-white/10 bg-black/60">
+                <div className="hidden md:flex max-w-full overflow-x-auto bg-[var(--surface-container)] rounded-[var(--radius-md)] p-0.5 border border-[var(--border)] mr-1 scale-95 md:scale-100 origin-right [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {periodFilters.map((filter) => (
                         <button
                             key={filter.key}
                             onClick={() => setPeriod(filter.key)}
                             className={`
-                                flex items-center gap-1 px-2.5 py-1.5 text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
+                                flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap
                                 ${period === filter.key
-                                    ? 'bg-blue-600 text-white'
-                                    : 'text-white/60 hover:text-white/90'
+                                    ? 'bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)] scale-105'
+                                    : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'
                                 }
                             `}
                         >
@@ -511,14 +518,43 @@ export default function DashboardPage() {
                             </span>
                         </button>
                     ))}
+                    {/* FY Selector Dropdown */}
+                    <div className="relative ml-1" style={{ overflow: 'visible' }}>
+                        <button
+                            ref={fyButtonRef}
+                            onClick={toggleFyDropdown}
+                            className="flex items-center gap-1 px-2 py-1 md:px-3 md:py-1.5 rounded-[var(--radius-sm)] text-[9px] md:text-[10px] font-black uppercase transition-all whitespace-nowrap bg-[var(--surface)] text-[var(--on-surface)] shadow-[var(--shadow-xs)]"
+                        >
+                            <TrendingUp size={12} />
+                            <span>FY {fyYear.toString().slice(2)}-{String(fyYear + 1).slice(2)}</span>
+                            <svg className={`w-3 h-3 transition-transform ${showFyDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        </button>
+                        {showFyDropdown && (
+                            <>
+                                <div className="fixed inset-0" style={{ zIndex: 9998 }} onClick={() => setShowFyDropdown(false)} />
+                                <div style={fyDropdownStyle} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden min-w-[130px]">
+                                    {fyOptions.map((year) => (
+                                        <button
+                                            key={year}
+                                            onClick={() => { setFyYear(year); setShowFyDropdown(false); }}
+                                            className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors hover:bg-[var(--surface-variant)] ${fyYear === year ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--on-surface)]'}`}
+                                        >
+                                            FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </HeaderPortal>
 
             <HeaderPortal type="actions">
-                <div className="flex items-center gap-2">
+                <div className="hidden md:flex items-center gap-2">
                     <button
                         onClick={handleRefresh}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 hover:text-white/90 transition-colors md:h-9 md:w-9"
+                        disabled={refreshing}
+                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-xl bg-[var(--surface-variant)] border border-[var(--border)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
                         title="Refresh"
                     >
                         <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
@@ -526,7 +562,7 @@ export default function DashboardPage() {
 
                     <button
                         onClick={() => navigate('/create-invoice')}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-lg hover:scale-105 transition-transform md:h-9 md:w-9"
+                        className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
                         title={t('dashboard.new_invoice')}
                     >
                         <Plus size={16} />
@@ -536,293 +572,329 @@ export default function DashboardPage() {
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-32 space-y-3">
-                    <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-                    <p className="text-white/50 text-sm">Loading financial data...</p>
+                    <Spinner size="lg" />
+                    <p className="text-[var(--text-muted)] text-sm">Loading financial data...</p>
                 </div>
-            ) : appMode === 'billing' ? (
-                <BillingDashboard />
             ) : (
-                <div className="space-y-6">
-                    {/* ── DAILY BRIEFING ── */}
-                    <DailyBriefing
-                        companyName={selectedCompany.name}
-                        todaySales={todaySales}
-                    />
+                <div className="space-y-6 animate-fadeIn w-full min-w-0 overflow-x-hidden">
 
-                    {/* ── COMPANY INFO BANNER ── */}
+                    {/* COMPANY INFO BANNER */}
                     {(selectedCompany.gstin || selectedCompany.address || selectedCompany.phone || selectedCompany.email) && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.4, delay: 0.1 }}
-                            className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
-                        >
+                        <div className="hidden md:block bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4">
                             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                                 {selectedCompany.gstin && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">GSTIN</span>
-                                        <span className="rounded bg-white/10 px-2 py-0.5 text-sm font-semibold font-mono text-white/80">{selectedCompany.gstin}</span>
+                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">GSTIN</span>
+                                        <span className="text-sm font-semibold text-[var(--on-surface)] font-mono bg-[var(--surface-container)] px-2 py-0.5 rounded">{selectedCompany.gstin}</span>
                                     </div>
                                 )}
                                 {selectedCompany.address && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Address</span>
-                                        <span className="truncate max-w-[300px] text-sm text-white/60">{selectedCompany.address}</span>
+                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Address</span>
+                                        <span className="text-sm text-[var(--on-surface-variant)] truncate max-w-[300px]">{selectedCompany.address}</span>
                                     </div>
                                 )}
                                 {selectedCompany.phone && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Phone</span>
-                                        <span className="text-sm text-white/60">{selectedCompany.phone}</span>
+                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Phone</span>
+                                        <span className="text-sm text-[var(--on-surface-variant)]">{selectedCompany.phone}</span>
                                     </div>
                                 )}
                                 {selectedCompany.email && (
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Email</span>
-                                        <span className="text-sm text-white/60">{selectedCompany.email}</span>
+                                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Email</span>
+                                        <span className="text-sm text-[var(--on-surface-variant)]">{selectedCompany.email}</span>
                                     </div>
                                 )}
                             </div>
-                        </motion.div>
+                        </div>
                     )}
 
-                    {/* ── KEY METRICS (Staggered Animated) ── */}
-                    <motion.div
-                        variants={staggerContainer}
-                        initial="hidden"
-                        animate="show"
-                        className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4"
-                    >
-                        <GlassMetricCard
+                    {/* MOBILE FILTERS INLINE */}
+                    <div className="md:hidden flex overflow-x-auto gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden w-full pb-1">
+                        {periodFilters.map((filter) => (
+                            <button
+                                key={filter.key}
+                                onClick={() => setPeriod(filter.key)}
+                                className={`
+                                    flex items-center justify-center flex-1 min-w-[70px] gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase transition-all whitespace-nowrap
+                                    ${period === filter.key
+                                        ? 'bg-sky-500/10 text-sky-500 border border-sky-500/20 shadow-[0_0_10px_rgba(14,165,233,0.1)]'
+                                        : 'bg-[var(--surface)] text-[var(--text-muted)] border border-transparent shadow-sm'
+                                    }
+                                `}
+                            >
+                                {filter.icon}
+                                {filter.label}
+                            </button>
+                        ))}
+                        {/* Mobile FY Selector */}
+                        <div className="relative">
+                            <select
+                                value={fyYear}
+                                onChange={(e) => setFyYear(Number(e.target.value))}
+                                className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase bg-sky-500/10 text-sky-500 border border-sky-500/20 appearance-none cursor-pointer"
+                            >
+                                {fyOptions.map((year) => (
+                                    <option key={year} value={year}>
+                                        FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
+                                    </option>
+                                ))}
+                            </select>
+                            <TrendingUp size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-sky-500" />
+                        </div>
+                    </div>
+
+                    {/* MOBILE QUICK ACTIONS (Native App Wallet Style) */}
+                    <div className="md:hidden flex justify-between items-center gap-2 px-1 mb-2 mt-2">
+                        <SafeLink to="/create-invoice" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-100 dark:border-blue-900/50">
+                                <FileText size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">{t('sales.invoice')}</span>
+                        </SafeLink>
+                        <SafeLink to="/vouchers" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 flex items-center justify-center shadow-sm border border-indigo-100 dark:border-indigo-900/50">
+                                <CreditCard size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">{t('nav.vouchers')}</span>
+                        </SafeLink>
+                        <SafeLink to="/sync-history" className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 flex items-center justify-center shadow-sm border border-slate-200 dark:border-slate-700">
+                                <RefreshCw size={22} strokeWidth={2.5} />
+                            </div>
+                            <span className="text-[11px] font-bold text-[var(--on-surface-variant)]">Sync</span>
+                        </SafeLink>
+                        <button onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)} className="flex flex-col items-center gap-2 focus:scale-95 transition-transform">
+                            <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/30">
+                                <MessageCircle size={22} strokeWidth={2.5} fill="currentColor" className="text-white" />
+                            </div>
+                            <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-500">Report</span>
+                        </button>
+                    </div>
+
+                    {/* KEY METRICS */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 pb-2 w-full min-w-0">
+                        <MetricCard
                             title={t('dashboard.total_sales')}
                             value={stats.sales}
-                            icon={<TrendingUp size={18} className="text-white" />}
+                            icon={<TrendingUp size={18} />}
                             trend={salesTrend}
                             subtitle={`${stats.salesCount} invoices`}
                             color="blue"
                             onClick={() => navigate('/sales')}
                         />
-                        <GlassMetricCard
+                        <MetricCard
                             title={t('dashboard.total_purchases')}
                             value={stats.purchases}
-                            icon={<TrendingDown size={18} className="text-white" />}
+                            icon={<TrendingDown size={18} />}
                             subtitle={`${stats.purchaseCount} bills`}
                             color="teal"
                             onClick={() => navigate('/purchases')}
                         />
-                        <GlassMetricCard
+                        <MetricCard
                             title={t('dashboard.receivable')}
                             value={stats.receivables}
-                            icon={<Wallet size={18} className="text-white" />}
+                            icon={<Wallet size={18} />}
                             subtitle="Pending collection"
                             color="amber"
                             onClick={() => navigate('/ledgers?group=Sundry Debtors')}
                         />
-                        <GlassMetricCard
+                        <MetricCard
                             title={t('dashboard.payable')}
                             value={stats.payables}
-                            icon={<CreditCard size={18} className="text-white" />}
+                            icon={<CreditCard size={18} />}
                             subtitle="Outstanding"
                             color="red"
                             onClick={() => navigate('/ledgers?group=Sundry Creditors')}
                         />
-                    </motion.div>
+                    </div>
 
-                    {/* ── MAIN CONTENT ── */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                        {/* Left + Center: Charts */}
-                        <div className="lg:col-span-2 space-y-5">
-                            {/* Revenue Trend (BarChart3D) */}
-                            <GlassChartCard title={t('dashboard.revenue_trend')} icon={<BarChart3 size={16} />}>
-                                <div className="flex items-center justify-between mb-3">
-                                    <span className="text-xs text-white/50">{t('dashboard.last_6_months')}</span>
+                    {/* MAIN CONTENT */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 w-full min-w-0">
+
+                        {/* Chart */}
+                        <div className="lg:col-span-2 min-w-0 w-full">
+                            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5 w-full min-w-0 overflow-hidden">
+                                <div className="flex items-center justify-between mb-5">
+                                    <h3 className="text-sm font-semibold text-[var(--on-surface)] truncate">{t('dashboard.revenue_trend')}</h3>
+                                    <span className="text-xs text-[var(--text-muted)] flex-shrink-0">{t('dashboard.last_6_months')}</span>
                                 </div>
-                                <div className="h-[280px] w-full rounded-xl bg-white/5 border border-white/10 p-3">
+                                <div className="h-[220px] md:h-[280px] w-full rounded-[var(--radius-md)] bg-[var(--surface-container)] border border-[var(--border)] p-2.5 md:p-3 relative">
                                     <BarChart3D
                                         data={monthlySales}
-                                        height={260}
-                                        barColor="#60A5FA"
+                                        height={220}
+                                        barColor={isDark ? '#60A5FA' : '#1A56DB'}
                                         animated
                                     />
                                 </div>
-                            </GlassChartCard>
+                            </div>
 
-                            {/* Cash Flow + Expense Distribution */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            {/* New Row: Cash Flow & Expenses */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 mt-4 md:mt-5 w-full min-w-0">
                                 {/* Cash Flow Trend */}
-                                <GlassChartCard title="Cash Flow (Last 30 Days)" icon={<Activity size={16} />}>
-                                    <div className="h-[250px] w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={cashFlowTrend}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                                                <XAxis
-                                                    dataKey="date"
-                                                    axisLine={false}
-                                                    tickLine={false}
-                                                    tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.5)' }}
-                                                    interval={6}
-                                                />
-                                                <YAxis
-                                                    axisLine={false}
-                                                    tickLine={false}
-                                                    tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.5)' }}
-                                                    tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
-                                                />
-                                                <RechartsTooltip
-                                                    contentStyle={{
-                                                        backgroundColor: 'rgba(0,0,0,0.8)',
-                                                        border: '1px solid rgba(255,255,255,0.1)',
-                                                        borderRadius: '8px',
-                                                        fontSize: '11px',
-                                                        color: '#fff'
-                                                    }}
-                                                />
-                                                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }} />
-                                                <Line type="monotone" dataKey="income" stroke="#10B981" strokeWidth={3} dot={false} animationDuration={1500} />
-                                                <Line type="monotone" dataKey="expense" stroke="#EF4444" strokeWidth={3} dot={false} animationDuration={1500} />
-                                            </LineChart>
-                                        </ResponsiveContainer>
+                                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5 w-full min-w-0 overflow-hidden">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h3 className="text-sm font-semibold text-[var(--on-surface)] truncate">Cash Flow (Last 30 Days)</h3>
+                                        <Activity size={16} className="text-blue-500 flex-shrink-0" />
                                     </div>
-                                </GlassChartCard>
-
-                                {/* Expense Distribution */}
-                                <GlassChartCard title="Expense Distribution" icon={<BarChart3 size={16} />}>
-                                    <div className="h-[250px] w-full flex items-center">
-                                        <div className="w-1/2 h-full">
+                                    <div className="h-[220px] md:h-[250px] w-full relative">
+                                        <div className="absolute inset-0">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={expenseGroups}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={50}
-                                                        outerRadius={80}
-                                                        paddingAngle={5}
-                                                        dataKey="value"
-                                                    >
-                                                        {expenseGroups.map((_entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                                        ))}
-                                                    </Pie>
+                                                <LineChart data={cashFlowTrend}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#334155' : '#E2E8F0'} />
+                                                    <XAxis
+                                                        dataKey="date"
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                        tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                        interval={6}
+                                                    />
+                                                    <YAxis
+                                                        axisLine={false}
+                                                        tickLine={false}
+                                                        tick={{ fontSize: 10, fill: isDark ? '#94A3B8' : '#64748B' }}
+                                                        tickFormatter={(value) => `â‚¹${(value / 1000).toFixed(0)}k`}
+                                                    />
                                                     <RechartsTooltip
                                                         contentStyle={{
-                                                            backgroundColor: 'rgba(0,0,0,0.8)',
-                                                            border: '1px solid rgba(255,255,255,0.1)',
+                                                            backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                                                            border: '1px solid #334155',
                                                             borderRadius: '8px',
-                                                            fontSize: '11px',
-                                                            color: '#fff'
+                                                            fontSize: '11px'
                                                         }}
                                                     />
-                                                </PieChart>
+                                                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                                                    <Line type="monotone" dataKey="income" stroke="#10B981" strokeWidth={3} dot={false} animationDuration={1500} />
+                                                    <Line type="monotone" dataKey="expense" stroke="#EF4444" strokeWidth={3} dot={false} animationDuration={1500} />
+                                                </LineChart>
                                             </ResponsiveContainer>
                                         </div>
-                                        <div className="w-1/2 flex flex-col gap-2 pl-4">
-                                            {expenseGroups.map((group, idx) => {
-                                                const total = expenseGroups.reduce((s: number, g: any) => s + g.value, 0) || 1;
-                                                return (
+                                    </div>
+
+                                    {/* Expense Breakdown */}
+                                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-4 md:p-5 w-full min-w-0 overflow-hidden">
+                                        <div className="flex items-center justify-between mb-5">
+                                            <h3 className="text-sm font-semibold text-[var(--on-surface)] truncate">Expense Distribution</h3>
+                                            <BarChart3 size={16} className="text-amber-500 flex-shrink-0" />
+                                        </div>
+                                        <div className="h-[220px] md:h-[250px] w-full flex flex-col sm:flex-row items-center relative">
+                                            <div className="w-full sm:w-1/2 h-[120px] sm:h-full relative">
+                                                <div className="absolute inset-0">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={expenseGroups}
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                innerRadius={50}
+                                                                outerRadius={80}
+                                                                paddingAngle={5}
+                                                                dataKey="value"
+                                                            >
+                                                                {expenseGroups.map((entry, index) => (
+                                                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                                                ))}
+                                                            </Pie>
+                                                            <RechartsTooltip />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                            <div className="w-full sm:w-1/2 grid grid-cols-2 sm:grid-cols-1 gap-2 pt-2 sm:pt-0 sm:pl-4 overflow-hidden min-w-0">
+                                                {expenseGroups.map((group, idx) => (
                                                     <div key={group.name} className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }} />
-                                                            <span className="text-[10px] font-bold text-white/60 truncate max-w-[80px]">{group.name}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}></div>
+                                                            <span className="text-[10px] font-bold text-[var(--on-surface-variant)] truncate max-w-[120px] text-left">{group.name}</span>
                                                         </div>
-                                                        <span className="text-[10px] font-black text-white/90">
-                                                            {((group.value / total) * 100).toFixed(1)}%
+                                                        <span className="text-[10px] font-black text-[var(--on-surface)]">
+                                                            {(group.value / (expenseGroups.reduce((s, g) => s + g.value, 0) || 1) * 100).toFixed(1)}%
                                                         </span>
                                                     </div>
-                                                );
-                                            })}
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </GlassChartCard>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Right Column */}
-                        <div className="space-y-5">
-                            {/* Quick Actions (Glass Grid) */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.4, delay: 0.2 }}
-                                className="rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl"
-                            >
-                                <h3 className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-3">
-                                    {t('dashboard.quick_actions')}
-                                </h3>
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    <GlassQuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
-                                    <GlassQuickAction title={t('nav.vouchers')} icon={<CreditCard size={20} />} to="/vouchers" />
-                                    <GlassQuickAction title="Sync Status" icon={<RefreshCw size={20} />} to="/sync-history" />
-                                    <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                            {/* Right Column */}
+                            <div className="space-y-5">
+
+                                {/* Quick Actions (Desktop only since mobile has it at top) */}
+                                <div className="hidden md:block bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] p-5">
+                                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">{t('dashboard.quick_actions')}</h3>
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        <QuickAction title={t('sales.invoice')} icon={<FileText size={20} />} to="/create-invoice" />
+                                        <QuickAction title={t('nav.vouchers')} icon={<CreditCard size={20} />} to="/vouchers" />
+                                        <QuickAction title="Sync Status" icon={<RefreshCw size={20} />} to="/sync-history" />
                                         <button
                                             onClick={() => sendEodReport(selectedCompany.id, selectedCompany.phone || '', selectedCompany.name)}
-                                            className="flex flex-col items-center justify-center w-full h-full p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:shadow-lg transition-all"
+                                            className="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 transition-all"
                                         >
                                             <div className="p-2 rounded-lg bg-emerald-500 text-white shadow-lg mb-2">
                                                 <MessageCircle size={20} />
                                             </div>
-                                            <span className="text-[10px] font-black uppercase tracking-wider">Send EOD</span>
+                                            <span className="text-[10px] font-black uppercase">Send EOD</span>
                                         </button>
-                                    </motion.div>
+                                    </div>
                                 </div>
-                            </motion.div>
 
-                            {/* Recent Activity (Glass Animated Feed) */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.4, delay: 0.3 }}
-                                className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl overflow-hidden"
-                            >
-                                <div className="px-5 py-3.5 border-b border-white/10">
-                                    <h3 className="text-sm font-semibold text-white/90">{t('dashboard.recent_vouchers')}</h3>
-                                </div>
-                                <div className="divide-y divide-white/10">
-                                    {recentVouchers.length === 0 ? (
-                                        <div className="p-8 text-center text-white/40 text-sm">{t('dashboard.no_recent')}</div>
-                                    ) : (
-                                        recentVouchers.map((v, idx) => (
-                                            <motion.div
-                                                key={v.id || idx}
-                                                initial={{ opacity: 0, x: -10 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: idx * 0.05 }}
-                                                onClick={() => navigate(`/vouchers/${v.id}`)}
-                                                className="px-5 py-3 hover:bg-white/[0.03] transition-colors cursor-pointer flex items-center justify-between group"
-                                            >
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-                                                        v.voucher_type === 'Sales'
-                                                            ? 'bg-blue-500/20 text-blue-400'
-                                                            : 'bg-white/10 text-white/60'
-                                                    }`}>
-                                                        {v.party_name?.[0] || '?'}
+                                {/* Recent Activity */}
+                                <div className="bg-[var(--surface)] border-t border-b md:border border-[var(--border)] md:rounded-[var(--radius-lg)] overflow-hidden -mx-4 md:mx-0 mt-2 md:mt-0">
+                                    <div className="px-4 md:px-5 py-3.5 border-b border-[var(--border)] flex justify-between items-center bg-gray-50/50 dark:bg-slate-800/10 md:bg-transparent">
+                                        <h3 className="text-sm font-semibold text-[var(--on-surface)]">{t('dashboard.recent_vouchers')}</h3>
+                                        <button onClick={() => navigate('/vouchers')} className="md:hidden text-xs font-bold text-[var(--primary)] uppercase tracking-wide">
+                                            View All
+                                        </button>
+                                    </div>
+                                    <div className="divide-y divide-[var(--border)]">
+                                        {recentVouchers.length === 0 ? (
+                                            <div className="p-8 text-center text-[var(--text-muted)] text-sm">{t('dashboard.no_recent')}</div>
+                                        ) : (
+                                            recentVouchers.map((v, idx) => (
+                                                <div
+                                                    key={v.id || idx}
+                                                    onClick={() => openVoucher(v)}
+                                                    className="px-4 md:px-5 py-3 hover:bg-[var(--surface-hover)] transition-colors cursor-pointer flex items-center justify-between group active:bg-[var(--surface-active)]"
+                                                >
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className={`w-10 h-10 md:w-8 md:h-8 rounded-full md:rounded-[var(--radius-sm)] flex items-center justify-center text-xs font-bold flex-shrink-0 ${v.voucher_type === 'Sales'
+                                                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+                                                            : 'bg-[var(--surface-container)] text-[var(--on-surface-variant)]'
+                                                            }`}>
+                                                            {v.party_name?.[0] || '?'}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold md:font-medium text-[var(--on-surface)] truncate group-hover:text-[var(--primary)] transition-colors">
+                                                                {v.party_name || 'Unknown'}
+                                                            </p>
+                                                            <p className="text-[11px] text-[var(--text-muted)] font-medium md:font-normal mt-0.5">
+                                                                {v.voucher_type} â€¢ {format(new Date(v.voucher_date), 'MMM d, yyyy')}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <p className="text-sm font-medium text-white/80 truncate group-hover:text-blue-400 transition-colors">
-                                                            {v.party_name || 'Unknown'}
+                                                    <div className="text-right">
+                                                        <p className="text-sm font-bold md:font-semibold text-[var(--on-surface)] flex-shrink-0 ml-3 tracking-tight">
+                                                            {formatCurrency(v.total_amount)}
                                                         </p>
-                                                        <p className="text-[11px] text-white/40">
-                                                            {v.voucher_type} • {format(new Date(v.voucher_date), 'MMM d')}
-                                                        </p>
+                                                        <ArrowRight size={14} className="inline-block md:hidden text-gray-300 dark:text-gray-600 mt-1" />
                                                     </div>
                                                 </div>
-                                                <p className="text-sm font-semibold text-white/90 shrink-0 ml-3">
-                                                    {formatCurrency(v.total_amount)}
-                                                </p>
-                                            </motion.div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
+                                    <div className="hidden md:block px-5 py-3 border-t border-[var(--border)] text-center">
+                                        <button
+                                            onClick={() => navigate('/vouchers')}
+                                            className="text-xs font-medium text-[var(--primary)] hover:underline flex items-center justify-center gap-1 mx-auto"
+                                        >
+                                            {t('dashboard.view_all_transactions')} <ArrowRight size={14} />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="px-5 py-3 border-t border-white/10 text-center">
-                                    <button
-                                        onClick={() => navigate('/vouchers')}
-                                        className="text-xs font-medium text-blue-400 hover:underline"
-                                    >
-                                        {t('dashboard.view_all_transactions')} →
-                                    </button>
-                                </div>
-                            </motion.div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -830,3 +902,7 @@ export default function DashboardPage() {
         </div>
     );
 };
+
+
+
+

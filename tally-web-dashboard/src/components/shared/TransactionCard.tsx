@@ -1,8 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownLeft, Plus, Minus, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Plus, Minus } from 'lucide-react';
 import { format } from 'date-fns';
-import { Badge } from '../ui/GlassUI';
 
 interface TransactionCardProps {
     type: 'Sales' | 'Purchase' | 'Receipt' | 'Payment' | string;
@@ -16,141 +15,112 @@ interface TransactionCardProps {
     compact?: boolean;
 }
 
+const TYPE_CONFIG: Record<string, { icon: typeof ArrowUpRight; color: string; bg: string }> = {
+    Sales: { icon: ArrowUpRight, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    'Sales Invoice': { icon: ArrowUpRight, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    Purchase: { icon: ArrowDownLeft, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    'Purchase Invoice': { icon: ArrowDownLeft, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    Receipt: { icon: Plus, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    Payment: { icon: Minus, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+};
+
+const formatCurrency = (val: any) => {
+    const num = typeof val === 'string' ? parseFloat(val.replace(/,/g, '')) : Number(val);
+    if (isNaN(num)) return '₹0';
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Math.abs(num));
+};
+
 const TransactionCard: React.FC<TransactionCardProps> = ({
-    type,
-    partyName,
-    voucherNumber,
-    date,
-    amount,
-    status,
-    onClick,
-    highlighted = false,
-    compact = false
+    type, partyName, voucherNumber, date, amount, status, onClick, highlighted = false, compact = false
 }) => {
-    const isSales = type === 'Sales';
-    const isPurchase = type === 'Purchase';
-    const isReceipt = type === 'Receipt';
-    const isPayment = type === 'Payment';
+    const config = TYPE_CONFIG[type] || { icon: ArrowUpRight, color: 'text-gray-500', bg: 'bg-gray-500/10' };
+    const Icon = config.icon;
+    const isCredit = type === 'Sales' || type === 'Sales Invoice' || type === 'Receipt';
 
-    const getIcon = () => {
-        const size = compact ? 14 : 20;
-        if (isSales) return <ArrowUpRight className="text-emerald-500" size={size} />;
-        if (isPurchase) return <ArrowDownLeft className="text-orange-500" size={size} />;
-        if (isReceipt) return <Plus className="text-blue-500" size={size} />;
-        if (isPayment) return <Minus className="text-amber-500" size={size} />;
-        return <ArrowUpRight className="text-gray-500" size={size} />;
-    };
-
-    const getAmountColor = () => {
-        if (isSales || isReceipt) return 'text-emerald-500';
-        if (isPurchase || isPayment) return 'text-red-500';
-        return 'text-[var(--on-surface)]';
-    };
-
-    const formatCurrency = (val: any) => {
-        // Safe parsing handling strings with commas
-        const num = typeof val === 'string'
-            ? parseFloat(val.replace(/,/g, ''))
-            : Number(val);
-
-        if (isNaN(num)) return '₹0';
-
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: 'INR',
-            maximumFractionDigits: 0
-        }).format(Math.abs(num));
-    };
-
+    // COMPACT MODE — 55px height, single row, high density
     if (compact) {
         return (
             <motion.div
                 whileTap={{ scale: 0.98 }}
                 onClick={onClick}
-                className="flex items-center gap-3 p-3 rounded-xl bg-[var(--surface-active)]/50 border border-[var(--border)] hover:border-[var(--primary)] transition-all cursor-pointer"
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-[var(--surface)] hover:bg-[var(--surface-active)] cursor-pointer transition-all"
             >
-                <div className="p-2 rounded-lg bg-[var(--surface-variant)]">
-                    {getIcon()}
+                {/* Icon */}
+                <div className={`w-8 h-8 flex items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
+                    <Icon size={14} className={config.color} />
                 </div>
+
+                {/* Party + Type/Date */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start gap-2">
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                            <span className="text-[10px] font-black uppercase text-[var(--on-surface)] truncate">
-                                #{voucherNumber || '---'}
-                            </span>
-                            <span className="text-[7px] font-black text-[var(--primary)] uppercase tracking-[1px] opacity-80 truncate">
-                                {type}
-                            </span>
-                        </div>
-                        <span className={`text-[11px] font-bold whitespace-nowrap ${getAmountColor()}`}>
-                            {formatCurrency(amount)}
+                    <p className="text-[13px] font-semibold text-[var(--on-surface)] truncate leading-tight">
+                        {partyName || 'CASH'}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--primary)] opacity-80">
+                            {type}
+                        </span>
+                        <span className="w-0.5 h-0.5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                        <span className="text-[9px] font-medium text-[var(--text-muted)]">
+                            {format(new Date(date), 'dd MMM yy')}
                         </span>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-[8px] font-bold text-[var(--text-muted)] opacity-60">
-                            {format(new Date(date), 'dd MMM yy')}
-                        </p>
+                </div>
+
+                {/* Amount + Status */}
+                <div className="text-right shrink-0">
+                    <p className={`text-[14px] font-bold tracking-tight leading-tight ${isCredit ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        {isCredit ? '+' : '-'}{formatCurrency(amount)}
+                    </p>
+                    <div className={`inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-px rounded-full text-[7px] font-bold uppercase tracking-wider ${
+                        status?.toLowerCase() === 'synced' ? 'bg-emerald-500/10 text-emerald-500' :
+                        status?.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-500' :
+                        status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' :
+                        'bg-[var(--surface-active)] text-[var(--text-muted)]'
+                    }`}>
+                        {status || 'SYNCED'}
                     </div>
                 </div>
             </motion.div>
         );
     }
 
+    // DEFAULT MODE — slightly compact but still readable
     return (
         <motion.div
-            whileHover={{ scale: highlighted ? 1.01 : 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={onClick}
-            className={`
-                grid grid-cols-[auto_1fr_auto] items-center gap-2 md:gap-3 p-2 md:p-3 rounded-xl md:rounded-2xl cursor-pointer transition-all duration-300
-                ${highlighted
-                    ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] border-none shadow-lg shadow-[var(--primary-glow)]'
-                    : 'bg-[var(--surface-variant)] border border-[var(--border)] hover:border-[var(--primary)]'
-                }
-            `}
+            className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--surface)] hover:bg-[var(--surface-active)] cursor-pointer transition-all"
         >
-            {/* 1. Icon Column */}
-            <div className={`w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg md:rounded-xl shrink-0 ${highlighted ? 'bg-white/20' : 'bg-[var(--surface-active)]'}`}>
-                {getIcon()}
+            <div className={`w-9 h-9 flex items-center justify-center rounded-lg shrink-0 ${config.bg}`}>
+                <Icon size={16} className={config.color} />
             </div>
-
-            {/* 2. Content Column */}
-            <div className="min-w-0 flex-1">
-                <h4 className={`text-[11px] md:text-[13px] font-black truncate uppercase tracking-tight leading-tight ${highlighted ? 'text-white' : 'text-[var(--on-surface)]'}`}>
-                    {partyName || 'CASH TRANSACTION'}
-                </h4>
-                <div className="flex items-center flex-wrap gap-x-1.5 md:gap-x-2 mt-0.5">
-                    <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.5px] md:tracking-[1px] ${highlighted ? 'text-white/80' : 'text-[var(--primary)] opacity-80'}`}>
-                        {type}
-                    </span>
-                    <span className="w-0.5 h-0.5 rounded-full bg-[var(--border)] opacity-30" />
-                    <span className={`text-[8px] md:text-[9px] font-bold ${highlighted ? 'text-white/60' : 'text-[var(--text-muted)]'}`}>
-                        {format(new Date(date), 'dd MMM yy')}
-                    </span>
-                    {voucherNumber && !highlighted && (
+            <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-[var(--on-surface)] truncate leading-tight">
+                    {partyName || 'CASH'}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--primary)] opacity-80">{type}</span>
+                    <span className="w-0.5 h-0.5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                    <span className="text-[9px] font-medium text-[var(--text-muted)]">{format(new Date(date), 'dd MMM yy')}</span>
+                    {voucherNumber && (
                         <>
-                            <span className="w-0.5 h-0.5 rounded-full bg-[var(--border)] opacity-30 hidden md:block" />
-                            <span className="text-[8px] md:text-[9px] font-bold text-[var(--text-muted)] hidden md:block">
-                                #{voucherNumber}
-                            </span>
+                            <span className="w-0.5 h-0.5 rounded-full bg-[var(--text-muted)] opacity-40" />
+                            <span className="text-[9px] font-medium text-[var(--text-muted)]">#{voucherNumber}</span>
                         </>
                     )}
                 </div>
             </div>
-
-            {/* 3. Amount Column */}
-            <div className="text-right flex flex-col items-end min-w-[70px] md:min-w-[80px]">
-                <p className={`text-[11px] md:text-[13px] font-black tracking-tighter leading-tight ${highlighted ? 'text-white' : getAmountColor()}`}>
-                    {(isSales || isReceipt) ? '+' : '-'} {formatCurrency(amount)}
+            <div className="text-right shrink-0">
+                <p className={`text-[15px] font-bold tracking-tight leading-tight ${isCredit ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {isCredit ? '+' : '-'}{formatCurrency(amount)}
                 </p>
-                <div className="mt-0.5 md:mt-1">
-                    <Badge
-                        variant={status?.toLowerCase() === 'synced' ? 'success' : (status?.toLowerCase() === 'failed' ? 'error' : (status?.toLowerCase() === 'pending' ? 'warning' : 'default'))}
-                        className={`text-[7px] md:text-[8px] font-black px-1 md:px-1.5 py-0 h-3 md:h-4 ${status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' : ''
-                            }`}
-                    >
-                        {(status || 'SYNCED').toUpperCase()}
-                    </Badge>
+                <div className={`inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-px rounded-full text-[8px] font-bold uppercase tracking-wider ${
+                    status?.toLowerCase() === 'synced' ? 'bg-emerald-500/10 text-emerald-500' :
+                    status?.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-500' :
+                    status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' :
+                    'bg-[var(--surface-active)] text-[var(--text-muted)]'
+                }`}>
+                    {status || 'SYNCED'}
                 </div>
             </div>
         </motion.div>

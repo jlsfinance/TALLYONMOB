@@ -1,58 +1,105 @@
-import React, { useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Calendar } from 'lucide-react';
 
 interface FYFilterProps {
     selectedFy: string;
     onFyChange: (fy: string) => void;
 }
 
+const formatFyRange = (fyLabel: string): string => {
+    const match = fyLabel.match(/FY (\d{4})-(\d{2})/);
+    if (!match) return fyLabel;
+    const startYear = match[1];
+    const endYear = String(Number(startYear) + 1);
+    return `01 Apr ${startYear} - 31 Mar ${endYear}`;
+};
+
+const parseFyYear = (fyLabel: string): number => {
+    const match = fyLabel.match(/FY (\d{4})/);
+    return match ? parseInt(match[1]) : new Date().getFullYear();
+};
+
+const toFyLabel = (year: number): string => {
+    const endYear = (year + 1).toString().slice(-2);
+    return `FY ${year}-${endYear}`;
+};
+
+const getCurrentFyYear = (): number => {
+    const now = new Date();
+    return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+};
+
 export const FinancialYearFilter: React.FC<FYFilterProps> = ({ selectedFy, onFyChange }) => {
-    const scrollRef = useRef<HTMLDivElement>(null);
+    const [animDir, setAnimDir] = useState<'left' | 'right' | null>(null);
+    const [animKey, setAnimKey] = useState(0);
+    const triggerRef = useRef<HTMLButtonElement>(null);
 
-    const generateFys = () => {
-        const now = new Date();
-        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-        const fys = [];
-        for (let i = 0; i < 4; i++) {
-            const startYear = currentYear - i;
-            const endYear = (startYear + 1).toString().slice(2);
-            fys.push(`FY ${startYear}-${endYear}`);
-        }
-        return fys;
-    };
+    const currentYear = parseFyYear(selectedFy);
+    const fyRange = formatFyRange(selectedFy);
+    const isCurrentFy = currentYear === getCurrentFyYear();
 
-    const fys = generateFys();
+    const changeFy = useCallback((dir: number) => {
+        const newYear = currentYear + dir;
+        setAnimDir(dir > 0 ? 'right' : 'left');
+        setAnimKey(prev => prev + 1);
+        onFyChange(toFyLabel(newYear));
+    }, [currentYear, onFyChange]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowLeft') changeFy(-1);
+            if (e.key === 'ArrowRight') changeFy(1);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [changeFy]);
 
     return (
-        <div className="relative bg-[var(--surface-variant)]/30 backdrop-blur-md border border-[var(--border)] rounded-2xl p-1 md:p-1.5 overflow-hidden">
-            <div className="flex items-center gap-1.5 px-2 mb-1.5 opacity-60">
-                <Calendar size={10} className="text-[var(--primary)]" />
-                <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest">Financial Year</span>
-            </div>
-
+        <div className="w-full flex justify-center">
             <div
-                ref={scrollRef}
-                className="flex gap-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory px-1 pb-1"
+                className="inline-flex items-center gap-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm backdrop-blur-sm h-12 md:h-13 overflow-hidden"
             >
-                {fys.map((fy) => {
-                    const isActive = selectedFy === fy;
-                    return (
-                        <button
-                            key={fy}
-                            onClick={() => onFyChange(fy)}
-                            className={`
-                                flex-shrink-0 snap-center min-w-[100px] md:min-w-[120px] py-2 md:py-2.5 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-wider transition-all
-                                ${isActive
-                                    ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary-glow)] scale-100'
-                                    : 'bg-[var(--surface)] text-[var(--on-surface-variant)] border border-[var(--border)] opacity-60'
-                                }
-                            `}
-                        >
-                            {fy}
-                        </button>
-                    );
-                })}
+                {/* Left Arrow */}
+                <button
+                    ref={triggerRef}
+                    onClick={() => changeFy(-1)}
+                    className="w-11 h-full flex items-center justify-center text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)] hover:text-[var(--primary)] transition-all duration-150 active:scale-90"
+                    aria-label="Previous financial year"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                </button>
+
+                {/* Center: Calendar Icon + Date Range */}
+                <div className="flex items-center gap-2.5 px-3 md:px-4 select-none border-x border-[var(--border)] h-full">
+                    <Calendar size={15} className="text-[var(--primary)] shrink-0" />
+                    <span
+                        key={animKey}
+                        className={`text-[12px] md:text-[14px] font-extrabold text-[var(--on-surface)] tracking-tight whitespace-nowrap ${
+                            animDir === 'left' ? 'animate-slide-left' : animDir === 'right' ? 'animate-slide-right' : ''
+                        }`}
+                        style={{ animationDuration: '200ms' }}
+                    >
+                        {fyRange}
+                    </span>
+                    {isCurrentFy && (
+                        <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] text-[9px] font-bold uppercase tracking-wider">
+                            Current
+                        </span>
+                    )}
+                </div>
+
+                {/* Right Arrow */}
+                <button
+                    onClick={() => changeFy(1)}
+                    className="w-11 h-full flex items-center justify-center text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)] hover:text-[var(--primary)] transition-all duration-150 active:scale-90"
+                    aria-label="Next financial year"
+                >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 18l6-6-6-6" />
+                    </svg>
+                </button>
             </div>
         </div>
     );

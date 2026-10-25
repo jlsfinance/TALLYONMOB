@@ -1,33 +1,42 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Search, Plus, IndianRupee, FileText, Filter, ArrowDownLeft } from 'lucide-react';
+import { ShoppingCart, Search, Plus, IndianRupee, FileText, Filter, ArrowDownLeft, ChevronLeft, ChevronRight, ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import { StatCard, EmptyState, Spinner } from '@/components/ui/GlassUI';
 import TransactionCard from '@/components/shared/TransactionCard';
 import { CompactDateFilter } from '@/components/shared/CompactDateFilter';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import PullToRefresh from '@/components/common/PullToRefresh';
+import { useFY } from '@/contexts/FYContext';
 
 export default function PurchasesPage() {
     const { selectedCompany } = useAuth() as any;
     const navigate = useNavigate();
-    const [purchases, setPurchases] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { selectedFY: selectedFy, setSelectedFY: setSelectedFy } = useFY();
+
     const [searchTerm, setSearchTerm] = useState('');
-
-    // Calculate current FY dynamically (FY starts in April)
-    const getCurrentFy = () => {
-        const now = new Date();
-        const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-        const endYear = (currentYear + 1).toString().slice(2);
-        return `FY ${currentYear}-${endYear}`;
-    };
-
-    const [selectedFy, setSelectedFy] = useState(getCurrentFy());
-    const [selectedMonth, setSelectedMonth] = useState<string | null>('all');
-
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+    const [showFyDropdown, setShowFyDropdown] = useState(false);
+    const monthRowRef = useRef<HTMLDivElement>(null);
+    const [selectedMonth, setSelectedMonth] = useState<string | null>(() => format(new Date(), 'yyyy-MM'));
+    const scrollMonth = useCallback((dir: 'left' | 'right') => {
+        if (!monthRowRef.current) return;
+        const scrollAmount = 120;
+        monthRowRef.current.scrollBy({ left: dir === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+    }, []);
+    const availableFys = useMemo(() => {
+        const currentFY = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+        const fys: string[] = [];
+        for (let i = 0; i < 4; i++) {
+            const y = currentFY - 2 + i;
+            fys.push(`FY ${y}-${String(y + 1).slice(2)}`);
+        }
+        return fys;
+    }, []);
     // Generate months for the selected FY
     const monthsInFy = useMemo(() => {
         const startYearText = selectedFy.split(' ')[1].split('-')[0];
@@ -72,42 +81,51 @@ export default function PurchasesPage() {
         };
     }, [selectedMonth, monthsInFy, selectedFy]);
 
-    const [stats, setStats] = useState({ total: 0, count: 0, avgValue: 0 });
+    async function fetchAllRows(buildQuery: (fromIndex: number, toIndex: number) => any, pageSize = 1000, maxRows = 50000) {
+        const rows: any[] = [];
+        for (let fromIndex = 0; rows.length < maxRows; fromIndex += pageSize) {
+            const { data, error } = await buildQuery(fromIndex, fromIndex + pageSize - 1);
+            if (error) throw error;
+            const batch = data || [];
+            rows.push(...batch);
+            if (batch.length < pageSize) break;
+        }
+        return rows;
+    }
 
-    useEffect(() => {
-        if (selectedCompany) loadPurchases();
-    }, [selectedCompany, dateRange]); // Dependency on dateRange object
-
-    const loadPurchases = async () => {
-        setLoading(true);
-        try {
-
-            const { data, error } = await supabase.from('vouchers')
-                .select('*')
+    const { data: purchases = [], isLoading: purchasesLoading, refetch } = useQuery(
+        ['purchases', selectedCompany?.id, dateRange.start, dateRange.end],
+        async () => {
+            if (!selectedCompany?.id || !dateRange.start || !dateRange.end) return [];
+            return await fetchAllRows((fromIndex, toIndex) => supabase.from('vouchers')
+                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
-                .limit(50000);
-
-            if (error) throw error;
-
-            const purchaseData = data || [];
-
-            setPurchases(purchaseData);
-
-            const total = purchaseData.reduce((s, v) => s + Math.abs(v.total_amount || 0), 0);
-            setStats({
-                total,
-                count: purchaseData.length,
-                avgValue: purchaseData.length > 0 ? total / purchaseData.length : 0
-            });
-        } catch (error) {
-            console.error('Error loading purchases:', error);
+                .range(fromIndex, toIndex));
+        },
+        {
+            enabled: !!selectedCompany?.id && !!dateRange.start && !!dateRange.end,
+            staleTime: 10 * 60 * 1000,
+            cacheTime: 60 * 60 * 1000,
+            keepPreviousData: true,
+            refetchOnWindowFocus: false,
+            refetchOnMount: false,
         }
-        setLoading(false);
-    };
+    );
+
+    const loading = purchasesLoading && purchases.length === 0;
+
+    const stats = useMemo(() => {
+        const total = purchases.reduce((s: number, v: any) => s + Math.abs(v.grand_total || v.total_amount || 0), 0);
+        return {
+            total,
+            count: purchases.length,
+            avgValue: purchases.length > 0 ? total / purchases.length : 0
+        };
+    }, [purchases]);
 
     const formatCurrency = (amount: number) => {
         const absAmount = Math.abs(amount || 0);
@@ -122,6 +140,20 @@ export default function PurchasesPage() {
     );
 
     const [showSearch, setShowSearch] = useState(false);
+
+    const monthAggs = useMemo(() => {
+        return monthsInFy.map((m) => {
+            const vouchersInMonth = purchases.filter((v: any) => {
+                const d = v.voucher_date;
+                return d >= m.start && d <= m.end;
+            });
+            return {
+                ...m,
+                count: vouchersInMonth.length,
+                total: vouchersInMonth.reduce((s: number, v: any) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0),
+            };
+        });
+    }, [monthsInFy, purchases]);
 
     if (!selectedCompany) return null;
 
@@ -168,13 +200,10 @@ export default function PurchasesPage() {
 
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-2">
-                    <CompactDateFilter
-                        selectedFy={selectedFy}
-                        onFyChange={setSelectedFy}
-                        selectedMonth={selectedMonth}
-                        onMonthChange={setSelectedMonth}
-                        monthsInFy={monthsInFy}
-                    />
+                    <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                        className={`p-2 rounded-xl transition-all ${showAdvancedFilters ? 'bg-[var(--primary)] text-white' : 'hover:bg-[var(--surface-variant)] text-[var(--text-muted)]'}`}>
+                        <SlidersHorizontal size={16} />
+                    </button>
                     <button
                         onClick={() => navigate('/vouchers?type=Purchase')}
                         className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
@@ -185,6 +214,7 @@ export default function PurchasesPage() {
                 </div>
             </HeaderPortal>
 
+            <PullToRefresh onRefresh={async () => { await refetch(); }}>
             {/* Performance Indicators */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
@@ -198,6 +228,74 @@ export default function PurchasesPage() {
             </div>
 
 
+
+            {/* ── MONTH ROW ── */}
+            <div className="relative">
+                <button onClick={() => scrollMonth('left')}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-4 h-full flex items-center justify-center bg-gradient-to-r from-[var(--background)] to-transparent text-[var(--text-muted)] hover:text-[var(--on-surface)]">
+                    <ChevronLeft size={12} />
+                </button>
+                <div ref={monthRowRef} className="flex gap-1 overflow-x-auto scrollbar-hide px-3">
+                    <div className="relative shrink-0">
+                        <button onClick={() => setShowFyDropdown(!showFyDropdown)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border)]/40 bg-[var(--surface-variant)] text-[9px] font-black uppercase tracking-wider whitespace-nowrap text-[var(--text-muted)] hover:text-[var(--on-surface)]">
+                            {selectedFy}
+                            <ChevronDown size={10} />
+                        </button>
+                        {showFyDropdown && (
+                            <div className="absolute top-full left-0 mt-1 bg-[var(--surface)] border border-[var(--border)]/50 rounded-lg shadow-xl z-20 py-1 min-w-[120px]">
+                                {availableFys.map((fy) => (
+                                    <button key={fy} onClick={() => { setSelectedFy(fy); setSelectedMonth('all'); setShowFyDropdown(false); }}
+                                        className={`w-full text-left px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all
+                                            ${fy === selectedFy
+                                                ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
+                                                : 'text-[var(--text-muted)] hover:bg-[var(--surface-active)] hover:text-[var(--on-surface)]'
+                                            }`}>
+                                        {fy}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    {monthAggs.map((month) => {
+                        const isActive = selectedMonth === month.key;
+                        return (
+                            <button key={month.key} onClick={() => setSelectedMonth(isActive ? 'all' : month.key)}
+                                className={`px-2 py-1 rounded-md border transition-all shrink-0 text-[10px] font-bold uppercase whitespace-nowrap
+                                    ${isActive
+                                        ? 'bg-[var(--primary)]/10 border-[var(--primary)]/40 text-[var(--primary)]'
+                                        : 'bg-[var(--surface)] border-[var(--border)]/30 text-[var(--text-muted)] hover:bg-[var(--surface-active)] hover:text-[var(--on-surface)]'
+                                    }`}>
+                                {month.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <button onClick={() => scrollMonth('right')}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-4 h-full flex items-center justify-center bg-gradient-to-l from-[var(--background)] to-transparent text-[var(--text-muted)] hover:text-[var(--on-surface)]">
+                    <ChevronRight size={12} />
+                </button>
+            </div>
+
+            {/* ── ADVANCED FILTERS ── */}
+            <AnimatePresence>
+                {showAdvancedFilters && (
+                    <div className="px-1 mb-2">
+                        <div className="bg-[var(--surface)] border border-[var(--border)]/50 rounded-xl p-3 space-y-3">
+                            <div>
+                                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1.5 block">Date Range</span>
+                                <CompactDateFilter
+                                    selectedFy={selectedFy}
+                                    onFyChange={setSelectedFy}
+                                    selectedMonth={selectedMonth}
+                                    onMonthChange={setSelectedMonth}
+                                    monthsInFy={monthsInFy}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Transaction Logic */}
             <AnimatePresence mode="wait">
@@ -215,19 +313,21 @@ export default function PurchasesPage() {
                     <div className="space-y-1.5">
                         {filteredPurchases.map((purchase, idx) => (
                             <TransactionCard
-                                key={purchase.voucher_id}
+                                key={purchase.id || purchase.voucher_id || [purchase.voucher_number, purchase.voucher_date, idx].filter(Boolean).join('-')}
                                 type={purchase.voucher_type}
                                 partyName={purchase.party_name}
                                 voucherNumber={purchase.voucher_number}
                                 date={purchase.voucher_date}
                                 amount={purchase.total_amount}
                                 status={purchase.sync_status || 'Synced'}
-                                onClick={() => navigate(`/vouchers/${encodeURIComponent(purchase.id)}`)}
+                                onClick={() => navigate(`/invoice/${encodeURIComponent(purchase.id)}`, { state: { voucher: purchase, from: '/purchases' } })}
                             />
                         ))}
                     </div>
                 )}
             </AnimatePresence>
+            </PullToRefresh>
         </div>
     );
 }
+

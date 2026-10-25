@@ -9,7 +9,7 @@ export default function AuthCallback() {
         const handleCallback = async () => {
             try {
                 // Get the session from the URL hash
-                const { data: { session }, error } = await supabase.auth.getSession();
+                const { data: { user }, error } = await supabase.auth.getCurrentUser();
 
                 if (error) {
                     console.error('Auth callback error:', error);
@@ -17,7 +17,7 @@ export default function AuthCallback() {
                     return;
                 }
 
-                if (session) {
+                if (user) {
                     // Successfully authenticated, redirect to dashboard
                     navigate('/');
                 } else {
