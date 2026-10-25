@@ -464,12 +464,12 @@ export default function InvoiceViewPage() {
             }
 
             // Footer
-            const pageHeight = doc.internal.pageSize.getHeight();
+            const totalPageHeight = doc.internal.pageSize.getHeight();
             doc.setFont('helvetica', 'italic');
             doc.setFontSize(7);
             doc.setTextColor(148, 163, 184);
-            doc.text('This is a computer-generated invoice. Generated via TallyOnMobile.', 14, pageHeight - 8);
-            doc.text(`Page 1 of 1`, pageWidth - 14, pageHeight - 8, { align: 'right' });
+            doc.text('This is a computer-generated invoice. Generated via TallyOnMobile.', 14, totalPageHeight - 8);
+            doc.text(`Page 1 of 1`, pageWidth - 14, totalPageHeight - 8, { align: 'right' });
 
             // Trigger download
             const fileName = `Invoice_${invoice.voucherNumber || 'invoice'}.pdf`;
