@@ -14,6 +14,7 @@ import {
     MoreVertical, FileCheck
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useFY, formatFYRange } from '@/contexts/FYContext';
 import { supabase, pendingTransactionApi } from '@/lib/insforge';
 import { shareVoucherOnWhatsApp } from '@/lib/whatsappInvoice';
@@ -61,6 +62,8 @@ export default memo(function LiveKeepingsDashboard() {
     const [activeTab, setActiveTab] = useState<'overview' | 'vouchers' | 'customers' | 'stock' | 'cashflow'>('overview');
     const [searchQuery, setSearchQuery] = useState('');
     const [voucherTypeFilter, setVoucherTypeFilter] = useState('All');
+    const [recentVoucherFilter, setRecentVoucherFilter] = useState('All');
+    const { isDark } = useTheme();
 
     // Mobile Voucher Segment Filter
     const [mobileVoucherFilter, setMobileVoucherFilter] = useState<'all' | 'customers' | 'suppliers'>('all');
@@ -187,6 +190,13 @@ export default memo(function LiveKeepingsDashboard() {
     });
 
     // Filtered lists for Desktop
+    // Recent Vouchers card filter (overview tab)
+    const recentFiltered = useMemo(() =>
+        (dashboard?.recentVouchers || [])
+            .filter((v: any) => recentVoucherFilter === 'All' || v.voucher_type === recentVoucherFilter)
+            .slice(0, 6),
+    [dashboard?.recentVouchers, recentVoucherFilter]);
+
     const filteredVouchers = useMemo(() => {
         const list = dashboard?.recentVouchers || [];
         return list.filter((v: any) => {
@@ -829,24 +839,42 @@ export default memo(function LiveKeepingsDashboard() {
                                 </div>
 
                                 {/* Recent Vouchers Table */}
-                                <div className="p-4 rounded-2xl bg-[#121B24] border border-[#1E2B38]">
+                                <div className={`p-4 rounded-2xl border ${isDark ? 'bg-[#121B24] border-[#1E2B38]' : 'bg-white border-slate-200 shadow-sm'}`}>
                                     <div className="flex items-center justify-between mb-3">
-                                        <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                                        <span className={`text-xs font-black uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                                             <FileText size={14} className="text-blue-400" /> Recent Vouchers
                                         </span>
-                                        <button onClick={() => setActiveTab('vouchers')} className="text-xs font-bold text-[#00E599] hover:underline">
-                                            View All ({filteredVouchers.length}) →
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={recentVoucherFilter}
+                                                onChange={e => setRecentVoucherFilter(e.target.value)}
+                                                className={`px-2 py-1.5 rounded-lg border text-[11px] font-bold focus:outline-none cursor-pointer ${isDark ? 'bg-[#0B1118] border-[#1E2B38] text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                                            >
+                                                <option value="All">All Types</option>
+                                                <option value="Sales">Sales Only</option>
+                                                <option value="Purchase">Purchase Only</option>
+                                                <option value="Receipt">Receipt Only</option>
+                                                <option value="Payment">Payment Only</option>
+                                            </select>
+                                            <button onClick={() => setActiveTab('vouchers')} className="text-xs font-bold text-[#00E599] hover:underline">
+                                                View All ({filteredVouchers.length}) →
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                        {(dashboard?.recentVouchers || []).slice(0, 6).map((v: any) => {
+                                        {recentFiltered.length === 0 && (
+                                            <p className={`text-center py-4 text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                No {recentVoucherFilter !== 'All' ? recentVoucherFilter + ' ' : ''}vouchers in this period
+                                            </p>
+                                        )}
+                                        {recentFiltered.map((v: any) => {
                                             const amt = Number(v.grand_total) || Number(v.total_amount) || 0;
                                             const isSale = v.voucher_type === 'Sales' || v.voucher_type === 'Sales Invoice';
                                             return (
                                                 <div
                                                     key={v.id}
-                                                    className="p-3 rounded-xl bg-[#0B1118] border border-[#1A2634] hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
+                                                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors ${isDark ? 'bg-[#0B1118] border-[#1A2634] hover:border-slate-700' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
                                                 >
                                                     <div
                                                         onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
@@ -858,14 +886,14 @@ export default memo(function LiveKeepingsDashboard() {
                                                             {isSale ? 'INV' : 'REC'}
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <p className="text-xs font-black text-white truncate">{v.party_name || 'CASH'}</p>
-                                                            <p className="text-[10px] text-slate-400 mt-0.5">
+                                                            <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{v.party_name || 'CASH'}</p>
+                                                            <p className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                                                 #{v.voucher_number || '---'} • {v.voucher_type} • {v.voucher_date ? format(new Date(v.voucher_date), 'dd MMM yyyy') : 'Recent'}
                                                             </p>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2 shrink-0">
-                                                        <span className="text-xs font-black font-mono text-white">{formatCurrency(amt)}</span>
+                                                        <span className={`text-xs font-black font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(amt)}</span>
                                                         {isSale && (
                                                             <button
                                                                 onClick={(e) => {
