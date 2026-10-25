@@ -537,53 +537,49 @@ export default function LedgerDetailPage() {
             {/* MOBILE LAYOUT (Screen < md) — Matches Image 1 100%                        */}
             {/* ========================================================================= */}
             <div className="block md:hidden pb-24">
-                {/* Mobile Top Header */}
-                <div className="flex items-center justify-between px-4 py-3 bg-[#0B1118] border-b border-[#1E2B38]/60 sticky top-0 z-40">
-                    <button
-                        onClick={() => navigate('/ledgers')}
-                        className="w-9 h-9 rounded-full bg-[#16202C] border border-[#223244] flex items-center justify-center text-slate-300 active:scale-95 transition-transform cursor-pointer"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
-
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#16202C] border border-[#223244] text-xs shadow-xs">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                        <span className="font-bold text-white text-[11px]">{selectedCompany?.name || 'Arun'}</span>
-                        <span className="text-[9px] font-black text-slate-400 tracking-wider">CLOUD</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <button className="w-9 h-9 rounded-full bg-[#16202C] border border-[#223244] flex items-center justify-center text-slate-300 relative">
-                            <Bell size={16} />
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-pink-500 rounded-full"></span>
+                {/* Mobile Top Header with Integrated Party Name & Actions */}
+                <header className="sticky top-0 z-50 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3.5 py-2.5">
+                    <div className="flex items-center justify-between gap-2.5">
+                        {/* Back Button */}
+                        <button
+                            onClick={() => navigate('/ledgers')}
+                            className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334c] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
+                            aria-label="Back to parties"
+                        >
+                            <ChevronLeft size={22} />
                         </button>
-                        <div className="w-9 h-9 rounded-full bg-cyan-500 text-black font-black flex items-center justify-center text-xs shadow-md">
-                            {userInitial}
-                        </div>
-                    </div>
-                </div>
 
-                {/* Mobile Party Banner */}
-                <div className="flex items-start justify-between px-4 pt-4 pb-2">
-                    <div className="min-w-0 pr-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-xl font-black text-white tracking-tight truncate">{ledger.name}</h1>
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shrink-0">
-                                ✓ Customer
-                            </span>
+                        {/* Party Name & Subtitle */}
+                        <div className="min-w-0 flex-1 px-1">
+                            <h1 className={`font-black text-white tracking-tight leading-tight break-words ${
+                                (ledger.name || '').length > 32
+                                    ? 'text-xs sm:text-sm'
+                                    : (ledger.name || '').length > 20
+                                        ? 'text-sm sm:text-base'
+                                        : 'text-base sm:text-lg'
+                            }`}>
+                                {ledger.name}
+                            </h1>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 flex items-center gap-0.5 shrink-0">
+                                    ✓ Customer
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-medium truncate">
+                                    {ledger.phone || '+91 98765 43210'} • {ledger.parent_group?.replace('Sundry ', '') || 'Party'}
+                                </span>
+                            </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                            {ledger.phone || '+91 98765 43210'} • {ledger.parent_group?.replace('Sundry ', '') || 'Regular Ledger'}
-                        </p>
+
+                        {/* WhatsApp Chat Button */}
+                        <button
+                            onClick={handleWhatsApp}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shrink-0 cursor-pointer active:scale-95 transition-transform"
+                        >
+                            <MessageCircle size={14} />
+                            <span>Chat</span>
+                        </button>
                     </div>
-                    <button
-                        onClick={handleWhatsApp}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shrink-0 cursor-pointer active:scale-95 transition-transform"
-                    >
-                        <MessageCircle size={14} />
-                        Chat
-                    </button>
-                </div>
+                </header>
 
                 {/* Mobile Balance Card (2 Columns) */}
                 <div className="mx-4 mt-2 p-4 rounded-2xl bg-[#121B24] border border-[#1E2B38] grid grid-cols-2 gap-4 shadow-sm">

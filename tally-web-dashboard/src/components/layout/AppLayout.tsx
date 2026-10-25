@@ -499,8 +499,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 transition-all duration-200
                 ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
-                {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages */}
-                {location.pathname === '/' || location.pathname === '/dashboard' ? (
+                {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages (Hidden on detail pages like /ledgers/:id) */}
+                {(location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers') ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
                     <header className="md:hidden sticky top-0 z-50 bg-[#121B24] border-b border-[#1E2B38] px-3 py-2 flex items-center justify-between shadow-md">
                         <div className="flex items-center gap-2.5 min-w-0">
                             <button
