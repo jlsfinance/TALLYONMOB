@@ -499,8 +499,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 transition-all duration-200
                 ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
-                {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages (Hidden on detail pages like /ledgers/:id) */}
-                {(location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers') ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
+                {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages (Hidden on detail pages like /ledgers/:id and /create-invoice) */}
+                {(location.pathname === '/create-invoice' || (location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers')) ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
                     <header className="md:hidden sticky top-0 z-50 bg-[#121B24] border-b border-[#1E2B38] px-3 py-2 flex items-center justify-between shadow-md">
                         <div className="flex items-center gap-2.5 min-w-0">
                             <button
@@ -579,8 +579,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             )}
                             <div id="header-actions-mobile" className="flex items-center gap-0.5" />
                             <div className="default-header-actions flex items-center gap-0.5">
-                                <SafeLink to="/create-invoice" className="p-1.5 rounded-lg bg-[var(--primary)] text-white shadow-sm active:scale-95 transition-all">
-                                    <Plus size={16} strokeWidth={2.5} />
+                                <SafeLink to="/create-invoice" className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#00E599] text-[#0B1118] font-black text-xs shadow-sm active:scale-95 transition-all">
+                                    <Plus size={14} strokeWidth={3} />
+                                    <span className="text-[11px] font-black">Invoice</span>
                                 </SafeLink>
                             </div>
                         </div>
@@ -610,6 +611,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </button>
                         <div id="header-filters" className="flex items-center gap-2" />
                         <div id="header-actions" className="flex items-center gap-2" />
+                        <SafeLink to="/create-invoice" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] font-black text-xs shadow-sm active:scale-95 transition-all">
+                            <Plus size={14} strokeWidth={3} />
+                            <span>Create Invoice</span>
+                        </SafeLink>
 
                         {location.pathname === '/' && (
                             <>

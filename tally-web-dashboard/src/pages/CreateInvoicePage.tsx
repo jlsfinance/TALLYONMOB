@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
     Plus, Trash2, Save, Eye, X, Banknote, ArrowLeft,
     AlertCircle, Calculator, Package, UserPlus, User,
-    Phone, ChevronRight, Search, ChevronLeft, Sparkles, Check
+    Phone, ChevronRight, Search, ChevronLeft, Sparkles, Check, Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Autocomplete from '@/components/shared/Autocomplete';
@@ -72,7 +72,7 @@ export default function CreateInvoicePage() {
     const [ledgers, setLedgers] = useState<any[]>([]);
     const [stockItems, setStockItems] = useState<any[]>([]);
 
-    // Form State
+    // Form State (strictly existing fields only)
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [dueDate, setDueDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -104,7 +104,7 @@ export default function CreateInvoicePage() {
         if (selectedCompany) loadMasters();
     }, [selectedCompany]);
 
-    // Fetch party ledger masters from Tally (source of truth) instead of local DB
+    // Fetch party ledger masters from Tally (source of truth)
     async function fetchTallyPartyLedgers(companyName: string) {
         if (!companyName) return [];
         try {
@@ -411,13 +411,16 @@ export default function CreateInvoicePage() {
 
     return (
         <div className="min-h-screen bg-[#0B1118] text-slate-100 pb-44 font-sans">
-            {/* Sticky Modern Top Header */}
+            {/* ========================================================================= */}
+            {/* 1. STICKY TOP HEADER — Stitch Gemini 3.8 Flash Spec                       */}
+            {/* ========================================================================= */}
             <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3.5 sm:px-6 py-2.5 sm:py-3 shadow-sm">
                 <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+                    {/* Back Button & Headline with Mode Pill and Voucher Badge */}
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         <button
                             onClick={() => navigate(-1)}
-                            className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334c] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
+                            className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334C] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
                             aria-label="Back"
                         >
                             <ChevronLeft size={22} />
@@ -425,14 +428,14 @@ export default function CreateInvoicePage() {
                         <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h1 className="text-base sm:text-lg font-black text-white tracking-tight leading-none truncate">
-                                    {paymentMode === 'CASH' ? 'Cash Invoice' : 'Credit Sale'}
+                                    Create Invoice
                                 </h1>
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
                                     paymentMode === 'CASH'
                                         ? 'bg-[#00E599]/15 text-[#00E599] border border-[#00E599]/30'
                                         : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
                                 }`}>
-                                    {paymentMode}
+                                    {paymentMode === 'CASH' ? 'Cash Sale' : 'Credit Sale'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1.5 mt-1">
@@ -440,16 +443,17 @@ export default function CreateInvoicePage() {
                                 <input
                                     value={invoiceNumber}
                                     onChange={e => setInvoiceNumber(e.target.value)}
-                                    className="bg-[#142032] border border-[#22334C] rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-200 outline-none focus:border-[#00E599] w-28 sm:w-32"
+                                    className="bg-[#142032] border border-[#22334C] rounded px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-200 outline-none focus:border-[#00E599] w-28 sm:w-32"
                                 />
                             </div>
                         </div>
                     </div>
 
+                    {/* Header Action CTAs: Eye Preview & High-Contrast Emerald Save */}
                     <div className="flex items-center gap-2 shrink-0">
                         <button
                             onClick={() => setShowPreview(true)}
-                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#142032] hover:bg-[#1C2A3A] border border-[#22334C] text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
                             title="Preview Invoice"
                         >
                             <Eye size={17} />
@@ -468,58 +472,93 @@ export default function CreateInvoicePage() {
 
             {/* Main Form Body */}
             <div className="max-w-5xl mx-auto p-3 sm:p-5 space-y-4">
-                {/* Customer & Billing Card */}
-                <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-                    <div className="flex flex-col md:flex-row gap-3.5">
-                        {/* Customer Autocomplete */}
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between mb-1.5 px-0.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                                    Customer / Party Name *
-                                </label>
-                                {selectedCustomer?.closing_balance ? (
-                                    <span className="text-[10px] font-bold text-[#00E599]">
-                                        Current Bal: {formatCurrency(selectedCustomer.closing_balance)}
-                                    </span>
-                                ) : null}
+                {/* ========================================================================= */}
+                {/* 2. CUSTOMER / PARTY SECTION CARD                                          */}
+                {/* ========================================================================= */}
+                <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between px-0.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                            Customer / Party Name *
+                        </label>
+                        {selectedCustomer?.closing_balance ? (
+                            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#00E599]/10 border border-[#00E599]/25 text-[#00E599] text-[10px] font-bold">
+                                <span>Ledger Bal: {formatCurrency(selectedCustomer.closing_balance)}</span>
                             </div>
-                            <Autocomplete
-                                options={partyLedgers.map(l => ({
-                                    id: l.id,
-                                    label: l.name,
-                                    subLabel: l.closing_balance > 0 ? `Bal: ₹${l.closing_balance}` : (l.parent ? `(${l.parent})` : undefined)
-                                }))}
-                                value={selectedCustomerId}
-                                onChange={setSelectedCustomerId}
-                                placeholder={loading ? "Loading parties..." : "Search Customer / Party..."}
-                                type="customer"
-                            />
-                        </div>
-
-                        {/* Invoice Date */}
-                        <div className="w-full md:w-44">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block px-0.5">
-                                Invoice Date
-                            </label>
-                            <input
-                                type="date"
-                                value={date}
-                                onChange={e => setDate(e.target.value)}
-                                className="w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs sm:text-sm font-bold text-white outline-none focus:border-[#00E599] transition-colors"
-                            />
-                        </div>
+                        ) : null}
                     </div>
 
-                    {/* Mode Toggle & Extras Row */}
-                    <div className="flex items-center justify-between gap-2.5 flex-wrap pt-2 border-t border-[#1E2B38]">
-                        {/* Payment Mode Pills */}
-                        <div className="flex bg-[#0B1118] p-1 rounded-xl border border-[#1E2B38] w-48 shadow-inner">
+                    <Autocomplete
+                        options={partyLedgers.map(l => ({
+                            id: l.id,
+                            label: l.name,
+                            subLabel: l.closing_balance > 0 ? `Bal: ₹${l.closing_balance}` : (l.parent ? `(${l.parent})` : undefined)
+                        }))}
+                        value={selectedCustomerId}
+                        onChange={setSelectedCustomerId}
+                        placeholder={loading ? "Loading customers..." : "Search Customer / Party..."}
+                        type="customer"
+                    />
+
+                    {/* Previous Balance Add-on toggle if balance > 0 */}
+                    {previousBalance > 0 && (
+                        <div className="pt-2 border-t border-[#1E2B38] flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400">Include previous balance in receipt tracking</span>
+                            <button
+                                type="button"
+                                onClick={() => setIncludePreviousBalance(!includePreviousBalance)}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-xl border text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                                    includePreviousBalance
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                        : 'bg-[#16202C] text-slate-400 border-[#22334C] hover:text-white'
+                                }`}
+                            >
+                                <Banknote size={13} />
+                                <span>₹{previousBalance.toLocaleString()} {includePreviousBalance ? '✓ Included' : '+ Add'}</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* ========================================================================= */}
+                {/* 3. INVOICE DATE & PAYMENT MODE GRID                                       */}
+                {/* ========================================================================= */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Invoice Date */}
+                    <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 shadow-sm">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                            <Calendar size={13} className="text-[#00E599]" />
+                            <span>Invoice Date</span>
+                        </label>
+                        <input
+                            type="date"
+                            value={date}
+                            onChange={e => setDate(e.target.value)}
+                            className="w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs sm:text-sm font-bold text-white outline-none focus:border-[#00E599] transition-colors"
+                        />
+                    </div>
+
+                    {/* Payment Mode (High-contrast Cash / Credit Segmented Pill Toggle) */}
+                    <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                                Payment Mode
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setShowSmartCalculator(true)}
+                                className="flex items-center gap-1 text-[10px] font-bold text-[#00E599] hover:underline cursor-pointer"
+                            >
+                                <Calculator size={13} />
+                                <span>Smart Calc</span>
+                            </button>
+                        </div>
+                        <div className="flex bg-[#0B1118] p-1 rounded-xl border border-[#1E2B38] h-10 items-center shadow-inner">
                             <button
                                 type="button"
                                 onClick={() => setPaymentMode('CASH')}
-                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                className={`flex-1 h-full rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center ${
                                     paymentMode === 'CASH'
-                                        ? 'bg-[#00E599]/20 text-[#00E599] border border-[#00E599]/40 shadow-xs'
+                                        ? 'bg-[#00E599] text-[#0B1118] shadow-md'
                                         : 'text-slate-400 hover:text-white'
                                 }`}
                             >
@@ -528,50 +567,31 @@ export default function CreateInvoicePage() {
                             <button
                                 type="button"
                                 onClick={() => setPaymentMode('CREDIT')}
-                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                className={`flex-1 h-full rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center ${
                                     paymentMode === 'CREDIT'
-                                        ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-xs'
+                                        ? 'bg-sky-500 text-white shadow-md'
                                         : 'text-slate-400 hover:text-white'
                                 }`}
                             >
                                 Credit
                             </button>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                            {previousBalance > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={() => setIncludePreviousBalance(!includePreviousBalance)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                                        includePreviousBalance
-                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                                            : 'bg-[#16202C] text-slate-400 border-[#22334C] hover:text-white'
-                                    }`}
-                                >
-                                    <Banknote size={13} />
-                                    <span>Bal: ₹{previousBalance.toLocaleString()} {includePreviousBalance ? '✓' : '+'}</span>
-                                </button>
-                            )}
-
-                            <button
-                                type="button"
-                                onClick={() => setShowSmartCalculator(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16202C] hover:bg-[#1E2D3D] text-[#00E599] rounded-xl border border-[#00E599]/30 transition-all cursor-pointer shadow-xs"
-                            >
-                                <Calculator size={15} />
-                                <span className="text-[10px] font-bold uppercase tracking-wider">Smart Calc</span>
-                            </button>
-                        </div>
                     </div>
                 </div>
 
-                {/* Items Section */}
+                {/* ========================================================================= */}
+                {/* 4. ADDED ITEMS LIST                                                       */}
+                {/* ========================================================================= */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between px-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                            Added Items ({items.length})
-                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                Added Items
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#16202C] text-[#00E599] border border-[#22334C]">
+                                {items.length}
+                            </span>
+                        </div>
                         {items.length > 0 && (
                             <span className="text-xs font-bold text-slate-300">
                                 Subtotal: {formatCurrency(subtotal)}
@@ -579,6 +599,7 @@ export default function CreateInvoicePage() {
                         )}
                     </div>
 
+                    {/* Scannable Product Cards */}
                     <AnimatePresence mode="popLayout">
                         {items.map((item, idx) => (
                             <motion.div
@@ -586,7 +607,7 @@ export default function CreateInvoicePage() {
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-[#121B24] hover:bg-[#152330] p-3.5 sm:p-4 rounded-2xl border border-[#1E2B38] hover:border-[#2A3F55] shadow-sm flex items-center justify-between gap-3 group transition-all cursor-pointer"
+                                className="bg-[#121B24] hover:bg-[#16202C] p-3.5 sm:p-4 rounded-2xl border border-[#1E2B38] hover:border-[#2A3F55] shadow-sm flex items-center justify-between gap-3 group transition-all cursor-pointer"
                                 onClick={() => { setActiveItemIndex(idx); setShowItemModal(true); }}
                             >
                                 <div className="flex items-center gap-3 min-w-0">
@@ -597,13 +618,13 @@ export default function CreateInvoicePage() {
                                         <p className="text-xs sm:text-sm font-black text-white leading-tight truncate">
                                             {item.description || 'Select Product...'}
                                         </p>
-                                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                            <span className="text-[10px] font-bold text-slate-400">
-                                                {item.quantity} {item.unit || 'units'} × ₹{item.rate}
+                                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                            <span className="text-[11px] font-bold text-slate-400">
+                                                Qty: {item.quantity} {item.unit || 'PCS'} × ₹{item.rate.toLocaleString('en-IN')}
                                             </span>
                                             {item.gstRate > 0 && (
-                                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30">
-                                                    {item.gstRate}% GST
+                                                <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                                                    GST {item.gstRate}%
                                                 </span>
                                             )}
                                         </div>
@@ -612,7 +633,7 @@ export default function CreateInvoicePage() {
 
                                 <div className="text-right flex items-center gap-3 shrink-0">
                                     <div>
-                                        <p className="text-xs sm:text-sm font-black text-[#00E599]">
+                                        <p className="text-xs sm:text-base font-black font-mono text-[#00E599]">
                                             {formatCurrency(item.totalAmount)}
                                         </p>
                                         <p className="text-[9px] font-medium text-slate-400">
@@ -632,41 +653,46 @@ export default function CreateInvoicePage() {
                         ))}
                     </AnimatePresence>
 
-                    {/* Add Item Button */}
+                    {/* '+ Add New Item' Action Button */}
                     <button
                         type="button"
                         onClick={handleAddItem}
-                        className="w-full py-4 rounded-2xl border-2 border-dashed border-[#00E599]/30 bg-[#00E599]/5 hover:bg-[#00E599]/10 text-[#00E599] font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-xs"
+                        className="w-full py-4 rounded-2xl border-2 border-dashed border-[#00E599]/35 bg-[#00E599]/5 hover:bg-[#00E599]/10 text-[#00E599] font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-xs"
                     >
                         <Plus size={17} />
-                        <span>Add New Item</span>
+                        <span>+ Add New Item</span>
                     </button>
                 </div>
 
-                {/* Notes Input */}
-                <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-3.5 shadow-sm">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">
-                        Invoice Remarks / Notes (Optional)
+                {/* ========================================================================= */}
+                {/* 5. OPTIONAL REMARKS / NOTES                                               */}
+                {/* ========================================================================= */}
+                <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 shadow-sm">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                        Remarks / Notes (Optional)
                     </label>
                     <input
                         type="text"
                         value={notes}
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Add delivery terms, transporter, or invoice notes..."
-                        className="w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 outline-none focus:border-[#00E599] transition-colors"
+                        placeholder="e.g. Purchase Order #PO-9921, delivery to warehouse..."
+                        className="w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2.5 px-3.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[#00E599] transition-colors"
                     />
                 </div>
             </div>
 
-            {/* Modern Bottom Summary Bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-[#0B1118]/95 backdrop-blur-xl border-t border-[#1E2B38] p-3 sm:p-4 z-30 shadow-2xl">
+            {/* ========================================================================= */}
+            {/* 6. BOTTOM STICKY SUMMARY BAR (Stitch Docked Bottom Sheet)                 */}
+            {/* ========================================================================= */}
+            <div className="fixed bottom-0 left-0 right-0 bg-[#0B1118]/95 backdrop-blur-xl border-t border-[#1E2B38] p-3.5 sm:p-4 z-30 shadow-2xl">
                 <div className="max-w-5xl mx-auto flex items-center justify-between gap-3 px-1">
+                    {/* Left: Net Payable Total & Discount */}
                     <div className="flex items-center gap-3">
                         <div className="px-3.5 py-2 rounded-xl bg-[#00E599]/10 border border-[#00E599]/25 flex flex-col items-start justify-center">
                             <span className="text-[8px] font-black uppercase text-[#00E599] tracking-wider leading-none">
                                 Net Payable
                             </span>
-                            <span className="text-base sm:text-xl font-black text-white leading-tight mt-0.5">
+                            <span className="text-base sm:text-xl font-black font-mono text-white leading-tight mt-0.5">
                                 ₹{Math.ceil(total).toLocaleString('en-IN')}
                             </span>
                         </div>
@@ -700,6 +726,7 @@ export default function CreateInvoicePage() {
                         </div>
                     </div>
 
+                    {/* Right: Save Invoice CTA */}
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
@@ -713,7 +740,7 @@ export default function CreateInvoicePage() {
                             type="button"
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] px-5 sm:px-8 py-2.5 sm:py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] px-5 sm:px-8 py-2.5 sm:py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-[#00E599]/20 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                             <Save size={16} />
                             <span>{submitting ? 'Saving...' : 'Save Invoice'}</span>
@@ -722,7 +749,9 @@ export default function CreateInvoicePage() {
                 </div>
             </div>
 
-            {/* Item Detail Modal */}
+            {/* ========================================================================= */}
+            {/* ITEM DETAIL MODAL (DRAWER)                                                */}
+            {/* ========================================================================= */}
             <AnimatePresence>
                 {showItemModal && activeItemIndex !== null && (
                     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -870,7 +899,9 @@ export default function CreateInvoicePage() {
                 )}
             </AnimatePresence>
 
-            {/* Smart Calculator Drawer */}
+            {/* ========================================================================= */}
+            {/* SMART BILLING CALCULATOR DRAWER                                           */}
+            {/* ========================================================================= */}
             <AnimatePresence>
                 {showSmartCalculator && (
                     <div className="fixed inset-0 z-[100] flex flex-col justify-end">
@@ -959,7 +990,9 @@ export default function CreateInvoicePage() {
                 )}
             </AnimatePresence>
 
-            {/* Preview Verification Overlay */}
+            {/* ========================================================================= */}
+            {/* PREVIEW VERIFICATION OVERLAY                                              */}
+            {/* ========================================================================= */}
             <AnimatePresence>
                 {showPreview && (
                     <motion.div
