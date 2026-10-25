@@ -412,59 +412,62 @@ export default function CreateInvoicePage() {
     return (
         <div className="min-h-screen bg-[#0B1118] text-slate-100 pb-44 font-sans">
             {/* ========================================================================= */}
-            {/* 1. STICKY TOP HEADER — Stitch Gemini 3.8 Flash Spec                       */}
+            {/* 1. STICKY TOP HEADER — Clean, Un-truncated Modern Mobile Spec             */}
             {/* ========================================================================= */}
-            <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3.5 sm:px-6 py-2.5 sm:py-3 shadow-sm">
-                <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-                    {/* Back Button & Headline with Mode Pill and Voucher Badge */}
-                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334C] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
-                            aria-label="Back"
-                        >
-                            <ChevronLeft size={22} />
-                        </button>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h1 className="text-base sm:text-lg font-black text-white tracking-tight leading-none truncate">
-                                    Create Invoice
-                                </h1>
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                    paymentMode === 'CASH'
-                                        ? 'bg-[#00E599]/15 text-[#00E599] border border-[#00E599]/30'
-                                        : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-                                }`}>
-                                    {paymentMode === 'CASH' ? 'Cash Sale' : 'Credit Sale'}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-1">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase">No:</span>
-                                <input
-                                    value={invoiceNumber}
-                                    onChange={e => setInvoiceNumber(e.target.value)}
-                                    className="bg-[#142032] border border-[#22334C] rounded px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-200 outline-none focus:border-[#00E599] w-28 sm:w-32"
-                                />
-                            </div>
+            <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3 sm:px-6 py-2.5 shadow-sm">
+                <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+                    {/* Back Button */}
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334C] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
+                        aria-label="Back"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+
+                    {/* Title & Metadata (Full Title, No Truncation, Clean Subtitle) */}
+                    <div className="min-w-0 flex-1 px-1">
+                        <div className="flex items-center gap-1.5">
+                            <h1 className="text-sm sm:text-base font-black text-white tracking-tight leading-tight whitespace-nowrap">
+                                Create Invoice
+                            </h1>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider shrink-0 ${
+                                paymentMode === 'CASH'
+                                    ? 'bg-[#00E599]/15 text-[#00E599] border border-[#00E599]/30'
+                                    : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                            }`}>
+                                {paymentMode === 'CASH' ? 'Cash' : 'Credit'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">No:</span>
+                            <input
+                                value={invoiceNumber}
+                                onChange={e => setInvoiceNumber(e.target.value)}
+                                className="bg-transparent font-mono text-[10px] font-bold text-slate-400 hover:text-white focus:text-[#00E599] outline-none border-b border-transparent focus:border-[#00E599] w-24 sm:w-28 transition-colors"
+                                title="Click to edit invoice number"
+                            />
                         </div>
                     </div>
 
-                    {/* Header Action CTAs: Eye Preview & High-Contrast Emerald Save */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Action CTAs: Preview & Save */}
+                    <div className="flex items-center gap-1.5 shrink-0">
                         <button
+                            type="button"
                             onClick={() => setShowPreview(true)}
-                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#142032] hover:bg-[#1C2A3A] border border-[#22334C] text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                            className="w-9 h-9 rounded-xl bg-[#142032] hover:bg-[#1C2A3A] border border-[#22334C] text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shadow-xs"
                             title="Preview Invoice"
                         >
-                            <Eye size={17} />
+                            <Eye size={16} />
                         </button>
                         <button
+                            type="button"
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="flex items-center gap-1.5 px-3.5 sm:px-5 py-2 sm:py-2.5 bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] rounded-xl font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] rounded-xl font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                         >
-                            <Save size={15} />
-                            <span>{submitting ? 'Saving...' : 'Save'}</span>
+                            <Save size={14} />
+                            <span>{submitting ? '...' : 'Save'}</span>
                         </button>
                     </div>
                 </div>
