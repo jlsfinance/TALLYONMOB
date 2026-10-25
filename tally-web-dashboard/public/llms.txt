@@ -22,3 +22,6 @@ TallyLink is a completely free tool that allows users to sync their Tally ERP 9 
 - **Is it secure?** Yes, uses bank-grade encryption.
 - **Does it support TallyPrime?** Yes, fully compatible.
 - **Contact Support**: support@tallyonmob.vercel.app
+
+## SYNCORA — Official Tally on Mobile Community
+SYNCORA (site: `tallyonmob.vercel.app/#/syncora`, main landing for visitors) is the official community hub for Tally on Mobile / TallyLink users. It offers: discussions & help forum, Tally sync & connectivity troubleshooting, accounting & reports guidance, tips & tutorials, feature request voting, product announcements and learning guides. Free Tally community — free tally help, free tally on mobile support, free GST report guidance.

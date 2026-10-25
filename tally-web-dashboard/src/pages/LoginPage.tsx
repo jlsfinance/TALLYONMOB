@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, BarChart3, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Zap, Shield, Smartphone, Sun, Moon, User, BarChart3, CheckCircle2, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '../contexts/types';
 import SEO from '../components/common/SEO';
+
+// Visual redesign to match the SYNCORA landing (deep navy + violet/sky).
+// All auth logic (email/pass, signup, OTP, 2FA, Google) is unchanged.
 
 export default function LoginPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -77,7 +80,7 @@ export default function LoginPage() {
                     }
                     throw error;
                 }
-                
+
                 // If autoconfirm is enabled on Supabase, the session is returned directly
                 if (data?.session) {
                     toast.success('Account created and signed in successfully!');
@@ -108,47 +111,64 @@ export default function LoginPage() {
     };
 
     const highlights = [
-        { icon: <Zap size={20} />, text: "Real-time sync with Tally ERP" },
-        { icon: <BarChart3 size={20} />, text: "Smart business analytics & GST reports" },
-        { icon: <Shield size={20} />, text: "Bank-grade AES-256 encryption" },
-        { icon: <Smartphone size={20} />, text: "Works on mobile, tablet & desktop" },
+        { icon: <Zap size={18} />, text: 'Real-time sync with Tally ERP' },
+        { icon: <BarChart3 size={18} />, text: 'Smart business analytics & GST reports' },
+        { icon: <Shield size={18} />, text: 'Bank-grade AES-256 encryption' },
+        { icon: <Smartphone size={18} />, text: 'Works on mobile, tablet & desktop' },
     ];
 
+    // Surfaces: dark = glass on navy (as landing); light = white card on navy
+    const cardC = isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-xl shadow-black/30';
+    const inputC = isDark
+        ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-violet-500/60 focus:ring-violet-500/25'
+        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:ring-violet-500/20';
+    const labelC = isDark ? 'text-slate-200' : 'text-slate-700';
+    const subC = isDark ? 'text-slate-400' : 'text-slate-500';
+    const headC = isDark ? 'text-white' : 'text-slate-900';
+
     return (
-        <div className="min-h-screen bg-[var(--background)] flex transition-colors duration-300">
+        <div className="min-h-screen bg-[#070D1A] flex transition-colors duration-300">
             <SEO
-                title={isLogin ? "Client Login | SYNCORA TallyOnMobile" : "Create Account | SYNCORA TallyOnMobile"}
-                description="Securely access your SYNCORA TallyOnMobile business dashboard. Real-time Tally data, GST reports, and AI analytics at your fingertips."
+                title={isLogin ? 'Sign In | SYNCORA — Free Tally Community & Cloud' : 'Create Account | SYNCORA — Free Tally Community & Cloud'}
+                description="Sign in to SYNCORA TallyOnMobile. Access your Tally data on mobile and web — real-time sync, GST reports and business insights, free forever."
                 canonical="https://tallyonmob.vercel.app/login"
             />
 
-            {/* Theme Toggle ? Top Right */}
+            {/* ambient glows */}
+            <div className="pointer-events-none fixed inset-0" aria-hidden="true">
+                <div className="absolute -top-40 left-1/4 h-[420px] w-[700px] rounded-full bg-violet-600/15 blur-[130px]" />
+                <div className="absolute bottom-0 right-0 h-[360px] w-[540px] rounded-full bg-sky-600/10 blur-[120px]" />
+            </div>
+
+            {/* Theme Toggle */}
             <button
                 onClick={toggleTheme}
-                className="fixed top-5 right-5 z-50 w-10 h-10 rounded-[var(--radius-md)] bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] shadow-[var(--shadow-sm)] hover:bg-[var(--surface-hover)] transition-all"
+                className="fixed top-5 right-5 z-50 w-10 h-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center text-slate-300 hover:bg-white/10 hover:text-white transition-all"
                 aria-label="Toggle theme"
             >
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Left ? Auth Form */}
-            <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-20 py-12 z-10">
+            {/* Left — Auth Form */}
+            <div className="flex-1 flex flex-col justify-center px-5 sm:px-12 lg:px-16 xl:px-20 py-12 z-10">
                 <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-                    className="max-w-md w-full mx-auto"
+                    className={`max-w-md w-full mx-auto rounded-2xl border p-6 sm:p-8 ${cardC}`}
                 >
-                    {/* Brand Logo */}
-                    <div className="flex items-center gap-3 mb-10">
-                        <div className="w-11 h-11 rounded-[var(--radius-md)] bg-[var(--primary)] flex items-center justify-center shadow-[var(--shadow-md)]">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 019-9" />
-                            </svg>
-                        </div>
+                    {/* Brand */}
+                    <div className="flex items-center gap-3 mb-8">
+                        <svg width="34" height="34" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                            <circle cx="16" cy="6" r="3.4" fill="#8B5CF6" />
+                            <circle cx="6" cy="24" r="3.4" fill="#38BDF8" />
+                            <circle cx="26" cy="24" r="3.4" fill="#8B5CF6" />
+                            <path d="M16 9.5V15M16 15l-7.6 6.4M16 15l7.6 6.4" stroke="#94A3B8" strokeWidth="1.6" strokeLinecap="round" />
+                            <circle cx="16" cy="16.4" r="2" fill="#E2E8F0" />
+                        </svg>
                         <div>
-                            <h1 className="text-xl font-bold text-[var(--on-surface)] tracking-tight leading-none">SYNCORA TallyOnMobile</h1>
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--primary)] mt-0.5">Cloud Platform</p>
+                            <h1 className={`text-lg font-black tracking-[0.22em] leading-none ${headC}`}>SYNCORA</h1>
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-violet-400 mt-1">Your Tally. Connected. Everywhere.</p>
                         </div>
                     </div>
 
@@ -160,26 +180,27 @@ export default function LoginPage() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -8 }}
                             transition={{ duration: 0.2 }}
-                            className="mb-8"
+                            className="mb-7"
                         >
-                            <h2 className="text-2xl md:text-3xl font-bold text-[var(--on-surface)] tracking-tight">
+                            <h2 className={`text-2xl md:text-[27px] font-bold tracking-tight ${headC}`}>
                                 {isLogin ? 'Welcome back' : 'Create your account'}
                             </h2>
-                            <p className="text-[var(--text-muted)] text-sm mt-2 leading-relaxed">
+                            <p className={`${subC} text-sm mt-2 leading-relaxed`}>
                                 {isLogin
-                                    ? 'Sign in to access your business dashboard'
-                                    : 'Get started with SYNCORA TallyOnMobile in under a minute'
-                                }
+                                    ? 'Sign in to the community and your business dashboard'
+                                    : 'Join SYNCORA in under a minute — free forever'}
                             </p>
                         </motion.div>
                     </AnimatePresence>
 
-                    {/* Google Login ? Show first for quick access */}
+                    {/* Google Login */}
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
                         disabled={loading}
-                        className="w-full bg-[var(--surface)] border border-[var(--border)] text-[var(--on-surface)] font-medium py-3 px-4 rounded-[var(--radius-md)] hover:bg-[var(--surface-hover)] hover:border-[var(--outline-variant)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-[var(--shadow-xs)]"
+                        className={`w-full border font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 ${
+                            isDark ? 'bg-white/5 border-white/10 text-white hover:bg-white/10' : 'bg-white border-slate-200 text-slate-900 hover:bg-slate-50'
+                        }`}
                     >
                         <svg viewBox="0 0 24 24" width="20" height="20">
                             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -192,9 +213,9 @@ export default function LoginPage() {
 
                     {/* Divider */}
                     <div className="flex items-center gap-4 my-6">
-                        <div className="flex-1 h-px bg-[var(--border)]" />
-                        <span className="text-xs font-medium text-[var(--text-muted)]">or use email</span>
-                        <div className="flex-1 h-px bg-[var(--border)]" />
+                        <div className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+                        <span className={`text-xs font-medium ${subC}`}>or use email</span>
+                        <div className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
                     </div>
 
                     {/* Auth Form */}
@@ -207,14 +228,14 @@ export default function LoginPage() {
                                     exit={{ opacity: 0, height: 0 }}
                                     className="overflow-hidden"
                                 >
-                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Full Name</label>
+                                    <label className={`block text-sm font-medium mb-1.5 ${labelC}`}>Full Name</label>
                                     <div className="relative">
-                                        <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <User size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${subC}`} />
                                         <input
                                             type="text"
                                             value={fullName}
                                             onChange={(e) => setFullName(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            className={`w-full border rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 transition-all text-sm ${inputC}`}
                                             placeholder="Your full name"
                                             required={!isLogin && !otpSent}
                                         />
@@ -226,14 +247,14 @@ export default function LoginPage() {
                         {!otpSent && !twoFactorRequired && (
                             <>
                                 <div>
-                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Email</label>
+                                    <label className={`block text-sm font-medium mb-1.5 ${labelC}`}>Email</label>
                                     <div className="relative">
-                                        <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <Mail size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${subC}`} />
                                         <input
                                             type="email"
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                            className={`w-full border rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 transition-all text-sm ${inputC}`}
                                             placeholder="you@company.com"
                                             required
                                         />
@@ -241,15 +262,15 @@ export default function LoginPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Password</label>
+                                    <label className={`block text-sm font-medium mb-1.5 ${labelC}`}>Password</label>
                                     <div className="relative">
-                                        <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                        <Lock size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${subC}`} />
                                         <input
                                             type="password"
                                             value={password}
                                             onChange={(e) => setPassword(e.target.value)}
-                                            className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
-                                            placeholder="????????"
+                                            className={`w-full border rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 transition-all text-sm ${inputC}`}
+                                            placeholder="••••••••"
                                             required
                                         />
                                     </div>
@@ -263,17 +284,17 @@ export default function LoginPage() {
                                 animate={{ opacity: 1, height: 'auto' }}
                                 className="overflow-hidden"
                             >
-                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5">Verification Code</label>
-                                <div className="text-sm text-[var(--text-muted)] mb-3">
-                                    We sent a code to <span className="font-medium text-[var(--on-surface)]">{email}</span>.
+                                <label className={`block text-sm font-medium mb-1.5 ${labelC}`}>Verification Code</label>
+                                <div className={`text-sm mb-3 ${subC}`}>
+                                    We sent a code to <span className={`font-medium ${headC}`}>{email}</span>.
                                 </div>
                                 <div className="relative">
-                                    <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <Lock size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${subC}`} />
                                     <input
                                         type="text"
                                         value={otpCode}
                                         onChange={(e) => setOtpCode(e.target.value)}
-                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm"
+                                        className={`w-full border rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 transition-all text-sm ${inputC}`}
                                         placeholder="Enter the 6-digit OTP"
                                         required
                                     />
@@ -287,18 +308,18 @@ export default function LoginPage() {
                                 animate={{ opacity: 1, height: 'auto' }}
                                 className="overflow-hidden"
                             >
-                                <label className="block text-sm font-medium text-[var(--on-surface)] mb-1.5 font-bold">2FA Security Code</label>
-                                <div className="text-sm text-[var(--text-muted)] mb-3">
+                                <label className={`block text-sm font-bold mb-1.5 ${labelC}`}>2FA Security Code</label>
+                                <div className={`text-sm mb-3 ${subC}`}>
                                     Enter the 6-digit code from your Google Authenticator or other 2FA app.
                                 </div>
                                 <div className="relative">
-                                    <Shield size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                                    <Shield size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${subC}`} />
                                     <input
                                         type="text"
                                         maxLength={6}
                                         value={twoFactorCode}
                                         onChange={(e) => setTwoFactorCode(e.target.value)}
-                                        className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-md)] pl-10 pr-4 py-3 text-[var(--on-surface)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-glow)] transition-all text-sm font-mono tracking-widest text-center"
+                                        className={`w-full border rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 transition-all text-sm font-mono tracking-widest text-center ${inputC}`}
                                         placeholder="000000"
                                         required
                                     />
@@ -309,29 +330,29 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-[var(--primary)] text-[var(--on-primary)] font-semibold py-3 rounded-[var(--radius-md)] hover:bg-[var(--primary-hover)] shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+                            className="group w-full bg-gradient-to-r from-violet-600 to-sky-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-violet-950/40 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100 mt-2"
                         >
                             {loading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
                                     {isLogin ? (twoFactorRequired ? 'Verify 2FA' : 'Sign In') : (otpSent ? 'Verify Account' : 'Create Account')}
-                                    <ArrowRight size={16} />
+                                    <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
                                 </>
                             )}
                         </button>
                     </form>
 
                     {/* Switch Auth Mode */}
-                    <div className="mt-8 text-center">
+                    <div className="mt-7 text-center">
                         <button
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-sm text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                            className={`text-sm transition-colors ${subC} hover:${headC}`}
                         >
                             {isLogin ? (
-                                <>Don't have an account? <span className="font-semibold text-[var(--primary)]">Sign up</span></>
+                                <>Don't have an account? <span className="font-bold text-violet-400 hover:text-violet-300">Sign up</span></>
                             ) : (
-                                <>Already have an account? <span className="font-semibold text-[var(--primary)]">Sign in</span></>
+                                <>Already have an account? <span className="font-bold text-violet-400 hover:text-violet-300">Sign in</span></>
                             )}
                         </button>
                     </div>
@@ -340,7 +361,7 @@ export default function LoginPage() {
                     <div className="mt-4 text-center">
                         <button
                             onClick={() => navigate('/')}
-                            className="text-xs text-[var(--text-muted)] hover:text-[var(--on-surface)] transition-colors"
+                            className={`text-xs transition-colors ${subC} hover:${headC}`}
                         >
                             ← Back to home
                         </button>
@@ -348,15 +369,13 @@ export default function LoginPage() {
                 </motion.div>
             </div>
 
-            {/* Right — Trust Panel (Desktop Only) */}
-            <div className="hidden lg:flex flex-1 relative items-center justify-center bg-[var(--primary)]" style={{ maxWidth: '50%' }}>
-                {/* Subtle geometric pattern */}
-                <div
-                    className="absolute inset-0 opacity-[0.06]"
-                    style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                    }}
-                />
+            {/* Right — Brand Panel (Desktop Only) */}
+            <div className="hidden lg:flex flex-1 relative items-center justify-center overflow-hidden" style={{ maxWidth: '50%' }}>
+                <div className="absolute inset-0 bg-gradient-to-br from-[#0B1424] via-[#101B33] to-[#0B1424]" />
+                <div className="absolute inset-0 opacity-60" aria-hidden="true">
+                    <div className="absolute -top-24 left-1/3 h-[360px] w-[520px] rounded-full bg-violet-600/20 blur-[120px]" />
+                    <div className="absolute bottom-0 left-0 h-[300px] w-[420px] rounded-full bg-sky-600/15 blur-[110px]" />
+                </div>
 
                 <div className="relative z-10 px-12 xl:px-20 max-w-lg">
                     <motion.div
@@ -364,24 +383,29 @@ export default function LoginPage() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
                     >
-                        {/* Trust badge */}
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-white/90 text-xs font-medium mb-8 backdrop-blur-sm">
-                            <CheckCircle2 size={14} />
-                            Trusted by 5,000+ Indian businesses
-                        </div>
+                        {/* connected nodes artwork */}
+                        <svg className="mb-9 opacity-90" width="150" height="120" viewBox="0 0 150 120" fill="none" aria-hidden="true">
+                            <path d="M75 22 C 90 55, 110 60, 122 88 M75 22 C 55 58, 40 65, 28 88 M62 30 C 45 20, 30 18, 16 24 M95 45 C 115 38, 130 40, 140 52" stroke="#8B5CF6" strokeOpacity=".45" strokeWidth="1.4" strokeDasharray="3 6" strokeLinecap="round" />
+                            <circle cx="75" cy="22" r="9" fill="#8B5CF6" />
+                            <circle cx="28" cy="88" r="7" fill="#38BDF8" />
+                            <circle cx="122" cy="88" r="7" fill="#8B5CF6" />
+                            <circle cx="16" cy="24" r="4.5" fill="#38BDF8" />
+                            <circle cx="140" cy="52" r="4.5" fill="#8B5CF6" />
+                            <circle cx="75" cy="60" r="6" fill="#E2E8F0" />
+                        </svg>
 
-                        {/* Headline */}
-                        <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-5">
-                            Your Tally data,<br />
-                            accessible <span className="text-white/80">everywhere.</span>
+                        {/* tagline */}
+                        <h2 className="text-3xl xl:text-4xl font-black text-white leading-tight tracking-tight mb-5">
+                            Your Tally Community.<br />
+                            All <span className="bg-gradient-to-r from-violet-400 to-sky-400 bg-clip-text text-transparent">Connected.</span>
                         </h2>
 
-                        <p className="text-white/70 text-base leading-relaxed mb-10">
-                            Sync your Tally ERP to the cloud. Access real-time reports, GST analytics, and business insights from any device.
+                        <p className="text-slate-400 text-base leading-relaxed mb-8">
+                            Sync your Tally to the cloud. Access real-time reports, GST analytics and business insights from any device — with the community behind you.
                         </p>
 
                         {/* Feature List */}
-                        <div className="space-y-4">
+                        <div className="space-y-4 mb-10">
                             {highlights.map((item, i) => (
                                 <motion.div
                                     key={i}
@@ -390,13 +414,17 @@ export default function LoginPage() {
                                     transition={{ delay: 0.4 + i * 0.1 }}
                                     className="flex items-center gap-4"
                                 >
-                                    <div className="w-10 h-10 rounded-[var(--radius-md)] bg-white/10 flex items-center justify-center text-white flex-shrink-0">
+                                    <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-violet-300 flex-shrink-0">
                                         {item.icon}
                                     </div>
-                                    <span className="text-white/90 text-sm font-medium">{item.text}</span>
+                                    <span className="text-slate-300 text-sm font-medium">{item.text}</span>
                                 </motion.div>
                             ))}
                         </div>
+
+                        <p className="flex items-center gap-2 text-[12px] text-slate-500">
+                            <Building2 size={14} /> Built for business owners, accountants and Tally professionals.
+                        </p>
                     </motion.div>
                 </div>
             </div>

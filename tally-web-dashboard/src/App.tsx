@@ -94,6 +94,7 @@ const SalesDashboardPage = lazyPage('SalesDashboardPage', () => import('./pages/
 const InvoicePDFPage = lazyPage('InvoicePDFPage', () => import('./pages/InvoicePDFPage'));
 const CreateInvoicePage = lazyPage('CreateInvoicePage', () => import('./pages/CreateInvoicePage'));
 const Dashboard3DPage = lazyPage('Dashboard3DPage', () => import('./pages/Dashboard3DPage'));
+const SyncoraLandingPage = lazyPage('SyncoraLandingPage', () => import('./pages/SyncoraLandingPage'));
 const LandingPage3D = lazyPage('LandingPage3D', () => import('./pages/LandingPage3D'));
 const LandingPage = lazyPage('LandingPage', () => import('./pages/LandingPage'));
 const ProfitLossPage = lazyPage('ProfitLossPage', () => import('./pages/ProfitLossPage'));
@@ -245,7 +246,7 @@ function HomeRedirect() {
         return <Navigate to={appMode === 'billing' ? '/billing' : '/dashboard'} replace />;
     }
 
-    return Capacitor.isNativePlatform() ? <MobileLandingPage /> : <LandingPage />;
+    return Capacitor.isNativePlatform() ? <MobileLandingPage /> : <SyncoraLandingPage />;
 }
 
 function AppContent() {
@@ -318,6 +319,7 @@ function AppContent() {
                 <Route path="/billing-launch" element={<ProtectedRoute><Navigate to="/billing" replace /></ProtectedRoute>} />
 
                 <Route path="/" element={<HomeRedirect />} />
+                <Route path="/syncora" element={<SyncoraLandingPage />} />
                 <Route path="/privacy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/refund" element={<RefundPolicyPage />} />
