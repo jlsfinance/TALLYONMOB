@@ -591,7 +591,7 @@ namespace TallySyncApp.Services
                                 // owned by ANOTHER account on cloud - skip this company's data pass,
                                 // otherwise every child batch dies with 42501 and floods the queue.
                                 AddLog("⏭ Skipping data sync for this company (register failed).");
-                                AddLog("   If it was synced by a different account before, that account owns it on cloud.");
+                                AddLog($"   ℹ️ {compResult.Error}");
                                 continue;                            }
                         }
 

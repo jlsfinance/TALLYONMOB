@@ -133,7 +133,17 @@ namespace TallySyncApp.Services
             // Store the UUID back for other operations
             company.Id = companyUuid;
 
-            return await UpsertAsync<object>("companies", new List<Dictionary<string, object?>> { companyData }, "id");
+            var result = await UpsertAsync<object>("companies", new List<Dictionary<string, object?>> { companyData }, "id");
+            if (!result.Success && result.Error != null && result.Error.Contains("42501"))
+            {
+                // 42501 = another account already owns this company name on cloud.
+                // Show the owner's email instead of the raw PostgREST JSON.
+                var ownerEmail = await GetCompanyOwnerEmailAsync(companyUuid);
+                result.Error = ownerEmail == null
+                    ? "⛔ This company is already synced by ANOTHER account on cloud. Rename the company in Tally, or delete it from that account's dashboard."
+                    : $"⛔ This company is already synced by another account ({ownerEmail}). Rename it in Tally, or delete it from that account's dashboard.";
+            }
+            return result;
         }
 
         /// <summary>
@@ -367,6 +377,11 @@ namespace TallySyncApp.Services
 
             // Perform Upsert
             var result = await UpsertAsync<object>(tableName, itemsWithCompanyId, onConflict);
+            if (!result.Success && result.Error != null && result.Error.Contains("42501"))
+            {
+                // friendly rewrite: raw PostgREST JSON confuses users
+                result.Error = $"⛔ {tableName}: upload blocked (RLS) - company is owned by another account on cloud, or registration failed.";
+            }
             
             return new ApiResponse<SyncResultDetails>
             {
@@ -594,6 +609,32 @@ namespace TallySyncApp.Services
             {
                 SyncLogger.Log($"⚠️ GetMaxAlterIdAsync error: {ex.Message}");
                 return 0;
+            }
+        }
+
+        /// <summary>
+        /// Email of the account that owns this company on cloud (friendly 42501 errors).
+        /// Null if company not found or owned by nobody.
+        /// </summary>
+        public async Task<string?> GetCompanyOwnerEmailAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                var payload = JsonConvert.SerializeObject(new { p_company_id = companyId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/get_company_owner_email")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode) return null;
+                return JsonConvert.DeserializeObject<string>(body);
+            }
+            catch
+            {
+                return null;
             }
         }
 
