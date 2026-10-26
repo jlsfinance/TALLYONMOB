@@ -45,7 +45,7 @@ begin
   -- Backfill: stamp Tally's GUID on historical NULL-guid rows matched by
   -- (voucher_type, voucher_number) or by AlterId
   update public.vouchers v
-     set guid = k->>'g'
+     set guid = s.g
     from (
       select k->>'g' as g, btrim(k->>'t') as t, btrim(k->>'v') as vn,
              btrim(coalesce(k->>'a', '')) as a
