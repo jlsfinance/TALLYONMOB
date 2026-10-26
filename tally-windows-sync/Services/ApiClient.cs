@@ -639,15 +639,25 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// P1: reconcile deletions - post Tally's current GUID index; the server deletes every
-        /// cloud voucher whose GUID is absent (children too). RPC returns purged count, -1 = safety skip.
+        /// P1 (LK parity): post Tally's voucher index as identity keys [{g,t,v,a}] -
+        /// guid + type/number + alterId. Server backfills NULL-guid rows, then deletes every
+        /// cloud voucher absent from the index by any identity. Returns purged count, -1 = safety skip.
         /// </summary>
-        public async Task<int> PurgeDeletedVouchersAsync(string companyId, List<string> tallyGuids)
+        public async Task<int> PurgeDeletedVouchersAsync(string companyId, List<VoucherIndexEntry> tallyIndex)
         {
             try
             {
                 AddAuthHeader();
-                var payload = JsonConvert.SerializeObject(new { p_company_id = companyId, p_guids = tallyGuids });
+                var keys = tallyIndex
+                    .Select(e => new
+                    {
+                        g = string.IsNullOrWhiteSpace(e.Guid) ? null : e.Guid.Trim(),
+                        t = e.VoucherType,
+                        v = e.VoucherNumber,
+                        a = string.IsNullOrWhiteSpace(e.AlterId) ? null : e.AlterId.Trim()
+                    })
+                    .ToList();
+                var payload = JsonConvert.SerializeObject(new { p_company_id = companyId, p_keys = keys });
                 var content = new StringContent(payload, Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/purge_deleted_vouchers")
                 {

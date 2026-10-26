@@ -113,6 +113,10 @@ namespace TallySyncApp.Models
         [JsonProperty("master_id")]
         public string? MasterId { get; set; }
 
+        // Tally voucher GUID - P1 deletion-purge identity (older cloud rows have this NULL)
+        [JsonProperty("guid")]
+        public string? TallyGuid { get; set; }
+
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
 

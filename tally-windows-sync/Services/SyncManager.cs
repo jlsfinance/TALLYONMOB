@@ -1139,13 +1139,9 @@ namespace TallySyncApp.Services
                             var voucherIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                             if (voucherIndex.Count > 0)
                             {
-                                // P1: delete cloud vouchers that no longer exist in Tally
-                                var guids = voucherIndex
-                                    .Where(v => !string.IsNullOrWhiteSpace(v.Guid))
-                                    .Select(v => v.Guid.Trim())
-                                    .Distinct()
-                                    .ToList();
-                                var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, guids);
+                                // P1: delete cloud vouchers that no longer exist in Tally.
+                                // Full index goes up (guid + type/number + alterId) - LK parity.
+                                var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, voucherIndex);
                                 if (purged > 0)
                                     AddLog($"🗑 P1: removed {purged} voucher(s) deleted in Tally (entries/sales/purchases cleaned too)");
                                 else if (purged < 0)

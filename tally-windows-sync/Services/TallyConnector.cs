@@ -1386,6 +1386,7 @@ namespace TallySyncApp.Services
                         TotalAmount = totalAmount,
                         Narration = GetElementValue(vNode, "NARRATION"),
                         MasterId = GetElementValue(vNode, "MASTERID")?.Trim() ?? GetElementValue(vNode, "GUID")?.Trim(),
+                        TallyGuid = GetAttribute(vNode, "GUID")?.Trim() ?? GetElementValue(vNode, "GUID")?.Trim(),
                         AlterId = GetElementValue(vNode, "ALTERID")?.Trim(),
                         LedgerEntries = ledgerEntries,
                         InventoryEntries = inventoryEntries
