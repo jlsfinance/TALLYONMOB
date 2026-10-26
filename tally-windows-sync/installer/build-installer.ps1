@@ -37,7 +37,7 @@ param(
 
     # Version stamped into the installer (informational only — the .iss has its
     # own AppVersion; kept in sync by the caller).
-    [string]$Version = '2.0.1',
+    [string]$Version = '2.0.2',
 
     # Optional explicit path to ISCC.exe.
     [string]$IsccPath = '',

@@ -31,7 +31,7 @@
 AppName=TallyLink
 ; AppId must be stable across releases so upgrades replace in place.
 AppId={{7B1D4A6E-2C9F-4E31-9A5D-6F0C8B3E5A27}
-AppVersion=2.0.1
+AppVersion=2.0.2
 AppVerName=TallyLink 2.0.1
 AppPublisher=TallySync
 AppPublisherURL=https://tallysync.example.com
