@@ -1069,6 +1069,119 @@ namespace TallySyncApp.Services
             return ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
         }
 
+        /// <summary>
+        /// Light voucher index fetch: GUID + ALTERID + VoucherType + VoucherNumber per voucher.
+        /// Feeds the deleted-voucher purge (P1) and the missing-voucher repair (P3).
+        /// </summary>
+        public async Task<List<VoucherIndexEntry>> GetVoucherIndexFullAsync(string companyName)
+        {
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherIndexFull</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""VoucherIndexFull"" ISMODIFY=""No"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER</FETCH>
+            <FILTER>AllVouchers</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            SyncLogger.Log($"Fetching full voucher index for {companyName}");
+
+            var doc = await SendRequestAsync(request, companyName, 60);
+            var result = new List<VoucherIndexEntry>();
+            if (doc == null) return result;
+
+            var seen = new HashSet<string>();
+            foreach (var v in doc.Descendants().Where(e => e.Name.LocalName == "VOUCHER"))
+            {
+                string guid = (GetElementValue(v, "GUID") ?? string.Empty).Trim();
+                string vt = (GetElementValue(v, "VOUCHERTYPENAME") ?? string.Empty).Trim();
+                string vn = (GetElementValue(v, "VOUCHERNUMBER") ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(guid) || string.IsNullOrWhiteSpace(vt)) continue;
+                if (!seen.Add($"{guid}|{vt}|{vn}")) continue;
+                result.Add(new VoucherIndexEntry
+                {
+                    Guid = guid,
+                    VoucherType = vt,
+                    VoucherNumber = vn,
+                    AlterId = GetElementValue(v, "ALTERID")
+                });
+            }
+
+            SyncLogger.Log($"Full voucher index: {result.Count} entries");
+            return result;
+        }
+
+        /// <summary>
+        /// Fetch full vouchers by one VoucherType + a list of voucher numbers (P3 repair path).
+        /// </summary>
+        public async Task<List<Voucher>> GetVouchersByTypeAndNumbersAsync(string companyName, string voucherType, List<string> voucherNumbers, Dictionary<string, string>? stockItemHsnCache = null)
+        {
+            var vns = voucherNumbers
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(n => n.Trim().Replace("\"", ""))
+                .ToList();
+            if (vns.Count == 0) return new List<Voucher>();
+
+            var vtSafe = voucherType.Replace("\"", "");
+            var vnFilter = string.Join(" OR ", vns.Select(n => $"$VoucherNumber = \"{n}\""));
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>VoucherRepair</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""VoucherRepair"" ISMODIFY=""No"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PLACEOFSUPPLY, PARTYGSTIN, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
+            <FILTER>VtVnFilter</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""VtVnFilter"">$VoucherTypeName = ""{vtSafe}"" AND ({vnFilter})</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            SyncLogger.Log($"Repair fetch [{vtSafe}]: {vns.Count} voucher numbers");
+
+            var doc = await SendRequestAsync(request, companyName, 60);
+            if (doc == null) return new List<Voucher>();
+
+            var vouchers = ParseVouchersFromXml(doc, companyName, DateTime.Today, stockItemHsnCache);
+            SyncLogger.Log($"Repair fetch [{vtSafe}]: {vouchers.Count} vouchers parsed");
+            return vouchers;
+        }
+
         private List<Voucher> ParseVouchersFromXml(XDocument doc, string? companyName, DateTime defaultDate, Dictionary<string, string>? stockItemHsnCache = null)
         {
             var vouchers = new List<Voucher>();

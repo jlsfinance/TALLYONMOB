@@ -141,6 +141,18 @@ namespace TallySyncApp.Models
         }
     }
 
+    /// <summary>
+    /// One row of Tally's voucher index (light fetch: no full voucher payload).
+    /// Feeds the deleted-voucher purge (P1) and the missing-voucher repair (P3).
+    /// </summary>
+    public class VoucherIndexEntry
+    {
+        public string Guid { get; set; } = string.Empty;
+        public string VoucherType { get; set; } = string.Empty;
+        public string VoucherNumber { get; set; } = string.Empty;
+        public string? AlterId { get; set; }
+    }
+
     public class VoucherLedgerEntry
     {
         [JsonProperty("ledger_name")]

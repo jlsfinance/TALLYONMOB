@@ -245,6 +245,102 @@ namespace TallySyncApp.Services
             SyncLogRequested?.Invoke(this, $"🔐 Tally License Serial updated to: {newSerial}");
         }
 
+        /// <summary>
+        /// P3: re-fetch vouchers that exist in Tally (VT+VN known) but are missing in cloud,
+        /// through the standard voucher upload path (vouchers + entries + sales/purchases).
+        /// </summary>
+        private async Task RepairMissingVouchersAsync(Company company, List<(string VoucherType, string VoucherNumber)> missing, Dictionary<string, string> hsnCache)
+        {
+            const int VnsPerRequest = 60;
+            int repaired = 0;
+
+            foreach (var vtGroup in missing.GroupBy(m => m.VoucherType))
+            {
+                var vns = vtGroup.Select(m => m.VoucherNumber).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                for (int i = 0; i < vns.Count; i += VnsPerRequest)
+                {
+                    List<Voucher> fetched;
+                    try
+                    {
+                        fetched = await _tallyConnector!.GetVouchersByTypeAndNumbersAsync(company.Name, vtGroup.Key, vns.Skip(i).Take(VnsPerRequest).ToList(), hsnCache);
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLog($"   ⚠️ Repair fetch failed ({vtGroup.Key}): {ex.Message}");
+                        break;
+                    }
+                    if (fetched.Count == 0) continue;
+
+                    try
+                    {
+                        await UploadListAsync("vouchers", fetched, "id");
+                        repaired += fetched.Count;
+
+                        var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, fetched);
+                        if (ledgerEntries > 0 || stockEntries > 0)
+                            AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
+
+                        var salesVouchers = fetched.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
+                        if (salesVouchers.Count > 0)
+                        {
+                            var sales = _tallyConnector.MapVouchersToSales(salesVouchers, company.Name);
+                            var salesFlat = sales.Select(s => new {
+                                id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
+                                invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
+                                party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
+                                party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
+                                gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
+                                taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
+                                sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
+                                cess_amount = s.CessAmount, round_off = s.RoundOff,
+                                net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
+                                narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
+                            }).ToList();
+                            await UploadListAsync("sales", salesFlat, "id");
+                            var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
+                            if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
+                        }
+
+                        var purchaseVouchers = fetched.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
+                        if (purchaseVouchers.Count > 0)
+                        {
+                            var purchases = _tallyConnector.MapVouchersToPurchases(purchaseVouchers, company.Name);
+                            var purchasesFlat = purchases.Select(p => new {
+                                id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
+                                invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
+                                party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
+                                party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
+                                discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
+                                cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
+                                igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
+                                round_off = p.RoundOff, net_amount = p.NetAmount,
+                                is_cancelled = p.IsCancelled, narration = p.Narration,
+                                master_id = p.MasterId, alter_id = p.AlterId
+                            }).ToList();
+                            await UploadListAsync("purchases", purchasesFlat, "id");
+                            var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
+                            if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
+                        }
+
+                        var billAllocations = _tallyConnector.ExtractBillAllocations(fetched, company.Name);
+                        if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
+
+                        var bankAllocations = _tallyConnector.ExtractBankAllocations(fetched, company.Name);
+                        if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLog($"   ⚠️ Repair upload failed: {ex.Message}");
+                    }
+
+                    await Task.Delay(300);
+                }
+            }
+
+            AddLog($"🧩 P3 repair complete: {repaired} voucher(s) re-synced");
+        }
+
         public ApiClient GetApiClient() => _apiClient!;
 
         /// <summary>
@@ -362,6 +458,31 @@ namespace TallySyncApp.Services
                     AddLog("❌ Tally not available. Ensure Tally Prime is open and running on localhost.");
                     Console.WriteLine("Tally not available, skipping sync");
                     return;
+                }
+
+                // P2: license guard - this Tally serial must belong to the logged-in account.
+                // Another account already bound to it = shared license => block syncing.
+                try
+                {
+                    var tallySerial = await _tallyConnector!.GetTallySerialNumberAsync();
+                    if (!string.IsNullOrEmpty(tallySerial) && App.AuthService?.IsLoggedIn == true)
+                    {
+                        var (claim, boundUser) = await _apiClient!.TryClaimTallySerialAsync(
+                            tallySerial, DeviceIdentityService.Current.MachineId, DeviceIdentityService.Current.MachineName);
+                        if (claim == "in_use")
+                        {
+                            AddLog($"⛔ Tally license blocked (P2): serial {tallySerial} is already bound to another user. Sync stopped.");
+                            UpdateStatus(SyncState.Error, "Tally license in use",
+                                "This Tally serial is bound to a different account. Contact support to transfer it.");
+                            return;
+                        }
+                        SyncLogger.Log($"[P2] serial claim: {claim}");
+                    }
+                }
+                catch (Exception licEx)
+                {
+                    AddLog($"⚠️ License check skipped: {licEx.Message}");
+                    SyncLogger.Log($"⚠️ License check error: {licEx.Message}");
                 }
 
                 // 1. Get ALL Open Companies from Tally
@@ -1002,16 +1123,39 @@ namespace TallySyncApp.Services
                         }
 
                         // ===========================================
-                        // DELETE DETECTION: DISABLED FOR PERFORMANCE
-                        // Scanning 2 years of vouchers every sync causes Tally to hang.
-                        // We will implement a lighter Delete detection in future (e.g. ID-only fetch).
+                        // P1/P3 RECONCILIATION (light: index-only fetch)
+                        // First sync uploads everything fresh - nothing to purge/repair.
                         // ===========================================
-                        /*
                         if (!isFirstSync && serverOk)
                         {
-                             // ... Disabled ...
+                            var voucherIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
+                            if (voucherIndex.Count > 0)
+                            {
+                                // P1: delete cloud vouchers that no longer exist in Tally
+                                var guids = voucherIndex
+                                    .Where(v => !string.IsNullOrWhiteSpace(v.Guid))
+                                    .Select(v => v.Guid.Trim())
+                                    .Distinct()
+                                    .ToList();
+                                var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, guids);
+                                if (purged > 0)
+                                    AddLog($"🗑 P1: removed {purged} voucher(s) deleted in Tally (entries/sales/purchases cleaned too)");
+                                else if (purged < 0)
+                                    AddLog("⚠️ P1 skipped: Tally index looked truncated (safety guard)");
+
+                                // P3: re-fetch vouchers present in Tally but missing in cloud
+                                var missingPairs = await _apiClient!.FindMissingVouchersAsync(company.Id, voucherIndex);
+                                if (missingPairs.Count > 0)
+                                {
+                                    AddLog($"🧩 P3: repairing {missingPairs.Count} missing voucher(s)...");
+                                    await RepairMissingVouchersAsync(company, missingPairs, hsnCache);
+                                }
+                            }
+                            else
+                            {
+                                AddLog("⚠️ Voucher index empty - purge/repair skipped (safety)");
+                            }
                         }
-                        */
                                     
                         /* Orphaned code removed */
 

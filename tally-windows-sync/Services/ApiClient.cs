@@ -598,6 +598,123 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// P1: reconcile deletions - post Tally's current GUID index; the server deletes every
+        /// cloud voucher whose GUID is absent (children too). RPC returns purged count, -1 = safety skip.
+        /// </summary>
+        public async Task<int> PurgeDeletedVouchersAsync(string companyId, List<string> tallyGuids)
+        {
+            try
+            {
+                AddAuthHeader();
+                var payload = JsonConvert.SerializeObject(new { p_company_id = companyId, p_guids = tallyGuids });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/purge_deleted_vouchers")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ PurgeDeletedVouchers failed ({(int)response.StatusCode}): {body}");
+                    return 0;
+                }
+                return JsonConvert.DeserializeObject<int>(body);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ PurgeDeletedVouchers error: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// P3: ask the server which (voucher_type, voucher_number) pairs from Tally's index are
+        /// missing in cloud, so the client can re-fetch just those.
+        /// </summary>
+        public async Task<List<(string VoucherType, string VoucherNumber)>> FindMissingVouchersAsync(string companyId, List<VoucherIndexEntry> tallyIndex)
+        {
+            var missing = new List<(string VoucherType, string VoucherNumber)>();
+            try
+            {
+                AddAuthHeader();
+                var keys = tallyIndex
+                    .Where(e => !string.IsNullOrWhiteSpace(e.VoucherType) && !string.IsNullOrWhiteSpace(e.VoucherNumber))
+                    .Select(e => new { t = e.VoucherType, v = e.VoucherNumber })
+                    .ToList();
+                if (keys.Count == 0) return missing;
+
+                var payload = JsonConvert.SerializeObject(new { p_company_id = companyId, p_keys = keys });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/find_missing_vouchers")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ FindMissingVouchers failed ({(int)response.StatusCode}): {body}");
+                    return missing;
+                }
+
+                var items = JsonConvert.DeserializeObject<List<Dictionary<string, string>>>(body) ?? new List<Dictionary<string, string>>();
+                foreach (var it in items)
+                {
+                    if (it.TryGetValue("voucher_type", out var t) && it.TryGetValue("voucher_number", out var n) &&
+                        !string.IsNullOrWhiteSpace(t) && !string.IsNullOrWhiteSpace(n))
+                    {
+                        missing.Add((t, n));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ FindMissingVouchers error: {ex.Message}");
+            }
+            return missing;
+        }
+
+        /// <summary>
+        /// P2: register/verify this Tally serial against the logged-in user (server-side license
+        /// guard). claim_result: owned | in_use | no_serial | no_auth | error.
+        /// 'in_use' = another user account already holds this serial - caller must block sync.
+        /// </summary>
+        public async Task<(string Result, string? BoundUser)> TryClaimTallySerialAsync(string? tallySerial, string deviceId, string? deviceName)
+        {
+            try
+            {
+                AddAuthHeader();
+                var payload = JsonConvert.SerializeObject(new { p_tally_serial = tallySerial ?? "", p_device_id = deviceId ?? "", p_device_name = deviceName ?? "" });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/try_claim_tally_serial")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+                var body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ TryClaimTallySerial failed ({(int)response.StatusCode}): {body}");
+                    return ("error", null);
+                }
+
+                var obj = JsonConvert.DeserializeObject<Dictionary<string, object>>(body);
+                if (obj != null && obj.TryGetValue("claim_result", out var r))
+                {
+                    obj.TryGetValue("bound_user", out var u);
+                    return (r?.ToString() ?? "error", u?.ToString());
+                }
+                return ("error", null);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ TryClaimTallySerial error: {ex.Message}");
+                return ("error", null);
+            }
+        }
+
+        /// <summary>
         /// Get sync state for incremental sync
         /// </summary>
         public async Task<SyncStateInfo?> GetSyncStateAsync(string companyId, string dataType)
