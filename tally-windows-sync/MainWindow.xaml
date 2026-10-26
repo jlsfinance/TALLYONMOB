@@ -209,7 +209,8 @@
                     </StackPanel>
 
                     <!-- Version -->
-                    <TextBlock Text="v2.0.1"
+                    <TextBlock x:Name="SidebarVersionText"
+                               Text=""
                                Foreground="#475569"
                                FontSize="11"
                                HorizontalAlignment="Center"/>

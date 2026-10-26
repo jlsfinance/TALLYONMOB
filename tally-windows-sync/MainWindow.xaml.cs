@@ -12,6 +12,9 @@ namespace TallySyncApp
         {
             InitializeComponent();
 
+            // Sidebar version label reads the real assembly version (no hardcode)
+            SidebarVersionText.Text = "v" + (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
+
             // Set user email in data context
             if (App.AuthService?.CurrentSession != null)
             {

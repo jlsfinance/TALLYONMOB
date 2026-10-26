@@ -584,7 +584,15 @@ namespace TallySyncApp.Services
                                 
                                 AddLog($"❌ Company registration FAILED: {compResult.Error}");
                                 SyncLogger.Log($"⚠️ Company sync warning: {compResult.Error}");
-                            }
+
+                                // Company row is the membership anchor for ALL child-table RLS
+                                // (child policies check company_id IN owned companies). If it could
+                                // not be created/updated - usually: this company name is already
+                                // owned by ANOTHER account on cloud - skip this company's data pass,
+                                // otherwise every child batch dies with 42501 and floods the queue.
+                                AddLog("⏭ Skipping data sync for this company (register failed).");
+                                AddLog("   If it was synced by a different account before, that account owns it on cloud.");
+                                continue;                            }
                         }
 
                         // NOTE: ye check company sync ke BAAD hi hona chahiye — SyncCompanyAsync
