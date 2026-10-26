@@ -17,6 +17,9 @@ namespace TallySyncApp
             InitializeComponent();
             _authService = authService;
 
+            // Show running version on the login screen (from assembly version)
+            VersionText.Text = "v" + (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
+
             // Focus on email box
             Loaded += (s, e) => EmailBox.Focus();
 

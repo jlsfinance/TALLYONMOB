@@ -99,6 +99,9 @@
                 <TextBlock Text="Cloud Sync Desktop App"
                            Foreground="#93C5FD" FontSize="12"
                            HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                <TextBlock x:Name="VersionText" Text=""
+                           Foreground="#93C5FD" FontSize="10"
+                           HorizontalAlignment="Center" Margin="0,3,0,0"/>
             </StackPanel>
 
             <!-- ===== LOGIN CARD (Glassmorphism) ===== -->
