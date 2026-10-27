@@ -699,15 +699,26 @@ namespace TallySyncApp.Services
                 SyncLogger.Log($"⚠️ Outstanding delete-then-insert delete failed: {ex.Message}");
             }
 
-            var rows = summaries.Select(s => new
+            var rows = summaries.Select(s =>
             {
-                id = GenerateDeterministicGuid(companyId + "|" + s.LedgerName).ToString(),
-                ledger_name = s.LedgerName,
-                direction = s.Receivable ? "receivable" : "payable",
-                amount = s.Amount
+                var r = new Dictionary<string, object?>
+                {
+                    ["id"] = GenerateDeterministicGuid(companyId + "|" + s.LedgerName).ToString(),
+                    ["company_id"] = companyId,
+                    ["ledger_name"] = s.LedgerName,
+                    ["direction"] = s.Receivable ? "receivable" : "payable",
+                    ["amount"] = s.Amount
+                };
+                if (!string.IsNullOrEmpty(_ownerId)) r["owner_id"] = _ownerId;
+                return r;
             }).ToList();
 
-            return await UpsertAsync<object>("outstanding_bills", rows, "id");
+            var result = await UpsertAsync<object>("outstanding_bills", rows, "id");
+            if (!result.Success && result.Error != null)
+                SyncLogger.Log($"⚠️ Outstanding upload failed: {result.Error}");
+            else
+                SyncLogger.Log($"Outstanding snapshot uploaded: {rows.Count} rows");
+            return result;
         }
 
         /// <summary>
