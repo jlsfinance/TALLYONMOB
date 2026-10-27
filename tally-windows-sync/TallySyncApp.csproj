@@ -14,7 +14,7 @@
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <AssemblyName>TallyLink</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>2.0.4</Version>
+    <Version>2.0.5</Version>
     <Authors>TallySync</Authors>
     <Company>TallySync</Company>
     <Product>TallySync - Tally Data Sync</Product>

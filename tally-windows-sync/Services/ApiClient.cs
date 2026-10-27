@@ -638,6 +638,56 @@ namespace TallySyncApp.Services
             }
         }
 
+        /// <summary>Fetch pending server pushes (web -> TallyLink channel).</summary>
+        public async Task<List<PushQueueItem>> FetchPendingPushesAsync(string companyId)
+        {
+            var list = new List<PushQueueItem>();
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/tally_push_queue" +
+                          $"?company_id=eq.{companyId}&status=eq.pending&order=created_at.asc&limit=20";
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return list;
+                var body = await response.Content.ReadAsStringAsync();
+                var items = JsonConvert.DeserializeObject<List<PushQueueItem>>(body);
+                if (items != null) list.AddRange(items);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Push queue fetch failed: {ex.Message}");
+            }
+            return list;
+        }
+
+        /// <summary>Ack a processed push (done/failed) so the web side sees the outcome.</summary>
+        public async Task AckPushAsync(string pushId, string status, string? error)
+        {
+            try
+            {
+                AddAuthHeader();
+                var patch = new Dictionary<string, object?>
+                {
+                    ["status"] = status,
+                    ["error"] = error,
+                    ["processed_at"] = DateTime.UtcNow.ToString("o"),
+                    ["retry_count"] = status == "failed" ? 1 : 0
+                };
+                var json = JsonConvert.SerializeObject(patch);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Patch,
+                    $"{_supabaseUrl}/rest/v1/tally_push_queue?id=eq.{pushId}")
+                {
+                    Content = content
+                };
+                await _httpClient.SendAsync(request);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Push ack failed ({pushId}): {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// P1 (LK parity): post Tally's voucher index as identity keys [{g,t,v,a}] -
         /// guid + type/number + alterId. Server backfills NULL-guid rows, then deletes every

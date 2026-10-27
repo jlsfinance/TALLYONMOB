@@ -1183,6 +1183,53 @@ namespace TallySyncApp.Services
                         }
 
                         // ===========================================
+                        // SERVER PUSH: tally_push_queue consumer (web -> TallyLink).
+                        // Poll-based for now; realtime ws subscriber is a transport
+                        // swap on the same table/flow.
+                        // ===========================================
+                        if (serverOk)
+                        {
+                            try
+                            {
+                                var pushes = await _apiClient!.FetchPendingPushesAsync(company.Id);
+                                foreach (var push in pushes)
+                                {
+                                    AddLog($"⚡ Server push: {push.Action} ({company.Name})");
+                                    string status = "done";
+                                    string? pushError = null;
+                                    try
+                                    {
+                                        if (push.Action == "sync")
+                                        {
+                                            // current pass already syncs this company - ack.
+                                        }
+                                        else if (push.Action == "import_voucher")
+                                        {
+                                            var voucherPusher = new TallyVoucherPusher(_tallyConnector!, _apiClient!);
+                                            var (synced, failed) = await voucherPusher.ProcessPendingTransactionsAsync(company.Id, company.Name);
+                                            AddLog($"⚡ Import into Tally: {synced} pushed, {failed} failed");
+                                        }
+                                        else
+                                        {
+                                            status = "failed";
+                                            pushError = $"unknown action: {push.Action}";
+                                        }
+                                    }
+                                    catch (Exception pEx)
+                                    {
+                                        status = "failed";
+                                        pushError = pEx.Message;
+                                    }
+                                    await _apiClient.AckPushAsync(push.Id, status, pushError);
+                                }
+                            }
+                            catch (Exception pqEx)
+                            {
+                                SyncLogger.Log($"⚠️ Push queue processing failed: {pqEx.Message}");
+                            }
+                        }
+
+                        // ===========================================
                         // P1/P3 RECONCILIATION (light: index-only fetch)
                         // First sync uploads everything fresh - nothing to purge/repair.
                         // ===========================================
