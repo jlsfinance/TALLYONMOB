@@ -192,6 +192,15 @@ namespace TallySyncApp.Services
                     
                     if (!string.IsNullOrEmpty(error))
                     {
+                        // Educational-mode Tally rejects mid-month imports with this misleading
+                        // "date missing" LINEERROR even when DATE is correct and present.
+                        if (error.Contains("Voucher date is missing", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return (false, null,
+                                "Tally EDUCATIONAL MODE: import sirf 1st / 2nd / last day of month ko allow karta hai. " +
+                                "Tally me license karo, ya dashboard order ki date month ke 1/2/last day pe rakho. " +
+                                $"(Tally Error: {error})");
+                        }
                         return (false, null, $"Tally Error: {error}");
                     }
 
