@@ -1154,10 +1154,10 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""PartyOutstanding"" ISMODIFY=""No"">
             <TYPE>Ledger</TYPE>
-            <FETCH>NAME, CLOSINGBALANCE, ISPARTYLEDGER</FETCH>
+            <FETCH>NAME, CLOSINGBALANCE, PARENT</FETCH>
             <FILTER>PtyLedgers</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""PtyLedgers"">$IsPartyLedger = ""Yes"" and $ClosingBalance &lt;&gt; 0</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""PtyLedgers"">$Parent = ""Sundry Debtors"" or $Parent = ""Sundry Creditors""</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1176,10 +1176,16 @@ namespace TallySyncApp.Services
                 string raw = (GetElementValue(l, "CLOSINGBALANCE") ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(raw)) continue;
 
-                bool payable = raw.EndsWith("Cr", StringComparison.OrdinalIgnoreCase) || raw.TrimStart().StartsWith("-");
-                string num = new string(raw.Where(c => char.IsDigit(c) || c == '.').ToArray());
+                // Party group is the business truth for direction (verified live: Tally keeps
+                // no usable ISPARTYLEDGER flag; groups are Sundry Debtors / Sundry Creditors).
+                string parent = (GetElementValue(l, "PARENT") ?? string.Empty).Trim();
+                if (!string.Equals(parent, "Sundry Debtors", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(parent, "Sundry Creditors", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string num = new string(raw.Where(c => char.IsDigit(c) || c == '.' || c == '-').ToArray());
                 if (num.Length == 0 || !decimal.TryParse(num, out var amount) || amount == 0) continue;
-                result.Add((name, amount, !payable));
+                bool payable = string.Equals(parent, "Sundry Creditors", StringComparison.OrdinalIgnoreCase);
+                result.Add((name, Math.Abs(amount), !payable));
             }
 
             SyncLogger.Log($"Outstanding parties: {result.Count}");
