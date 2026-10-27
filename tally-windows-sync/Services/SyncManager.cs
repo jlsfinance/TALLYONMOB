@@ -495,6 +495,32 @@ namespace TallySyncApp.Services
                      AddLog($"   🏢 Discovered: {c.Name} (ID: {c.Id})");
                 }
 
+                // LK parity: notification retry ledger re-announce - issues that failed an
+                // earlier sync cycle are re-announced until cleared, capped at retries.
+                try
+                {
+                    var pendingNotifs = await _offlineQueue!.GetPendingNotificationsAsync();
+                    if (pendingNotifs.Count > 0)
+                    {
+                        foreach (var (ntype, cid, desc, retry) in pendingNotifs)
+                            AddLog($"🔔 Still failing: {cid} - {desc} (attempt {retry + 1}/{OfflineQueueService.MaxNotificationRetries})");
+
+                        var tgUid = App.AuthService?.CurrentSession?.UserId;
+                        if (!string.IsNullOrEmpty(tgUid))
+                        {
+                            var tgChat = await _apiClient!.GetTelegramChatIdAsync(tgUid);
+                            if (!string.IsNullOrEmpty(tgChat))
+                            {
+                                var names = string.Join(", ", pendingNotifs.Select(p => p.CompanyId));
+                                var withRetry = pendingNotifs.Max(p => p.RetryCount) + 1;
+                                await _apiClient.SendTelegramNotificationAsync(tgChat,
+                                    $"🔔 <b>Sync still failing</b>: {names}\n\n<i>Attempt {withRetry}/{OfflineQueueService.MaxNotificationRetries}</i>");
+                            }
+                        }
+                    }
+                }
+                catch (Exception nEx) { SyncLogger.Log($"⚠️ Notification re-announce failed: {nEx.Message}"); }
+
                 if (companies.Count == 0)
                 {
                     UpdateStatus(SyncState.Idle, "No open companies found in Tally");
@@ -592,6 +618,10 @@ namespace TallySyncApp.Services
                                 // otherwise every child batch dies with 42501 and floods the queue.
                                 AddLog("⏭ Skipping data sync for this company (register failed).");
                                 AddLog($"   ℹ️ {compResult.Error}");
+
+                                // LK parity: remember this failure so later sync cycles
+                                // re-announce it until the company syncs successfully.
+                                await _offlineQueue!.UpsertNotificationAsync("not_synced", company.Name, compResult.Error ?? "register failed");
                                 continue;                            }
                         }
 
@@ -1131,6 +1161,28 @@ namespace TallySyncApp.Services
                         }
 
                         // ===========================================
+                        // LK PARITY: party-wise Outstanding snapshot (receivable/payable)
+                        // ===========================================
+                        if (serverOk)
+                        {
+                            try
+                            {
+                                var outstanding = await _tallyConnector!.GetOutstandingSummariesAsync(company.Name);
+                                if (outstanding.Count > 0)
+                                {
+                                    var osResult = await _apiClient!.ReplaceOutstandingsAsync(company.Id, outstanding);
+                                    AddLog(osResult.Success
+                                        ? $"💰 Outstanding: {outstanding.Count} party bill(s) uploaded (snapshot)"
+                                        : $"⚠️ Outstanding upload failed: {osResult.Error}");
+                                }
+                            }
+                            catch (Exception osEx)
+                            {
+                                SyncLogger.Log($"⚠️ Outstanding sync error: {osEx.Message}");
+                            }
+                        }
+
+                        // ===========================================
                         // P1/P3 RECONCILIATION (light: index-only fetch)
                         // First sync uploads everything fresh - nothing to purge/repair.
                         // ===========================================
@@ -1162,6 +1214,9 @@ namespace TallySyncApp.Services
                         }
                                     
                         /* Orphaned code removed */
+
+                        // LK parity: company synced OK - clear its notification ledger rows.
+                        await _offlineQueue!.ClearNotificationAsync("not_synced", company.Name);
 
                         // =====  SYNC SUMMARY =====
                         AddLog($"");
@@ -1324,6 +1379,9 @@ namespace TallySyncApp.Services
                 
                 UpdateStatus(SyncState.Completed, msg);
 
+                // Session completed - clear the session-level notification ledger row.
+                await _offlineQueue!.ClearNotificationAsync("sync_issue", "__session__");
+
                 // Cleanup old queue items
                 await _offlineQueue!.CleanupAsync();
             }
@@ -1331,6 +1389,9 @@ namespace TallySyncApp.Services
             {
                 AddLog($"🔥 CRITICAL SYNC FAILURE: {ex.Message}");
                 Console.WriteLine($"Sync failed: {ex.Message}");
+
+                // LK parity: remember the crash so the next sync start re-announces it.
+                await _offlineQueue!.UpsertNotificationAsync("sync_issue", "__session__", ex.Message);
                 UpdateStatus(SyncState.Error, "Sync crashed", ex.Message);
             }
             finally

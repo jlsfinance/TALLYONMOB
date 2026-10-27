@@ -1131,6 +1131,62 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// LK parity (outstanding): one light export of all party ledgers with a non-zero
+        /// closing balance. Dr = receivable (they owe us), Cr/negative = payable (we owe them).
+        /// </summary>
+        public async Task<List<(string LedgerName, decimal Amount, bool Receivable)>> GetOutstandingSummariesAsync(string companyName)
+        {
+            var request = $@"
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>PartyOutstanding</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""PartyOutstanding"" ISMODIFY=""No"">
+            <TYPE>Ledger</TYPE>
+            <FETCH>NAME, CLOSINGBALANCE, ISPARTYLEDGER</FETCH>
+            <FILTER>PtyLedgers</FILTER>
+          </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""PtyLedgers"">$IsPartyLedger = ""Yes"" and $ClosingBalance &lt;&gt; 0</SYSTEM>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            SyncLogger.Log($"Fetching outstanding parties for {companyName}");
+
+            var doc = await SendRequestAsync(request, companyName, 60);
+            var result = new List<(string LedgerName, decimal Amount, bool Receivable)>();
+            if (doc == null) return result;
+
+            foreach (var l in doc.Descendants().Where(e => e.Name.LocalName == "LEDGER"))
+            {
+                string name = (GetElementValue(l, "NAME") ?? string.Empty).Trim();
+                string raw = (GetElementValue(l, "CLOSINGBALANCE") ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(raw)) continue;
+
+                bool payable = raw.EndsWith("Cr", StringComparison.OrdinalIgnoreCase) || raw.TrimStart().StartsWith("-");
+                string num = new string(raw.Where(c => char.IsDigit(c) || c == '.').ToArray());
+                if (num.Length == 0 || !decimal.TryParse(num, out var amount) || amount == 0) continue;
+                result.Add((name, amount, !payable));
+            }
+
+            SyncLogger.Log($"Outstanding parties: {result.Count}");
+            return result;
+        }
+
+        /// <summary>
         /// Fetch full vouchers by one VoucherType + a list of voucher numbers (P3 repair path).
         /// </summary>
         public async Task<List<Voucher>> GetVouchersByTypeAndNumbersAsync(string companyName, string voucherType, List<string> voucherNumbers, Dictionary<string, string>? stockItemHsnCache = null)

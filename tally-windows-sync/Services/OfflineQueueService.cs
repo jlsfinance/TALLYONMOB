@@ -56,6 +56,15 @@ namespace TallySyncApp.Services
                         duration_ms INTEGER DEFAULT 0
                     );
 
+                    CREATE TABLE IF NOT EXISTS notification (
+                        notification_type TEXT NOT NULL,
+                        company_id TEXT NOT NULL,
+                        description TEXT,
+                        last_notification_date TEXT NOT NULL,
+                        retry_count INTEGER DEFAULT 0,
+                        PRIMARY KEY (notification_type, company_id)
+                    );
+
                     CREATE INDEX IF NOT EXISTS idx_queue_status ON sync_queue(status);
                     CREATE INDEX IF NOT EXISTS idx_queue_company ON sync_queue(company_id);
                 ";
@@ -68,6 +77,72 @@ namespace TallySyncApp.Services
                 Console.WriteLine($"Failed to initialize database: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// LK parity: per-company notification retry ledger. A failing issue is recorded
+        /// once and re-announced on every sync start until cleared, capped at MaxRetries.
+        /// </summary>
+        public const int MaxNotificationRetries = 5;
+
+        public async Task UpsertNotificationAsync(string notificationType, string companyId, string description)
+        {
+            try
+            {
+                var cmd = _connection!.CreateCommand();
+                cmd.CommandText = @"
+                    INSERT INTO notification (notification_type, company_id, description, last_notification_date, retry_count)
+                    VALUES (@t, @c, @d, @n, 0)
+                    ON CONFLICT(notification_type, company_id)
+                    DO UPDATE SET description = @d, last_notification_date = @n, retry_count = retry_count + 1";
+                cmd.Parameters.AddWithValue("@t", notificationType);
+                cmd.Parameters.AddWithValue("@c", companyId);
+                cmd.Parameters.AddWithValue("@d", description ?? "");
+                cmd.Parameters.AddWithValue("@n", DateTime.UtcNow.ToString("o"));
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"notification upsert failed: {ex.Message}");
+            }
+        }
+
+        public async Task ClearNotificationAsync(string notificationType, string companyId)
+        {
+            try
+            {
+                var cmd = _connection!.CreateCommand();
+                cmd.CommandText = "DELETE FROM notification WHERE notification_type = @t AND company_id = @c";
+                cmd.Parameters.AddWithValue("@t", notificationType);
+                cmd.Parameters.AddWithValue("@c", companyId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"notification clear failed: {ex.Message}");
+            }
+        }
+
+        public async Task<List<(string NotificationType, string CompanyId, string Description, int RetryCount)>> GetPendingNotificationsAsync()
+        {
+            var list = new List<(string, string, string, int)>();
+            try
+            {
+                var cmd = _connection!.CreateCommand();
+                cmd.CommandText = "SELECT notification_type, company_id, description, retry_count FROM notification WHERE retry_count < @m ORDER BY last_notification_date";
+                cmd.Parameters.AddWithValue("@m", MaxNotificationRetries);
+                var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add((reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? "" : reader.GetString(2), Convert.ToInt32(reader.GetValue(3))));
+                }
+                reader.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"notification read failed: {ex.Message}");
+            }
+            return list;
         }
 
         /// <summary>

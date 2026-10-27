@@ -680,6 +680,37 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// LK parity (outstanding): full snapshot replace of party-wise outstanding for a
+        /// company. Delete-then-upsert, so cleared/zero balances do not linger as stale rows.
+        /// </summary>
+        public async Task<ApiResponse<object>> ReplaceOutstandingsAsync(
+            string companyId, List<(string LedgerName, decimal Amount, bool Receivable)> summaries)
+        {
+            var empty = new ApiResponse<object> { Success = true };
+            if (summaries.Count == 0) return empty;
+
+            try
+            {
+                AddAuthHeader();
+                await _httpClient.DeleteAsync($"{_supabaseUrl}/rest/v1/outstanding_bills?company_id=eq.{companyId}");
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Outstanding delete-then-insert delete failed: {ex.Message}");
+            }
+
+            var rows = summaries.Select(s => new
+            {
+                id = GenerateDeterministicGuid(companyId + "|" + s.LedgerName).ToString(),
+                ledger_name = s.LedgerName,
+                direction = s.Receivable ? "receivable" : "payable",
+                amount = s.Amount
+            }).ToList();
+
+            return await UpsertAsync<object>("outstanding_bills", rows, "id");
+        }
+
+        /// <summary>
         /// P3: ask the server which (voucher_type, voucher_number) pairs from Tally's index are
         /// missing in cloud, so the client can re-fetch just those.
         /// </summary>
