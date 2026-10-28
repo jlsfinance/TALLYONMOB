@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><Reference Include="TallyLink"><HintPath>..\voucher-delete-test-build\TallyLink.dll</HintPath></Reference><Reference Include="Newtonsoft.Json"><HintPath>..\voucher-delete-test-build\Newtonsoft.Json.dll</HintPath></Reference></ItemGroup>
+</Project>

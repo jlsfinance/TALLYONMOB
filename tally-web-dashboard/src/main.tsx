@@ -7,7 +7,7 @@ import './index.css'
 
 if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {})
+        navigator.serviceWorker.register(import.meta.env.DEV ? '/reminder-push-worker.js' : '/sw.js').catch(() => {})
     })
 }
 

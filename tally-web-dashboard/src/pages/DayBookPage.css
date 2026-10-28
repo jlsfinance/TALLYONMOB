@@ -1,0 +1,37 @@
+/* Day book uses the same surfaces and compact joined cards as the main app. */
+.daybook-page { background: var(--background); color: var(--on-surface); min-height: 100dvh; }
+.daybook-date button, .daybook-page input[type="date"] { background: var(--surface); border-color: var(--border); color: var(--on-surface); }
+.daybook-summary { gap: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.daybook-summary > div { min-width: 0; padding: 10px 12px; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: transparent; }
+.daybook-summary > div:last-child { border-right: 0; }
+.daybook-summary > div span { color: var(--text-muted); font-size: 10px; }
+.daybook-summary > div p { color: var(--on-surface); font-size: 13px; overflow-wrap: anywhere; white-space: normal; }
+.daybook-tabs { gap: 6px; scrollbar-width: none; }
+.daybook-tabs::-webkit-scrollbar { display: none; }
+.daybook-tabs button { background: var(--surface); border-color: var(--border); color: var(--on-surface-variant); }
+.daybook-tabs button[class*='bg-cyan-500'] { background: var(--primary-container); border-color: var(--primary); color: var(--primary); }
+.daybook-tabs button span { background: var(--surface-container); color: var(--text-muted); }
+.daybook-list { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.daybook-row { padding: 10px 12px; border-color: var(--border); }
+.daybook-row:hover { background: var(--surface-hover); }
+.daybook-row p, .daybook-row .text-white, .daybook-footer .text-white { color: var(--on-surface); }
+.daybook-row .text-zinc-500, .daybook-row .text-zinc-400, .daybook-row .text-zinc-600, .daybook-footer { color: var(--text-muted); }
+.daybook-footer { padding: 10px 12px; border-color: var(--border); }
+.daybook-dialog { background: var(--surface); color: var(--on-surface); border-color: var(--border); }
+.daybook-dialog .text-white, .daybook-dialog .text-zinc-200, .daybook-dialog .text-zinc-300 { color: var(--on-surface); }
+.daybook-dialog .text-zinc-500, .daybook-dialog .text-zinc-400 { color: var(--text-muted); }
+@media (max-width: 639px) {
+  .daybook-page { padding: 0 0 88px; }
+  .daybook-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .daybook-summary > div { border-bottom: 1px solid var(--border); }
+  .daybook-summary > div:nth-child(2n) { border-right: 0; }
+  .daybook-summary > div:last-child { border-bottom: 0; }
+  .daybook-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'party amount' 'type number' 'time time'; gap: 3px 8px; }
+  .daybook-row > div:nth-child(1) { grid-area: time; }
+  .daybook-row > div:nth-child(2) { grid-area: type; }
+  .daybook-row > div:nth-child(3) { grid-area: number; text-align: right; }
+  .daybook-row > div:nth-child(4) { grid-area: party; }
+  .daybook-row > div:nth-child(5) { grid-area: amount; }
+  .daybook-row > div:last-child { display: none; }
+  .daybook-row p { font-size: 13px; }
+}

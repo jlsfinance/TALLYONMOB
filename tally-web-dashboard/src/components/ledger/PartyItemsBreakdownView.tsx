@@ -1,3 +1,4 @@
+import './PartyItemsBreakdownView.css';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     ChevronLeft, Search, FileText, Calendar, ChevronRight,
@@ -140,7 +141,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
         }
 
         import('jspdf').then(({ default: jsPDF }) => {
-            import('jspdf-autotable').then(() => {
+            import('jspdf-autotable').then(({ default: autoTable }) => {
                 const doc = new jsPDF();
                 const titleText = `${viewType === 'sold' ? 'Sold Items' : 'Purchased Items'} - ${partyName}`;
                 doc.setFontSize(14);
@@ -149,7 +150,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
                 doc.setTextColor(100);
                 doc.text(`Period: ${dateRangeLabel} | Total Items: ${displayedItems.length} | Generated: ${format(new Date(), 'dd MMM yyyy')}`, 14, 22);
 
-                (doc as any).autoTable({
+                autoTable(doc, {
                     startY: 26,
                     head: [['#', 'Item Description', 'Last Date', 'Avg Rate', 'Quantity']],
                     body: displayedItems.map((item, idx) => [
@@ -175,7 +176,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
     };
 
     return (
-        <div className={`text-slate-100 flex flex-col font-sans ${isStandalone ? 'min-h-screen bg-[#070b14]' : 'bg-[#0B1118]'}`}>
+        <div className={`party-items-view text-slate-100 flex flex-col font-sans ${isStandalone ? 'min-h-screen bg-[#070b14]' : 'bg-[#0B1118]'}`}>
             {/* 1. TOP HEADER */}
             {isStandalone ? (
                 /* Standalone View Header (Matching Image 2: <- Sold   🔍  PDF) */
@@ -251,7 +252,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
                 </header>
             ) : (
                 /* Native In-Tab Header (Clean segmented pill + Search + PDF, NO duplicate back arrow) */
-                <div className="px-4 py-2.5 bg-[#0e1726] border-b border-[#1b283d] flex items-center justify-between gap-2">
+                <div className="party-items-toolbar px-4 py-2.5 bg-[#0e1726] border-b border-[#1b283d] flex items-center justify-between gap-2">
                     {/* Segmented Pill Switcher */}
                     <div className="flex bg-[#142032] p-1 rounded-xl border border-[#1f2f48] text-xs">
                         <button
@@ -340,7 +341,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
             )}
 
             {/* 3. DATE RANGE SELECTOR STRIP (< 📅 01 Apr 25 - 31 Mar 26 >) */}
-            <div className="bg-[#09111c] border-b border-[#162235] px-4 py-2 flex items-center justify-between text-xs">
+            <div className="party-items-period bg-[#09111c] border-b border-[#162235] px-4 py-2 flex items-center justify-between text-xs">
                 <button
                     onClick={() => setDateOffset(prev => prev - 1)}
                     className="w-7 h-7 rounded-lg bg-[#111b2b] hover:bg-[#18263d] border border-[#1c2c44] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all"
@@ -366,7 +367,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
             </div>
 
             {/* 4. SORTER / COLUMN HEADERS (Last Sold Date ⇅      Quantity ↓) */}
-            <div className="bg-[#080e18] border-b border-[#141e2e] px-4 py-2 flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="party-items-sort bg-[#080e18] border-b border-[#141e2e] px-4 py-2 flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                 <button
                     onClick={handleSortDate}
                     className={`flex items-center gap-1.5 transition-colors ${
@@ -397,7 +398,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
             </div>
 
             {/* 5. ITEM LIST FEED (Matching Image 2 Reference) */}
-            <main className="flex-1 divide-y divide-[#131d2e] overflow-y-auto">
+            <main className="party-items-list flex-1 divide-y divide-[#131d2e]">
                 {displayedItems.length === 0 ? (
                     <div className="py-16 flex flex-col items-center justify-center space-y-2 text-center px-4">
                         <div className="w-12 h-12 rounded-2xl bg-[#111a2a] border border-[#1c2a40] flex items-center justify-center text-slate-500">
@@ -506,7 +507,7 @@ export const PartyItemsBreakdownView: React.FC<PartyItemsBreakdownViewProps> = (
             </main>
 
             {/* 6. BOTTOM TOTAL SUMMARY STRIP */}
-            <footer className="bg-[#09111c] border-t border-[#162235] px-4 py-2.5 flex items-center justify-between text-xs">
+            <footer className="party-items-footer bg-[#09111c] border-t border-[#162235] px-4 py-2.5 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
                     <span>Total Items:</span>
                     <span className="font-mono font-bold text-white">{displayedItems.length}</span>

@@ -1,0 +1,106 @@
+/* Keep the dashboard's compact app surfaces consistent with the chosen theme. */
+.dashboard-app { color: var(--on-surface); }
+.dashboard-app button { -webkit-tap-highlight-color: transparent; }
+.dashboard-app button:focus-visible { outline: 2px solid #06b6d4; outline-offset: 2px; }
+.dashboard-light [class~="bg-[#121B24]"] { background-color: #fff; box-shadow: 0 2px 12px rgba(15, 23, 42, .04); }
+.dashboard-light [class~="bg-[#0B1118]"] { background-color: #f1f5f9; }
+.dashboard-light [class~="bg-[#1A2634]"], .dashboard-light [class~="bg-[#1E2B38]"] { background-color: #e8eef4; }
+.dashboard-light [class~="border-[#1E2B38]"], .dashboard-light [class~="border-[#1A2634]"], .dashboard-light [class~="border-[#24364A]"] { border-color: #e2e8f0; }
+.dashboard-light [class~="text-white"], .dashboard-light [class~="text-slate-100"], .dashboard-light [class~="text-slate-200"], .dashboard-light [class~="text-slate-300"] { color: #172a3b; }
+.dashboard-light [class~="text-slate-400"] { color: #64748b; }
+.dashboard-light [class~="text-cyan-400"], .dashboard-light [class~="text-cyan-300"] { color: #087d91; }
+.dashboard-light [class~="text-emerald-400"], .dashboard-light [class~="text-emerald-300"], .dashboard-light [class~="text-[#00E599]"] { color: #047b59; }
+.dashboard-light [class~="text-amber-400"] { color: #a05d04; }
+.dashboard-light [class~="text-rose-400"] { color: #be3552; }
+.dashboard-light [class~="text-purple-300"], .dashboard-light [class~="text-purple-400"] { color: #7e4bb2; }
+.dashboard-light [class~="hover:bg-[#182330]"]:hover { background-color: #f1f5f9; }
+.dashboard-light [class~="hover:text-white"]:hover { color: #0f172a; }
+@media (max-width: 767px) {
+  .dashboard-app [class~="grid-cols-2"] > [class~="p-3.5"] { padding: .75rem; }
+}
+
+/* Financial cards: soft, outlined surfaces inspired by the mobile reference. */
+.dashboard-metrics > div, .dashboard-metrics > button {
+  position: relative;
+  border-radius: 14px;
+  box-shadow: none;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.dashboard-metrics > div:hover, .dashboard-metrics > button:hover {
+  box-shadow: 0 4px 14px rgba(20, 92, 111, .08);
+}
+.dashboard-light .dashboard-metrics > div, .dashboard-light .dashboard-metrics > button {
+  background: #f4fafc;
+  border-color: #b6dfe7;
+}
+.dashboard-light .dashboard-metrics > :nth-child(4n + 2) {
+  background: #f1f9f3;
+  border-color: #c2dfc8;
+}
+.dashboard-light .dashboard-metrics > :nth-child(4n + 4) {
+  background: #fdf3f3;
+  border-color: #eccdce;
+}
+.dashboard-light .dashboard-metrics [class~="text-white"] { color: #162733; }
+.dashboard-dark .dashboard-metrics > div, .dashboard-dark .dashboard-metrics > button {
+  background: #16242c;
+  border-color: #31515c;
+}
+.dashboard-dark .dashboard-metrics > :nth-child(4n + 2) {
+  background: #172b26;
+  border-color: #31584a;
+}
+.dashboard-dark .dashboard-metrics > :nth-child(4n + 4) {
+  background: #302326;
+  border-color: #624046;
+}
+@media (min-width: 768px) {
+  .dashboard-metrics > div, .dashboard-metrics > button { padding: .8rem 1rem; }
+}
+.dashboard-metrics { gap: 4px; }
+.dashboard-metrics > div, .dashboard-metrics > button { padding: 8px 10px !important; border-radius: 10px; }
+.dashboard-metrics > div > div:first-child { margin-bottom: 2px; }
+.dashboard-metrics p { line-height: 1.15; }
+.dashboard-metrics p + p { margin-top: 2px; }
+@media (min-width: 768px) {
+  .dashboard-metrics > div, .dashboard-metrics > button { padding: 9px 11px !important; }
+  .dashboard-metrics [class~="mt-1"] { margin-top: 2px; }
+}
+/* One continuous card, with internal separators instead of gaps. */
+.dashboard-metrics {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #c6dfe4;
+  border-radius: 14px;
+}
+.dashboard-metrics > div, .dashboard-metrics > button {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset -1px -1px #c6dfe4 !important;
+}
+.dashboard-metrics > div:hover, .dashboard-metrics > button:hover { box-shadow: inset -1px -1px #a9cfd6 !important; }
+.dashboard-dark .dashboard-metrics { border-color: #36515a; }
+.dashboard-dark .dashboard-metrics > div, .dashboard-dark .dashboard-metrics > button { box-shadow: inset -1px -1px #36515a !important; }
+
+/* Compact shortcut carousel, matching the app's financial summary. */
+@media (max-width: 767px) {
+  .quick-operations-section { padding: 10px 9px 9px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-container); }
+  .quick-operations-section .quick-operations-heading { gap: 8px; padding: 0 2px; }
+  .quick-operations-heading > span:first-child { display: flex; align-items: center; gap: 7px; color: var(--on-surface); letter-spacing: 0; font-size: 12px; }
+  .quick-operations-heading > span:last-child { white-space: nowrap; color: var(--text-muted); font-size: 10px; }
+  .quick-operations-heading-icon { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; border-radius: 8px; color: #078ca2; background: #c5f4f8; }
+  .quick-operations-section .quick-operations { gap: 7px; margin: 0; padding: 1px 1px 4px; border: 0; border-radius: 0; scrollbar-width: none; }
+  .quick-operations-section .quick-operations::-webkit-scrollbar { display: none; }
+  .quick-operations-section .quick-operations > button { width: 78px; min-height: 80px; padding: 7px 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 2px 5px rgba(27, 55, 66, .08); }
+  .quick-operations-section .quick-operations > button:first-child { border-color: #55d6e4; background: #effdff; }
+  .quick-operations-section .quick-operations > button > div { width: 31px; height: 31px; border-radius: 9px; }
+  .quick-operations-section .quick-operations > button:first-child > div { background: #c8f6f9; color: #00899e; }
+  .quick-operations-section .quick-operations > button > span { color: var(--on-surface); font-size: 10px; line-height: 1.2; }
+  .dark .quick-operations-section .quick-operations > button:first-child { background: #153a43; }
+}
+@media (max-width: 767px) {
+  .quick-operations-section .quick-operations { gap: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .quick-operations-section .quick-operations > button { border: 0; border-right: 1px solid var(--border); border-radius: 0; box-shadow: none; background: transparent; }
+  .quick-operations-section .quick-operations > button:last-child { border-right: 0; }
+  .quick-operations-section .quick-operations > button:first-child { background: var(--surface); }
+}

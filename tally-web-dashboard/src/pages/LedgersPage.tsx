@@ -1,6 +1,7 @@
+import { useProgressiveList } from '@/hooks/useProgressiveList';
+import './PartiesPolish.css';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { VariableSizeList as List } from 'react-window';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { ledgerApi, supabase } from '../lib/insforge';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -12,7 +13,6 @@ import {
     FileSpreadsheet, ArrowUpRight, X, SlidersHorizontal
 } from 'lucide-react';
 import { EmptyState } from '../components/ui/GlassUI';
-import { CompactYearFilter } from '../components/shared/CompactYearFilter';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { useFY } from '../contexts/FYContext';
 import { toast } from 'react-hot-toast';
@@ -34,8 +34,9 @@ export default function LedgersPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState(searchParams.get('group') || 'all');
     const [sortBy, setSortBy] = useState<SortOption>('name-asc');
-    const { selectedFY: selectedFy, setSelectedFY: setSelectedFy, fyDates } = useFY();
-    const listRef = useRef<any>(null);
+    const { selectedFY: selectedFy, fyDates } = useFY();
+    const queryClient = useQueryClient();
+    const mobilePartyListRef = useRef<HTMLDivElement>(null);
     const [partyTransactions, setPartyTransactions] = useState<Record<string, any[]>>({});
     const [showSearch, setShowSearch] = useState(false);
 
@@ -69,17 +70,12 @@ export default function LedgersPage() {
         },
         {
             enabled: !!selectedCompany?.id,
-            staleTime: 30 * 60 * 1000,
+            staleTime: 5 * 60 * 1000,
             cacheTime: 60 * 60 * 1000,
             refetchOnWindowFocus: false,
-            refetchOnMount: false,
+            refetchOnMount: true,
             refetchOnReconnect: false,
-            keepPreviousData: true,
-            onSuccess: (data) => {
-                if (data && data.length > 0) {
-                    fetchRecentTransactions(data.slice(0, 60));
-                }
-            }
+            keepPreviousData: true
         }
     );
 
@@ -151,6 +147,7 @@ export default function LedgersPage() {
         });
     }, [groupFilteredLedgers, searchTerm, sortBy]);
 
+    const partyList = useProgressiveList(filteredLedgers, JSON.stringify(['parties', selectedCompany?.id, selectedFy, selectedGroup, searchTerm, sortBy]));
     const loading = ledgersLoading && (!ledgersData || ledgersData.length === 0);
 
     const stats = useMemo(() => {
@@ -172,28 +169,63 @@ export default function LedgersPage() {
         };
     }, [groupFilteredLedgers]);
 
-    const fetchRecentTransactions = async (visibleLedgers: any[]) => {
-        const ledgerNames = visibleLedgers.map(l => l.name);
-        if (!selectedCompany?.id || ledgerNames.length === 0) return;
-        const { data } = await supabase
-            .from('vouchers')
-            .select('*')
-            .eq('company_id', selectedCompany.id)
-            .in('party_name', ledgerNames)
-            .gte('voucher_date', fyDates.from)
-            .lte('voucher_date', fyDates.to)
-            .order('voucher_date', { ascending: false })
-            .limit(200);
+    // Load vouchers for the parties currently visible, scoped to the selected FY.
+    const requestedPartyNames = useRef(new Set<string>());
+    const transactionScope = useRef('');
+    const scope = `${selectedCompany?.id || ''}:${selectedFy}`;
+    if (transactionScope.current !== scope) {
+        transactionScope.current = scope;
+        requestedPartyNames.current = new Set();
+    }
+    useEffect(() => {
+        const cached = queryClient.getQueriesData<any[]>({ queryKey: ['party-recent', selectedCompany?.id, selectedFy] });
+        setPartyTransactions(Object.fromEntries(cached.filter(([, data]) => data).map(([key, data]) => [String(key[3]), data])));
+    }, [scope, queryClient]);
 
-        if (data) {
-            const grouped = data.reduce((acc: any, v: any) => {
-                if (!acc[v.party_name]) acc[v.party_name] = [];
-                if (acc[v.party_name].length < 8) acc[v.party_name].push(v);
-                return acc;
-            }, {});
-            setPartyTransactions(prev => ({ ...prev, ...grouped }));
-        }
+    const fetchRecentTransactions = async (visibleLedgers: any[]) => {
+        const names = [...new Set(visibleLedgers.map(l => String(l.name || '').trim()).filter(Boolean))]
+            .filter(name => !requestedPartyNames.current.has(name));
+        if (!selectedCompany?.id || !names.length) return;
+        names.forEach(name => requestedPartyNames.current.add(name));
+        const requestScope = scope;
+        const results = await Promise.all(names.map(async name => {
+            try {
+                const data = await queryClient.fetchQuery({
+                    queryKey: ['party-recent', selectedCompany.id, selectedFy, name],
+                    staleTime: 3 * 60 * 1000,
+                    queryFn: async () => {
+                        const { data, error } = await supabase.from('vouchers').select('*')
+                            .eq('company_id', selectedCompany.id).eq('party_name', name)
+                            .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
+                            .order('voucher_date', { ascending: false }).limit(8);
+                        if (error) throw error;
+                        return (data || []).filter((voucher: any) => voucher.is_deleted !== true);
+                    }
+                });
+                return { name, data, error: null };
+            } catch (error) { return { name, data: [], error }; }
+        }));
+        if (transactionScope.current !== requestScope) return;
+        const grouped: Record<string, any[]> = {};
+        results.forEach(result => {
+            if (result.error) requestedPartyNames.current.delete(result.name);
+            else grouped[result.name] = result.data;
+        });
+        setPartyTransactions(prev => ({ ...prev, ...grouped }));
     };
+    useEffect(() => {
+        fetchRecentTransactions(filteredLedgers.slice(0, 20));
+    }, [scope, filteredLedgers]);
+
+    useEffect(() => {
+        const handleDeleted = (event: Event) => {
+            const detail = (event as CustomEvent).detail;
+            if (detail?.companyId !== selectedCompany?.id || !detail?.id) return;
+            setPartyTransactions(previous => Object.fromEntries(Object.entries(previous).map(([name, rows]) => [name, rows.filter((row: any) => row.id !== detail.id)])));
+        };
+        window.addEventListener('voucher-soft-deleted', handleDeleted);
+        return () => window.removeEventListener('voucher-soft-deleted', handleDeleted);
+    }, [selectedCompany?.id]);
 
     const sendWhatsAppReminder = (ledger: any) => {
         if (!ledger.phone) {
@@ -228,25 +260,26 @@ export default function LedgersPage() {
         return { formatted, suffix, color, badgeBg, isSettled };
     };
 
-    const getItemSize = (index: number) => {
-        const ledger = filteredLedgers[index];
-        const transactions = partyTransactions[ledger.name] || [];
-        return transactions.length > 0 ? 116 : 68;
-    };
-
     useEffect(() => {
-        if (listRef.current) {
-            listRef.current.resetAfterIndex(0);
-        }
-    }, [filteredLedgers, partyTransactions]);
+        const container = mobilePartyListRef.current;
+        if (!container || !filteredLedgers.length) return;
+        const observer = new IntersectionObserver(entries => {
+            const visible = entries.filter(entry => entry.isIntersecting)
+                .map(entry => filteredLedgers[Number((entry.target as HTMLElement).dataset.partyIndex)])
+                .filter(Boolean);
+            if (visible.length) fetchRecentTransactions(visible);
+        }, { rootMargin: '300px 0px' });
+        container.querySelectorAll('[data-party-index]').forEach(row => observer.observe(row));
+        return () => observer.disconnect();
+    }, [filteredLedgers, scope, loading, partyList.count]);
 
     if (!selectedCompany) return null;
 
     return (
-        <div className="min-h-screen bg-[#070b14] text-slate-100 pb-24 selection:bg-cyan-500/20">
+        <div className="parties-screen min-h-screen bg-[#070b14] text-slate-100 pb-24 selection:bg-cyan-500/20">
             {/* Header Portal for Top Bar Integration */}
             <HeaderPortal type="title">
-                <div className="flex items-center gap-2.5">
+                <div className="parties-header-title flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-sky-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-sm">
                         <Users size={16} />
                     </div>
@@ -270,7 +303,7 @@ export default function LedgersPage() {
             <HeaderPortal type="search">
                 <div className="flex items-center gap-2">
                     {showSearch ? (
-                        <div className="relative flex items-center">
+                        <div className="parties-header-search relative flex items-center">
                             <Search size={14} className="absolute left-3 text-cyan-400" />
                             <input
                                 autoFocus
@@ -300,7 +333,6 @@ export default function LedgersPage() {
 
             <HeaderPortal type="filters">
                 <div className="flex items-center gap-2">
-                    <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
                     <button
                         onClick={handleExportCSV}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#131e36] hover:bg-[#1a2949] border border-[#23355e] text-xs font-semibold text-slate-200 transition-all"
@@ -314,7 +346,7 @@ export default function LedgersPage() {
 
             <main className="max-w-7xl mx-auto px-2 sm:px-4 pt-2.5 space-y-3.5">
                 {/* 4-Card Financial Metric Strip (Stitch High-End Fintech UI) */}
-                <section className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <section className="parties-metrics grid grid-cols-2 md:grid-cols-4 gap-2.5">
                     {/* Metric 1: Total Parties */}
                     <div className="bg-[#0f172a]/90 backdrop-blur-md border border-[#1e293b] hover:border-slate-700 rounded-2xl p-3 flex flex-col justify-between shadow-sm transition-all group">
                         <div className="flex items-center justify-between">
@@ -393,32 +425,8 @@ export default function LedgersPage() {
 
                 {/* Filter Chips & In-Page Search Row */}
                 <section className="space-y-2.5">
-                    {/* Search bar inside page for fast native typing on mobile/tablet */}
-                    <div className="relative flex items-center">
-                        <Search size={15} className="absolute left-3.5 text-slate-400" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search party by name, GSTIN, phone, or city..."
-                            className="w-full bg-[#10192e] border border-[#1f2f53] hover:border-[#2a3f6e] focus:border-cyan-400 rounded-xl pl-10 pr-20 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none transition-all shadow-inner"
-                        />
-                        {searchTerm ? (
-                            <button
-                                onClick={() => setSearchTerm('')}
-                                className="absolute right-3 text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800"
-                            >
-                                Clear
-                            </button>
-                        ) : (
-                            <span className="absolute right-3 text-[10px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">
-                                Instant Search
-                            </span>
-                        )}
-                    </div>
-
                     {/* Horizontal Filter Chips Scroller (Stitch Exact Styling) */}
-                    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 text-xs font-semibold">
+                    <div className="parties-filters flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 text-xs font-semibold">
                         {groupFilters.map((filter) => {
                             const isActive = selectedGroup === filter.key;
                             return (
@@ -498,7 +506,7 @@ export default function LedgersPage() {
                                 <div className="text-right">Actions</div>
                             </div>
 
-                            {filteredLedgers.map((ledger: any, i: number) => {
+                            {partyList.visible.map((ledger: any, i: number) => {
                                 const bal = formatCurrency(ledger.current_balance);
                                 const opBal = formatCurrency(ledger.opening_balance || 0);
                                 const transactions = partyTransactions[ledger.name] || [];
@@ -602,25 +610,16 @@ export default function LedgersPage() {
                             })}
                         </div>
 
-                        {/* Mobile View: High-End Stitch Cards with Virtual Scrolling */}
-                        <div className="md:hidden">
-                            <div className="h-[calc(100vh-250px)] min-h-[500px]">
-                                <List
-                                    ref={listRef}
-                                    height={window.innerHeight - 250 > 500 ? window.innerHeight - 250 : 500}
-                                    itemCount={filteredLedgers.length}
-                                    itemSize={getItemSize}
-                                    width="100%"
-                                >
-                                    {({ index, style }) => {
-                                        const ledger = filteredLedgers[index];
+                        {/* Mobile rows share the page's vertical scroll. */}
+                        <div className="md:hidden party-list-group" ref={mobilePartyListRef}>
+                            {partyList.visible.map((ledger: any, index: number) => {
                                         const bal = formatCurrency(ledger.current_balance);
                                         const transactions = partyTransactions[ledger.name] || [];
 
                                         return (
-                                            <div style={style} className="pb-2.5">
+                                            <div key={ledger.id || index} data-party-index={index} className="party-list-row">
                                                 <div
-                                                    className="p-3.5 rounded-2xl bg-[#0f172a] border border-[#1b2848] hover:border-cyan-500/40 transition-all shadow-sm active:scale-[0.99] cursor-pointer"
+                                                    className={`party-list-card ${bal.isSettled ? 'party-settled' : (ledger.current_balance || 0) >= 0 ? 'party-debit' : 'party-credit'} p-3.5 rounded-2xl bg-[#0f172a] border border-[#1b2848] hover:border-cyan-500/40 transition-all shadow-sm active:scale-[0.99] cursor-pointer`}
                                                     onClick={() => navigate(`/ledgers/${ledger.id}`)}
                                                 >
                                                     {/* Top Row: Name and Balance */}
@@ -671,7 +670,7 @@ export default function LedgersPage() {
 
                                                     {/* Recent Transactions Horizontal Slider Chips */}
                                                     {transactions.length > 0 && (
-                                                        <div className="mt-2 pt-2 border-t border-[#152033] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                                                        <div className="party-bills mt-2 pt-2 border-t border-[#152033] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                                                             {transactions.slice(0, 6).map((v: any, j: number) => {
                                                                 const amt = Math.abs(Number(v.grand_total || v.total_amount || 0));
                                                                 const isCredit = v.voucher_type === 'Sales' || v.voucher_type === 'Receipt';
@@ -683,7 +682,7 @@ export default function LedgersPage() {
                                                                             const tid = v.id || v.voucher_id;
                                                                             if (tid) navigate(`/invoice/${encodeURIComponent(tid)}`);
                                                                         }}
-                                                                        className="flex-shrink-0 bg-[#142038] hover:bg-[#1a2948] border border-[#1e2e4c] rounded-lg px-2 py-1 text-[9px] transition-colors"
+                                                                        className="party-bill flex-shrink-0 bg-[#142038] hover:bg-[#1a2948] border border-[#1e2e4c] rounded-lg px-2 py-1 text-[9px] transition-colors"
                                                                     >
                                                                         <div className="flex items-center gap-1">
                                                                             <span className="font-semibold text-slate-400">{v.voucher_type?.slice(0, 4)}</span>
@@ -699,13 +698,13 @@ export default function LedgersPage() {
                                                 </div>
                                             </div>
                                         );
-                                    }}
-                                </List>
-                            </div>
+                            })}
                         </div>
+                        {partyList.hasMore && <div ref={partyList.sentinelRef}><button type="button" onClick={partyList.loadMore} className="w-full py-3 text-xs text-[var(--text-muted)]">Load more</button></div>}
                     </div>
                 )}
             </main>
         </div>
     );
 }
+

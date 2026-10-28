@@ -1,0 +1,7 @@
+.sales-summary { gap: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.sales-summary > div { margin: 0; padding: 10px 12px; border: 0; border-radius: 0; background: var(--surface); box-shadow: inset -1px -1px var(--border); }
+.sales-summary > div:first-child { background: var(--success-bg); }
+.sales-summary > div p:first-child { font-size: 10px; letter-spacing: .05em; }
+.sales-list { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.sales-list-row { padding: 0; }
+.sales-list-row > div { height: 100%; border-radius: 0; border-bottom: 1px solid var(--border); box-sizing: border-box; }

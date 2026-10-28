@@ -101,6 +101,7 @@ export default function PurchasesPage() {
                 .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Purchase')
+                .or('is_deleted.eq.false,is_deleted.is.null')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
@@ -108,7 +109,8 @@ export default function PurchasesPage() {
         },
         {
             enabled: !!selectedCompany?.id && !!dateRange.start && !!dateRange.end,
-            staleTime: 10 * 60 * 1000,
+            staleTime: 60 * 1000,
+            refetchInterval: 60 * 1000,
             cacheTime: 60 * 60 * 1000,
             keepPreviousData: true,
             refetchOnWindowFocus: false,
@@ -310,7 +312,7 @@ export default function PurchasesPage() {
                         description="Try another Finance Year or search term."
                     />
                 ) : (
-                    <div className="space-y-1.5">
+                    <div className="purchase-app-list">
                         {filteredPurchases.map((purchase, idx) => (
                             <TransactionCard
                                 key={purchase.id || purchase.voucher_id || [purchase.voucher_number, purchase.voucher_date, idx].filter(Boolean).join('-')}

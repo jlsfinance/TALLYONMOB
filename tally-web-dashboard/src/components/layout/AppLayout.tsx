@@ -1,4 +1,7 @@
-import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
+import { ReminderBell } from '@/components/reminders/ReminderBell';
+import { useDueReminders } from '@/components/reminders/useDueReminders';
+import { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect } from 'react';
+import './AppPolish.css';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,8 +10,9 @@ import LanguageSelector from './LanguageSelector';
 import AIFloatingButton from '../AIFloatingButton';
 import { CommandPalette } from '../ui/CommandPalette';
 import GlobalSearch from '../GlobalSearch';
-import { prefetchDashboard, prefetchVouchers, prefetchLedgers, prefetchStock, prefetchSales } from '@/lib/prefetch';
-import { useFY, getCurrentFY, getFYDates, getFYStartYear } from '@/contexts/FYContext';
+import { prefetchVouchers, prefetchLedgers, prefetchStock, prefetchSales, invalidateDashboard } from '@/lib/prefetch';
+import { useFY, getFYDates, getFYStartYear } from '@/contexts/FYContext';
+import { useRealtimeSubscription } from '@/hooks/useRealtime';
 
 import {
     Activity, LayoutDashboard, FileText, Users, TrendingUp, Package, Shield,
@@ -27,6 +31,7 @@ import { hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 import { getPendingCount } from '@/lib/offlineQueue';
 
 const routePrefetchMap: Record<string, () => Promise<any>> = {
+    '/dashboard': () => import('../../pages/LiveKeepingsDashboard'),
     '/vouchers': () => import('../../pages/VouchersPage'),
     '/ledgers': () => import('../../pages/LedgersPage'),
     '/sales': () => import('../../pages/SalesPage'),
@@ -60,6 +65,7 @@ const routePrefetchMap: Record<string, () => Promise<any>> = {
 const NavItem = memo(({
     to, icon, label, collapsed, active, companyId
 }: { to: string; icon: React.ReactNode; label: string; collapsed: boolean; active: boolean; companyId?: string }) => {
+    const { selectedFY } = useFY();
     const prefetchOnHover = useCallback(() => {
         // 1. Prefetch route chunk
         const importer = routePrefetchMap[to.split('?')[0]];
@@ -67,23 +73,19 @@ const NavItem = memo(({
 
         // 2. Prefetch data (only if companyId available)
         if (!companyId) return;
-        const fy = getCurrentFY();
+        const fy = selectedFY;
         const fyDates = getFYDates(fy);
         const path = to.split('?')[0];
 
-        if (path === '/dashboard') prefetchDashboard(companyId, fyDates);
-        else if (path === '/vouchers') prefetchVouchers(companyId, 'all', String(getFYStartYear(fy)));
+        if (path === '/vouchers') prefetchVouchers(companyId, 'all', String(getFYStartYear(fy)));
         else if (path === '/ledgers') prefetchLedgers(companyId);
         else if (path === '/stock') prefetchStock(companyId);
         else if (path === '/sales') {
-            const now = new Date();
-            const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-            const end = now.toISOString().split('T')[0];
-            prefetchSales(companyId, start, end);
+            prefetchSales(companyId, fyDates.from, fyDates.to);
         }
-    }, [to, companyId]);
+    }, [to, companyId, selectedFY]);
     return (
-        <SafeLink to={to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover}>
+        <SafeLink to={to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} onTouchStart={prefetchOnHover}>
             <div className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] mb-1
                 transition-all duration-150 group text-[13px]
@@ -102,7 +104,8 @@ const NavItem = memo(({
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { user, companies, selectedCompany, selectCompany, signOut, appMode } = useAuth() as any;
-    const { selectedFY, stepFY } = useFY();
+    useDueReminders(user?.id, selectedCompany?.id);
+    const { selectedFY, setSelectedFY, stepFY } = useFY();
     const { isDark, toggleTheme } = useTheme();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -111,6 +114,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { navigate: safeNavigate } = useSafeNavigate();
     const location = useLocation();
     const lastRefreshRef = useRef(0);
+
+    // Refresh visible lists when a synced voucher is soft-deleted.
+    useRealtimeSubscription('vouchers', selectedCompany?.id, 'UPDATE', (payload: any) => {
+        if (payload?.new?.is_deleted !== true || !selectedCompany?.id) return;
+        invalidateDashboard(selectedCompany.id);
+        window.dispatchEvent(new CustomEvent('voucher-soft-deleted', { detail: { companyId: selectedCompany.id, id: payload.new.id } }));
+    });
 
     // Cmd+K / Ctrl+K global search
     useEffect(() => {
@@ -135,8 +145,34 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const now = Date.now();
         if (now - lastRefreshRef.current < 900) return;
         lastRefreshRef.current = now;
+        if (selectedCompany?.id) invalidateDashboard(selectedCompany.id);
         window.dispatchEvent(new CustomEvent('app-refresh-trigger'));
     };
+
+    // Warm the main tabs after the current page has had time to render.
+    useEffect(() => {
+        if (!selectedCompany?.id) return;
+        const companyId = selectedCompany.id;
+        const fy = selectedFY;
+        const dates = getFYDates(fy);
+        const timer = window.setTimeout(() => {
+            ['/dashboard', '/vouchers', '/ledgers', '/sales'].forEach(path => routePrefetchMap[path]().catch(() => {}));
+            prefetchLedgers(companyId);
+            prefetchVouchers(companyId, 'all', String(getFYStartYear(fy)));
+            prefetchSales(companyId, dates.from, dates.to);
+        }, 1500);
+        return () => window.clearTimeout(timer);
+    }, [selectedCompany?.id, selectedFY]);
+
+    // Keep each main tab at its previous position when switching between tabs.
+    const tabScrollPositions = useRef<Record<string, number>>({});
+    useLayoutEffect(() => {
+        const mainTabs = ['/dashboard', '/ledgers', '/sales', '/vouchers'];
+        if (!mainTabs.includes(location.pathname)) return;
+        const key = `${selectedCompany?.id || ''}:${selectedFY}:${location.pathname}`;
+        window.scrollTo({ top: tabScrollPositions.current[key] || 0, behavior: 'instant' as ScrollBehavior });
+        return () => { tabScrollPositions.current[key] = window.scrollY; };
+    }, [location.pathname, selectedCompany?.id, selectedFY]);
 
     // Close mobile menu on route change
     useEffect(() => {
@@ -252,7 +288,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ], [homePath]);
 
     return (
-        <div className="flex min-h-screen relative overflow-x-hidden bg-[var(--background)]">
+        <div className={`app-shell ${['/ledgers', '/sales', '/vouchers'].includes(location.pathname) ? 'ledger-layout' : ''} flex min-h-screen relative overflow-x-hidden bg-[var(--background)]`}>
 
             {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
             <AnimatePresence>
@@ -501,59 +537,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             `}>
                 {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages (Hidden on detail pages like /ledgers/:id and /create-invoice) */}
                 {(location.pathname === '/create-invoice' || (location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers')) ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
-                    <header className="md:hidden sticky top-0 z-50 bg-[#121B24] border-b border-[#1E2B38] px-3 py-2 flex items-center justify-between shadow-md">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <button
-                                onClick={() => setShowMobileMenu(true)}
-                                className="p-1.5 -ml-1 rounded-lg text-slate-300 hover:text-white hover:bg-[#1E2B38] transition-colors shrink-0"
-                                aria-label="Open menu"
-                            >
-                                <Menu size={20} />
-                            </button>
-                            <div className="w-10 h-10 rounded-xl bg-[#00E599]/15 border border-[#00E599]/30 text-[#00E599] font-black text-sm flex items-center justify-center shrink-0">
-                                {(selectedCompany?.name || 'A').slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h2 className="text-sm font-black text-white truncate max-w-[130px] sm:max-w-[200px]">
-                                        {selectedCompany?.name || 'Arun Enterprises'}
-                                    </h2>
-                                    <span className="text-[9px] font-bold bg-[#1E2B38] text-slate-300 border border-slate-700/50 px-1.5 py-0.5 rounded leading-none">
-                                        GSTIN ACTIVE
-                                    </span>
-                                </div>
-                                <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                                    Tally Prime • GST: {selectedCompany?.gstin || '08AAUPM7741E1Z9'}
-                                </p>
+                    <header className="dashboard-mobile-header md:hidden sticky top-0 z-50">
+                        <div className="dashboard-header-main">
+                            <button onClick={() => setShowMobileMenu(true)} className="dashboard-menu-button" aria-label="Open menu"><Menu size={20} /></button>
+                            <div className="dashboard-company-details">
+                                <h2 style={{ fontSize: (selectedCompany?.name || '').length > 32 ? '10px' : (selectedCompany?.name || '').length > 18 ? '12px' : '14px' }}>{selectedCompany?.name || 'Arun Enterprises'}</h2>
                             </div>
                         </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                            <div className="flex items-center bg-[#0B1118] border border-[#1E2B38] rounded-lg text-[10px] font-bold px-1.5 py-1 text-slate-300 shadow-inner">
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); stepFY(-1); }}
-                                    className="px-1 text-[#00E599] active:scale-90 hover:text-emerald-300 transition-transform"
-                                    title="Previous Financial Year"
-                                >
-                                    ◀
-                                </button>
-                                <span className="font-mono text-white px-1 whitespace-nowrap">
-                                    {selectedFY?.startsWith('FY') ? selectedFY : `FY ${selectedFY || '2025-26'}`}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); stepFY(1); }}
-                                    className="px-1 text-[#00E599] active:scale-90 hover:text-emerald-300 transition-transform"
-                                    title="Next Financial Year"
-                                >
-                                    ▶
-                                </button>
+                        <ReminderBell userId={user?.id} companyId={selectedCompany?.id} variant="mobile" />
+                        <div className="dashboard-header-meta">
+                            <span className="dashboard-gst-badge">GST: {selectedCompany?.gstin || 'Not available'}</span>
+                            <div className="dashboard-fy-selector" aria-label="Financial year">
+                                <button type="button" onClick={() => stepFY(-1)} aria-label="Previous Financial Year">‹</button>
+                                <select aria-label="Select financial year" value={selectedFY} onChange={(event) => setSelectedFY(event.target.value)}>
+                                    {Array.from({ length: 21 }, (_, index) => {
+                                        const year = getFYStartYear(selectedFY) + 5 - index;
+                                        const fy = `FY ${year}-${String(year + 1).slice(2)}`;
+                                        return <option key={fy} value={fy}>{fy}</option>;
+                                    })}
+                                </select>
+                                <button type="button" onClick={() => stepFY(1)} aria-label="Next Financial Year">›</button>
                             </div>
                         </div>
                     </header>
                 ) : (
-                    <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]">
+                    <header className={`standard-mobile-header ${location.pathname === '/vouchers' ? 'voucher-mobile-header' : ''} md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]`}>
                         <button onClick={() => setShowMobileMenu(true)} className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] text-[var(--on-surface)] transition-colors shrink-0">
                             <Menu size={18} />
                         </button>
@@ -611,6 +619,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </button>
                         <div id="header-filters" className="flex items-center gap-2" />
                         <div id="header-actions" className="flex items-center gap-2" />
+                        <ReminderBell userId={user?.id} companyId={selectedCompany?.id} />
                         <SafeLink to="/create-invoice" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] font-black text-xs shadow-sm active:scale-95 transition-all">
                             <Plus size={14} strokeWidth={3} />
                             <span>Create Invoice</span>
@@ -626,44 +635,41 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 >
                                     {isDark ? <Sun size={16} /> : <Moon size={16} />}
                                 </button>
-                                <button className="relative p-2 rounded-[var(--radius-md)] hover:bg-[var(--surface-container)] text-[var(--on-surface-variant)] transition-colors">
-                                    <Bell size={16} />
-                                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-                                </button>
+
                             </>
                         )}
                     </div>
                 </header>
 
                 {/* Page Content — NO AnimatePresence to prevent remount */}
-                <div className="px-[2px] py-1 pb-24 md:pb-6">
+                <div className={`app-content ${location.pathname === '/dashboard' || location.pathname === '/' || location.pathname.startsWith('/invoice/') || location.pathname === '/create-invoice' ? 'app-content-special' : 'app-content-standard'} px-[2px] py-1 pb-24 md:pb-6`}>
                     {children}
                 </div>
             </main>
 
             {/* ===== MOBILE BOTTOM NAV — LiveKeepings Style (Hidden on full-screen create-invoice flow) ===== */}
             {location.pathname !== '/create-invoice' && (
-                <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
+                <nav className="app-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
                     <div className="flex items-center justify-around h-[60px] px-2">
                         {bottomNavItems.map((item) => {
-                            const isActive = location.pathname === item.to;
+                            const isActive = location.pathname === item.to || (item.to === '/ledgers' && location.pathname.startsWith('/ledgers/')) || (item.to === homePath && (location.pathname === '/' || location.pathname === '/dashboard'));
                             const prefetchOnHover = () => {
                                 const importer = routePrefetchMap[item.to.split('?')[0]];
                                 if (importer) importer().catch(() => {});
 
                                 // Prefetch data
                                 if (!selectedCompany?.id) return;
-                                const fy = getCurrentFY();
+                                const fy = selectedFY;
                                 const fyDates = getFYDates(fy);
                                 const path = item.to.split('?')[0];
 
-                                if (path === '/dashboard') prefetchDashboard(selectedCompany.id, fyDates);
-                                else if (path === '/vouchers') prefetchVouchers(selectedCompany.id, 'all', String(getFYStartYear(fy)));
+                                if (path === '/vouchers') prefetchVouchers(selectedCompany.id, 'all', String(getFYStartYear(fy)));
                                 else if (path === '/ledgers') prefetchLedgers(selectedCompany.id);
                                 else if (path === '/stock') prefetchStock(selectedCompany.id);
+                                else if (path === '/sales') prefetchSales(selectedCompany.id, fyDates.from, fyDates.to);
                             };
                             return (
-                                <SafeLink key={item.to} to={item.to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} className="flex-1 relative group">
+                                <SafeLink key={item.to} to={item.to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} onTouchStart={prefetchOnHover} className="flex-1 relative group">
                                     <div className={`
                                         flex flex-col items-center justify-center gap-0.5 py-1 transition-all duration-150
                                         ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}

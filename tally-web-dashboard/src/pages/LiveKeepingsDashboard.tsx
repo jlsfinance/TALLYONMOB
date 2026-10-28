@@ -11,13 +11,14 @@ import {
     IndianRupee, ArrowUpRight, ArrowDownLeft, X, CheckCircle2,
     Calendar, Filter, ShieldCheck, ArrowRight, Check, Activity,
     SlidersHorizontal, Layers, ExternalLink, Sparkles, Box, Share2,
-    MoreVertical, FileCheck
+    MoreVertical, FileCheck, Zap
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFY, formatFYRange } from '@/contexts/FYContext';
 import { supabase, pendingTransactionApi } from '@/lib/insforge';
 import { shareVoucherOnWhatsApp } from '@/lib/whatsappInvoice';
+import './LiveKeepingsDashboard.css';
 
 function formatCurrency(amount: number) {
     return '₹' + new Intl.NumberFormat('en-IN', {
@@ -81,19 +82,20 @@ export default memo(function LiveKeepingsDashboard() {
 
     // React Query — dashboard data
     const { data: dashboard, isLoading, refetch } = useQuery({
-        queryKey: ['dashboard', selectedCompany?.id, selectedFY],
+        queryKey: ['dashboard-fy-v4', selectedCompany?.id, selectedFY],
         queryFn: async () => {
             if (!selectedCompany?.id) return null;
             const today = format(new Date(), 'yyyy-MM-dd');
 
-            async function fetchAllVouchers(type: string, select: string) {
+            async function fetchAllVouchers(type: string | null, select: string) {
                 const rows: any[] = [];
                 for (let fromIndex = 0; rows.length < 50000; fromIndex += 1000) {
-                    const { data, error } = await supabase.from('vouchers')
-                        .select(select)
-                        .eq('company_id', selectedCompany.id).eq('voucher_type', type).eq('is_deleted', false)
-                        .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to)
-                        .range(fromIndex, fromIndex + 999);
+                    let query = supabase.from('vouchers').select(select)
+                        .eq('company_id', selectedCompany.id).eq('is_deleted', false)
+                        .gte('voucher_date', fyDates.from).lte('voucher_date', fyDates.to);
+                    if (type) query = query.eq('voucher_type', type);
+                    const { data, error } = await query.order('voucher_date', { ascending: false })
+                        .order('id', { ascending: false }).range(fromIndex, fromIndex + 999);
                     if (error) throw error;
                     const batch = data || [];
                     rows.push(...batch);
@@ -102,22 +104,35 @@ export default memo(function LiveKeepingsDashboard() {
                 return rows;
             }
 
+            async function fetchLedgers() {
+                const rows: any[] = [];
+                for (let offset = 0; ; offset += 1000) {
+                    const { data, error } = await supabase.from('ledgers')
+                        .select('id, name, current_balance, parent, parent_group, closing_balance, phone')
+                        .eq('company_id', selectedCompany.id).order('id', { ascending: true }).range(offset, offset + 999);
+                    if (error) throw error;
+                    const batch = data || [];
+                    rows.push(...batch);
+                    if (batch.length < 1000) return rows;
+                }
+            }
+
             const [salesRes, purchasesRes, receiptsRes, paymentsRes, ledgersRes, recentRes, stockRes] = await Promise.all([
                 fetchAllVouchers('Sales', 'grand_total, total_amount, voucher_date, party_name, id').then(data => ({ data })),
                 fetchAllVouchers('Purchase', 'grand_total, total_amount, voucher_date, party_name, id').then(data => ({ data })),
                 fetchAllVouchers('Receipt', 'grand_total, total_amount, voucher_date, party_name, id').then(data => ({ data })),
                 fetchAllVouchers('Payment', 'grand_total, total_amount, voucher_date, party_name, id').then(data => ({ data })),
-                supabase.from('ledgers').select('id, name, current_balance, parent, closing_balance, phone')
-                    .eq('company_id', selectedCompany.id),
-                supabase.from('vouchers').select('id, voucher_type, voucher_number, party_name, grand_total, total_amount, voucher_date')
-                    .eq('company_id', selectedCompany.id).eq('is_deleted', false)
-                    .order('voucher_date', { ascending: false }).limit(25),
+                fetchLedgers().then(data => ({ data })),
+                fetchAllVouchers(null, 'id, voucher_type, voucher_number, party_name, grand_total, total_amount, voucher_date').then(data => ({ data })),
                 supabase.from('stock_items').select('id, name, current_stock, opening_stock, stock_group, rate')
                     .eq('company_id', selectedCompany.id),
             ]);
 
             const sales = salesRes.data || [];
-            const purchases = purchasesRes.data || [];
+            const purchases = (recentRes.data || []).filter((v: any) => ['purchase', 'purchase invoice', 'purchase voucher'].includes(String(v.voucher_type || '').trim().toLowerCase()));
+            const debitNotes = (recentRes.data || []).filter((v: any) => ['debit note', 'debit note voucher'].includes(String(v.voucher_type || '').trim().toLowerCase()));
+            const creditNotes = (recentRes.data || []).filter((v: any) => ['credit note', 'credit note voucher'].includes(String(v.voucher_type || '').trim().toLowerCase()));
+            const sumAmounts = (rows: any[]) => rows.reduce((sum, v) => sum + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             const receipts = receiptsRes.data || [];
             const payments = paymentsRes.data || [];
             const ledgers = ledgersRes.data || [];
@@ -129,9 +144,9 @@ export default memo(function LiveKeepingsDashboard() {
             const totalPayments = payments.reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
             const todaySales = sales.filter(v => v.voucher_date === today).reduce((s, v) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0);
 
-            const debtors = ledgers.filter(l => l.parent === 'Sundry Debtors');
-            const creditors = ledgers.filter(l => l.parent === 'Sundry Creditors');
-            const receivables = debtors.reduce((s, d) => s + (Number(d.current_balance) || 0), 0);
+            const debtors = ledgers.filter(l => String(l.parent || l.parent_group || '').trim().toLowerCase() === 'sundry debtors');
+            const creditors = ledgers.filter(l => String(l.parent || l.parent_group || '').trim().toLowerCase() === 'sundry creditors');
+            const receivables = debtors.reduce((s, d) => s + Math.abs(Number(d.current_balance) || 0), 0);
             const payables = creditors.reduce((s, c) => s + Math.abs(Number(c.current_balance) || 0), 0);
 
             const overdueParties = debtors.filter(d => (Number(d.current_balance) || 0) > 0)
@@ -163,6 +178,38 @@ export default memo(function LiveKeepingsDashboard() {
                 if (recentCustomers.length >= 12) break;
             }
 
+            // Rank parties by sales or purchase value within the selected financial year.
+            const rankParties = (vouchers: any[]) => {
+                const totals = new Map<string, any>();
+                for (const voucher of vouchers) {
+                    const name = String(voucher.party_name || '').trim();
+                    if (!name || name.toLowerCase() === 'cash') continue;
+                    const key = name.toLowerCase();
+                    const party = totals.get(key) || { name, total: 0, count: 0, id: ledgerMap.get(key)?.id };
+                    party.total += Math.abs(Number(voucher.grand_total) || Number(voucher.total_amount) || 0);
+                    party.count++;
+                    totals.set(key, party);
+                }
+                return [...totals.values()].sort ( (a, b) => b.total - a.total );
+            };
+            const topCustomers = rankParties(sales);
+            const fyVouchers = recentRes.data || [];
+            const supplierPurchases = fyVouchers.filter((v: any) =>
+                ['purchase', 'purchase invoice', 'purchase voucher'].includes(String(v.voucher_type || '').trim().toLowerCase())
+            );
+            const purchasedSuppliers = rankParties(supplierPurchases).map(p => ({ ...p, basis: 'purchases' }));
+            const purchasedNames = new Set(purchasedSuppliers.map(p => p.name.toLowerCase()));
+            const creditorNames = new Set(creditors.map(l => String(l.name || '').trim().toLowerCase()));
+            // If a supplier has payments but no purchase voucher, show those payments separately.
+            // Never add payments to purchase turnover, which would count the same trade twice.
+            const supplierPayments = fyVouchers.filter((v: any) =>
+                String(v.voucher_type || '').trim().toLowerCase() === 'payment'
+                && creditorNames.has(String(v.party_name || '').trim().toLowerCase())
+                && !purchasedNames.has(String(v.party_name || '').trim().toLowerCase())
+            );
+            const paidSuppliers = rankParties(supplierPayments).map(p => ({ ...p, basis: 'payments' }));
+            const topSuppliers = [...purchasedSuppliers, ...paidSuppliers].sort((a, b) => b.total - a.total);
+
             // Deriving recently active / sold stock items
             const soldRecently = stockItems.slice(0, 15).map((s: any) => ({
                 id: s.id,
@@ -174,19 +221,20 @@ export default memo(function LiveKeepingsDashboard() {
 
             return {
                 totalSales, totalPurchases, totalReceipts, totalPayments,
-                receivables, payables, todaySales,
+                receivables, payables, todaySales, debitNoteTotal: sumAmounts(debitNotes), creditNoteTotal: sumAmounts(creditNotes), debitNoteCount: debitNotes.length, creditNoteCount: creditNotes.length,
                 salesCount: sales.length, purchaseCount: purchases.length,
                 receiptsCount: receipts.length, paymentsCount: payments.length,
                 recentVouchers: recentRes.data || [],
-                recentCustomers,
+                recentCustomers, topCustomers, topSuppliers, debtorCount: debtors.length, creditorCount: creditors.length,
                 soldRecently,
                 topDebtors: overdueParties.slice(0, 5),
                 lowStock: lowStock.slice(0, 5),
             };
         },
         enabled: !!selectedCompany?.id,
-        staleTime: 3 * 60 * 1000,
-        refetchOnWindowFocus: false,
+        staleTime: 60 * 1000,
+        refetchInterval: 60 * 1000,
+        refetchOnWindowFocus: true,
     });
 
     // Filtered lists for Desktop
@@ -242,7 +290,7 @@ export default memo(function LiveKeepingsDashboard() {
     const companyInitials = (selectedCompany?.name || 'A').slice(0, 2).toUpperCase();
 
     return (
-        <div className="text-slate-100 max-w-7xl mx-auto">
+        <div className={`dashboard-app ${isDark ? 'dashboard-dark' : 'dashboard-light'} text-slate-100 max-w-7xl mx-auto`}>
             {/* ======================================================== */}
             {/* 📱 MOBILE VIEW (Exact layout as user reference image)   */}
             {/* ======================================================== */}
@@ -259,7 +307,7 @@ export default memo(function LiveKeepingsDashboard() {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="dashboard-metrics grid grid-cols-2 gap-2.5">
                         {/* 1. TOTAL SALES */}
                         <div
                             onClick={() => navigate('/sales')}
@@ -267,9 +315,7 @@ export default memo(function LiveKeepingsDashboard() {
                         >
                             <div className="flex items-center justify-between mb-1">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Sales</span>
-                                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
-                                    +12.4%
-                                </span>
+                                <TrendingUp size={14} className="text-emerald-400" />
                             </div>
                             <p className="text-lg font-black text-white">{formatCompact(dashboard?.totalSales || 0)}</p>
                             <p className="text-[10px] text-slate-400 mt-0.5">📈 {dashboard?.salesCount || 0} Invoices</p>
@@ -283,11 +329,11 @@ export default memo(function LiveKeepingsDashboard() {
                             <div className="flex items-center justify-between mb-1">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Receivables</span>
                                 <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 px-1.5 py-0.5 rounded-md">
-                                    {dashboard?.topDebtors?.length || 0} Overdue
+                                    {dashboard?.debtorCount || 0} Debtors
                                 </span>
                             </div>
                             <p className="text-lg font-black text-amber-400">{formatCurrency(dashboard?.receivables || 0)}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">Avg aging: 38 Days 🕒</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Current ledger balance</p>
                         </div>
 
                         {/* 3. TOTAL PURCHASE */}
@@ -311,12 +357,23 @@ export default memo(function LiveKeepingsDashboard() {
                             <div className="flex items-center justify-between mb-1">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Payables</span>
                                 <span className="text-[9px] font-bold text-cyan-400 bg-cyan-500/15 px-1.5 py-0.5 rounded-md">
-                                    28 Vendors
+                                    {dashboard?.creditorCount || 0} Creditors
                                 </span>
                             </div>
                             <p className="text-lg font-black text-cyan-400">{formatCompact(dashboard?.payables || 0)}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">Due next 7 days</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Current ledger balance</p>
                         </div>
+
+                        <button onClick={() => navigate('/vouchers', { state: { type: 'Debit Note' } })} className="p-3.5 rounded-2xl bg-[#121B24] border border-[#1E2B38] text-left active:scale-[0.98] transition-transform">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Debit Note</span>
+                            <p className="text-lg font-black text-white">{formatCompact(dashboard?.debitNoteTotal || 0)}</p>
+                            <p className="text-[10px] text-slate-400">{dashboard?.debitNoteCount || 0} notes in FY</p>
+                        </button>
+                        <button onClick={() => navigate('/vouchers', { state: { type: 'Credit Note' } })} className="p-3.5 rounded-2xl bg-[#121B24] border border-[#1E2B38] text-left active:scale-[0.98] transition-transform">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Credit Note</span>
+                            <p className="text-lg font-black text-white">{formatCompact(dashboard?.creditNoteTotal || 0)}</p>
+                            <p className="text-[10px] text-slate-400">{dashboard?.creditNoteCount || 0} notes in FY</p>
+                        </button>
 
                         {/* 5. RECEIPTS (IN) */}
                         <div
@@ -345,14 +402,14 @@ export default memo(function LiveKeepingsDashboard() {
                 </div>
 
                 {/* 3. QUICK OPERATIONS (HORIZONTALLY SLIDING/SWIPING CAROUSEL) */}
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between px-1">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-300">Quick Operations</span>
+                <div className="quick-operations-section space-y-2">
+                    <div className="quick-operations-heading flex items-center justify-between px-1">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-300"><span className="quick-operations-heading-icon"><Zap size={16} fill="currentColor" /></span>Quick Operations</span>
                         <span className="text-[10px] font-bold text-slate-500">Shortcuts • Slide →</span>
                     </div>
 
                     {/* Sliding container with smooth swipe */}
-                    <div className="flex gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x snap-mandatory -mx-2 px-2 touch-pan-x">
+                    <div className="quick-operations flex gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x snap-mandatory -mx-2 px-2 touch-pan-x">
                         {/* 1. Create Invoice (Glow highlight) */}
                         <button
                             onClick={() => navigate('/create-invoice')}
@@ -496,7 +553,16 @@ export default memo(function LiveKeepingsDashboard() {
 
                     {/* Vouchers Stack Cards */}
                     <div className="space-y-2.5">
-                        {mobileVouchersList.length === 0 ? (
+                        {mobileVoucherFilter !== 'all' ? (
+                            (mobileVoucherFilter === 'customers' ? dashboard?.topCustomers : dashboard?.topSuppliers)?.length ?
+                            (mobileVoucherFilter === 'customers' ? dashboard?.topCustomers : dashboard?.topSuppliers).slice(0, 10).map((party: any, index: number) => (
+                                <button key={party.name} onClick={() => party.id && navigate(`/ledgers/${party.id}`)} className="w-full p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] flex items-center gap-3 text-left">
+                                    <span className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold">{index + 1}</span>
+                                    <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-white truncate">{party.name}</span><span className="text-[10px] text-slate-400">{party.count} {mobileVoucherFilter === 'customers' ? 'sales' : party.basis} · {formatFYRange(selectedFY)}</span></span>
+                                    <span className="text-sm font-black text-white">{formatCurrency(party.total)}</span>
+                                </button>
+                            )) : <div className="p-8 text-center text-xs text-slate-500 border border-[#1E2B38] rounded-2xl bg-[#121B24]">{mobileVoucherFilter === 'suppliers' ? 'No supplier purchases or payments found for this financial year.' : 'No customer sales found for this financial year.'}</div>
+                        ) : mobileVouchersList.length === 0 ? (
                             <div className="p-8 text-center text-xs text-slate-500 border border-[#1E2B38] rounded-2xl bg-[#121B24]">
                                 No transactions found for this filter.
                             </div>
@@ -542,7 +608,7 @@ export default memo(function LiveKeepingsDashboard() {
                                                     {isReceipt ? '+' : ''}{formatCurrency(amt)}
                                                 </p>
                                                 <p className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                                    {isSale ? 'Due in 15d' : isReceipt ? 'Received' : isPurchase ? 'Billed' : 'Paid'}
+                                                    {isReceipt ? 'Received' : isPurchase ? 'Billed' : isPayment ? 'Paid' : 'Sales'}
                                                 </p>
                                             </div>
                                         </div>
@@ -646,11 +712,11 @@ export default memo(function LiveKeepingsDashboard() {
                 </div>
 
                 {/* 2. TOP 4 EXECUTIVE KPI METRIC CARDS */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="dashboard-metrics grid grid-cols-3 gap-2">
                     {/* Total Sales */}
                     <div
                         onClick={() => navigate('/sales')}
-                        className="p-4 rounded-2xl bg-[#121B24] border border-[#1E2B38] hover:border-emerald-500/50 transition-all cursor-pointer group shadow-xs"
+                        className="p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] hover:border-emerald-500/50 transition-all cursor-pointer group shadow-xs"
                     >
                         <div className="flex items-center justify-between text-slate-400 mb-1.5">
                             <span className="text-[10px] font-black uppercase tracking-wider">Total Sales</span>
@@ -658,7 +724,7 @@ export default memo(function LiveKeepingsDashboard() {
                                 <TrendingUp size={16} />
                             </div>
                         </div>
-                        <p className="text-2xl font-black text-white tracking-tight">
+                        <p className="text-xl font-black text-white tracking-tight">
                             {formatCompact(dashboard?.totalSales || 0)}
                         </p>
                         <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
@@ -727,8 +793,9 @@ export default memo(function LiveKeepingsDashboard() {
                             <span className="text-rose-400 text-[10px] font-bold">Ledgers →</span>
                         </div>
                     </div>
+                    <button onClick={() => navigate('/vouchers', { state: { type: 'Debit Note' } })} className="p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] text-left"><span className="text-[10px] font-bold uppercase text-slate-400">Debit Note</span><p className="text-lg font-black text-white">{formatCompact(dashboard?.debitNoteTotal || 0)}</p><span className="text-xs text-slate-400">{dashboard?.debitNoteCount || 0} notes in FY</span></button>
+                    <button onClick={() => navigate('/vouchers', { state: { type: 'Credit Note' } })} className="p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] text-left"><span className="text-[10px] font-bold uppercase text-slate-400">Credit Note</span><p className="text-lg font-black text-white">{formatCompact(dashboard?.creditNoteTotal || 0)}</p><span className="text-xs text-slate-400">{dashboard?.creditNoteCount || 0} notes in FY</span></button>
                 </div>
-
                 {/* 3. NAVIGATION PILL TABS BAR */}
                 <div className="flex items-center justify-between border-b border-[#1E2B38] pb-2 overflow-x-auto gap-2">
                     <div className="flex gap-1.5 shrink-0">

@@ -804,6 +804,8 @@
                                      Style="{StaticResource ModernTextBox}"
                                      Margin="0,0,0,8"/>
 
+                            <TextBlock Text="Voucher reconciliation (takes effect on next cycle)" Foreground="#374151" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <Button Command="{Binding ToggleVoucherReconciliationCommand}" Content="{Binding VoucherReconciliationModeText}" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Height="38" Padding="12,0" Margin="0,0,0,12"/>
                             <Button Command="{Binding SaveSettingsCommand}"
                                     Content="Save Settings"
                                     Style="{StaticResource ModernButton}"

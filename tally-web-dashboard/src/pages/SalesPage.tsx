@@ -1,6 +1,7 @@
+import { useProgressiveList } from '@/hooks/useProgressiveList';
+import './SalesTiles.css';
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FixedSizeList as List } from 'react-window';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subDays } from 'date-fns';
@@ -102,6 +103,7 @@ export default function SalesPage() {
                 .select('*', { count: 'exact', head: true })
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
+                .or('is_deleted.eq.false,is_deleted.is.null')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end);
             if (error) throw error;
@@ -109,7 +111,8 @@ export default function SalesPage() {
         },
         {
             enabled: !!selectedCompany?.id,
-            staleTime: 3 * 60 * 1000,
+            staleTime: 60 * 1000,
+            refetchInterval: 60 * 1000,
             refetchOnWindowFocus: false,
         }
     );
@@ -124,6 +127,7 @@ export default function SalesPage() {
                 .select('id, party_name, voucher_number, voucher_date, voucher_type, grand_total, total_amount')
                 .eq('company_id', selectedCompany.id)
                 .eq('voucher_type', 'Sales')
+                .or('is_deleted.eq.false,is_deleted.is.null')
                 .gte('voucher_date', dateRange.start)
                 .lte('voucher_date', dateRange.end)
                 .order('voucher_date', { ascending: false })
@@ -157,12 +161,13 @@ export default function SalesPage() {
         },
         {
             enabled: !!selectedCompany?.id,
-            staleTime: 3 * 60 * 1000,
+            staleTime: 60 * 1000,
+            refetchInterval: 60 * 1000,
             refetchOnWindowFocus: false,
         }
     );
 
-    const loading = salesLoading && !allSales;
+    const loading = salesLoading && allSales.length === 0;
 
     const totalFromLoaded = useMemo(() =>
         allSales.reduce((s: number, v: any) => s + Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0), 0),
@@ -202,6 +207,7 @@ export default function SalesPage() {
         s.voucher_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const salesList = useProgressiveList(filteredSales, JSON.stringify(['sales', selectedCompany?.id, selectedFy, selectedMonth, searchTerm]));
     const [showSearch, setShowSearch] = useState(false);
 
     if (!selectedCompany) return null;
@@ -260,7 +266,7 @@ export default function SalesPage() {
             </HeaderPortal>
 
             {/* Performance Indicators */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="sales-summary grid grid-cols-2">
                 <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
                     <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Selected FY Total</p>
                     <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(totalFromLoaded)}</p>
@@ -336,17 +342,9 @@ export default function SalesPage() {
                         description="Try another Finance Year or search term."
                     />
                 ) : (
-                    <div className="space-y-1.5 h-[650px] overflow-hidden">
-                        <List
-                            height={650}
-                            itemCount={filteredSales.length}
-                            itemSize={74}
-                            width="100%"
-                        >
-                            {({ index, style }) => {
-                                const sale = filteredSales[index];
-                                return (
-                                    <div style={style} className="pr-2 pb-1.5">
+                    <div className="sales-list">
+                        {salesList.visible.map((sale, index) => (
+                                    <div key={sale.id || index} className="sales-list-row">
                                         <TransactionCard
                                             key={sale.id || index}
                                             type={sale.voucher_type || 'Sales'}
@@ -361,9 +359,8 @@ export default function SalesPage() {
                                             }}
                                         />
                                     </div>
-                                );
-                            }}
-                        </List>
+                        ))}
+                        {salesList.hasMore && <div ref={salesList.sentinelRef}><button type="button" onClick={salesList.loadMore} className="w-full py-3 text-xs text-[var(--text-muted)]">Load more</button></div>}
                     </div>
                 )}
             </AnimatePresence>

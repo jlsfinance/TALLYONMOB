@@ -270,7 +270,7 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (typeof auth.signInWithOAuth === 'function') {
-            const { data, error } = await auth.signInWithOAuth({ provider: 'google', redirectTo });
+            const { data, error } = await auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
             return { data, error };
         }
 

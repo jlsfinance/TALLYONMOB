@@ -189,7 +189,7 @@ export default function StockPage() {
     if (!selectedCompany) return null;
 
     return (
-        <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
+        <div className="stock-app-page space-y-6 md:space-y-8 max-w-7xl mx-auto">
             <HeaderPortal type="title">
                 <div className="min-w-0">
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none truncate">Warehouse Node</h1>
@@ -287,7 +287,7 @@ export default function StockPage() {
                 </div>
             </HeaderPortal>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
+            <div className="stock-app-metrics grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-6">
                 <MetricCard
                     title="Net SKU Count"
                     value={stats.totalItems.toString()}

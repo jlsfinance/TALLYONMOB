@@ -163,6 +163,10 @@ function warmCommonRouteChunks() {
     mobileRouteChunksWarm = true;
 
     void Promise.allSettled([
+        import('./pages/LiveKeepingsDashboard'),
+        import('./pages/VouchersPage'),
+        import('./pages/LedgersPage'),
+        import('./pages/SalesPage'),
         import('./pages/MobileLandingPage'),
         import('./pages/LoginPage'),
         import('./pages/ModuleSelectionPage'),

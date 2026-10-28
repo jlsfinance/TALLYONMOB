@@ -1,0 +1,23 @@
+.reminder-bell { position: relative; flex: 0 0 auto; }
+.reminder-bell__button { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-container); color: var(--on-surface-variant); }
+.reminder-bell--mobile .reminder-bell__button { width: 32px; height: 32px; border-color: #37515a; background: #19343d; color: #d7ebe8; }
+.reminder-bell__badge { position: absolute; top: -5px; right: -6px; min-width: 17px; padding: 2px 3px; border-radius: 999px; background: #e34958; color: white; font-size: 9px; font-weight: 700; line-height: 1.2; }
+.reminder-bell__backdrop { position: fixed; inset: 0; z-index: 79; }
+.reminder-bell__panel { position: fixed; top: 64px; right: 16px; z-index: 80; width: min(390px, calc(100vw - 24px)); max-height: min(520px, calc(100dvh - 90px)); display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--on-surface); box-shadow: 0 12px 40px rgba(14, 37, 48, .2); overflow: hidden; }
+.reminder-bell__heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.reminder-bell__heading div { display: flex; flex-direction: column; gap: 2px; }
+.reminder-bell__heading strong { font-size: 15px; }
+.reminder-bell__heading div span, .reminder-bell__item time { color: var(--text-muted); font-size: 11px; }
+.reminder-bell__heading button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--on-surface-variant); }
+.reminder-bell__list { overflow-y: auto; overscroll-behavior: contain; }
+.reminder-bell__item { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; }
+.reminder-bell__item:hover { background: var(--surface-hover); }
+.reminder-bell__item-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.reminder-bell__item-head strong { font-size: 13px; overflow-wrap: anywhere; }
+.reminder-bell__due, .reminder-bell__upcoming { flex: 0 0 auto; padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 700; }
+.reminder-bell__due { color: #aa3b42; background: #fce9e8; }
+.reminder-bell__upcoming { color: #087f61; background: #ddf5ea; }
+.reminder-bell__message { color: var(--on-surface-variant); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reminder-bell__empty { padding: 24px 16px; text-align: center; font-size: 12px; color: var(--text-muted); }
+.reminder-bell__empty button { text-decoration: underline; color: var(--primary); }
+@media (max-width: 767px) { .reminder-bell__panel { top: 70px; right: 8px; } }

@@ -1,3 +1,4 @@
+import './DayBookPage.css';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -176,7 +177,7 @@ export default function DayBookPage() {
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amount);
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-[2px] pb-24">
+    <div className="daybook-page min-h-screen px-[2px] pb-24">
       <HeaderPortal type="title">
         <h1 className="text-lg font-bold text-white">Day Book</h1>
       </HeaderPortal>
@@ -231,7 +232,7 @@ export default function DayBookPage() {
       </HeaderPortal>
 
       {/* Mobile date bar */}
-      <div className="md:hidden flex items-center gap-1.5 mb-3 mt-3">
+      <div className="daybook-date md:hidden flex items-center gap-1.5 mb-3 mt-3">
         <button
           onClick={() => setShowDateInput(!showDateInput)}
           className="flex items-center gap-2 px-3 py-2 bg-zinc-900/50 border border-zinc-800 rounded-xl text-zinc-300 hover:border-cyan-500/30 transition-colors text-sm flex-1"
@@ -271,7 +272,7 @@ export default function DayBookPage() {
       )}
 
       {/* Summary Cards — compact 5-column row */}
-      <div className="grid grid-cols-5 gap-1.5 mb-3">
+      <div className="daybook-summary grid grid-cols-5 mb-3">
         {[
           { label: 'Total', value: summary.total.toString(), icon: <FileText className="w-3 h-3" />, color: 'text-cyan-400' },
           { label: 'Sales', value: formatCurrency(summary.sales), icon: <TrendingUp className="w-3 h-3" />, color: 'text-emerald-400' },
@@ -293,7 +294,7 @@ export default function DayBookPage() {
       </div>
 
       {/* Voucher Type Tabs — full-width scrollable */}
-      <div className="flex items-center gap-1 mb-3 overflow-x-auto scrollbar-hide">
+      <div className="daybook-tabs flex items-center gap-1 mb-3 overflow-x-auto scrollbar-hide">
         {VOUCHER_TABS.map((tab) => {
           const count = tab === 'All' ? vouchers.length : vouchers.filter((v) => v.vch_type === tab).length;
           return (
@@ -316,7 +317,7 @@ export default function DayBookPage() {
       </div>
 
       {/* Voucher List — borderless dense rows */}
-      <div className="overflow-hidden">
+      <div className="daybook-list overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
@@ -353,7 +354,7 @@ export default function DayBookPage() {
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ delay: Math.min(i * 0.015, 0.2) }}
                     onClick={() => handleRowClick(v)}
-                    className={`group grid grid-cols-[auto_1fr_auto_auto] sm:grid-cols-[80px_90px_80px_1fr_110px_1fr_auto] gap-1 sm:gap-2 px-[2px] py-2 items-center hover:bg-zinc-800/40 active:bg-zinc-800/60 transition-colors border-b border-zinc-800/30 last:border-b-0 ${
+                    className={`daybook-row group grid grid-cols-[auto_1fr_auto_auto] sm:grid-cols-[80px_90px_80px_1fr_110px_1fr_auto] gap-1 sm:gap-2 px-[2px] py-2 items-center hover:bg-zinc-800/40 active:bg-zinc-800/60 transition-colors border-b border-zinc-800/30 last:border-b-0 ${
                       isClickable ? 'cursor-pointer' : 'cursor-default'
                     }`}
                   >
@@ -404,7 +405,7 @@ export default function DayBookPage() {
             </AnimatePresence>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-[2px] py-2 border-t border-zinc-800/50 text-xs text-zinc-500">
+            <div className="daybook-footer flex items-center justify-between px-[2px] py-2 border-t border-zinc-800/50 text-xs text-zinc-500">
               <span>{filteredVouchers.length} voucher{filteredVouchers.length !== 1 ? 's' : ''}</span>
               <span className="font-bold text-white tabular-nums">
                 Total: {formatCurrency(filteredVouchers.reduce((sum, v) => sum + (v.total_amount || 0), 0))}
@@ -429,7 +430,7 @@ export default function DayBookPage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl"
+              className="daybook-dialog w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl"
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-white">Voucher Details</h2>

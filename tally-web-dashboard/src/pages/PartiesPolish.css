@@ -1,0 +1,105 @@
+/* Parties: a compact surface with readable colours in both themes. */
+.app-shell .parties-screen { background: var(--background) !important; color: var(--on-surface); }
+.app-shell .parties-screen main { padding: 10px 10px 0; }
+.app-shell .parties-metrics { gap: 0 !important; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.app-shell .parties-metrics > div { background: var(--surface) !important; background-image: none !important; border: 0 !important; border-radius: 0 !important; padding: 10px !important; box-shadow: inset -1px -1px var(--border) !important; }
+.app-shell .parties-metrics > div:nth-child(2) { background: var(--success-bg) !important; }
+.app-shell .parties-metrics > div:nth-child(3) { background: var(--error-bg) !important; }
+.app-shell .parties-metrics > div:nth-child(4) { background: var(--surface-container) !important; }
+.app-shell .parties-metrics > div > div:last-child { display: flex; flex-wrap: wrap; gap: 3px 8px; justify-content: space-between; margin-top: 7px; }
+.app-shell .parties-metrics [class~="text-white"] { color: var(--on-surface) !important; }
+.app-shell .parties-metrics [class~="text-cyan-200/80"] { color: var(--on-surface-variant) !important; }
+.app-shell .parties-screen input { background: var(--surface) !important; border-color: var(--border) !important; color: var(--on-surface) !important; box-shadow: none; }
+.app-shell .parties-filters { scrollbar-width: none; }
+.app-shell .parties-filters::-webkit-scrollbar { display: none; }
+.app-shell .parties-filters button { background: var(--surface) !important; background-image: none !important; border: 1px solid var(--border) !important; color: var(--on-surface-variant) !important; box-shadow: none !important; }
+.app-shell .parties-filters button[class*="from-cyan"] { background: var(--primary-container) !important; border-color: var(--primary) !important; color: var(--primary) !important; }
+.app-shell .parties-filters button span[class*="bg-slate-800"], .app-shell .parties-filters button span[class*="bg-cyan"] { background: var(--surface-container) !important; color: var(--on-surface-variant) !important; }
+.app-shell .party-list-card { background: var(--surface) !important; border-color: var(--border) !important; border-radius: 10px; box-shadow: none; }
+.app-shell .party-list-card h3 { color: var(--on-surface) !important; }
+.app-shell .parties-screen [class~="text-slate-400"] { color: var(--on-surface-variant) !important; }
+.app-shell .parties-screen [class~="text-white"] { color: var(--on-surface); }
+@media (max-width: 767px) {
+  .parties-header-title { gap: 0 !important; min-width: 0; }
+  .parties-header-title > div:first-child { display: none; }
+  .parties-header-title h1 { font-size: 13px; letter-spacing: 0; }
+  .parties-header-title h1 + span { display: none; }
+  .app-shell .parties-screen main { padding: 8px 8px 0; }
+  .app-shell .parties-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .parties-metrics > div { min-width: 0; }
+  .app-shell .party-list-card { padding: 10px 12px; }
+}
+/* One continuous summary card with fine internal dividers. */
+.app-shell .parties-screen .parties-metrics {
+  display: grid;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  background: var(--surface);
+}
+.app-shell .parties-screen .parties-metrics > div {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: inset -1px -1px var(--border) !important;
+  min-width: 0;
+}
+.app-shell .parties-screen .parties-metrics > div:nth-child(2) { background: var(--success-bg) !important; }
+.app-shell .parties-screen .parties-metrics > div:nth-child(3) { background: var(--error-bg) !important; }
+.party-list-group { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.app-shell .party-list-group .party-list-row { padding: 0 !important; }
+.app-shell .party-list-group .party-list-card { height: 100%; border: 0 !important; border-bottom: 1px solid var(--border) !important; border-radius: 0 !important; box-shadow: none !important; }
+.app-shell .party-bills { scrollbar-width: none; -ms-overflow-style: none; border-color: var(--border); overscroll-behavior-x: contain; }
+.app-shell .party-bills::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.app-shell .party-bill { background: var(--surface-container) !important; border-color: var(--border) !important; border-radius: 7px; padding: 5px 8px; }
+.app-shell .party-bill [class~="text-slate-400"] { color: var(--on-surface-variant) !important; }
+.app-shell .party-bill [class~="text-emerald-400"] { color: #07865f; }
+.dark .app-shell .party-bill [class~="text-emerald-400"] { color: #5dd7ad; }
+.app-shell .party-bill { padding: 3px 7px; line-height: 1.1; }
+.app-shell .party-bills { margin-top: 5px; padding-top: 5px; }
+/* Reference-style party cards with clear balance and bill accents. */
+.party-list-group { background: transparent; border: 0; border-radius: 0; }
+.app-shell .party-list-group .party-list-row { padding: 0 1px 6px !important; }
+.app-shell .party-list-group .party-list-card { height: 100%; border: 1px solid var(--border) !important; border-left: 3px solid #4da8fa !important; border-radius: 11px !important; box-shadow: 0 1px 4px rgba(25, 58, 69, .08) !important; }
+.app-shell .party-list-group .party-list-card.party-credit { border-left-color: #f57788 !important; }
+.app-shell .party-list-group .party-list-card.party-settled { border-left-color: #7ad9a5 !important; }
+.party-icon { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #e1f1fd; color: #1974d2; }
+.dark .party-icon { background: #1c435b; color: #8ed3ff; }
+.app-shell .party-bills { border: 0; padding-top: 0; margin-top: 6px; }
+.app-shell .party-bill { background: #e0f6e9 !important; border: 0 !important; border-radius: 999px; padding: 4px 9px; }
+.dark .app-shell .party-bill { background: #194235 !important; }
+.app-shell .parties-screen .parties-metrics > div:nth-child(2) { background: #e0f8e9 !important; }
+.app-shell .parties-screen .parties-metrics > div:nth-child(3) { background: #fde4e7 !important; }
+.app-shell .parties-screen .parties-metrics > div:nth-child(4) { background: #e0f2ff !important; }
+.dark .app-shell .parties-screen .parties-metrics > div:nth-child(2) { background: #173c30 !important; }
+.dark .app-shell .parties-screen .parties-metrics > div:nth-child(3) { background: #44272d !important; }
+.dark .app-shell .parties-screen .parties-metrics > div:nth-child(4) { background: #173749 !important; }
+/* Compact connected party list and full-width mobile header search. */
+.app-shell .party-list-group { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.app-shell .party-list-group .party-list-row { padding: 0 !important; }
+.app-shell .party-list-group .party-list-card,
+.app-shell .party-list-group .party-list-card.party-credit,
+.app-shell .party-list-group .party-list-card.party-settled { border: 0 !important; border-bottom: 1px solid var(--border) !important; border-radius: 0 !important; box-shadow: none !important; padding: 8px 10px !important; }
+.app-shell .party-icon { width: 30px; height: 30px; flex-basis: 30px; border-radius: 9px; }
+.app-shell .party-bills { margin-top: 4px; }
+.app-shell .party-bill { padding: 3px 8px; }
+@media (max-width: 767px) {
+  .parties-header-search { position: absolute !important; inset: 0; z-index: 4; display: flex; align-items: center; padding: 7px 12px; width: 100%; background: var(--surface); }
+  .parties-header-search input { width: 100% !important; height: 38px; padding-left: 34px; padding-right: 34px; background: var(--surface-container); border: 1px solid var(--border); color: var(--on-surface); }
+  .parties-header-search > svg { left: 23px; }
+  .parties-header-search > button { right: 21px; color: var(--on-surface-variant); }
+}
+.app-shell .party-list-group .party-list-card { padding: 6px 10px !important; }
+.app-shell .party-list-group .party-bills { margin-top: 3px; }
+/* The document is the only vertical scroller on the ledger screen. */
+.ledger-layout, .ledger-layout > main { overflow-x: clip !important; overflow-y: visible !important; min-height: 100dvh; }
+.ledger-layout .parties-screen { min-height: 100dvh; }
+.ledger-layout .party-list-group { overflow: clip; }
+.ledger-layout .party-list-row { min-width: 0; }
+@media (max-width: 767px) {
+  .ledger-layout .parties-screen { padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
+
+
+}

@@ -547,3 +547,6 @@ body {
     display: none;
   }
 }
+/* A single readable typeface across app controls and text. */
+body, button, input, select, textarea { font-family: "Google Sans Flex", "Inter", system-ui, sans-serif; }
+.app-shell :where(h1, h2, h3, h4, p, span, label, button, input, select, textarea, td, th, a, div) { font-family: "Google Sans Flex", "Inter", system-ui, sans-serif !important; }

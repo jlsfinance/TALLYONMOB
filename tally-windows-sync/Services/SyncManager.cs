@@ -91,6 +91,28 @@ namespace TallySyncApp.Services
             }
         }
 
+        // Switches take effect at the next reconciliation; do not dispose services mid-sync.
+        public bool SetSafeVoucherReconciliation(bool enabled)
+        {
+            var previous = _settings.SyncSettings.UseSafeVoucherReconciliation;
+            try
+            {
+                _settings.SyncSettings.UseSafeVoucherReconciliation = enabled;
+                var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
+                var tempPath = path + ".reconcile-" + Guid.NewGuid().ToString("N") + ".tmp";
+                File.WriteAllText(tempPath, JsonConvert.SerializeObject(_settings, Formatting.Indented));
+                if (File.Exists(path)) File.Replace(tempPath, path, null);
+                else File.Move(tempPath, path);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _settings.SyncSettings.UseSafeVoucherReconciliation = previous;
+                SyncLogger.Log($"[Reconcile] Could not save mode: {ex.Message}");
+                return false;
+            }
+        }
+
         /// <summary>
         /// Initialize all services
         /// </summary>
@@ -1266,7 +1288,14 @@ namespace TallySyncApp.Services
                         // P1/P3 RECONCILIATION (light: index-only fetch)
                         // First sync uploads everything fresh - nothing to purge/repair.
                         // ===========================================
-                        if (!isFirstSync && serverOk)
+                        if (!isFirstSync && serverOk && _settings.SyncSettings.UseSafeVoucherReconciliation)
+                        {
+                            var (repairVouchers, repairSales, repairSalesAmount) = await ReconcileVoucherIdentitiesAsync(company, hsnCache, highValueAlerts, _cancellationTokenSource?.Token ?? default);
+                            vouchersSynced += repairVouchers;
+                            salesSynced += repairSales;
+                            totalSalesAmountFetched += repairSalesAmount;
+                        }
+                        else if (!isFirstSync && serverOk)
                         {
                             var voucherIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                             if (voucherIndex.Count > 0)
@@ -1863,11 +1892,65 @@ namespace TallySyncApp.Services
             };
         }
 
+        private async Task<(int, int, decimal)> ReconcileVoucherIdentitiesAsync(Company company, Dictionary<string, string> hsnCache, List<string> highValueAlerts, CancellationToken ct)
+        {
+            try
+            {
+                var tally = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
+                if (ct.IsCancellationRequested || tally.Count == 0) { AddLog("⚠️ Reconciliation skipped: Tally index unavailable."); return (0, 0, 0); }
+                var cloud = await _apiClient!.GetVoucherIdentitySnapshotAsync(company.Id);
+                if (ct.IsCancellationRequested || cloud == null) { AddLog("⚠️ Reconciliation skipped: cloud identity snapshot incomplete."); return (0, 0, 0); }
+                var diff = VoucherReconciliation.Compare(tally, cloud);
+                SyncLogger.Log($"[Reconcile] Tally={tally.Count}, cloud={cloud.Count}, repair={diff.MissingAlterIds.Count}, possible_deleted={diff.PossibleDeletedIds.Count}, ambiguous={diff.AmbiguousRows}.");
+                AddLog($"🔎 Reconcile: {diff.MissingAlterIds.Count} missing/changed, {diff.PossibleDeletedIds.Count} possible deleted, {diff.AmbiguousRows} ambiguous.");
+                foreach (var suspect in cloud.Where(v => diff.PossibleDeletedIds.Contains(v.Id)).Take(20))
+                {
+                    var description = $"{suspect.PartyName ?? "Unknown party"} | {suspect.VoucherType ?? "Voucher"} #{suspect.VoucherNumber ?? "?"} | id {suspect.Id}".Replace("\r", " ").Replace("\n", " ");
+                    SyncLogger.Log($"[Reconcile] Possible deleted (not yet confirmed): {description}");
+                }
+                if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
+                {
+                    var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
+                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, cloud, diff);
+                    if (candidates.Count == 0)
+                    {
+                        AddLog("⚠️ Deletion skipped: identity or snapshot safety checks did not pass.");
+                        SyncLogger.Log("[Reconcile] Deletion skipped: identity or snapshot safety checks did not pass.");
+                    }
+                    foreach (var voucher in candidates)
+                    {
+                        if (ct.IsCancellationRequested || !_settings.SyncSettings.UseSafeVoucherReconciliation) break;
+                        var label = $"{voucher.PartyName ?? "Unknown party"} | {voucher.VoucherType ?? "Voucher"} #{voucher.VoucherNumber ?? "?"} | id {voucher.Id}".Replace("\r", " ").Replace("\n", " ");
+                        if (await _apiClient!.SoftDeleteReconciledVoucherAsync(company.Id, voucher))
+                        {
+                            AddLog($"🗑 Deleted in Tally; hidden on web: {label}");
+                            SyncLogger.Log($"[Reconcile] Soft-deleted: {label}");
+                        }
+                        else
+                        {
+                            AddLog($"⚠️ Could not verify web deletion: {label}");
+                            SyncLogger.Log($"[Reconcile] Delete not confirmed: {label}");
+                        }
+                    }
+                }
+                if (diff.MissingAlterIds.Count == 0 || !_settings.SyncSettings.UseSafeVoucherReconciliation) return (0, 0, 0);
+                AddLog($"🧩 Repairing {diff.MissingAlterIds.Count} identified voucher(s) by ALTERID.");
+                return await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, ct, diff.MissingAlterIds);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"[Reconcile] Aborted safely: {ex.Message}");
+                AddLog("⚠️ Reconciliation skipped; existing cloud vouchers were not deleted.");
+                return (0, 0, 0);
+            }
+        }
+
         private async Task<(int VouchersSynced, int SalesSynced, decimal TotalSalesAmount)> SyncHistoricalVouchersFastAsync(
             Company company, 
             Dictionary<string, string> hsnCache,
             List<string> highValueAlerts,
-            CancellationToken ct)
+            CancellationToken ct,
+            IReadOnlyCollection<long>? onlyAlterIds = null)
         {
             const decimal HighValueThreshold = 50000;
             int totalVouchers = 0;
@@ -1876,17 +1959,19 @@ namespace TallySyncApp.Services
 
             using var extractor = new TallyFastExtractor($"http://{_settings.TallySettings.Host}:{_settings.TallySettings.Port}", _settings.SyncSettings.BatchSize, 40);
 
-            // The ALTERID index is the only complete voucher list Tally gives us. A date-bounded
-            // export stops at the company's financial year start, which is exactly why years
-            // before it never reached the cloud. Fetch every ALTERID in 100-voucher batches.
-            AddLog("⚡ [FastExtractor] Reading full voucher index...");
-            SyncLogger.Log("[FastExtractor] Historical: reading full voucher index");
-            var index = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);            var alterIds = index
-                .Select(e => long.TryParse((e.AlterId ?? string.Empty).Trim(), out var n) ? n : 0)
-                .Where(n => n > 0)
-                .Distinct()
-                .OrderBy(n => n)
-                .ToList();
+            List<long> alterIds;
+            if (onlyAlterIds != null)
+            {
+                alterIds = onlyAlterIds.Where(n => n > 0).Distinct().OrderBy(n => n).ToList();
+            }
+            else
+            {
+                AddLog("⚡ [FastExtractor] Reading full voucher index...");
+                SyncLogger.Log("[FastExtractor] Historical: reading full voucher index");
+                var index = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
+                alterIds = index.Select(e => long.TryParse((e.AlterId ?? string.Empty).Trim(), out var n) ? n : 0)
+                    .Where(n => n > 0).Distinct().OrderBy(n => n).ToList();
+            }
 
             if (alterIds.Count == 0)
             {
@@ -1903,7 +1988,7 @@ namespace TallySyncApp.Services
             int consecutiveFailures = 0;
             for (int batchNo = 0; batchNo < batchCount; batchNo++)
             {
-                if (ct.IsCancellationRequested) break;
+                if (ct.IsCancellationRequested || (onlyAlterIds != null && !_settings.SyncSettings.UseSafeVoucherReconciliation)) break;
 
                 var batch = alterIds.Skip(batchNo * TALLY_BATCH_SIZE).Take(TALLY_BATCH_SIZE).ToList();
                 string rangeDisplay = $"batch {batchNo + 1}/{batchCount}";

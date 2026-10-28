@@ -1,4 +1,5 @@
-import { TShapeLedgerModal } from '@/components/ledger/TShapeLedgerModal';
+import { ReminderDialog } from '@/components/reminders/ReminderDialog';
+import './LedgerDetailPage.css';
 import { PartyItemsBreakdownView, PartyTransactedItem } from '@/components/ledger/PartyItemsBreakdownView';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -40,7 +41,6 @@ export default function LedgerDetailPage() {
     // Custom Date Range State
     const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
     const [showDatePickerModal, setShowDatePickerModal] = useState(false);
-    const [showTShapeModal, setShowTShapeModal] = useState(false);
     const [tempFromDate, setTempFromDate] = useState('');
     const [tempToDate, setTempToDate] = useState('');
 
@@ -54,6 +54,7 @@ export default function LedgerDetailPage() {
     const [noteInput, setNoteInput] = useState('');
 
     // Credit limit modal state
+    const [showReminderDialog, setShowReminderDialog] = useState(false);
     const [showCreditLimitModal, setShowCreditLimitModal] = useState(false);
     const [creditLimitInput, setCreditLimitInput] = useState('');
     const [creditLimit, setCreditLimit] = useState(() => {
@@ -419,14 +420,45 @@ export default function LedgerDetailPage() {
         window.open(`https://wa.me/${phone ? `91${phone}` : ''}?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
-    const handleShareLedger = () => {
-        setShowTShapeModal(true);
+    const handleShareLedger = async () => {
+        try {
+            const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+            const doc = new jsPDF();
+            const amount = (value: number) => Math.abs(Number(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const partyName = ledger?.name || 'Party';
+            doc.setFontSize(15);
+            doc.text('Party Ledger Statement', 14, 16);
+            doc.setFontSize(9);
+            doc.text(doc.splitTextToSize((selectedCompany?.name || 'Company') + '  |  ' + partyName, 180), 14, 23);
+            doc.text('Period: ' + fyDates.from + ' to ' + fyDates.to, 14, 33);
+            doc.text('Opening: INR ' + amount(openingBalance) + (openingBalance >= 0 ? ' Dr' : ' Cr') + '   |   Closing: INR ' + amount(closingBalance) + (closingBalance >= 0 ? ' Dr' : ' Cr'), 14, 39);
+            autoTable(doc, {
+                startY: 44,
+                head: [['Date', 'Voucher No', 'Type', 'Amount (INR)']],
+                body: transactions.map((v: any) => [v.voucher_date || '', String(v.voucher_number || ''), v.voucher_type || '', amount(v.grand_total || v.total_amount || 0)]),
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [22, 88, 106] },
+                columnStyles: { 3: { halign: 'right' } },
+            });
+            const filename = 'Ledger_' + partyName.replace(/[^a-zA-Z0-9_-]+/g, '_') + '_' + selectedFY.replace(/[^a-zA-Z0-9_-]+/g, '_') + '.pdf';
+            const file = new File([doc.output('blob')], filename, { type: 'application/pdf' });
+            if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                try {
+                    await navigator.share({ title: 'Party Ledger Statement', files: [file] });
+                    return;
+                } catch (error: any) {
+                    if (error?.name === 'AbortError') return;
+                }
+            }
+            doc.save(filename);
+            toast.success('Ledger PDF downloaded');
+        } catch (error) {
+            console.error('Ledger PDF failed', error);
+            toast.error('Could not create ledger PDF');
+        }
     };
 
-    const handleSetReminder = () => {
-        const dateStr = format(new Date(), 'dd MMM yyyy');
-        toast.success(`Reminder set for ${ledger?.name} as on ${dateStr}`);
-    };
+    const handleSetReminder = () => setShowReminderDialog(true);
 
     const handleSaveCreditLimit = () => {
         const val = Number(creditLimitInput) || 0;
@@ -536,13 +568,13 @@ export default function LedgerDetailPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[#0B1118] text-slate-100 font-sans">
+        <div className="ledger-detail-page min-h-screen bg-[#0B1118] text-slate-100 font-sans">
             {/* ========================================================================= */}
             {/* MOBILE LAYOUT (Screen < md) — Matches Image 1 100%                        */}
             {/* ========================================================================= */}
-            <div className="block md:hidden pb-24">
+            <div className="ledger-detail-mobile block md:hidden pb-24">
                 {/* Mobile Top Header with Integrated Party Name & Actions */}
-                <header className="sticky top-0 z-50 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3.5 py-2.5">
+                <header className="ledger-detail-header px-3.5 py-2.5">
                     <div className="flex items-center justify-between gap-2.5">
                         {/* Back Button */}
                         <button
@@ -586,7 +618,7 @@ export default function LedgerDetailPage() {
                 </header>
 
                 {/* Mobile Balance Card (2 Columns) */}
-                <div className="mx-4 mt-2 p-4 rounded-2xl bg-[#121B24] border border-[#1E2B38] grid grid-cols-2 gap-4 shadow-sm">
+                <div className="ledger-detail-balance mx-3 mt-3 grid grid-cols-2">
                     {/* Closing Balance */}
                     <div className="border-r border-[#1E2B38]/60 pr-2">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">CLOSING BALANCE</p>
@@ -609,7 +641,7 @@ export default function LedgerDetailPage() {
                 </div>
 
                 {/* Mobile 4 Action Cards Grid */}
-                <div className="grid grid-cols-4 gap-2 mx-4 mt-3">
+                <div className="ledger-detail-actions grid grid-cols-4 mx-3 mt-3">
                     <button
                         onClick={handleCall}
                         className="p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] flex flex-col items-center justify-center gap-1 active:scale-95 transition-all cursor-pointer"
@@ -652,7 +684,7 @@ export default function LedgerDetailPage() {
                 </div>
 
                 {/* Mobile Segmented Tabs Bar */}
-                <div className="flex items-center gap-1 mx-4 mt-4 p-1 rounded-xl bg-[#121B24] border border-[#1E2B38]">
+                <div className="ledger-detail-tabs flex items-center mx-3 mt-3">
                     <button
                         onClick={() => setActiveTab('ledger')}
                         className={`flex-1 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
@@ -694,7 +726,7 @@ export default function LedgerDetailPage() {
 
                 {/* Tab: LEDGER (Transactions) */}
                 {activeTab === 'ledger' && (
-                    <div className="space-y-3 mx-4 mt-3">
+                    <div className="ledger-detail-transactions space-y-3 mx-3 mt-3">
                         {/* Search Bar */}
                         <div className="relative">
                             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -782,7 +814,7 @@ export default function LedgerDetailPage() {
                         </div>
 
                         {/* Transaction Cards List */}
-                        <div className="space-y-2 pb-6">
+                        <div className="ledger-detail-list pb-6">
                             {filteredTransactions.map(v => {
                                 const isSale = v.voucher_type === 'Sales' || v.voucher_type === 'Sales Invoice';
                                 const isReceipt = v.voucher_type === 'Receipt';
@@ -794,7 +826,7 @@ export default function LedgerDetailPage() {
                                     <div
                                         key={v.id}
                                         onClick={() => openVoucher(v)}
-                                        className="p-3.5 rounded-2xl bg-[#121B24] border border-[#1E2B38] hover:border-slate-700 flex items-center justify-between cursor-pointer active:scale-[0.99] transition-all shadow-xs"
+                                        className="ledger-detail-transaction flex items-center justify-between cursor-pointer"
                                     >
                                         <div className="flex items-center gap-3 min-w-0 pr-2">
                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${
@@ -944,7 +976,7 @@ export default function LedgerDetailPage() {
                 )}
 
                 {/* Mobile Bottom Navigation Bar (Image 1 Bottom) */}
-                <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0B1118]/95 backdrop-blur-md border-t border-[#1E2B38] px-4 py-2 flex items-center justify-between">
+                <div className="ledger-detail-extra-nav fixed bottom-0 left-0 right-0 z-50 bg-[#0B1118]/95 backdrop-blur-md border-t border-[#1E2B38] px-4 py-2 flex items-center justify-between">
                     <button onClick={() => navigate('/')} className="flex flex-col items-center gap-0.5 text-slate-400 hover:text-white cursor-pointer">
                         <LayoutGrid size={18} />
                         <span className="text-[9px] font-bold">Dashboard</span>
@@ -1383,6 +1415,8 @@ export default function LedgerDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {showReminderDialog && <ReminderDialog ledger={ledger} companyId={selectedCompany?.id} userId={user?.id} onClose={() => setShowReminderDialog(false)} />}
 
             {/* MODAL 1: SET CREDIT LIMIT */}
             {showCreditLimitModal && (

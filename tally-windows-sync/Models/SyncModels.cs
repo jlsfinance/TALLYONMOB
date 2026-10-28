@@ -166,6 +166,7 @@ namespace TallySyncApp.Models
         public int RetryDelaySeconds { get; set; } = 30;
         public bool EnableVoucherSync { get; set; } = true;
         public bool UseFastExtractor { get; set; } = false;
+        public bool UseSafeVoucherReconciliation { get; set; } = true;
         public string TelegramBotToken { get; set; } = string.Empty;
     }
 

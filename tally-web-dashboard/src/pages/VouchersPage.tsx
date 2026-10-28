@@ -1,6 +1,6 @@
+import { useProgressiveList } from '@/hooks/useProgressiveList';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FixedSizeList as List } from 'react-window';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, pendingTransactionApi } from '../lib/insforge';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
@@ -151,7 +151,7 @@ export default function VouchersPage() {
                 sync_status: 'synced',
             }));
         },
-        { enabled: !!selectedCompany?.id && !!selectedFy, staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
+        { enabled: !!selectedCompany?.id && !!selectedFy, staleTime: 60 * 1000, refetchInterval: 60 * 1000, refetchOnWindowFocus: true }
     );
 
     // ── Compute month aggregates ──
@@ -247,6 +247,8 @@ export default function VouchersPage() {
         return result;
     }, [rawVouchers, searchTerm, selectedType, selectedMonth, monthsInFy, dateRange, customStart, customEnd, minAmount, maxAmount, syncStatus]);
 
+    const voucherList = useProgressiveList(filteredVouchers, JSON.stringify(['vouchers', selectedCompany?.id, selectedFy, searchTerm, selectedType, selectedMonth, dateRange, customStart, customEnd, minAmount, maxAmount, syncStatus]));
+
     // ── Summary ──
     const summary = useMemo(() => {
         const total = filteredVouchers.length;
@@ -304,19 +306,29 @@ export default function VouchersPage() {
         }
     };
 
-    // ── Export CSV ──
-    const handleExportCSV = useCallback(() => {
-        if (filteredVouchers.length === 0) { toast.error('No data to export'); return; }
-        const headers = [
-            { key: 'voucher_number', label: 'Voucher No' },
-            { key: 'voucher_type', label: 'Type' },
-            { key: 'voucher_date', label: 'Date' },
-            { key: 'party_name', label: 'Party Name' },
-            { key: 'total_amount', label: 'Amount' }
-        ];
-        import('../lib/exportToCSV').then(({ exportToCSV }) => {
-            exportToCSV(filteredVouchers, headers, `Vouchers_${selectedCompany.name}_${selectedFy}.csv`);
-        }).catch(err => toast.error('Export failed: ' + err.message));
+    // Export the filtered voucher data as selectable text, not a screenshot.
+    const handleExportPDF = useCallback(async () => {
+        if (!filteredVouchers.length) { toast.error('No data to export'); return; }
+        try {
+            const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+            const doc = new jsPDF();
+            doc.setFontSize(14);
+            doc.text('Vouchers', 14, 16);
+            doc.setFontSize(9);
+            doc.text(`${selectedCompany?.name || ''}  |  ${selectedFy}`, 14, 23);
+            autoTable(doc, {
+                startY: 28,
+                head: [['Date', 'Voucher No', 'Type', 'Party', 'Amount (INR)']],
+                body: filteredVouchers.map((v: any) => [v.voucher_date || '', v.voucher_number || '', v.voucher_type || '', v.party_name || '', (Number(v.total_amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })]),
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [22, 88, 106] },
+                columnStyles: { 4: { halign: 'right' } },
+            });
+            doc.save(`Vouchers_${selectedFy.replace(/[^a-zA-Z0-9-]/g, '_')}.pdf`);
+        } catch (error) {
+            console.error('Voucher PDF export failed', error);
+            toast.error('PDF export failed');
+        }
     }, [filteredVouchers, selectedCompany?.name, selectedFy]);
 
     // ── FY switcher state ──
@@ -356,7 +368,7 @@ export default function VouchersPage() {
 
             <HeaderPortal type="search">
                 <div className="flex items-center gap-1.5">
-                    <div className="relative">
+                    <div className="voucher-desktop-search relative">
                         <input
                             ref={searchRef}
                             placeholder="Search party, voucher..."
@@ -372,6 +384,7 @@ export default function VouchersPage() {
                             </button>
                         )}
                     </div>
+                    <button type="button" onClick={() => setShowSearch(value => !value)} className="md:hidden voucher-header-icon" aria-label="Search vouchers" aria-expanded={showSearch}><Search size={17} /></button>
                     <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                         className={`p-1.5 rounded-lg transition-all ${showAdvancedFilters ? 'bg-[var(--primary)] text-white' : 'hover:bg-[var(--surface-variant)] text-[var(--text-muted)]'}`}>
                         <SlidersHorizontal size={15} />
@@ -382,15 +395,23 @@ export default function VouchersPage() {
             <HeaderPortal type="filters">
                 <div className="flex items-center gap-1.5">
                     <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider whitespace-nowrap">{selectedFy}</span>
-                    <button onClick={handleExportCSV}
+                    <button onClick={handleExportPDF}
                         className="px-2 py-1 bg-[var(--surface-variant)] text-[var(--text-muted)] border border-[var(--border)] rounded-lg text-[9px] font-bold uppercase tracking-wider hover:bg-[var(--surface-active)]">
-                        CSV
+                        PDF
                     </button>
                 </div>
             </HeaderPortal>
 
+            {showSearch && (
+                <div className="md:hidden voucher-mobile-search">
+                    <Search size={16} aria-hidden="true" />
+                    <input autoFocus aria-label="Search vouchers" placeholder="Search party or voucher" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    <button type="button" aria-label="Close search" onClick={() => { setSearchTerm(''); setShowSearch(false); }}><X size={16} /></button>
+                </div>
+            )}
+
             {/* ── VOUCHER TYPE ROW ── */}
-            <div className="px-1 mb-2 sticky top-0 z-10 bg-[var(--surface)]/90 backdrop-blur-sm pt-0.5">
+            <div className="px-1 mb-2 bg-[var(--surface)]/90 pt-0.5">
                 <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-0.5">
                     {VOUCHER_TYPES.map((type) => {
                         const isActive = selectedType === type.key;
@@ -566,18 +587,9 @@ export default function VouchersPage() {
                     <EmptyState icon={<FileText size={40} />} title="No Vouchers"
                         description={activeFilters.length > 0 ? 'Try changing or clearing filters' : 'No vouchers found for this period'} />
                 ) : (
-                    <div className="h-[calc(100vh-220px)] min-h-[400px]" style={{ height: Math.min(filteredVouchers.length * 55 + 20, window.innerHeight - 220) }}>
-                        <List
-                            height={Math.min(filteredVouchers.length * 57, window.innerHeight - 220)}
-                            itemCount={filteredVouchers.length}
-                            itemSize={55}
-                            width="100%"
-                            overscanCount={15}
-                        >
-                            {({ index, style }) => {
-                                const v = filteredVouchers[index];
-                                return (
-                                    <div style={{ ...style, paddingLeft: 2, paddingRight: 2, paddingBottom: 2 }}>
+                    <div className="voucher-page-list">
+                        {voucherList.visible.map((v: any, index: number) => (
+                                    <div key={v.id || index} className="voucher-page-row">
                                         <TransactionCard
                                             compact
                                             type={v.voucher_type}
@@ -589,9 +601,8 @@ export default function VouchersPage() {
                                             onClick={() => navigate(`/invoice/${encodeURIComponent(v.id)}`, { state: { voucher: v, from: '/vouchers' } })}
                                         />
                                     </div>
-                                );
-                            }}
-                        </List>
+                        ))}
+                        {voucherList.hasMore && <div ref={voucherList.sentinelRef}><button type="button" onClick={voucherList.loadMore} className="w-full py-3 text-xs text-[var(--text-muted)]">Load more</button></div>}
                     </div>
                 )}
             </div>

@@ -24,6 +24,10 @@ namespace TallySyncApp.ViewModels
         public ICommand FullResyncCommand { get; }
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
+        public ICommand ToggleVoucherReconciliationCommand { get; }
+        public string VoucherReconciliationModeText => Settings.SyncSettings.UseSafeVoucherReconciliation
+            ? "Safe reconciliation ON — click to restore previous mode"
+            : "Previous mode ON — click to enable safe reconciliation";
 
         // Properties
         public SyncStatus Status
@@ -90,6 +94,14 @@ namespace TallySyncApp.ViewModels
             FullResyncCommand = new RelayCommand(async () => await FullResync());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
+            ToggleVoucherReconciliationCommand = new RelayCommand(() => {
+                if (_syncManager.SetSafeVoucherReconciliation(!Settings.SyncSettings.UseSafeVoucherReconciliation))
+                {
+                    OnPropertyChanged(nameof(VoucherReconciliationModeText));
+                    Log("Reconciliation mode changed. The next cycle will use the selected mode.");
+                }
+                else MessageBox.Show("Could not save reconciliation mode.", "Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+            });
 
             // Redirect Console to UI
             Console.SetOut(new ConsoleWriter(this));

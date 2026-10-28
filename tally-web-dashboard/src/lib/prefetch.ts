@@ -52,51 +52,28 @@ export function prefetchDashboard(companyId: string, fyDates?: { from: string; t
  * Prefetch vouchers list — handles 'all' month by querying full FY
  */
 export function prefetchVouchers(companyId: string, month: string, fyStart?: string) {
-    const key = ['vouchers', companyId, month];
-    if (queryClient.getQueryData(key)) return;
-
+    if (!fyStart || month !== 'all') return;
+    const year = Number(fyStart);
+    if (!Number.isFinite(year)) return;
+    const fy = `FY ${year}-${String(year + 1).slice(-2)}`;
     queryClient.prefetchQuery({
-        queryKey: key,
+        queryKey: ['vouchers-all', companyId, fy],
         queryFn: async () => {
-            let start: string;
-            let end: string;
-
-            if (month === 'all' || !month || month.includes('NaN')) {
-                // Full FY query
-                const parsedStartYear = fyStart ? parseInt(fyStart) : NaN;
-                // "FY 2025-26" jaisa string parseInt pe NaN deta hai -> NaN-04-01 bhejne se Supabase 400 deta hai
-                const startYear = Number.isFinite(parsedStartYear) ? parsedStartYear : (new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1);
-                start = `${startYear}-04-01`;
-                end = `${startYear + 1}-03-31`;
-            } else {
-                const [year, mon] = month.split('-').map(Number);
-                if (isNaN(year) || isNaN(mon)) {
-                    // Fallback to current FY
-                    const startYear = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
-                    start = `${startYear}-04-01`;
-                    end = `${startYear + 1}-03-31`;
-                } else {
-                    start = `${year}-${String(mon).padStart(2, '0')}-01`;
-                    const lastDay = new Date(year, mon, 0).getDate();
-                    end = `${year}-${String(mon).padStart(2, '0')}-${lastDay}`;
-                }
+            const rows: any[] = [];
+            for (let offset = 0; rows.length < 50000; offset += 1000) {
+                const { data, error } = await supabase.from('vouchers')
+                    .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total, narration, created_at')
+                    .eq('company_id', companyId).eq('is_deleted', false)
+                    .gte('voucher_date', `${year}-04-01`).lte('voucher_date', `${year + 1}-03-31`)
+                    .order('voucher_date', { ascending: false }).range(offset, offset + 999);
+                if (error) throw error;
+                const batch = data || [];
+                rows.push(...batch);
+                if (batch.length < 1000) break;
             }
-
-            const { data, error } = await supabase.from('vouchers')
-                .select('id, voucher_number, party_name, voucher_type, voucher_date, total_amount, grand_total')
-                .eq('company_id', companyId)
-                .eq('is_deleted', false)
-                .gte('voucher_date', start)
-                .lte('voucher_date', end)
-                .order('voucher_date', { ascending: false }).limit(50000);
-
-            if (error) throw error;
-            return (data || []).map((v: any) => ({
-                ...v,
-                total_amount: Number(v.total_amount ?? v.grand_total ?? 0)
-            }));
+            return rows.map(v => ({ ...v, total_amount: Number(v.total_amount ?? v.grand_total ?? 0), sync_status: 'synced' }));
         },
-        staleTime: 3 * 60 * 1000,
+        staleTime: 5 * 60 * 1000,
     });
 }
 
@@ -147,23 +124,26 @@ export function prefetchStock(companyId: string) {
  */
 export function prefetchSales(companyId: string, start: string, end: string) {
     if (!start || !end || start.includes('NaN') || end.includes('NaN')) return;
-    const key = ['sales', companyId, start, end];
-    if (queryClient.getQueryData(key)) return;
-
     queryClient.prefetchQuery({
-        queryKey: key,
+        queryKey: ['sales', companyId, start, end],
         queryFn: async () => {
-            const { data, error } = await supabase.from('vouchers')
-                .select('*')
-                .eq('company_id', companyId)
-                .eq('voucher_type', 'Sales')
-                .gte('voucher_date', start)
-                .lte('voucher_date', end)
-                .order('voucher_date', { ascending: false }).limit(50000);
+            const { data: syncedData, error } = await supabase.from('vouchers')
+                .select('id, party_name, voucher_number, voucher_date, voucher_type, grand_total, total_amount')
+                .eq('company_id', companyId).eq('voucher_type', 'Sales').or('is_deleted.eq.false,is_deleted.is.null')
+                .gte('voucher_date', start).lte('voucher_date', end)
+                .order('voucher_date', { ascending: false }).limit(1000);
             if (error) throw error;
-            return data || [];
-        },
-        staleTime: 3 * 60 * 1000,
+            const { data: pendingData, error: pendingError } = await supabase.from('pending_transactions')
+                .select('*').eq('company_id', companyId).eq('transaction_type', 'Sales').in('status', ['pending', 'failed']);
+            if (pendingError) throw pendingError;
+            const pending = (pendingData || []).map((p: any) => ({
+                id: p.id, party_name: p.voucher_data?.customerName || 'Pending Customer',
+                voucher_number: p.voucher_data?.invoiceNumber || 'NEW', voucher_date: p.voucher_data?.date || p.created_at,
+                grand_total: p.voucher_data?.total, total_amount: p.voucher_data?.total,
+                sync_status: p.status, status: p.status, voucher_type: 'Sales',
+            }));
+            return [...pending, ...(syncedData || [])];
+        }, staleTime: 3 * 60 * 1000,
     });
 }
 
@@ -172,7 +152,13 @@ export function prefetchSales(companyId: string, start: string, end: string) {
  */
 export function invalidateDashboard(companyId: string) {
     queryClient.invalidateQueries({ queryKey: ['dashboard', companyId] });
-    queryClient.invalidateQueries({ queryKey: ['vouchers', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['vouchers-all', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['sales', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['sales-count', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['purchases', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['daybook', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-fy-v4', companyId] });
+    queryClient.invalidateQueries({ queryKey: ['party-recent', companyId] });
     queryClient.invalidateQueries({ queryKey: ['ledgers', companyId] });
     queryClient.invalidateQueries({ queryKey: ['stockItems', companyId] });
 }

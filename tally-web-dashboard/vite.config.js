@@ -42,6 +42,7 @@ export default defineConfig(({ mode }) => {
                 manifest: false,
                 workbox: {
                     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,woff,ttf}'],
+                    importScripts: ['/reminder-push-worker.js'],
                     runtimeCaching: [
                         {
                             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

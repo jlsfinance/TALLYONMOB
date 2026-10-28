@@ -741,6 +741,68 @@ namespace TallySyncApp.Services
             }
         }
 
+        /// <summary>Read a complete company-scoped identity snapshot; null means unsafe/incomplete.</summary>
+        public async Task<List<CloudVoucherIdentity>?> GetVoucherIdentitySnapshotAsync(string companyId)
+        {
+            try
+            {
+                var before = await GetVoucherCountAsync(companyId);
+                if (before < 0) return null;
+                const int pageSize = 1000;
+                var rows = new List<CloudVoucherIdentity>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int offset = 0; ; offset += pageSize)
+                {
+                    AddAuthHeader();
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{Uri.EscapeDataString(companyId)}&select=id,guid,alter_id,is_deleted,party_name,voucher_number,voucher_type&order=id.asc&limit={pageSize}&offset={offset}";
+                    using var response = await _httpClient.GetAsync(url);
+                    if (!response.IsSuccessStatusCode) { SyncLogger.Log($"[Reconcile] Identity page failed: HTTP {(int)response.StatusCode}"); return null; }
+                    var text = await response.Content.ReadAsStringAsync();
+                    var page = Newtonsoft.Json.Linq.JArray.Parse(text);
+                    foreach (var item in page)
+                    {
+                        var id = item["id"]?.ToString() ?? "";
+                        if (string.IsNullOrWhiteSpace(id) || !seen.Add(id)) return null;
+                        rows.Add(new CloudVoucherIdentity { Id = id, Guid = item["guid"]?.ToString(), AlterId = item["alter_id"]?.ToString(), IsDeleted = item["is_deleted"]?.Type == Newtonsoft.Json.Linq.JTokenType.Boolean ? item["is_deleted"]!.ToObject<bool>() : null, PartyName = item["party_name"]?.ToString(), VoucherNumber = item["voucher_number"]?.ToString(), VoucherType = item["voucher_type"]?.ToString() });
+                    }
+                    if (page.Count < pageSize) break;
+                    if (rows.Count > 1000000) return null;
+                }
+                var after = await GetVoucherCountAsync(companyId);
+                if (before != after || after != rows.Count) { SyncLogger.Log($"[Reconcile] Snapshot changed or incomplete: before={before}, rows={rows.Count}, after={after}"); return null; }
+                return rows;
+            }
+            catch (Exception ex) { SyncLogger.Log($"[Reconcile] Identity snapshot failed: {ex.Message}"); return null; }
+        }
+
+        /// <summary>Soft-delete one unchanged, company-scoped voucher and verify the returned row.</summary>
+        public async Task<bool> SoftDeleteReconciledVoucherAsync(string companyId, CloudVoucherIdentity voucher)
+        {
+            if (!Guid.TryParse(voucher.Id, out _) || string.IsNullOrWhiteSpace(voucher.Guid) || string.IsNullOrWhiteSpace(voucher.AlterId) || voucher.IsDeleted != false) return false;
+            try
+            {
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    AddAuthHeader();
+                    var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{Uri.EscapeDataString(companyId)}&id=eq.{Uri.EscapeDataString(voucher.Id)}&guid=eq.{Uri.EscapeDataString(voucher.Guid)}&alter_id=eq.{Uri.EscapeDataString(voucher.AlterId)}&is_deleted=eq.false&select=id,is_deleted";
+                    using var request = new HttpRequestMessage(HttpMethod.Patch, url);
+                    request.Headers.Add("Prefer", "return=representation");
+                    request.Content = new StringContent("{\"is_deleted\":true}", Encoding.UTF8, "application/json");
+                    using var response = await _httpClient.SendAsync(request);
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && attempt == 0 && TokenRefresher != null)
+                    {
+                        var token = await TokenRefresher();
+                        if (!string.IsNullOrEmpty(token)) { SetUserToken(token); continue; }
+                    }
+                    if (!response.IsSuccessStatusCode) { SyncLogger.Log($"[Reconcile] Soft-delete failed for {voucher.Id}: HTTP {(int)response.StatusCode}"); return false; }
+                    var rows = Newtonsoft.Json.Linq.JArray.Parse(await response.Content.ReadAsStringAsync());
+                    return rows.Count == 1 && string.Equals(rows[0]?["id"]?.ToString(), voucher.Id, StringComparison.OrdinalIgnoreCase) && rows[0]?["is_deleted"]?.ToObject<bool>() == true;
+                }
+            }
+            catch (Exception ex) { SyncLogger.Log($"[Reconcile] Soft-delete failed for {voucher.Id}: {ex.Message}"); }
+            return false;
+        }
+
         public async Task<int> PurgeDeletedVouchersAsync(string companyId, List<VoucherIndexEntry> tallyIndex)
         {
             try
