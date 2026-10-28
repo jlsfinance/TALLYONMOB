@@ -86,6 +86,9 @@ const PurchaseDetailPage = lazyPage('PurchaseDetailPage', () => import('./pages/
 const VouchersPage = lazyPage('VouchersPage', () => import('./pages/VouchersPage'));
 const VoucherDetailPage = lazyPage('VoucherDetailPage', () => import('./pages/VoucherDetailPage'));
 const StockPage = lazyPage('StockPage', () => import('./pages/StockPage'));
+const ReportsPage = lazyPage('ReportsPage', () => import('./pages/ReportsPage'));
+const StockSnapshotReport = lazyPage('StockSnapshotReport', () => import('./pages/StockSnapshotReport'));
+const StockGroupReport = lazyPage('StockGroupReport', () => import('./pages/StockGroupReport'));
 const SyncHistoryPage = lazyPage('SyncHistoryPage', () => import('./pages/SyncHistoryPage'));
 const GSTReportsPage = lazyPage('GSTReportsPage', () => import('./pages/GSTReportsPage'));
 const LedgerStatementPage = lazyPage('LedgerStatementPage', () => import('./pages/LedgerStatementPage'));
@@ -365,6 +368,9 @@ function AppContent() {
                                     <Route path="/purchases" element={<PurchasesPage />} />
                                     <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
                                     <Route path="/stock" element={<StockPage />} />
+                                    <Route path="/reports" element={<ReportsPage />} />
+                                    <Route path="/reports/stock/:kind" element={<StockSnapshotReport />} />
+                                    <Route path="/reports/stock-summary/:dimension" element={<StockGroupReport />} />
                                     <Route path="/stock/:id" element={<StockItemDetailPage />} />
                                     <Route path="/sync-history" element={<SyncHistoryPage />} />
                                     <Route path="/gst-reports" element={<GSTReportsPage />} />

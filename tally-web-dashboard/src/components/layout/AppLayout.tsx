@@ -206,6 +206,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     { to: '/sync-history', icon: <RefreshCw size={18} />, label: 'Sync Status' },
                     { to: '/vouchers', icon: <FileText size={18} />, label: t('nav.vouchers') },
                     { to: '/day-book', icon: <Clock size={18} />, label: 'Day Book' },
+                    { to: '/reports', icon: <BarChart3 size={18} />, label: 'Reports' },
                     { to: '/ledgers', icon: <Users size={18} />, label: t('nav.parties') },
                 ]
             },
@@ -285,6 +286,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         { to: '/vouchers', icon: <FileText size={20} />, label: 'Vouchers' },
         { to: '/ledgers', icon: <Users size={20} />, label: 'Parties' },
         { to: '/sales', icon: <TrendingUp size={20} />, label: 'Sales' },
+        { to: '/reports', icon: <BarChart3 size={20} />, label: 'Reports' },
     ], [homePath]);
 
     return (
@@ -652,7 +654,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <nav className="app-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
                     <div className="flex items-center justify-around h-[60px] px-2">
                         {bottomNavItems.map((item) => {
-                            const isActive = location.pathname === item.to || (item.to === '/ledgers' && location.pathname.startsWith('/ledgers/')) || (item.to === homePath && (location.pathname === '/' || location.pathname === '/dashboard'));
+                            const isActive = location.pathname === item.to || (item.to === '/reports' && location.pathname.startsWith('/reports/')) || (item.to === '/ledgers' && location.pathname.startsWith('/ledgers/')) || (item.to === homePath && (location.pathname === '/' || location.pathname === '/dashboard'));
                             const prefetchOnHover = () => {
                                 const importer = routePrefetchMap[item.to.split('?')[0]];
                                 if (importer) importer().catch(() => {});
