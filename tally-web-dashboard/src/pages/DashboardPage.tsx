@@ -21,6 +21,7 @@ import { toast } from 'react-hot-toast';
 import { sendEodReport } from '../lib/whatsapp';
 import SafeLink from '../components/common/SafeLink';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
+import { useFY, getFYDates, getFYStartYear } from '../contexts/FYContext';
 
 const PIE_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#6366F1'];
 
@@ -33,7 +34,8 @@ export default function DashboardPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [period, setPeriod] = useState('year');
     const [stats, setStats] = useState({
-        sales: 0, purchases: 0, receivables: 0, payables: 0, salesCount: 0, purchaseCount: 0
+        sales: 0, purchases: 0, receivables: 0, payables: 0, salesCount: 0, purchaseCount: 0,
+        creditNote: 0, debitNote: 0, creditNoteCount: 0, debitNoteCount: 0
     });
     const [recentVouchers, setRecentVouchers] = useState<any[]>([]);
     const [monthlySales, setMonthlySales] = useState<any[]>([]);
@@ -42,23 +44,21 @@ export default function DashboardPage() {
     const [salesTrend, setSalesTrend] = useState({ value: 0, direction: 'neutral' });
     const [expenseGroups, setExpenseGroups] = useState<any[]>([]);
     const [cashFlowTrend, setCashFlowTrend] = useState<any[]>([]);
-    const [dataFyStart, setDataFyStart] = useState<string | null>(null);
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     const defaultFyStartYear = currentMonth < 3 ? currentYear - 1 : currentYear;
-    const [fyYear, setFyYear] = useState(() => {
-        const saved = localStorage.getItem('dashboard_fy_year');
-        return saved ? Number(saved) : defaultFyStartYear;
-    });
+    // FY ka single source of truth header ka global selector hai; yahan alag state rakhne se
+    // dashboard ka FY baaki tabs (Sales/Parties) se alag ho jata tha.
+    const { selectedFY, setSelectedFY } = useFY();
+    const fyDates = getFYDates(selectedFY);
+    const fyYear = getFYStartYear(selectedFY);
     const fyButtonRef = useRef<HTMLButtonElement>(null);
     const [showFyDropdown, setShowFyDropdown] = useState(false);
     const [fyDropdownStyle, setFyDropdownStyle] = useState<React.CSSProperties>({});
     const fyOptions = Array.from({ length: 10 }, (_, i) => defaultFyStartYear - i);
 
-    useEffect(() => {
-        localStorage.setItem('dashboard_fy_year', String(fyYear));
-    }, [fyYear]);
+    const pickFy = (year: number) => setSelectedFY(`FY ${year}-${String(year + 1).slice(2)}`);
 
     const toggleFyDropdown = () => {
         if (!showFyDropdown && fyButtonRef.current) {
@@ -91,44 +91,8 @@ export default function DashboardPage() {
     };
 
     useEffect(() => {
-        if (selectedCompany) detectDataFy();
-    }, [selectedCompany]);
-
-    useEffect(() => {
         if (selectedCompany) loadDashboardData();
-    }, [selectedCompany, period, dataFyStart, fyYear]);
-
-    const detectDataFy = async () => {
-        if (!selectedCompany) return;
-        try {
-            const { data } = await supabase
-                .from('vouchers')
-                .select('voucher_date')
-                .eq('company_id', selectedCompany.id)
-                .eq('is_deleted', false)
-                .order('voucher_date', { ascending: false })
-                .limit(1);
-            if (data && data.length > 0 && data[0].voucher_date) {
-                const latestDate = new Date(data[0].voucher_date);
-                const month = latestDate.getMonth();
-                const year = latestDate.getFullYear();
-                const fyStartYear = month >= 3 ? year : year - 1;
-                const fyStart = `${fyStartYear}-04-01`;
-                const currentFyStart = (() => {
-                    const now = new Date();
-                    const cm = now.getMonth();
-                    const cy = now.getFullYear();
-                    const sy = cm < 3 ? cy - 1 : cy;
-                    return `${sy}-04-01`;
-                })();
-                if (fyStart !== currentFyStart) {
-                    setDataFyStart(fyStart);
-                }
-            }
-        } catch (e) {
-            console.error('FY detection failed', e);
-        }
-    };
+    }, [selectedCompany, period, selectedFY]);
 
     useEffect(() => {
         const handleGlobalRefresh = () => { handleRefresh(); };
@@ -187,6 +151,7 @@ export default function DashboardPage() {
                 debtorLedgers,
                 creditorLedgers,
                 vReceipts,
+                noteRows,
                 trendData,
                 expenseEntries,
                 cfData,
@@ -242,6 +207,18 @@ export default function DashboardPage() {
                         .select('id, total_amount')
                         .eq('company_id', selectedCompany.id)
                         .eq('voucher_type', 'Receipt')
+                        .gte('voucher_date', from)
+                        .lte('voucher_date', to)
+                        .eq('is_deleted', false)
+                        .order('id', { ascending: true })
+                        .range(fromIndex, toIndex)
+                ),
+                fetchAllRows((fromIndex, toIndex) =>
+                    supabase
+                        .from('vouchers')
+                        .select('id, voucher_type, total_amount, grand_total')
+                        .eq('company_id', selectedCompany.id)
+                        .in('voucher_type', ['Credit Note', 'Debit Note'])
                         .gte('voucher_date', from)
                         .lte('voucher_date', to)
                         .eq('is_deleted', false)
@@ -307,6 +284,10 @@ export default function DashboardPage() {
                         .from('vouchers')
                         .select('*')
                         .eq('company_id', selectedCompany.id)
+                        .eq('is_deleted', false)
+                        // Recent list bhi selected FY ka ho, warna purane saal ke voucher upar aate the.
+                        .gte('voucher_date', fyDates.from)
+                        .lte('voucher_date', fyDates.to)
                         .order('voucher_date', { ascending: false })
                         .limit(6)
                 )
@@ -321,6 +302,15 @@ export default function DashboardPage() {
 
             receivables = (debtorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
             payables = (creditorLedgers || []).reduce((sum, l) => sum + Math.abs(Number(l.current_balance) || 0), 0);
+
+            const notes = noteRows || [];
+            const noteSum = (type: string) => notes
+                .filter((n: any) => n.voucher_type === type)
+                .reduce((s: number, n: any) => s + Math.abs(Number(n.grand_total) || Number(n.total_amount) || 0), 0);
+            const creditNote = noteSum('Credit Note');
+            const debitNote = noteSum('Debit Note');
+            const creditNoteCount = notes.filter((n: any) => n.voucher_type === 'Credit Note').length;
+            const debitNoteCount = notes.filter((n: any) => n.voucher_type === 'Debit Note').length;
 
             const receipts = (vReceipts || []).reduce((sum, v) => sum + Math.abs(Number(v.total_amount) || 0), 0);
             const collectionRate = sales > 0 ? (receipts / sales) * 100 : 0;
@@ -410,7 +400,10 @@ export default function DashboardPage() {
                 console.error('Trend calculation failed', e);
             }
 
-            setStats({ sales, purchases, receivables, payables, salesCount, purchaseCount });
+            setStats({
+                sales, purchases, receivables, payables, salesCount, purchaseCount,
+                creditNote, debitNote, creditNoteCount, debitNoteCount
+            });
             setRecentVouchers(recent || []);
         } catch (error) {
             console.error('Dashboard load error:', error);
@@ -440,6 +433,8 @@ export default function DashboardPage() {
             teal: { bg: 'bg-teal-50 dark:bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400', border: 'hover:border-teal-200 dark:hover:border-teal-800', accent: 'bg-teal-500' },
             amber: { bg: 'bg-amber-50 dark:bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', border: 'hover:border-amber-200 dark:hover:border-amber-800', accent: 'bg-amber-500' },
             red: { bg: 'bg-red-50 dark:bg-red-500/10', text: 'text-red-600 dark:text-red-400', border: 'hover:border-red-200 dark:hover:border-red-800', accent: 'bg-red-500' },
+            violet: { bg: 'bg-violet-50 dark:bg-violet-500/10', text: 'text-violet-600 dark:text-violet-400', border: 'hover:border-violet-200 dark:hover:border-violet-800', accent: 'bg-violet-500' },
+            pink: { bg: 'bg-pink-50 dark:bg-pink-500/10', text: 'text-pink-600 dark:text-pink-400', border: 'hover:border-pink-200 dark:hover:border-pink-800', accent: 'bg-pink-500' },
         };
         const c = colorMap[color] || colorMap.blue;
 
@@ -536,7 +531,7 @@ export default function DashboardPage() {
                                     {fyOptions.map((year) => (
                                         <button
                                             key={year}
-                                            onClick={() => { setFyYear(year); setShowFyDropdown(false); }}
+                                            onClick={() => { pickFy(year); setShowFyDropdown(false); }}
                                             className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors hover:bg-[var(--surface-variant)] ${fyYear === year ? 'text-[var(--primary)] bg-[var(--primary-glow)]' : 'text-[var(--on-surface)]'}`}
                                         >
                                             FY {year.toString().slice(2)}-{String(year + 1).slice(2)}
@@ -632,7 +627,7 @@ export default function DashboardPage() {
                         <div className="relative">
                             <select
                                 value={fyYear}
-                                onChange={(e) => setFyYear(Number(e.target.value))}
+                                onChange={(e) => pickFy(Number(e.target.value))}
                                 className="flex items-center gap-1 px-3 py-2 rounded-2xl text-[10px] font-black uppercase bg-sky-500/10 text-sky-500 border border-sky-500/20 appearance-none cursor-pointer"
                             >
                                 {fyOptions.map((year) => (
@@ -707,6 +702,20 @@ export default function DashboardPage() {
                             subtitle="Outstanding"
                             color="red"
                             onClick={() => navigate('/ledgers?group=Sundry Creditors')}
+                        />
+                        <MetricCard
+                            title="Credit Notes"
+                            value={stats.creditNote}
+                            icon={<ArrowDownRight size={18} />}
+                            subtitle={`${stats.creditNoteCount} notes`}
+                            color="violet"
+                        />
+                        <MetricCard
+                            title="Debit Notes"
+                            value={stats.debitNote}
+                            icon={<ArrowUpRight size={18} />}
+                            subtitle={`${stats.debitNoteCount} notes`}
+                            color="pink"
                         />
                     </div>
 
@@ -877,7 +886,7 @@ export default function DashboardPage() {
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="text-sm font-bold md:font-semibold text-[var(--on-surface)] flex-shrink-0 ml-3 tracking-tight">
-                                                            {formatCurrency(v.total_amount)}
+                                                            {formatCurrency(Number(v.grand_total) || Number(v.total_amount) || 0)}
                                                         </p>
                                                         <ArrowRight size={14} className="inline-block md:hidden text-gray-300 dark:text-gray-600 mt-1" />
                                                     </div>

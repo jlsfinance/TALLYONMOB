@@ -52,6 +52,13 @@ namespace TallySyncApp.Services
                 _ownerId = ownerId;
         }
 
+        /// <summary>
+        /// Set by SyncManager: force-refresh the Supabase session, return the new access token or null.
+        /// The JWT lives 60 minutes and a historical backfill runs longer, so the one refresh at the
+        /// start of a cycle is not enough - without this every batch after the expiry died on PGRST303.
+        /// </summary>
+        public Func<Task<string?>>? TokenRefresher { get; set; }
+
         private void AddAuthHeader()
         {
             // Always prefer User Token if available (for RLS), otherwise Anon Key
@@ -455,9 +462,13 @@ namespace TallySyncApp.Services
                 if (allLedgerEntries.Count > 0)
                 {
                     SyncLogger.Log($"📝 Syncing {allLedgerEntries.Count} voucher ledger entries...");
-                    var ledgerResult = await UpsertAsync<object>("voucher_ledger_entries", allLedgerEntries, "id");
-                    if (ledgerResult.Success) ledgerEntriesSynced = allLedgerEntries.Count;
-                    else SyncLogger.Log($"⚠️ Ledger entries sync failed: {ledgerResult.Error}");
+                    // ~9k rows in one request blows Supabase's 8s statement timeout (57014), so send 100 at a time.
+                    foreach (var batch in allLedgerEntries.Chunk(100))
+                    {
+                        var ledgerResult = await UpsertAsync<object>("voucher_ledger_entries", batch.ToList(), "id");
+                        if (ledgerResult.Success) ledgerEntriesSynced += batch.Length;
+                        else SyncLogger.Log($"⚠️ Ledger entries sync failed: {ledgerResult.Error}");
+                    }
                 }
                 
                 // 2. Extract and sync Inventory/Stock Entries to voucher_stock_entries
@@ -498,9 +509,12 @@ namespace TallySyncApp.Services
                 if (allStockEntries.Count > 0)
                 {
                     SyncLogger.Log($"📦 Syncing {allStockEntries.Count} voucher stock entries...");
-                    var stockResult = await UpsertAsync<object>("voucher_stock_entries", allStockEntries, "id");
-                    if (stockResult.Success) stockEntriesSynced = allStockEntries.Count;
-                    else SyncLogger.Log($"⚠️ Stock entries sync failed: {stockResult.Error}");
+                    foreach (var batch in allStockEntries.Chunk(100))
+                    {
+                        var stockResult = await UpsertAsync<object>("voucher_stock_entries", batch.ToList(), "id");
+                        if (stockResult.Success) stockEntriesSynced += batch.Length;
+                        else SyncLogger.Log($"⚠️ Stock entries sync failed: {stockResult.Error}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -581,25 +595,22 @@ namespace TallySyncApp.Services
             try
             {
                 AddAuthHeader();
-                // Query to get MAX(alter_id) for a company - MUST exclude NULLs explicitly
-                var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyId}&alter_id=not.is.null&select=alter_id&order=alter_id.desc&limit=1";
-                var response = await _httpClient.GetStringAsync(url);
-                
-                SyncLogger.Log($"[DEBUG] GetMaxAlterIdAsync for {tableName}: Response = {response}");
-                
-                var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(response);
-                if (items != null && items.Count > 0 && items[0].ContainsKey("alter_id"))
+                // alter_id is TEXT in the schema, so a plain desc sort ranks "99999" above "105426"
+                // and every sync re-fetches the same vouchers. Inside one digit count text order
+                // equals numeric order, and more digits always means a bigger number, so the
+                // longest length that still has rows holds the true max.
+                for (int digits = 10; digits >= 1; digits--)
                 {
-                    var alterIdValue = items[0]["alter_id"];
-                    if (alterIdValue != null)
+                    var url = $"{_supabaseUrl}/rest/v1/{tableName}?company_id=eq.{companyId}" +
+                              $"&alter_id=match.%5E%20%2A%5B0-9%5D%7B{digits}%7D%24&select=alter_id&order=alter_id.desc&limit=1";
+                    var page = await _httpClient.GetStringAsync(url);
+                    var found = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(page);
+                    if (found == null || found.Count == 0) continue;
+                    if (found[0].TryGetValue("alter_id", out var raw) && raw != null &&
+                        long.TryParse(raw.ToString()!.Trim(), out long maxId))
                     {
-                        // Trim spaces before parsing (Tally sometimes adds leading spaces)
-                        string alterIdStr = alterIdValue.ToString()?.Trim() ?? "";
-                        if (long.TryParse(alterIdStr, out long alterId))
-                        {
-                            SyncLogger.Log($"[DEBUG] {tableName} max alter_id = {alterId}");
-                            return alterId;
-                        }
+                        SyncLogger.Log($"[DEBUG] {tableName} max alter_id = {maxId}");
+                        return maxId;
                     }
                 }
                 SyncLogger.Log($"[DEBUG] {tableName} max alter_id = 0 (no data or null found)");
@@ -693,6 +704,43 @@ namespace TallySyncApp.Services
         /// guid + type/number + alterId. Server backfills NULL-guid rows, then deletes every
         /// cloud voucher absent from the index by any identity. Returns purged count, -1 = safety skip.
         /// </summary>
+        /// <summary>
+        /// Voucher row count for a company. One request; PostgREST returns the total in Content-Range.
+        /// </summary>
+        public async Task<int> GetVoucherCountAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                using var request = new HttpRequestMessage(HttpMethod.Get,
+                    $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&select=id&limit=1");
+                request.Headers.Add("Prefer", "count=exact");
+                var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ GetVoucherCount: HTTP {(int)response.StatusCode}");
+                    return -1;
+                }
+                // PostgREST sends "Content-Range: 0-0/3998"; .NET sometimes keeps it on the
+                // response instead of the content, so read both.
+                string? rawRange = response.Content.Headers.TryGetValues("Content-Range", out var cv)
+                    ? cv.FirstOrDefault()
+                    : response.Headers.TryGetValues("Content-Range", out var rv) ? rv.FirstOrDefault() : null;
+                if (rawRange != null && rawRange.Contains('/') &&
+                    int.TryParse(rawRange.Split('/').Last(), out var total))
+                {
+                    return total;
+                }
+                SyncLogger.Log($"⚠️ GetVoucherCount: no usable Content-Range ({rawRange ?? "null"})");
+                return -1;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetVoucherCount error: {ex.Message}");
+                return -1;
+            }
+        }
+
         public async Task<int> PurgeDeletedVouchersAsync(string companyId, List<VoucherIndexEntry> tallyIndex)
         {
             try
@@ -917,7 +965,22 @@ namespace TallySyncApp.Services
                 }
 
                 var response = await _httpClient.PostAsync(url, content);
-                
+
+                // JWT expired mid-run: refresh once and resend the same payload.
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && TokenRefresher != null)
+                {
+                    var fresh = await TokenRefresher();
+                    if (!string.IsNullOrEmpty(fresh))
+                    {
+                        SetUserToken(fresh);
+                        AddAuthHeader();
+                        content = new StringContent(json, Encoding.UTF8, "application/json");
+                        content.Headers.Add("Prefer", "resolution=merge-duplicates,return=minimal");
+                        response = await _httpClient.PostAsync(url, content);
+                        SyncLogger.Log($"[AUTH] token refreshed on 401, retried table={table}");
+                    }
+                }
+
                 if (!response.IsSuccessStatusCode)
                 {
                     var responseContent = await response.Content.ReadAsStringAsync();

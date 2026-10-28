@@ -70,7 +70,8 @@ export default function SalesPage() {
             label: 'ALL',
             fullLabel: 'Full Financial Year Till Date',
             start: `${startYear}-04-01`,
-            end: format(yesterday, 'yyyy-MM-dd')
+            // FY end tak, warna aaj ka voucher (aur current FY ke baad wale) list se chhut jate the
+            end: `${startYear + 1}-03-31`
         };
 
         return [allOption, ...months.reverse()];
@@ -88,7 +89,7 @@ export default function SalesPage() {
         const startYear = parseInt(cleanFy2.split('-')[0]) < 100 ? 2000 + parseInt(cleanFy2.split('-')[0]) : parseInt(cleanFy2.split('-')[0]);
         return {
             start: `${startYear}-04-01`,
-            end: format(subDays(new Date(), 1), 'yyyy-MM-dd')
+            end: `${startYear + 1}-03-31`
         };
     }, [selectedMonth, monthsInFy, selectedFy]);
 

@@ -25,7 +25,7 @@ export default function LedgerDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { selectedCompany, user } = useAuth() as any;
-    const { selectedFY } = useFY();
+    const { selectedFY, fyDates } = useFY();
     const supabase: any = insforgeClient;
 
     // Core Data State
@@ -120,13 +120,15 @@ export default function LedgerDetailPage() {
             }
             setLedger(ledgerData);
 
-            // Fetch All Vouchers for Party
+            // Fetch All Vouchers for Party — sirf selected FY ka
             const { data: voucherRows, error: vError } = await supabase
                 .from('vouchers')
                 .select('*')
                 .eq('company_id', selectedCompany.id)
                 .ilike('party_name', targetPartyName)
                 .eq('is_deleted', false)
+                .gte('voucher_date', fyDates.from)
+                .lte('voucher_date', fyDates.to)
                 .order('voucher_date', { ascending: false });
 
             if (vError) throw vError;
@@ -135,6 +137,8 @@ export default function LedgerDetailPage() {
             setTransactions(allVouchers);
 
             // Compute Opening & Dynamic Balance
+            // shortcut: opening_balance Tally ka company-start opening hai, FY-wise opening nahi.
+            // Purane FY ke statement me opening exact nahi hoga jab tak FY-closing balance store na ho.
             const openBal = Number(ledgerData.opening_balance) || 0;
             setOpeningBalance(openBal);
 
@@ -154,7 +158,7 @@ export default function LedgerDetailPage() {
         } finally {
             setLoading(false);
         }
-    }, [id, selectedCompany?.id]);
+    }, [id, selectedCompany?.id, fyDates.from, fyDates.to]);
 
     useEffect(() => {
         loadLedgerDetails();

@@ -141,7 +141,11 @@ namespace TallySyncApp.Models
         public void GenerateDeterministicId(string companyId)
         {
             this.CompanyId = companyId;
-            this.VoucherId = GenerateId(companyId, VoucherType, VoucherNumber, VoucherDate);
+            // Tally GUID is stable across renames/re-dating, so both extract paths must use it.
+            // Fallback keeps old rows (uploaded before the guid column existed) addressable.
+            this.VoucherId = string.IsNullOrWhiteSpace(TallyGuid)
+                ? GenerateId(companyId, VoucherType, VoucherNumber, VoucherDate)
+                : TallyGuid!.Trim();
         }
     }
 

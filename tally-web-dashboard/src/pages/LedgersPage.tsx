@@ -34,7 +34,7 @@ export default function LedgersPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState(searchParams.get('group') || 'all');
     const [sortBy, setSortBy] = useState<SortOption>('name-asc');
-    const { selectedFY: selectedFy, setSelectedFY: setSelectedFy } = useFY();
+    const { selectedFY: selectedFy, setSelectedFY: setSelectedFy, fyDates } = useFY();
     const listRef = useRef<any>(null);
     const [partyTransactions, setPartyTransactions] = useState<Record<string, any[]>>({});
     const [showSearch, setShowSearch] = useState(false);
@@ -180,6 +180,8 @@ export default function LedgersPage() {
             .select('*')
             .eq('company_id', selectedCompany.id)
             .in('party_name', ledgerNames)
+            .gte('voucher_date', fyDates.from)
+            .lte('voucher_date', fyDates.to)
             .order('voucher_date', { ascending: false })
             .limit(200);
 

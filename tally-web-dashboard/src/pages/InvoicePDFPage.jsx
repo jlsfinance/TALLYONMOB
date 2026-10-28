@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { shareVoucherOnWhatsApp } from '../lib/whatsappInvoice';
+import { removeMirroredStockEntries } from '../lib/invoiceStockEntries';
 import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
 } from 'lucide-react';
@@ -368,6 +369,20 @@ export default function InvoicePDFPage() {
                     }
                 }
 
+                // Collapse matching copies only when one copy agrees with the voucher total.
+                const ledgerGstForDedup = (ledgerEntries || []).reduce((sum, entry) => {
+                    const name = String(entry.ledger_name || '').toUpperCase();
+                    return /CGST|SGST|UTGST|IGST|CENTRAL GST|STATE GST|INTEGRATED GST/.test(name)
+                        ? sum + Math.abs(Number(entry.amount) || 0) : sum;
+                }, 0);
+                const voucherGstForDedup = ['cgst_amount', 'sgst_amount', 'igst_amount']
+                    .reduce((sum, field) => sum + Math.abs(Number(voucherData[field]) || 0), 0);
+                inventoryItems = removeMirroredStockEntries(
+                    inventoryItems,
+                    Math.abs(Number(voucherData.grand_total) || Number(voucherData.total_amount) || 0),
+                    ledgerGstForDedup || voucherGstForDedup
+                );
+
                 // Detect if this voucher has CGST/SGST (intra-state) or IGST (inter-state)
                 // This is critical: Tally's RATEOFTAXCALCULATION stores the per-component rate
                 // (e.g., 2.5% for CGST when total GST is 5%). We need to double it for intra-state.
@@ -695,7 +710,10 @@ export default function InvoicePDFPage() {
                 // Round-off = signed residual between the rounded grand total and
                 // (taxable + tax). This makes the bottom totals reconcile exactly:
                 //   taxable + tax + round_off == grand_total.
-                const roundOff = round2(netAmount - (taxableAmount + totalGSTAmount));
+                const residual = round2(netAmount - (taxableAmount + totalGSTAmount));
+                // A large unexplained difference is not a rounding adjustment.
+                const explicitRoundOff = Number(voucherData.round_off) || roundOffLedgerAmount;
+                const roundOff = Math.abs(residual) <= 10 ? residual : round2(explicitRoundOff);
 
                 const sale = {
                     ...voucherData,
