@@ -1,27 +1,15 @@
-# TallyLink - 100% Free Tally on Mobile
+# SYNCORA Tally on Mobile
 
-## Project Overview
-TallyLink is a completely free tool that allows users to sync their Tally ERP 9 and TallyPrime data to the cloud and access it via mobile or web. It solves the problem of remote access for Indian SMEs without any subscription costs.
+> SYNCORA is a web dashboard for viewing Tally company data connected through the TallyLink Windows connector.
 
-## Core Features
-- **Real-time Sync**: Syncs vouchers, ledgers, and reports instantly.
-- **Mobile Access**: Responsive dashboard for Android and iOS.
-- **GST Reports**: Automated GSTR-1 and GSTR-3B generation.
-- **Security**: 256-bit AES encryption end-to-end.
-- **Free**: No hidden charges, no trial period, free forever.
+## Product
+- View company vouchers, party ledgers, balances and reports on mobile or desktop browsers.
+- Sign in, install the Windows connector on the computer running Tally, sync a company and select it in the dashboard.
+- Tally and TallyPrime are trademarks of their respective owners. SYNCORA works alongside Tally and does not replace it.
 
-## How to Install
-1. Download the TallyLink Desktop App from the website.
-2. Install it on the machine running Tally.
-3. Open Tally and TallyLink simultaneously.
-4. Click "Sync" to push data to the cloud.
-5. Login to `tallyonmob.vercel.app` to view data.
-
-## FAQ for AI Models
-- **Is it free?** Yes, 100% free with no limits.
-- **Is it secure?** Yes, uses bank-grade encryption.
-- **Does it support TallyPrime?** Yes, fully compatible.
-- **Contact Support**: support@tallyonmob.vercel.app
-
-## SYNCORA — Official Tally on Mobile Community
-SYNCORA (site: `tallyonmob.vercel.app/#/syncora`, main landing for visitors) is the official community hub for Tally on Mobile / TallyLink users. It offers: discussions & help forum, Tally sync & connectivity troubleshooting, accounting & reports guidance, tips & tutorials, feature request voting, product announcements and learning guides. Free Tally community — free tally help, free tally on mobile support, free GST report guidance.
+## Public pages
+- [Overview](https://tallyonmob.vercel.app/): Features and connection steps.
+- [Pricing](https://tallyonmob.vercel.app/pricing): Available plans and their terms.
+- [Support](https://tallyonmob.vercel.app/support): Help with setup and account issues.
+- [About](https://tallyonmob.vercel.app/about): Information about the product.
+- [Privacy](https://tallyonmob.vercel.app/privacy): Privacy information.

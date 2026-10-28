@@ -52,14 +52,15 @@ export default function SEO({
         updateMetaTag('twitter:image', ogImage);
 
         // Canonical
-        if (canonical) {
+        {
+            const canonicalHref = canonical || new URL(window.location.pathname, 'https://tallyonmob.vercel.app').href;
             let link: HTMLLinkElement | null = document.querySelector("link[rel='canonical']");
             if (!link) {
                 link = document.createElement('link');
                 link.setAttribute('rel', 'canonical');
                 document.head.appendChild(link);
             }
-            link.setAttribute('href', canonical);
+            link.setAttribute('href', canonicalHref);
         }
 
         // JSON-LD Schema
@@ -75,7 +76,8 @@ export default function SEO({
         }
 
         return () => {
-            // Optional cleanup if needed for dynamic pages
+            document.querySelector("link[rel='canonical']")?.remove();
+            if (schema) document.getElementById('json-ld-schema')?.remove();
         };
     }, [title, description, keywords, ogTitle, ogDescription, ogImage, ogUrl, twitterHandle, canonical, schema]);
 
