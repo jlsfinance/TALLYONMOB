@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, companyApi, clearLocalSession, supabase } from '../lib/insforge';
+import { Capacitor } from '@capacitor/core';
 
 const AuthContext = createContext({});
 
@@ -262,6 +263,20 @@ export const AuthProvider = ({ children }) => {
     };
 
     const signInWithGoogle = async () => {
+        if (Capacitor.getPlatform() === 'android') {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: 'com.syncoraa.app://auth/callback', skipBrowserRedirect: true },
+            });
+            if (error || !data?.url) return { data, error: error || new Error('Google login URL unavailable') };
+            try {
+                const { Browser } = await import('@capacitor/browser');
+                await Browser.open({ url: data.url });
+                return { data, error: null };
+            } catch (error) {
+                return { data: null, error };
+            }
+        }
         const redirectTo = `${window.location.origin}/auth/callback`;
 
         if (typeof auth.signInWithGoogle === 'function') {

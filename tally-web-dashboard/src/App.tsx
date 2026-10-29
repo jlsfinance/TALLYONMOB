@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LicenseGateProvider } from './contexts/LicenseGateContext';
@@ -290,29 +290,42 @@ function AppContent() {
         const setupAppListener = async () => {
             const { App: CapApp } = await import('@capacitor/app');
 
-            listener = await CapApp.addListener('appUrlOpen', async (data: any) => {
-                const url = new URL(data.url);
-                const fragment = url.hash.substring(1);
-
-                if (!fragment) return;
-
-                const params = new URLSearchParams(fragment);
-                const accessToken = params.get('access_token');
-                const refreshToken = params.get('refresh_token');
-
-                if (!accessToken || !refreshToken) return;
-
-                const { error } = await supabase.auth.setSession({
-                    access_token: accessToken,
-                    refresh_token: refreshToken
-                });
-
-                if (!error) {
-                    navigate('/dashboard');
-                } else {
-                    console.error('Error setting session from deep link:', error);
+            const handledCodes = new Set<string>();
+            const handleUrl = async (rawUrl: string) => {
+                let url: URL;
+                try { url = new URL(rawUrl); } catch { return; }
+                if (url.protocol !== 'com.syncoraa.app:') return;
+                if (url.hostname !== 'auth' || url.pathname !== '/callback') {
+                    const params = new URLSearchParams(url.hash.slice(1));
+                    const access_token = params.get('access_token');
+                    const refresh_token = params.get('refresh_token');
+                    if (access_token && refresh_token) {
+                        const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+                        if (!error) navigate('/dashboard');
+                    }
+                    return;
                 }
-            });
+                if (url.searchParams.has('error') || new URLSearchParams(url.hash.slice(1)).has('error')) {
+                    toast.error('Google login was cancelled or could not be completed. Please try again.');
+                    navigate('/login', { replace: true });
+                    return;
+                }
+                const code = url.searchParams.get('code');
+                if (!code || handledCodes.has(code)) return;
+                handledCodes.add(code);
+                try {
+                    const { error } = await supabase.auth.exchangeCodeForSession(code);
+                    if (error) throw error;
+                    navigate('/', { replace: true });
+                } catch (error) {
+                    console.error('Google sign-in could not be completed:', error);
+                    toast.error('Google login could not be completed. Please try again.');
+                    navigate('/login', { replace: true });
+                }
+            };
+            listener = await CapApp.addListener('appUrlOpen', ({ url }: { url: string }) => { void handleUrl(url); });
+            const launch = await CapApp.getLaunchUrl();
+            if (launch?.url) await handleUrl(launch.url);
         };
 
         setupAppListener();

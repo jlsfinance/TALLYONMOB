@@ -1,73 +1,19 @@
-﻿import { FileText, ShieldCheck, Trash2 } from 'lucide-react';
-import PublicPageLayout from '../components/common/PublicPageLayout';
-import { APP_INFO } from '../config/appInfo';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Mail, ShieldCheck } from 'lucide-react';
+import SEO from '../components/common/SEO';
+import './PrivacyPages.css';
 
-const deletionCards = [
-    {
-        title: 'How to request deletion',
-        points: [
-            'Send the request from the registered email or contact support using the verified phone number linked to the business account.',
-            'Mention the company name, registered contact details, and whether you want only account closure or full data deletion review.',
-            'We may ask for verification before acting so unauthorized users cannot delete another business workspace.',
-        ],
-    },
-    {
-        title: 'What gets removed',
-        points: [
-            'User access, app-level account records, and removable business data associated with the deletion request are scheduled for removal after verification.',
-            'Connected sessions and access tokens are revoked as part of the closure flow.',
-        ],
-    },
-    {
-        title: 'What may be retained',
-        points: [
-            'Certain minimal records may be retained when required for tax, fraud, chargeback, bookkeeping, or legal compliance obligations.',
-            'Where retention is required, the data is minimized and kept only for the mandatory purpose and period.',
-        ],
-    },
-];
+const email = import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com';
+const subject = encodeURIComponent('SYNCORA account deletion request');
+const body = encodeURIComponent('Hello,\n\nI would like to request deletion of my SYNCORA TallyOnMobile account and associated data.\n\nRegistered email: \nCompany name (optional): \n\nPlease let me know the verification steps.');
 
 export default function AccountDeletionPage() {
-    return (
-        <PublicPageLayout
-            badge="Account Deletion"
-            title="How verified account and business data deletion works"
-            description="This page explains how SYNCORA TallyOnMobile handles account closure, deletion requests, and the limited cases where records must still be retained for compliance or fraud review."
-            canonicalPath={APP_INFO.accountDeletionPath}
-            icon={Trash2}
-            actions={
-                <>
-                    <a href={`mailto:${APP_INFO.supportEmail}?subject=SYNCORA%20Account%20Deletion%20Request`} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
-                        Email deletion request
-                    </a>
-                    <a href={`tel:${APP_INFO.supportPhone.replace(/\s+/g, '')}`} className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
-                        Call for verification
-                    </a>
-                </>
-            }
-        >
-            <div className="grid gap-6 lg:grid-cols-3">
-                {deletionCards.map((card, index) => (
-                    <section key={card.title} className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
-                        <div className="inline-flex rounded-2xl bg-[var(--primary)]/10 p-3 text-[var(--primary)]">
-                            {index === 0 ? <Trash2 size={18} /> : index === 1 ? <ShieldCheck size={18} /> : <FileText size={18} />}
-                        </div>
-                        <h2 className="mt-4 text-2xl font-black tracking-tight text-[var(--on-surface)]">{card.title}</h2>
-                        <div className="mt-4 space-y-3 text-sm leading-7 text-[var(--on-surface-variant)]">
-                            {card.points.map((point) => (
-                                <p key={point}>{point}</p>
-                            ))}
-                        </div>
-                    </section>
-                ))}
-            </div>
-
-            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Deletion safety note</p>
-                <p className="mt-3 max-w-4xl text-sm leading-7 text-[var(--on-surface-variant)]">
-                    A deletion page should never enable one-tap removal without verification. We intentionally validate ownership first because deletion is irreversible for most business records and can otherwise be abused by an attacker or competitor.
-                </p>
-            </section>
-        </PublicPageLayout>
-    );
+    return <div className="privacy-page"><SEO title="Account Deletion | SYNCORA TallyOnMobile" description="Request deletion of your SYNCORA TallyOnMobile account and associated data." canonical="https://tallyonmob.vercel.app/account-deletion" ogUrl="https://tallyonmob.vercel.app/account-deletion"/>
+        <header className="privacy-header"><Link to="/" className="privacy-brand"><span><ShieldCheck size={19}/></span> SYNCORA <small>TALLY ON MOBILE</small></Link><Link to="/privacy" className="privacy-header-link"><ArrowLeft size={15}/> Privacy policy</Link></header>
+        <main className="privacy-main"><div className="privacy-hero"><div><span className="privacy-kicker">YOUR ACCOUNT, YOUR CHOICE</span><h1>Request account deletion</h1><p>You can ask us to delete your SYNCORA TallyOnMobile account and associated data by email. You do not need to sign in to make a request.</p><div className="privacy-meta">Last updated: 29 October 2026</div></div><div className="privacy-hero-icon"><Mail size={36}/></div></div>
+            <section className="privacy-delete"><div><span className="privacy-kicker">START A REQUEST</span><h2>Email our support team</h2><p>Send your request from your registered email address. Include your company name if useful, and tell us that you want to delete your account and associated data. Never include your password.</p></div><a className="privacy-button" href={`mailto:${email}?subject=${subject}&body=${body}`}><Mail size={17}/> Email deletion request <ArrowRight size={16}/></a></section>
+            <section className="privacy-section"><div className="privacy-section-title"><span>1</span><div><small>HOW IT WORKS</small><h2>Verification and deletion</h2></div></div><p>Our support team will contact you to verify account ownership and clarify any shared company access. After verification, the request covers your account and associated user data, including profile and contact details and removable synced or entered business data. We will explain the expected processing time and any exceptions when responding.</p><p>Deleting your SYNCORA account does not delete the original books in your local Tally installation. Uninstalling the app alone does not delete your cloud account.</p></section>
+            <section className="privacy-section"><div className="privacy-section-title"><span>2</span><div><small>DATA RETENTION</small><h2>Information that may be retained</h2></div></div><p>Some records may need to be retained for legal, accounting, security, fraud-prevention or dispute-resolution reasons. Backup removal may follow a separate schedule. We will explain what applies and the relevant retention period in our response; please contact us if you need this information before requesting deletion.</p></section>
+            <section className="privacy-section"><h2>Need help?</h2><p>If you cannot access your registered email, contact support and we will explain the verification options.</p><a className="privacy-email" href={`mailto:${email}`}>{email} <ArrowRight size={15}/></a></section>
+        </main><footer className="privacy-footer">© SYNCORA TallyOnMobile <span><Link to="/privacy">Privacy</Link><Link to="/account-deletion">Account deletion</Link><Link to="/support">Support</Link></span></footer></div>;
 }

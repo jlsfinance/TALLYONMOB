@@ -58,12 +58,12 @@ export default function LoginPage() {
                 }
                 const { error } = result;
                 if (error) {
-                    if (error.message?.toLowerCase().includes('not verified') || error.message?.toLowerCase().includes('verify')) {
+                    if (error.message?.toLowerCase().includes('not verified') || error.message?.toLowerCase().includes('verify') || error.message?.toLowerCase().includes('email not confirmed')) {
                         const { error: sendError } = await sendVerificationEmail(email);
                         if (sendError) throw sendError;
                         setOtpSent(true);
                         setIsLogin(false);
-                        toast.error('Email not verified. We sent a new OTP to your email.');
+                        toast('Email not verified. Check your email for a confirmation link or code.');
                         return;
                     }
                     throw error;
@@ -81,13 +81,22 @@ export default function LoginPage() {
                     throw error;
                 }
 
+                // Supabase may return an obfuscated user for an existing confirmed account.
+                if (!data?.session && Array.isArray(data?.user?.identities) && data.user.identities.length === 0) {
+                    setOtpSent(false);
+                    setOtpCode('');
+                    setIsLogin(true);
+                    toast('Account already exists. Login to continue.');
+                    return;
+                }
+
                 // If autoconfirm is enabled on Supabase, the session is returned directly
                 if (data?.session) {
                     toast.success('Account created and signed in successfully!');
                     navigate('/dashboard');
                 } else {
                     setOtpSent(true);
-                    toast.success('Account created! Please check your email for the OTP.');
+                    toast('If you already have an account, sign in. Otherwise check your email for a verification code.');
                 }
             }
         } catch (error: any) {
@@ -110,6 +119,27 @@ export default function LoginPage() {
         }
     };
 
+    const handleResendConfirmation = async () => {
+        const targetEmail = email.trim();
+        if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+            toast.error('Enter your email address first.');
+            return;
+        }
+        setLoading(true);
+        try {
+            const { error } = await sendVerificationEmail(targetEmail);
+            if (error) throw error;
+            setEmail(targetEmail);
+            setOtpSent(true);
+            setIsLogin(false);
+            toast.success('If the account needs verification, check your inbox and spam folder.');
+        } catch (error: any) {
+            toast.error(error.message || 'Could not resend confirmation email.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <main className="entry-screen login-screen">
             <SEO title={isLogin ? 'Sign In | SYNCORA — Free Tally Community & Cloud' : 'Create Account | SYNCORA — Free Tally Community & Cloud'} description="Sign in to SYNCORA TallyOnMobile. Access your Tally data on mobile and web." canonical="https://tallyonmob.vercel.app/login" />
@@ -123,11 +153,12 @@ export default function LoginPage() {
                     <form onSubmit={handleSubmit} className="login-form">
                         {!isLogin && !otpSent && <label>Full Name<span className="login-field"><User size={17}/><input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Your full name" autoComplete="name" required /></span></label>}
                         {!otpSent && !twoFactorRequired && <><label>Email<span className="login-field"><Mail size={17}/><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" required /></span></label><label>Password<span className="login-field"><Lock size={17}/><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete={isLogin ? 'current-password' : 'new-password'} required /></span></label></>}
-                        {otpSent && <label>Verification Code<span className="login-hint">We sent a code to {email}.</span><span className="login-field"><Lock size={17}/><input type="text" value={otpCode} onChange={e => setOtpCode(e.target.value)} placeholder="Enter the 6-digit OTP" autoComplete="one-time-code" required /></span></label>}
+                        {otpSent && <label>Verification code<span className="login-hint">Check {email} for a confirmation link or code. If this email is already registered, sign in instead.</span><span className="login-field"><Lock size={17}/><input type="text" value={otpCode} onChange={e => setOtpCode(e.target.value)} placeholder="Enter the code if provided" autoComplete="one-time-code" required /></span></label>}
                         {twoFactorRequired && <label>2FA Security Code<span className="login-hint">Enter the 6-digit code from your authenticator app.</span><span className="login-field"><Shield size={17}/><input type="text" maxLength={6} value={twoFactorCode} onChange={e => setTwoFactorCode(e.target.value)} placeholder="000000" autoComplete="one-time-code" required /></span></label>}
                         <button type="submit" disabled={loading} className="login-submit">{loading ? 'Please wait…' : isLogin ? (twoFactorRequired ? 'Verify 2FA' : 'Sign In') : (otpSent ? 'Verify Account' : 'Create Account')}{!loading && <ArrowRight size={17}/>}</button>
                     </form>
-                    <div className="login-switch"><button type="button" onClick={() => setIsLogin(!isLogin)}>{isLogin ? <>Don't have an account? <strong>Sign up</strong></> : <>Already have an account? <strong>Sign in</strong></>}</button></div>
+                    {!twoFactorRequired && <div className="login-switch"><button type="button" disabled={loading} onClick={handleResendConfirmation}>Resend confirmation email</button></div>}
+                    <div className="login-switch"><button type="button" onClick={() => { setOtpSent(false); setOtpCode(''); setTwoFactorRequired(false); setIsLogin(!isLogin); }}>{isLogin ? <>Don't have an account? <strong>Sign up</strong></> : <>Already have an account? <strong>Sign in</strong></>}</button></div>
                     <button type="button" className="login-back" onClick={() => navigate('/')}>← Back to home</button>
                 </section>
             </div>

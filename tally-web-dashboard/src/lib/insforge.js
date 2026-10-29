@@ -1,4 +1,5 @@
 ﻿import { createClient } from "@supabase/supabase-js";
+import { Capacitor } from "@capacitor/core";
 
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
@@ -15,6 +16,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    flowType: Capacitor.getPlatform() === 'android' ? 'pkce' : 'implicit',
   },
 });
 

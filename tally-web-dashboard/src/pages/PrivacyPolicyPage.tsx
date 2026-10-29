@@ -1,100 +1,23 @@
-﻿import { Database, Eye, Lock, ShieldCheck, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import PublicPageLayout from '../components/common/PublicPageLayout';
-import { APP_INFO } from '../config/appInfo';
+import { ArrowRight, Database, FileText, LockKeyhole, Mail, ShieldCheck, Trash2 } from 'lucide-react';
+import SEO from '../components/common/SEO';
+import './PrivacyPages.css';
 
-const privacyCards = [
-    {
-        title: 'What we collect',
-        icon: Database,
-        points: [
-            'Account details such as business name, contact email, and phone number used for login, support, and billing communication.',
-            'Operational business data such as invoices, ledgers, stock details, tax fields, and synced company metadata needed to run billing workflows.',
-            'Device and session signals required for security review, crash diagnosis, and abuse prevention.',
-        ],
-    },
-    {
-        title: 'How the data is used',
-        icon: Eye,
-        points: [
-            'To authenticate users, open the correct company workspace, and generate billing outputs like GST invoices, ledgers, and reports.',
-            'To protect accounts against misuse, investigate suspicious behavior, and improve stability of sync and billing features.',
-            'To provide customer support, handle refund and deletion requests, and meet legal bookkeeping obligations.',
-        ],
-    },
-    {
-        title: 'Security and retention',
-        icon: Lock,
-        points: [
-            'Transport is encrypted in transit and access is restricted to authorized application flows and support operations.',
-            'We keep data only as long as needed for service delivery, recovery, compliance, and dispute resolution.',
-            'Residual records may be retained where required by tax, accounting, fraud-review, or legal obligations.',
-        ],
-    },
-    {
-        title: 'Deletion controls',
-        icon: Trash2,
-        points: [
-            'Users can request account deletion and data removal through the account deletion page or support email.',
-            'Deletion requests are verified before action so one user cannot remove another company workspace without authorization.',
-            'Where complete deletion is not legally possible, data is minimized and retained only for the mandatory purpose.',
-        ],
-    },
-];
+const email = import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com';
 
 export default function PrivacyPolicyPage() {
-    return (
-        <PublicPageLayout
-            badge="Privacy Policy"
-            title="How SYNCORA TallyOnMobile handles business and user data"
-            description="This page explains what data SYNCORA TallyOnMobile processes, why it is needed, how it is protected, and how users can request deletion or support."
-            canonicalPath={APP_INFO.privacyPath}
-            icon={ShieldCheck}
-            actions={
-                <>
-                    <Link to={APP_INFO.accountDeletionPath} className="inline-flex items-center justify-center rounded-full bg-[var(--primary)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-primary)] transition-transform hover:scale-[1.01]">
-                        Account deletion steps
-                    </Link>
-                    <Link to={APP_INFO.trustCenterPath} className="inline-flex items-center justify-center rounded-full border border-[var(--border)] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
-                        Open trust center
-                    </Link>
-                </>
-            }
-        >
-            <div className="grid gap-6 lg:grid-cols-2">
-                {privacyCards.map((card) => {
-                    const Icon = card.icon;
-                    return (
-                        <section key={card.title} className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
-                            <div className="inline-flex rounded-2xl bg-[var(--primary)]/10 p-3 text-[var(--primary)]">
-                                <Icon size={18} />
-                            </div>
-                            <h2 className="mt-4 text-2xl font-black tracking-tight text-[var(--on-surface)]">{card.title}</h2>
-                            <div className="mt-4 space-y-3 text-sm leading-7 text-[var(--on-surface-variant)]">
-                                {card.points.map((point) => (
-                                    <p key={point}>{point}</p>
-                                ))}
-                            </div>
-                        </section>
-                    );
-                })}
-            </div>
-
-            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--surface)]/92 p-6 shadow-[var(--shadow-sm)]">
-                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Privacy contact</p>
-                <h2 className="mt-2 text-2xl font-black tracking-tight text-[var(--on-surface)]">Need a privacy or deletion response?</h2>
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--on-surface-variant)]">
-                    Send your request from the registered email or include enough business details for verification. This helps us avoid unauthorized deletion or disclosure.
-                </p>
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                    <a href={`mailto:${APP_INFO.supportEmail}`} className="rounded-[24px] border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
-                        Email: {APP_INFO.supportEmail}
-                    </a>
-                    <a href={`tel:${APP_INFO.supportPhone.replace(/\s+/g, '')}`} className="rounded-[24px] border border-[var(--border)] px-5 py-4 text-sm font-semibold text-[var(--on-surface)] transition-colors hover:bg-[var(--surface-hover)]">
-                        Phone: {APP_INFO.supportPhone}
-                    </a>
-                </div>
-            </section>
-        </PublicPageLayout>
-    );
+    return <div className="privacy-page">
+        <SEO title="Privacy Policy | SYNCORA TallyOnMobile" description="Learn how SYNCORA handles account, Tally and business data, and how to request account deletion." canonical="https://tallyonmob.vercel.app/privacy" ogUrl="https://tallyonmob.vercel.app/privacy" />
+        <header className="privacy-header"><Link to="/" className="privacy-brand"><span><ShieldCheck size={19}/></span> SYNCORA <small>TALLY ON MOBILE</small></Link><Link to="/account-deletion" className="privacy-header-link">Delete account <ArrowRight size={15}/></Link></header>
+        <main className="privacy-main">
+            <div className="privacy-hero"><div><span className="privacy-kicker">YOUR DATA & YOUR CHOICES</span><h1>Privacy at SYNCORA</h1><p>How SYNCORA TallyOnMobile collects and uses information when you use our mobile app, web dashboard and Tally PC connector.</p><div className="privacy-meta">Last updated: 29 October 2026</div></div><div className="privacy-hero-icon"><ShieldCheck size={38}/></div></div>
+            <nav className="privacy-nav" aria-label="On this page"><span>On this page</span><a href="#information">Information we use</a><a href="#sharing">Sharing & security</a><a href="#deletion">Account deletion</a><a href="#contact">Contact</a></nav>
+            <section className="privacy-section" id="information"><div className="privacy-section-title"><span><Database size={20}/></span><div><small>01 / INFORMATION</small><h2>Information we process</h2></div></div><p>We process information you provide or choose to sync to operate your account and show your business data.</p><ul><li><strong>Account and contact details:</strong> information used to register and sign in, such as your name, email address and phone number when provided. If you choose Google sign-in, authentication information comes from Google.</li><li><strong>Business and accounting data:</strong> company details, ledger and party information, vouchers, invoice items, GST details, inventory and balances synced from Tally or entered in the app. This can include information about your customers and suppliers.</li><li><strong>App and device information:</strong> session, diagnostic and sync information needed to operate and troubleshoot the service. The PC connector communicates with your Tally installation when you set up sync.</li><li><strong>Optional features:</strong> information you choose to include in support requests, reminders, shares or AI features. If you use the document scanner, the app may request camera access so you can capture a document.</li></ul></section>
+            <section className="privacy-section"><div className="privacy-section-title"><span><FileText size={20}/></span><div><small>02 / PURPOSE</small><h2>How we use it</h2></div></div><p>We use this information to authenticate you, sync and display the selected company, prepare invoices and reports, provide features you request, respond to support requests, and investigate errors or misuse. Where you use optional integrations, the information needed to provide that feature is processed for that purpose.</p></section>
+            <section className="privacy-section" id="sharing"><div className="privacy-section-title"><span><LockKeyhole size={20}/></span><div><small>03 / SHARING & SECURITY</small><h2>Who receives your information</h2></div></div><p>We use service providers, including Supabase for authentication and cloud data and hosting providers such as Vercel, to operate the service. Google receives information needed for Google sign-in when you choose it. When you choose to share an invoice or ledger through WhatsApp, email or another app, the content goes to the service and recipients you select. Optional AI and notification features may use their respective providers when enabled.</p><p>Access to your workspace is intended to be restricted to authorized accounts, and network connections use HTTPS. No method of storage or transmission is completely risk-free. Protect your login credentials and review the information before sharing it with others.</p></section>
+            <section className="privacy-section"><div className="privacy-section-title"><span><Database size={20}/></span><div><small>04 / RETENTION</small><h2>How long we keep data</h2></div></div><p>Account and synced business information is kept while needed to operate the service or until a verified deletion request is handled. Some information may need to be retained for legal obligations, security, fraud prevention or dispute resolution. Retention and backup deletion periods depend on the relevant systems and obligations; contact us for the applicable details for your request.</p></section>
+            <section className="privacy-delete" id="deletion"><div><span className="privacy-kicker">YOUR ACCOUNT</span><h2>Request account and data deletion</h2><p>You can request deletion of your SYNCORA account and associated data without signing in. We verify your identity before processing the request. See the deletion page for the steps, affected data and possible retention.</p></div><Link to="/account-deletion" className="privacy-button"><Trash2 size={17}/> Account deletion <ArrowRight size={16}/></Link></section>
+            <section className="privacy-section" id="contact"><div className="privacy-section-title"><span><Mail size={20}/></span><div><small>05 / GET IN TOUCH</small><h2>Questions or privacy requests?</h2></div></div><p>For access, correction, privacy or deletion questions, email us from your registered email address where possible. Please do not send passwords or sensitive documents in your initial message.</p><a className="privacy-email" href={`mailto:${email}`}>{email} <ArrowRight size={15}/></a></section>
+        </main><footer className="privacy-footer">© SYNCORA TallyOnMobile <span><Link to="/privacy">Privacy</Link><Link to="/account-deletion">Account deletion</Link><Link to="/support">Support</Link></span></footer>
+    </div>;
 }

@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
     // If you still need to proxy specific backend endpoints, add them here.
 
     return {
-        base: './',
+  base: '/',
         plugins: [
             tallyApiDevPlugin(),
             react(),

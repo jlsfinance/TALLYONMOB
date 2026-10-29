@@ -15,6 +15,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE = process.env.PLAY_PACKAGE || 'com.syncoraa.app';
 const KEY_PATH = process.env.PLAY_KEY || path.resolve(here, '../../../.secrets/play-service-account.json');
 const API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
+const UPLOAD = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, arr) => {
@@ -80,7 +81,7 @@ const edit = await call(tok, 'POST', `/applications/${PACKAGE}/edits`, {});
 console.log(`edit ${edit.id}`);
 
 const uploadRes = await fetch(
-  `${API}/applications/${PACKAGE}/edits/${edit.id}/bundles?uploadType=media`,
+  `${UPLOAD}/applications/${PACKAGE}/edits/${edit.id}/bundles?uploadType=media`,
   {
     method: 'POST',
     headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/octet-stream' },

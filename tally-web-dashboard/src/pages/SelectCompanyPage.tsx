@@ -4,10 +4,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, ArrowRight, RefreshCw, ArrowLeft, Search, MoreVertical, X } from 'lucide-react';
+import { Plus, Trash2, ArrowRight, RefreshCw, ArrowLeft, Search, MoreVertical, X, MonitorDown, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 import { supabase } from '@/lib/insforge';
+import { APP_INFO } from '@/config/appInfo';
 
 // Row-list design (like the approved mock) with full dark-mode support.
 // Selection, delete and refresh logic unchanged.
@@ -20,9 +21,20 @@ export default function SelectCompanyPage() {
     const [searchQ, setSearchQ] = useState('');
     const [menuFor, setMenuFor] = useState<string | null>(null);
     const [syncTimes, setSyncTimes] = useState<Record<string, string | null | undefined>>({});
+    const [refreshing, setRefreshing] = useState(true);
+    const [loadError, setLoadError] = useState(false);
+
+    const checkCompanies = async () => {
+        setRefreshing(true);
+        try {
+            const result = await (refreshCompanies as any)();
+            setLoadError(Boolean(result?.error));
+        } catch { setLoadError(true); }
+        finally { setRefreshing(false); }
+    };
 
     useEffect(() => {
-        refreshCompanies();
+        void checkCompanies();
     }, []);
 
     useEffect(() => {
@@ -135,7 +147,18 @@ export default function SelectCompanyPage() {
                     </button>
                 </div>
 
-                {visible.length === 0 ? (
+                {refreshing && companies.length === 0 ? (
+                    <div role="status" aria-label="Loading companies" className="py-10 space-y-3 animate-pulse"><div className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800"/><div className="h-16 rounded-xl bg-slate-200 dark:bg-slate-800"/></div>
+                ) : loadError && companies.length === 0 ? (
+                    <div className="py-12 text-center"><p className={subC}>Companies could not be loaded. Check your connection and try again.</p><button onClick={() => void checkCompanies()} className="mt-4 text-sm font-bold text-emerald-600">Try again</button></div>
+                ) : visible.length === 0 && !q && appMode === 'tally' ? (
+                    <section className={`my-3 overflow-hidden rounded-2xl border ${isDark ? 'border-slate-700 bg-[#101f27]' : 'border-emerald-100 bg-white'} shadow-sm`}>
+                        <div className="p-4 sm:p-6"><div className="flex items-center gap-3"><div className="inline-flex shrink-0 rounded-xl bg-emerald-100 p-2.5 text-emerald-700"><Building2 size={20}/></div><div><h2 className={`text-base font-bold leading-tight ${titleC}`}>Connect your Tally company</h2><p className={`mt-1 text-xs leading-4 ${subC}`}>Sync from your Tally PC to see your company here.</p></div></div>
+                            <div className={`mt-3 grid gap-2 rounded-xl p-3 text-xs leading-4 ${isDark ? 'bg-white/5 text-slate-300' : 'bg-[#f3f9f6] text-slate-600'}`}><div className="flex gap-2"><span className="font-bold text-emerald-600">01</span><span>Download and install the PC app on your Tally computer.</span></div><div className="flex gap-2"><span className="font-bold text-emerald-600">02</span><span>Sign in with this account and connect Tally.</span></div><div className="flex gap-2"><span className="font-bold text-emerald-600">03</span><span>Start sync, then refresh companies here.</span></div></div>
+                            <div className="mt-3 grid grid-cols-2 gap-2"><a href={APP_INFO.pcDownloadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-2 py-2 text-xs font-bold text-white hover:bg-emerald-800"><MonitorDown size={16}/> Download PC app</a><button type="button" onClick={() => void checkCompanies()} disabled={refreshing} className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold ${isDark ? 'border-slate-600 text-slate-200' : 'border-slate-200 text-slate-700'}`}><RefreshCw size={15}/> Refresh</button></div>
+                        </div>
+                    </section>
+                ) : visible.length === 0 ? (
                     <div className="py-16 text-center">
                         <p className={`text-sm ${subC}`}>
                             {q ? 'No companies match your search.' : 'No companies yet.'}
@@ -227,10 +250,10 @@ export default function SelectCompanyPage() {
                 )}
 
                 {/* meta footer */}
-                <div className={`mt-6 flex items-center justify-center gap-2 text-[11px] ${subC}`}>
+                {companies.length > 0 && <div className={`mt-6 flex items-center justify-center gap-2 text-[11px] ${subC}`}>
                     <RefreshCw size={12} className="opacity-60" />
                     Companies sync from the desktop Tally Sync app
-                </div>
+                </div>}
             </div>
         </div>
     );
