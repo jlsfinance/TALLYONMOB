@@ -1,15 +1,15 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-    appId: 'com.jls.billbook',
-    appName: 'JLS Bill',
+    appId: 'com.syncoraa.app',
+    appName: 'SYNCORA',
     webDir: 'dist',
     server: {
         androidScheme: 'https'
     },
     plugins: {
         SplashScreen: {
-            launchShowDuration: 2000,
+            launchShowDuration: 0,
             launchAutoHide: true,
             backgroundColor: '#030712',
             androidSplashResourceName: 'splash',

@@ -483,10 +483,7 @@ export default function LedgersPage() {
 
                 {/* Parties Ledger Feed / Cards */}
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-24 space-y-3">
-                        <div className="w-9 h-9 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin" />
-                        <p className="text-xs font-semibold text-slate-400">Loading party ledger balances...</p>
-                    </div>
+                    <div role="status" aria-label="Loading party ledger balances" className="space-y-2 py-3">{[0, 1, 2, 3, 4].map(i => <div key={i} className="animate-pulse rounded-xl bg-[var(--surface)] border border-[var(--outline-variant)] p-4"><div className="flex justify-between"><div className="h-4 w-32 rounded bg-[var(--surface-variant)]"/><div className="h-4 w-16 rounded bg-[var(--surface-variant)]"/></div><div className="mt-3 h-3 w-24 rounded bg-[var(--surface-variant)]"/></div>)}</div>
                 ) : filteredLedgers.length === 0 ? (
                     <EmptyState
                         icon={<Users size={36} className="text-slate-500" />}

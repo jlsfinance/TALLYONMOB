@@ -157,6 +157,8 @@ html:not(.dark) .parties-screen [class~="text-rose-400"] { color: #bc3550; }
   .dashboard-company-details h2 { margin: 0; overflow: hidden; color: #f4fafb; font-size: 14px; line-height: 1.3; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .dashboard-company-details p { margin: 2px 0 0; overflow: hidden; color: #9db3bb; font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
   .dashboard-mobile-header .dashboard-header-meta { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 5px; margin: 0; }
+  .dashboard-header-meta-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; max-width: 100%; }
+  .license-badge-compact { flex: none; font-size: 9px; line-height: 1; font-weight: 800; letter-spacing: .025em; white-space: nowrap; }
   .dashboard-gst-badge { color: #add5c8; font-size: 9px; line-height: 1; font-weight: 700; letter-spacing: .025em; }
   .dashboard-fy-selector { display: flex; align-items: center; gap: 2px; height: 28px; padding: 0 3px; border: 1px solid #37515a; border-radius: 8px; background: #102029; color: #e7f2f4; }
   .dashboard-fy-selector span { font-size: 10px; font-weight: 700; white-space: nowrap; }

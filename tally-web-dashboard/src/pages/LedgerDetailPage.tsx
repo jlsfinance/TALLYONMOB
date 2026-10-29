@@ -43,6 +43,10 @@ export default function LedgerDetailPage() {
     const [showDatePickerModal, setShowDatePickerModal] = useState(false);
     const [tempFromDate, setTempFromDate] = useState('');
     const [tempToDate, setTempToDate] = useState('');
+    const [showLedgerExport, setShowLedgerExport] = useState(false);
+    const [exportFrom, setExportFrom] = useState('');
+    const [exportTo, setExportTo] = useState('');
+    const [exporting, setExporting] = useState(false);
 
     // Items and Notes Data
     const [itemsSold, setItemsSold] = useState<PartyTransactedItem[]>([]);
@@ -420,42 +424,82 @@ export default function LedgerDetailPage() {
         window.open(`https://wa.me/${phone ? `91${phone}` : ''}?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
-    const handleShareLedger = async () => {
+    const handleShareLedger = () => {
+        setExportFrom(customDateRange.from || fyDates.from);
+        setExportTo(customDateRange.to || fyDates.to);
+        setShowLedgerExport(true);
+    };
+
+    const downloadLedgerStatement = async () => {
+        if (!exportFrom || !exportTo || exportFrom > exportTo) { toast.error('Choose a valid date range'); return; }
+        if (!selectedCompany?.id || !ledger?.name || exporting) return;
+        setExporting(true);
         try {
-            const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+            const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
             const doc = new jsPDF();
             const amount = (value: number) => Math.abs(Number(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const partyName = ledger?.name || 'Party';
-            doc.setFontSize(15);
-            doc.text('Party Ledger Statement', 14, 16);
-            doc.setFontSize(9);
-            doc.text(doc.splitTextToSize((selectedCompany?.name || 'Company') + '  |  ' + partyName, 180), 14, 23);
-            doc.text('Period: ' + fyDates.from + ' to ' + fyDates.to, 14, 33);
-            doc.text('Opening: INR ' + amount(openingBalance) + (openingBalance >= 0 ? ' Dr' : ' Cr') + '   |   Closing: INR ' + amount(closingBalance) + (closingBalance >= 0 ? ' Dr' : ' Cr'), 14, 39);
-            autoTable(doc, {
-                startY: 44,
-                head: [['Date', 'Voucher No', 'Type', 'Amount (INR)']],
-                body: transactions.map((v: any) => [v.voucher_date || '', String(v.voucher_number || ''), v.voucher_type || '', amount(v.grand_total || v.total_amount || 0)]),
-                styles: { fontSize: 8, cellPadding: 2 },
-                headStyles: { fillColor: [22, 88, 106] },
-                columnStyles: { 3: { halign: 'right' } },
-            });
-            const filename = 'Ledger_' + partyName.replace(/[^a-zA-Z0-9_-]+/g, '_') + '_' + selectedFY.replace(/[^a-zA-Z0-9_-]+/g, '_') + '.pdf';
-            const file = new File([doc.output('blob')], filename, { type: 'application/pdf' });
-            if (navigator.share && navigator.canShare?.({ files: [file] })) {
-                try {
-                    await navigator.share({ title: 'Party Ledger Statement', files: [file] });
-                    return;
-                } catch (error: any) {
-                    if (error?.name === 'AbortError') return;
+            const vouchers: any[] = [];
+            const pageSize = 1000;
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error } = await supabase.from('vouchers').select('id,voucher_date,voucher_number,voucher_type,total_amount,grand_total')
+                    .eq('company_id', selectedCompany.id).ilike('party_name', partyName).eq('is_deleted', false)
+                    .gte('voucher_date', exportFrom).lte('voucher_date', exportTo)
+                    .order('voucher_date', { ascending: true }).order('id', { ascending: true }).range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                vouchers.push(...(data || []));
+                if ((data || []).length < pageSize) break;
+            }
+            const entryMap = new Map<string, any[]>();
+            for (let start = 0; start < vouchers.length; start += 100) {
+                const voucherIds = vouchers.slice(start, start + 100).map(v => v.id);
+                for (let offset = 0; ; offset += pageSize) {
+                    const { data, error } = await supabase.from('voucher_ledger_entries').select('id,voucher_id,ledger_name,amount,is_debit')
+                        .eq('company_id', selectedCompany.id).eq('ledger_name', partyName).in('voucher_id', voucherIds)
+                        .order('id', { ascending: true }).range(offset, offset + pageSize - 1);
+                    if (error) throw error;
+                    for (const row of data || []) entryMap.set(row.voucher_id, [...(entryMap.get(row.voucher_id) || []), row]);
+                    if ((data || []).length < pageSize) break;
                 }
             }
-            doc.save(filename);
+            const debit: any[] = [], credit: any[] = [], unknown: any[] = [];
+            for (const voucher of vouchers) {
+                const entries = entryMap.get(voucher.id) || [];
+                if (!entries.length) { unknown.push(voucher); continue; }
+                for (const entry of entries) {
+                    const line = [String(voucher.voucher_date || '').slice(0, 10), `${voucher.voucher_type || 'Voucher'} #${voucher.voucher_number || '—'}`, amount(entry.amount)];
+                    if (entry.is_debit === true) debit.push(line);
+                    else if (entry.is_debit === false) credit.push(line);
+                    else unknown.push(voucher);
+                }
+            }
+            doc.setFontSize(15);
+            doc.text('Ledger Statement', 14, 16);
+            doc.setFontSize(9);
+            doc.text(doc.splitTextToSize((selectedCompany?.name || 'Company') + '  |  ' + partyName, 180), 14, 23);
+            doc.text('Period: ' + exportFrom + ' to ' + exportTo, 14, 31);
+            doc.text('Opening and closing balances not calculated for this period.', 14, 37);
+            autoTable(doc, {
+                startY: 42,
+                head: [[{ content: 'Debit (Dr)', colSpan: 3 }, { content: 'Credit (Cr)', colSpan: 3 }], ['Date', 'Particulars', 'Amount', 'Date', 'Particulars', 'Amount']],
+                body: Array.from({ length: Math.max(debit.length, credit.length) }, (_, i) => [...(debit[i] || ['', '', '']), ...(credit[i] || ['', '', ''])]),
+                styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
+                headStyles: { fillColor: [22, 88, 106] },
+                columnStyles: { 2: { halign: 'right' }, 5: { halign: 'right' } },
+            });
+            if (unknown.length) {
+                autoTable(doc, { startY: (doc as any).lastAutoTable.finalY + 8, head: [['Entries without a verified debit/credit ledger line', 'Voucher amount (INR)']],
+                    body: unknown.map(v => [`${String(v.voucher_date || '').slice(0, 10)}  ${v.voucher_type || 'Voucher'} #${v.voucher_number || '—'}`, amount(v.grand_total ?? v.total_amount)]), styles: { fontSize: 7 }, headStyles: { fillColor: [151, 103, 32] } });
+            }
+            const filename = 'Ledger_' + partyName.replace(/[^a-zA-Z0-9_-]+/g, '_') + '_' + exportFrom + '_' + exportTo + '.pdf';
+            const { savePdf } = await import('../lib/savePdf');
+            await savePdf(doc, filename);
             toast.success('Ledger PDF downloaded');
+            setShowLedgerExport(false);
         } catch (error) {
             console.error('Ledger PDF failed', error);
             toast.error('Could not create ledger PDF');
-        }
+        } finally { setExporting(false); }
     };
 
     const handleSetReminder = () => setShowReminderDialog(true);
@@ -1544,6 +1588,15 @@ export default function LedgerDetailPage() {
                     </div>
                 </div>
             )}
+            {showLedgerExport && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="ledger-export-title">
+                <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 text-[var(--on-surface)] shadow-xl">
+                    <div className="flex items-start justify-between gap-3"><div><h2 id="ledger-export-title" className="text-lg font-bold">Download ledger</h2><p className="mt-1 text-xs text-[var(--text-muted)]">Choose the period for the T-format statement.</p></div><button type="button" aria-label="Close" onClick={() => setShowLedgerExport(false)}><X size={20} /></button></div>
+                    <div className="mt-4 flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs" onClick={() => { setExportFrom(fyDates.from); setExportTo(fyDates.to); }}>Financial year</button><button type="button" className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs" onClick={() => { setExportFrom(format(subDays(new Date(), 29), 'yyyy-MM-dd')); setExportTo(format(new Date(), 'yyyy-MM-dd')); }}>Last 30 days</button></div>
+                    <div className="mt-4 grid grid-cols-2 gap-3"><label className="text-xs font-semibold">From<input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-container)] px-2 py-2 text-sm" /></label><label className="text-xs font-semibold">To<input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-container)] px-2 py-2 text-sm" /></label></div>
+                    <p className="mt-3 text-xs leading-relaxed text-[var(--text-muted)]">Debit and credit use synced ledger entries. Opening and closing balances are not calculated in this export.</p>
+                    <div className="mt-4 flex gap-2"><button type="button" className="flex-1 rounded-lg border border-[var(--border)] px-3 py-2 text-sm" onClick={() => setShowLedgerExport(false)}>Cancel</button><button type="button" disabled={exporting} className="flex-1 rounded-lg bg-[var(--primary)] px-3 py-2 text-sm font-bold text-white disabled:opacity-50" onClick={() => void downloadLedgerStatement()}>{exporting ? 'Preparing…' : 'Download PDF'}</button></div>
+                </div>
+            </div>}
         </div>
     );
 }

@@ -601,11 +601,21 @@ export default memo(function LiveKeepingsDashboard() {
                                 const isReceipt = v.voucher_type === 'Receipt';
                                 const isPurchase = v.voucher_type === 'Purchase' || v.voucher_type === 'Purchase Invoice';
                                 const isPayment = v.voucher_type === 'Payment';
+                                const openVoucher = () => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } });
 
                                 return (
                                     <div
                                         key={v.id}
-                                        className="dashboard-voucher-row"
+                                        className="dashboard-voucher-row cursor-pointer"
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={openVoucher}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                openVoucher();
+                                            }
+                                        }}
                                     >
                                         {/* Card Top: Party + Amount */}
                                         <div className="flex items-start justify-between gap-2">
@@ -636,8 +646,8 @@ export default memo(function LiveKeepingsDashboard() {
                                                     {isReceipt ? '+' : ''}{formatCurrency(amt)}
                                                 </p>
                                                 <div className="dashboard-voucher-actions">
-                                                    <button type="button" aria-label={`Share voucher ${v.voucher_number || ''}`} title="Share" onClick={() => shareVoucherOnWhatsApp(v, selectedCompany)}><MessageCircle size={15} /></button>
-                                                    <button type="button" aria-label={`View PDF for voucher ${v.voucher_number || ''}`} title="View PDF" onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}><FileText size={15} /></button>
+                                                    <button type="button" aria-label={`Share voucher ${v.voucher_number || ''}`} title="Share" onClick={(e) => { e.stopPropagation(); shareVoucherOnWhatsApp(v, selectedCompany); }}><MessageCircle size={15} /></button>
+                                                    <button type="button" aria-label={`View PDF for voucher ${v.voucher_number || ''}`} title="View PDF" onClick={(e) => { e.stopPropagation(); openVoucher(); }}><FileText size={15} /></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -886,12 +896,18 @@ export default memo(function LiveKeepingsDashboard() {
                                             return (
                                                 <div
                                                     key={v.id}
-                                                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors ${isDark ? 'bg-[#0B1118] border-[#1A2634] hover:border-slate-700' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } });
+                                                        }
+                                                    }}
+                                                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-colors cursor-pointer ${isDark ? 'bg-[#0B1118] border-[#1A2634] hover:border-slate-700' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`}
                                                 >
-                                                    <div
-                                                        onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
-                                                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                                                    >
+                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
                                                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
                                                             isSale ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                                         }`}>

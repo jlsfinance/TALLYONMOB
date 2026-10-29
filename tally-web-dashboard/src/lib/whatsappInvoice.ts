@@ -177,7 +177,7 @@ export function generatePublicInvoiceUrl(
 const NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
 /**
- * Format attractive, high-converting WhatsApp invoice message with embedded public view link
+ * Format the WhatsApp invoice message without a public invoice link.
  */
 export function formatFullWhatsAppMessage(
     details: WhatsAppVoucherDetails,
@@ -295,13 +295,6 @@ export function formatFullWhatsAppMessage(
         if (bnkParts.length > 0) lines.push(bnkParts.join(' • '));
         if (company.upi_id) lines.push(`⚡ UPI: ${company.upi_id}`);
     }
-
-    // Public Direct View & Download Link
-    const publicLink = generatePublicInvoiceUrl(details, company);
-    lines.push('');
-    lines.push(`🔗 *View & Download PDF Invoice:*`);
-    lines.push(`👉 ${publicLink}`);
-    lines.push('_(Click above to view full invoice & download original PDF)_');
 
     // Narration / Notes
     if (details.narration) {

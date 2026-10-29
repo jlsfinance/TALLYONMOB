@@ -5,13 +5,26 @@ import { supabase } from '../lib/insforge';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
-import { shareVoucherOnWhatsApp } from '../lib/whatsappInvoice';
+import { shareVoucherOnWhatsApp, formatFullWhatsAppMessage } from '../lib/whatsappInvoice';
+import { Capacitor } from '@capacitor/core';
+import toast from 'react-hot-toast';
 import { removeMirroredStockEntries } from '../lib/invoiceStockEntries';
 import {
-    ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
+    ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
 } from 'lucide-react';
 import '../styles/Material3.css';
 import './InvoicePreview.css';
+import { InvoiceStyledDocument, renderStyledInvoicePDF, addSyncoraPDFFooter } from './InvoiceStyledDocument';
+
+const INVOICE_STYLES = [
+    { id: 'classic', name: 'Tally', description: 'Accounting grid', color: '#193a4a', tint: [255, 255, 255] },
+    { id: 'blue', name: 'Modern', description: 'Business blue', color: '#126ba1', tint: [232, 244, 252] },
+    { id: 'green', name: 'Minimal', description: 'Clean green', color: '#008a69', tint: [231, 247, 239] },
+    { id: 'gold', name: 'Elegant', description: 'Warm gold', color: '#ad7820', tint: [255, 247, 229] },
+    { id: 'desi', name: 'Desi', description: 'Traditional red', color: '#b33d32', tint: [255, 239, 235] },
+    { id: 'retro', name: 'Retro', description: 'Classic brown', color: '#825633', tint: [249, 242, 230] },
+    { id: 'compact', name: 'Compact', description: 'Simple neutral', color: '#576579', tint: [239, 243, 247] },
+];
 
 const toNumber = (value) => {
     const parsed = Number(value);
@@ -131,7 +144,9 @@ export default function InvoicePDFPage() {
     const [items, setItems] = useState([]);
     const [ledgerLineEntries, setLedgerLineEntries] = useState([]);
     const [loading, setLoading] = useState(!navigationVoucher);
-    const [template, setTemplate] = useState('professional');
+    const [template, setTemplate] = useState('classic');
+    const [templateSettingsOpen, setTemplateSettingsOpen] = useState(false);
+    const activeTemplate = INVOICE_STYLES.find(item => item.id === template) || INVOICE_STYLES[0];
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
     const [isMobile, setIsMobile] = useState(false);
@@ -160,6 +175,8 @@ export default function InvoicePDFPage() {
     useEffect(() => {
         if (id && selectedCompany?.id) {
             loadInvoice();
+            const savedTemplate = localStorage.getItem(`syncora_invoice_style_${selectedCompany.id}`);
+            setTemplate(INVOICE_STYLES.some(item => item.id === savedTemplate) ? savedTemplate : 'classic');
             const savedUpi = localStorage.getItem(`upi_${selectedCompany.id}`);
             if (savedUpi) setUpiId(savedUpi);
         }
@@ -919,13 +936,60 @@ export default function InvoicePDFPage() {
         }
     };
 
+    const finishPDF = async (doc, action) => {
+        addSyncoraPDFFooter(doc);
+        const filename = `Invoice_${invoice?.invoice_number || 'Draft'}.pdf`;
+        if (action === 'share') {
+            const message = formatFullWhatsAppMessage({
+                voucherType: invoice?.voucher_type || 'Sales', voucherNumber: String(invoice?.invoice_number || ''),
+                voucherDate: invoice?.invoice_date || '', partyName: invoice?.party_ledger_name || 'Customer',
+                partyGstin: invoice?.party_gstin, grandTotal: Number(invoice?.net_amount) || 0,
+                taxableAmount: Number(invoice?.taxable_amount) || 0, cgstAmount: Number(invoice?.cgst_amount) || 0,
+                sgstAmount: Number(invoice?.sgst_amount) || 0, igstAmount: Number(invoice?.igst_amount) || 0,
+                roundOff: Number(invoice?.round_off) || 0, narration: invoice?.narration,
+                items: (items || []).map(i => ({ name: i.stock_item_name || i.item_name || i.name || 'Item',
+                    quantity: i.quantity, unit: i.unit || '', rate: Number(i.rate) || 0,
+                    amount: Number(i.amount) || (Number(i.quantity) * Number(i.rate)) || 0,
+                    gstRate: Number(i.gst_rate) || 0, hsnCode: i.hsn_code || '', discount: Number(i.discount_percent || i.discount) || 0 }))
+            }, { name: companyInfo?.name || selectedCompany?.name, gstin: companyInfo?.gstin || selectedCompany?.gstin,
+                phone: companyInfo?.phone || companyInfo?.phone_number || selectedCompany?.phone });
+            if (Capacitor.getPlatform() === 'android') {
+                const [{ Filesystem, Directory }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
+                const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+                const data = doc.output('datauristring').split(',')[1];
+                if (!data) throw new Error('Could not prepare invoice PDF');
+                const file = await Filesystem.writeFile({ path: `invoice-share/${safeName}`, data, directory: Directory.Cache, recursive: true });
+                await Share.share({ title: filename, text: message, files: [file.uri], dialogTitle: 'Share invoice PDF' });
+                return;
+            }
+            const file = new File([doc.output('blob')], filename, { type: 'application/pdf' });
+            if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                await navigator.share({ files: [file], title: filename, text: message });
+                return;
+            }
+        }
+        const { savePdf } = await import('../lib/savePdf');
+        await savePdf(doc, filename);
+    };
+
     // Generate Professional PDF using jsPDF
     const generatePDF = async (action = 'download') => {
         const doc = new jsPDF('p', 'mm', 'a4');
+        const type = String(invoice?.voucher_type || '').toLowerCase();
+        if (template !== 'classic' && !type.includes('receipt') && !type.includes('payment')) {
+            renderStyledInvoicePDF(doc, { invoice, company: companyInfo, items, visibility: columnVisibility, theme: activeTemplate, formatDate, numberToWords, hsnSummary });
+            await finishPDF(doc, action);
+            return;
+        }
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 10;
         let y = 15;
+
+        if (template !== 'classic') {
+            doc.setFillColor(activeTemplate.color);
+            doc.rect(margin, y - 2, pageWidth - 2 * margin, 1.2, 'F');
+        }
 
         // --- STYLES ---
         doc.setFont('helvetica', 'bold');
@@ -935,6 +999,10 @@ export default function InvoicePDFPage() {
         // --- HEADER ---
         // Header Box
         const headerH = 30; // Compact height
+        if (template !== 'classic') {
+            doc.setFillColor(...activeTemplate.tint);
+            doc.rect(margin, y, pageWidth - 2 * margin, headerH, 'F');
+        }
         doc.rect(margin, y, pageWidth - 2 * margin, headerH);
 
         // Vertical Divider
@@ -1083,9 +1151,6 @@ export default function InvoicePDFPage() {
 
         if (!isRcpPayP) {
         // --- ITEMS TABLE ---
-        const hasItems = items.length > 0;
-        const _hasHSN = hasItems && items.some(i => i.hsn_code);
-        const _hasGST = hasItems;
         const _hasDisc = columnVisibility.hasDiscount;
 
         const tableColumns = [
@@ -1093,11 +1158,11 @@ export default function InvoicePDFPage() {
             { header: 'Description of Goods', dataKey: 'desc' },
         ];
 
-        if (_hasHSN || true) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' });
-        if (_hasGST || true) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' }); // Corrected logic below
-        tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
-        tableColumns.push({ header: 'Rate', dataKey: 'rate' });
-        tableColumns.push({ header: 'Per', dataKey: 'unit' });
+        if (columnVisibility.hasHSN) tableColumns.push({ header: 'HSN/SAC', dataKey: 'hsn' });
+        if (columnVisibility.hasGST) tableColumns.push({ header: 'GST Rate', dataKey: 'gst' });
+        if (columnVisibility.hasQty) tableColumns.push({ header: 'Quantity', dataKey: 'qty' });
+        if (columnVisibility.hasRate) tableColumns.push({ header: 'Rate', dataKey: 'rate' });
+        if (columnVisibility.hasUnit) tableColumns.push({ header: 'Per', dataKey: 'unit' });
         if (_hasDisc) tableColumns.push({ header: 'Disc %', dataKey: 'disc' });
         tableColumns.push({ header: 'Amount', dataKey: 'amount' });
 
@@ -1138,7 +1203,7 @@ export default function InvoicePDFPage() {
                 cellPadding: 2,   // More breathing room
             },
             headStyles: {
-                fillColor: [255, 255, 255],
+                fillColor: activeTemplate.tint,
                 textColor: [0, 0, 0],
                 fontStyle: 'bold',
                 halign: 'center',
@@ -1193,7 +1258,7 @@ export default function InvoicePDFPage() {
                 foot: [['Total', formatNumber(drTotal), formatNumber(crTotal)]],
                 theme: 'grid',
                 styles: { fontSize: 9, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, valign: 'middle' },
-                headStyles: { fillColor: [240, 240, 240], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0] },
+                headStyles: { fillColor: activeTemplate.tint, textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0] },
                 footStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
                 columnStyles: {
                     0: { halign: 'left' },
@@ -1311,7 +1376,7 @@ export default function InvoicePDFPage() {
                 body: taxBody,
                 theme: 'plain',
                 styles: { lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0], fontSize: 7, cellPadding: 1, overflow: 'linebreak' },
-                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0], halign: 'center' },
+                headStyles: { fillColor: activeTemplate.tint, textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1, lineColor: [0, 0, 0], halign: 'center' },
                 columnStyles: {
                     hsn: { halign: 'center' },
                     taxable: { halign: 'right' },
@@ -1394,29 +1459,20 @@ export default function InvoicePDFPage() {
         // Bottom border
         doc.rect(margin, contentStartY, pageWidth - 2 * margin, (footerY + 30) - contentStartY); // Re-draw outer box to be sure it covers all
 
-        const filename = `Invoice_${invoice?.invoice_number || 'Draft'}.pdf`;
+        await finishPDF(doc, action);
+    };
 
-        if (action === 'share') {
-            const blob = doc.output('blob');
-            const file = new File([blob], filename, { type: 'application/pdf' });
-            if (navigator.share && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: filename,
-                    text: `Invoice #${invoice?.invoice_number} from ${companyInfo?.name}`
-                });
-            } else {
-                console.warn('Web Share API not supported or validation failed');
-                // Fallback to download
-                doc.save(filename);
-            }
-        } else {
-            doc.save(filename);
-        }
+    const handleSharePDF = () => {
+        void generatePDF('share').catch(error => {
+            if (/cancel/i.test(String(error?.message || error))) return;
+            console.error('Invoice share failed', error);
+            toast.error('Invoice PDF share nahi ho saka. Dobara try karein.');
+        });
     };
 
     const handleWhatsAppShare = () => {
         if (!invoice) return;
+        if (Capacitor.getPlatform() === 'android') { handleSharePDF(); return; }
         const voucherData = {
             id: invoice.id || id,
             voucher_number: invoice.invoice_number,
@@ -1515,7 +1571,7 @@ export default function InvoicePDFPage() {
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">WhatsApp</span>
                     </button>
                     <button
-                        onClick={() => generatePDF('share')}
+                        onClick={handleSharePDF}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="Share"
                         aria-label="Share PDF"
@@ -1533,13 +1589,13 @@ export default function InvoicePDFPage() {
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
                     </button>
                     <button
-                        onClick={() => navigate(`/edit-invoice/${id}`)}
+                        onClick={() => setTemplateSettingsOpen(true)}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
-                        title="Edit"
-                        aria-label="Edit invoice"
+                        title="Invoice settings"
+                        aria-label="Invoice settings"
                     >
-                        <Edit size={16} />
-                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
+                        <Settings2 size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Settings</span>
                     </button>
                 </div>
             </HeaderPortal>
@@ -1548,14 +1604,16 @@ export default function InvoicePDFPage() {
             <div className="invoice-preview-label md:hidden"><span>INVOICE PREVIEW</span><span>#{invoice?.invoice_number || '—'}</span></div>
             <div className="invoice-preview-document w-full flex justify-center items-start overflow-hidden">
                 <div className="relative w-full">
-                    <div
-                        className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900 mx-auto"
+                    {template !== 'classic' && !isRcpPay ? <InvoiceStyledDocument invoice={invoice} company={companyInfo} items={items} visibility={columnVisibility} theme={activeTemplate} formatDate={formatDate} numberToWords={numberToWords} hsnSummary={hsnSummary} /> : <div
+                        className={`invoice-document-style invoice-style-${activeTemplate.id} shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900 mx-auto`}
                         style={{
                             width: isMobile ? '100%' : `${210 * scale}mm`,
                             transformOrigin: 'top center',
                             transition: 'width 0.2s ease-out',
                             color: '#0f172a',
-                            WebkitTextFillColor: '#0f172a'
+                            WebkitTextFillColor: '#0f172a',
+                            '--invoice-accent': activeTemplate.color,
+                            '--invoice-tint': `rgb(${activeTemplate.tint.join(' ')})`
                         }}
                     >
                         <div className={`${isMobile ? 'p-2' : 'p-6 md:p-8'} h-full flex flex-col relative`}>
@@ -2058,18 +2116,28 @@ export default function InvoicePDFPage() {
                                 SUBJECT TO JURISDICTION | This is a Computer Generated Invoice
                             </div>
                         </div>
-                    </div>
+                    </div>}
                 </div>
             </div>
             <section className="invoice-preview-summary md:hidden" aria-label="Invoice details and actions">
                 <div className="invoice-preview-summary-heading"><div><span className="invoice-preview-caption">{invoice.voucher_type || 'Invoice'} · {formatDate(invoice.invoice_date)}</span><h2>{invoice.party_ledger_name || 'Cash'}</h2>{invoice.party_phone && <p>{invoice.party_phone}</p>}</div><strong>{formatCurrency(invoice.net_amount)}</strong></div>
                 <div className="invoice-preview-actions">
                     <button type="button" onClick={() => generatePDF('download')}><Download size={19} /><span>Download</span></button>
-                    <button type="button" onClick={() => generatePDF('share')}><Share2 size={19} /><span>Share PDF</span></button>
+                    <button type="button" onClick={handleSharePDF}><Share2 size={19} /><span>Share PDF</span></button>
                     <button type="button" onClick={handleWhatsAppShare}><MessageCircle size={19} /><span>WhatsApp</span></button>
                     <button type="button" className="invoice-preview-done" onClick={() => navigate(backTarget)}>Done</button>
                 </div>
             </section>
+            {templateSettingsOpen && <div className="invoice-settings-overlay" onClick={() => setTemplateSettingsOpen(false)}>
+                <section className="invoice-settings-panel" role="dialog" aria-modal="true" aria-labelledby="invoice-settings-title" onClick={event => event.stopPropagation()}>
+                    <div className="invoice-settings-heading"><div><h2 id="invoice-settings-title">Invoice settings</h2><p>Apni company ke liye style chunein</p></div><button type="button" aria-label="Close settings" onClick={() => setTemplateSettingsOpen(false)}><X size={20} /></button></div>
+                    <div className="invoice-template-grid">{INVOICE_STYLES.map(item => <button type="button" className={`invoice-template-option ${item.id === template ? 'selected' : ''}`} key={item.id} onClick={() => { setTemplate(item.id); try { localStorage.setItem(`syncora_invoice_style_${selectedCompany.id}`, item.id); } catch (error) { console.error('Could not save invoice style', error); } }}>
+                        <span className="invoice-template-mini" style={{ '--template-color': item.color }}><i /><i /><i /></span><span><strong>{item.name}</strong><small>{item.description}</small></span>{item.id === template && <Check size={16} />}
+                    </button>)}</div>
+                    <p className="invoice-settings-note">Style isi device par company ke liye save hota hai. Receipt aur payment vouchers Tally layout mein rahenge.</p>
+                    <button type="button" className="invoice-settings-done" onClick={() => setTemplateSettingsOpen(false)}>Done</button>
+                </section>
+            </div>}
         </div>
     );
 }

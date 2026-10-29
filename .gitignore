@@ -19,7 +19,7 @@ obj/
 .env.test.local
 .env.production.local
 
-# ⚠️ SENSITIVE CONFIG FILES - NEVER COMMIT!
+# ?????? SENSITIVE CONFIG FILES - NEVER COMMIT!
 appsettings.json
 **/appsettings.json
 !appsettings.example.json
@@ -110,3 +110,7 @@ backups/
 
 .cursor/
 
+
+# Android upload credentials
+.secrets/
+**/android/key.properties

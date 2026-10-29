@@ -14,6 +14,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import AppLayout from './components/layout/AppLayout';
 import { hasAdminAccess, isAdminConsoleEnabled } from './lib/adminAccess';
 import './App.css';
+import './native-skeleton.css';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { queryClient } from './lib/queryClient';
 const UpdateBanner = lazy(() => import('./components/common/UpdateBanner'));
@@ -68,7 +69,7 @@ function lazyPage<TModule extends { default: unknown }>(
     });
 }
 
-const MobileLandingPage = lazyPage('MobileLandingPage', () => import('./pages/MobileLandingPage'));
+const NativeIntroPage = lazyPage('NativeIntroPage', () => import('./pages/NativeIntroPage'));
 const LoginPage = lazyPage('LoginPage', () => import('./pages/LoginPage'));
 const ModuleSelectionPage = lazyPage('ModuleSelectionPage', () => import('./pages/ModuleSelectionPage'));
 const SelectCompanyPage = lazyPage('SelectCompanyPage', () => import('./pages/SelectCompanyPage'));
@@ -158,9 +159,6 @@ const PushNotificationsPage = lazyPage('PushNotificationsPage', () => import('./
 const BiometricLoginPage = lazyPage('BiometricLoginPage', () => import('./pages/BiometricLoginPage'));
 const DayBookPage = lazyPage('DayBookPage', () => import('./pages/DayBookPage'));
 const SubscriptionPage = lazyPage('SubscriptionPage', () => import('./pages/SubscriptionPage'));
-if (Capacitor.isNativePlatform()) {
-    void import('./pages/MobileLandingPage');
-}
 let mobileRouteChunksWarm = false;
 
 function warmCommonRouteChunks() {
@@ -172,7 +170,7 @@ function warmCommonRouteChunks() {
         import('./pages/VouchersPage'),
         import('./pages/LedgersPage'),
         import('./pages/SalesPage'),
-        import('./pages/MobileLandingPage'),
+        ...(Capacitor.isNativePlatform() ? [import('./pages/NativeIntroPage')] : []),
         import('./pages/LoginPage'),
         import('./pages/ModuleSelectionPage'),
         import('./pages/SelectCompanyPage'),
@@ -183,6 +181,12 @@ function warmCommonRouteChunks() {
 }
 
 function RouteLoader() {
+    if (Capacitor.isNativePlatform()) return (
+        <div className="native-route-skeleton" role="status" aria-label="Loading page">
+            <div className="native-route-skeleton__header"><i /><span /><i /></div>
+            <div className="native-route-skeleton__body"><div className="native-route-skeleton__heading"/><div className="native-route-skeleton__grid"><div/><div/><div/><div/></div><div className="native-route-skeleton__heading short"/>{[0, 1, 2, 3].map(i => <div className="native-route-skeleton__row" key={i}><i/><span/><b/></div>)}</div>
+        </div>
+    );
     return (
         <div className="fixed inset-0 flex items-center justify-center bg-[var(--background)]">
             <div className="flex flex-col items-center">
@@ -257,7 +261,11 @@ function HomeRedirect() {
         return <Navigate to={appMode === 'billing' ? '/billing' : '/dashboard'} replace />;
     }
 
-    return Capacitor.isNativePlatform() ? <MobileLandingPage /> : <SyncoraLandingPage />;
+    if (Capacitor.isNativePlatform()) {
+        return localStorage.getItem('syncora.native.intro.v1') === 'done'
+            ? <Navigate to="/login" replace /> : <NativeIntroPage />;
+    }
+    return <SyncoraLandingPage />;
 }
 
 function AppContent() {

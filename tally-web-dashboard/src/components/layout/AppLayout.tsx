@@ -1,4 +1,5 @@
 import { ReminderBell } from '@/components/reminders/ReminderBell';
+import LicenseBadge from '@/components/LicenseBadge';
 import { useDueReminders } from '@/components/reminders/useDueReminders';
 import { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect } from 'react';
 import './AppPolish.css';
@@ -561,7 +562,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </div>
                         <ReminderBell userId={user?.id} companyId={selectedCompany?.id} variant="mobile" />
                         <div className="dashboard-header-meta">
-                            <span className="dashboard-gst-badge">GST: {selectedCompany?.gstin || 'Not available'}</span>
+                            <div className="dashboard-header-meta-row">
+                                <LicenseBadge compact />
+                                <span className="dashboard-gst-badge">GST: {selectedCompany?.gstin || 'Not available'}</span>
+                            </div>
                             <div className="dashboard-fy-selector" aria-label="Financial year">
                                 <button type="button" onClick={() => stepFY(-1)} aria-label="Previous Financial Year">‹</button>
                                 <select aria-label="Select financial year" value={selectedFY} onChange={(event) => setSelectedFY(event.target.value)}>
@@ -619,6 +623,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <LicenseBadge />
                         {pendingOffline > 0 && (
                             <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10 text-amber-600 text-[10px] font-bold">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
@@ -663,7 +668,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </main>
 
             {/* ===== MOBILE BOTTOM NAV — LiveKeepings Style (Hidden on full-screen create-invoice flow) ===== */}
-            {location.pathname !== '/create-invoice' && (
+            {location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && (
                 <nav className="app-bottom-nav md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1E1E2E] border-t border-[var(--border)] safe-area-pb pb-1">
                     <div className="flex items-center justify-around h-[60px] px-2">
                         {bottomNavItems.map((item) => {
@@ -701,7 +706,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </nav>
             )}
 
-            {location.pathname !== '/create-invoice' && <AIFloatingButton />}
+            {location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && <AIFloatingButton />}
             <CommandPalette />
             <GlobalSearch open={showSearch} onClose={() => setShowSearch(false)} />
         </div>

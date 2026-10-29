@@ -98,9 +98,7 @@ export default function AdminPanelPage() {
                 .order('created_at', { ascending: false });
             if (licErr) throw licErr;
 
-            const { data: companyList, error: companyErr } = await supabase.from('companies')
-                .select('id, name, owner_id')
-                .order('created_at', { ascending: false });
+            const { data: companyList, error: companyErr } = await supabase.rpc('admin_company_directory', { p_search: '', p_limit: 1000, p_offset: 0 });
 
             if (companyErr) throw companyErr;
             const { data: plansList, error: plansErr } = await supabase.from('subscription_plans')
@@ -109,10 +107,10 @@ export default function AdminPanelPage() {
 
             const plansMap = new Map((plansList || []).map((p: any) => [p.id, p]));
             const companiesByOwner = new Map<string, any[]>();
-            (companyList || []).forEach((c: any) => {
+            ((companyList as any[]) || []).forEach((c: any) => {
                 if (c.owner_id) {
                     const existing = companiesByOwner.get(c.owner_id) || [];
-                    existing.push(c);
+                    existing.push({ id: c.company_id, name: c.company_name });
                     companiesByOwner.set(c.owner_id, existing);
                 }
             });
@@ -124,28 +122,6 @@ export default function AdminPanelPage() {
             }));
         },
         enabled: activeTab === 'users' || activeTab === 'user-detail',
-    });
-
-    // ═══ COMPANIES ═══
-    const { data: companies = [], isError: companiesError } = useQuery({
-        queryKey: ['admin-companies'],
-        queryFn: async () => {
-            const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
-            if (error) throw error;
-
-            const ownerIds = [...new Set((data || []).map((c: any) => c.owner_id).filter(Boolean))];
-            let emailMap = new Map<string, string>();
-            if (ownerIds.length > 0) {
-                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', ownerIds);
-                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
-            }
-
-            return (data || []).map((c: any) => ({
-                ...c,
-                _ownerEmail: emailMap.get(c.owner_id) || c.owner_id?.slice(0, 8) || 'Unknown',
-            }));
-        },
-        enabled: activeTab === 'companies' || activeTab === 'company-detail',
     });
 
     // ═══ PLANS ═══
@@ -406,7 +382,7 @@ export default function AdminPanelPage() {
                 })}
             </div>
 
-            {((activeTab === 'users' && (usersError || plansError)) || (activeTab === 'companies' && companiesError) ||
+            {((activeTab === 'users' && (usersError || plansError)) ||
               (activeTab === 'plans' && plansError) || (activeTab === 'coupons' && couponsError) ||
               (activeTab === 'payments' && paymentsError) || (activeTab === 'activity' && logsError) ||
               (activeTab === 'leads' && leadsError)) &&
@@ -453,7 +429,7 @@ export default function AdminPanelPage() {
             )}
 
             {activeTab === 'users' && <AdminDirectory mode="users" />}
-            {activeTab === 'companies' && <AdminDirectory mode="companies" />}
+            {activeTab === 'companies' && <AdminDirectory mode="companies" onOpenCompany={(id) => { setSelectedCompanyId(id); setActiveTab('company-detail'); }} />}
 
             {/* Preserve existing license actions alongside the directory. */}
             {activeTab === 'users' && (
@@ -519,50 +495,6 @@ export default function AdminPanelPage() {
                         })}
                         {filteredUsers.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No users found</p>}
                     </div>
-                </div>
-            )}
-
-            {/* ═══ COMPANIES TAB ═══ */}
-            {activeTab === 'companies' && (
-                <div className="space-y-3 px-[2px]">
-                    <h3 className="text-sm font-bold">Companies visible to this account</h3>
-                    {(() => {
-                        const grouped = new Map<string, any[]>();
-                        companies.forEach((c: any) => {
-                            const key = c._ownerEmail || 'Unknown';
-                            const existing = grouped.get(key) || [];
-                            existing.push(c);
-                            grouped.set(key, existing);
-                        });
-                        return Array.from(grouped.entries()).map(([email, comps]) => (
-                            <div key={email} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
-                                <div className="px-3 py-2 bg-[var(--surface-container)] flex items-center gap-2 border-b border-[var(--border)]">
-                                    <Mail size={11} className="text-[var(--primary)]" />
-                                    <span className="text-[11px] font-bold">{email}</span>
-                                    <span className="text-[9px] text-[var(--text-muted)]">({comps.length} companies)</span>
-                                </div>
-                                <div className="divide-y divide-[var(--border)]">
-                                    {comps.map((c: any) => (
-                                        <div key={c.id} onClick={() => { setSelectedCompanyId(c.id); setActiveTab('company-detail'); }}
-                                            className="px-3 py-2 cursor-pointer hover:bg-[var(--primary)]/5 transition-all">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`w-2 h-2 rounded-full ${c.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                                    <span className="text-[11px] font-bold">{c.name}</span>
-                                                    {c.tally_serial && <span className="text-[9px] text-[var(--text-muted)]">SN: {c.tally_serial}</span>}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {c.last_sync_at && <span className="text-[8px] text-[var(--text-muted)]">Last: {new Date(c.last_sync_at).toLocaleDateString('en-IN')}</span>}
-                                                    <ArrowUpRight size={10} className="text-[var(--text-muted)]" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ));
-                    })()}
-                    {companies.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No companies</p>}
                 </div>
             )}
 
@@ -951,17 +883,22 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setLicense(lic);
 
-            const { data: comps } = await supabase.from('companies').select('id, name, is_active, created_at, last_sync_at, owner_id').eq('owner_id', userId);
-            setCompanies(comps || []);
+            // Admin reads another tenant's data only through SECURITY DEFINER RPCs.
+            const { data: dir } = await supabase.rpc('admin_company_directory', { p_search: '', p_limit: 1000, p_offset: 0 });
+            const comps = ((dir as any[]) || []).filter(c => c.owner_id === userId).map(c => ({
+                id: c.company_id, name: c.company_name, is_active: c.is_active,
+                created_at: c.created_at, last_sync_at: c.last_sync_at, owner_id: c.owner_id,
+            }));
+            setCompanies(comps);
 
             const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
             setPayments(pays || []);
 
-            if (comps && comps.length > 0) {
+            if (comps.length > 0) {
                 let allVchs: any[] = [];
                 for (const comp of comps) {
-                    const { data: vchs } = await supabase.from('vouchers').select('id, voucher_type, party_ledger_name, amount, vch_date, company_id').eq('company_id', comp.id).order('vch_date', { ascending: false }).limit(20);
-                    if (vchs) allVchs.push(...vchs);
+                    const { data: detail } = await supabase.rpc('admin_company_detail', { p_company_id: comp.id });
+                    if (detail?.vouchers) allVchs.push(...detail.vouchers);
                 }
                 setVouchers(allVchs.sort((a: any, b: any) => new Date(b.vch_date).getTime() - new Date(a.vch_date).getTime()).slice(0, 20));
             }
@@ -1148,12 +1085,12 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
     useEffect(() => {
         const load = async () => {
             setLoading(true);
-            const { data: comp } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
-            setCompany(comp);
-            const { data: vchs } = await supabase.from('vouchers').select('*').eq('company_id', companyId).order('vch_date', { ascending: false }).limit(100);
-            setVouchers(vchs || []);
-            const { data: lgrs } = await supabase.from('ledgers').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100);
-            setLedgers(lgrs || []);
+            // SECURITY DEFINER RPC: the admin reads another tenant's company only here,
+            // so the admin's own dashboard stays scoped to their companies.
+            const { data, error } = await supabase.rpc('admin_company_detail', { p_company_id: companyId });
+            setCompany(error ? null : data?.company || null);
+            setVouchers(data?.vouchers || []);
+            setLedgers(data?.ledgers || []);
             setLoading(false);
         };
         load();
