@@ -580,7 +580,7 @@ export default memo(function LiveKeepingsDashboard() {
                     </div>
 
                     {/* Vouchers Stack Cards */}
-                    <div className="space-y-2.5">
+                    <div className={mobileVoucherFilter === 'all' && mobileVouchersList.length ? 'dashboard-voucher-list' : 'space-y-2.5'}>
                         {mobileVoucherFilter !== 'all' ? (
                             (mobileVoucherFilter === 'customers' ? dashboard?.topCustomers : dashboard?.topSuppliers)?.length ?
                             (mobileVoucherFilter === 'customers' ? dashboard?.topCustomers : dashboard?.topSuppliers).slice(0, 10).map((party: any, index: number) => (
@@ -605,7 +605,7 @@ export default memo(function LiveKeepingsDashboard() {
                                 return (
                                     <div
                                         key={v.id}
-                                        className="p-3.5 rounded-2xl bg-[#121B24] border border-[#1E2B38] space-y-2.5 hover:border-slate-700 transition-colors"
+                                        className="dashboard-voucher-row"
                                     >
                                         {/* Card Top: Party + Amount */}
                                         <div className="flex items-start justify-between gap-2">
@@ -629,41 +629,17 @@ export default memo(function LiveKeepingsDashboard() {
                                                 </p>
                                             </div>
 
-                                            <div className="text-right shrink-0">
+                                            <div className="dashboard-voucher-right text-right shrink-0">
                                                 <p className={`text-xs font-black font-mono ${
                                                     isReceipt ? 'text-emerald-400' : isSale ? 'text-emerald-300' : isPurchase ? 'text-white' : 'text-amber-400'
                                                 }`}>
                                                     {isReceipt ? '+' : ''}{formatCurrency(amt)}
                                                 </p>
-                                                <p className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                                    {isReceipt ? 'Received' : isPurchase ? 'Billed' : isPayment ? 'Paid' : 'Sales'}
-                                                </p>
+                                                <div className="dashboard-voucher-actions">
+                                                    <button type="button" aria-label={`Share voucher ${v.voucher_number || ''}`} title="Share" onClick={() => shareVoucherOnWhatsApp(v, selectedCompany)}><MessageCircle size={15} /></button>
+                                                    <button type="button" aria-label={`View PDF for voucher ${v.voucher_number || ''}`} title="View PDF" onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}><FileText size={15} /></button>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        {/* Card Bottom: Quick Actions */}
-                                        <div className="pt-2 border-t border-[#1E2B38]/60 flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-1.5">
-                                                <button
-                                                    onClick={() => shareVoucherOnWhatsApp(v, selectedCompany)}
-                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold active:scale-95 transition-transform cursor-pointer"
-                                                >
-                                                    <MessageCircle size={11} /> Share
-                                                </button>
-                                                <button
-                                                    onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
-                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1A2634] text-slate-300 border border-[#24364A] text-[10px] font-bold active:scale-95 transition-transform cursor-pointer"
-                                                >
-                                                    <FileText size={11} /> View PDF
-                                                </button>
-                                            </div>
-
-                                            <button
-                                                onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/dashboard' } })}
-                                                className="p-1 text-slate-400 hover:text-white"
-                                            >
-                                                <ChevronRight size={14} />
-                                            </button>
                                         </div>
                                     </div>
                                 );

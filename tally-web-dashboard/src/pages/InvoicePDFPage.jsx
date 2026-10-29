@@ -11,6 +11,7 @@ import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share
 } from 'lucide-react';
 import '../styles/Material3.css';
+import './InvoicePreview.css';
 
 const toNumber = (value) => {
     const parsed = Number(value);
@@ -1490,21 +1491,25 @@ export default function InvoicePDFPage() {
         || rcpLedgers.find(isDrRow)?.ledger_name || '';
 
     return (
-        <div className="bg-[#f8f9fa] min-h-screen pb-10 font-sans">
+        <div className="invoice-preview-page bg-[#f8f9fa] min-h-screen pb-10 font-sans">
             {/* Header Actions Portal */}
             <HeaderPortal type="title">
-                <div className="flex flex-col">
+                <div className="invoice-header-title flex items-center gap-1.5">
+                    <button type="button" className="invoice-preview-back" aria-label="Back" onClick={() => navigate(backTarget)}><ArrowLeft size={18} /></button>
+                    <div className="min-w-0">
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Invoice #{invoice?.invoice_number}</h1>
                     <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{invoice?.voucher_type} - {formatDate(invoice?.invoice_date)}</p>
+                    </div>
                 </div>
             </HeaderPortal>
 
             <HeaderPortal type="actions">
-                <div className="flex items-center gap-1 md:gap-2">
+                <div className="invoice-header-actions flex items-center gap-1 md:gap-2">
                     <button
                         onClick={handleWhatsAppShare}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="WhatsApp"
+                        aria-label="Share on WhatsApp"
                     >
                         <MessageCircle size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">WhatsApp</span>
@@ -1513,14 +1518,16 @@ export default function InvoicePDFPage() {
                         onClick={() => generatePDF('share')}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="Share"
+                        aria-label="Share PDF"
                     >
-                        <Share size={16} />
+                        <Share2 size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Share</span>
                     </button>
                     <button
                         onClick={() => generatePDF('download')}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="Download"
+                        aria-label="Download PDF"
                     >
                         <Download size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
@@ -1529,6 +1536,7 @@ export default function InvoicePDFPage() {
                         onClick={() => navigate(`/edit-invoice/${id}`)}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="Edit"
+                        aria-label="Edit invoice"
                     >
                         <Edit size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
@@ -1537,7 +1545,8 @@ export default function InvoicePDFPage() {
             </HeaderPortal>
 
             {/* Universal Document Preview (Scales for Mobile) */}
-            <div className="w-full flex justify-center items-start overflow-hidden">
+            <div className="invoice-preview-label md:hidden"><span>INVOICE PREVIEW</span><span>#{invoice?.invoice_number || '—'}</span></div>
+            <div className="invoice-preview-document w-full flex justify-center items-start overflow-hidden">
                 <div className="relative w-full">
                     <div
                         className="shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] bg-white border border-gray-300 printable-content text-slate-900 mx-auto"
@@ -2052,6 +2061,15 @@ export default function InvoicePDFPage() {
                     </div>
                 </div>
             </div>
+            <section className="invoice-preview-summary md:hidden" aria-label="Invoice details and actions">
+                <div className="invoice-preview-summary-heading"><div><span className="invoice-preview-caption">{invoice.voucher_type || 'Invoice'} · {formatDate(invoice.invoice_date)}</span><h2>{invoice.party_ledger_name || 'Cash'}</h2>{invoice.party_phone && <p>{invoice.party_phone}</p>}</div><strong>{formatCurrency(invoice.net_amount)}</strong></div>
+                <div className="invoice-preview-actions">
+                    <button type="button" onClick={() => generatePDF('download')}><Download size={19} /><span>Download</span></button>
+                    <button type="button" onClick={() => generatePDF('share')}><Share2 size={19} /><span>Share PDF</span></button>
+                    <button type="button" onClick={handleWhatsAppShare}><MessageCircle size={19} /><span>WhatsApp</span></button>
+                    <button type="button" className="invoice-preview-done" onClick={() => navigate(backTarget)}>Done</button>
+                </div>
+            </section>
         </div>
     );
 }

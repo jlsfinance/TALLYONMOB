@@ -1911,11 +1911,11 @@ namespace TallySyncApp.Services
                 if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
                 {
                     var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
-                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, cloud, diff);
+                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, cloud, diff, out var safetyReason);
                     if (candidates.Count == 0)
                     {
                         AddLog("⚠️ Deletion skipped: identity or snapshot safety checks did not pass.");
-                        SyncLogger.Log("[Reconcile] Deletion skipped: identity or snapshot safety checks did not pass.");
+                        SyncLogger.Log($"[Reconcile] Deletion skipped: {safetyReason}.");
                     }
                     foreach (var voucher in candidates)
                     {

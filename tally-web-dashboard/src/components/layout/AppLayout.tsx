@@ -303,7 +303,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     ], [homePath]);
 
     return (
-        <div className={`app-shell ${['/ledgers', '/sales', '/vouchers'].includes(location.pathname) ? 'ledger-layout' : ''} flex min-h-screen relative overflow-x-hidden bg-[var(--background)]`}>
+        <div className={`app-shell ${location.pathname.startsWith('/invoice/') ? 'invoice-page-shell' : ''} ${['/ledgers', '/sales', '/vouchers'].includes(location.pathname) ? 'ledger-layout' : ''} flex min-h-screen relative overflow-x-hidden bg-[var(--background)]`}>
 
             {/* ===== MOBILE SIDEBAR OVERLAY ===== */}
             <AnimatePresence>
@@ -576,7 +576,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </div>
                     </header>
                 ) : (
-                    <header className={`standard-mobile-header ${location.pathname === '/vouchers' ? 'voucher-mobile-header' : ''} ${(location.pathname === '/reports' || location.pathname.startsWith('/reports/')) ? 'reports-mobile-header' : ''} md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]`}>
+                    <header className={`standard-mobile-header ${location.pathname.startsWith('/invoice/') ? 'invoice-mobile-header' : ''} ${location.pathname === '/vouchers' ? 'voucher-mobile-header' : ''} ${(location.pathname === '/reports' || location.pathname.startsWith('/reports/')) ? 'reports-mobile-header' : ''} md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]`}>
                         <button onClick={() => setShowMobileMenu(true)} className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] text-[var(--on-surface)] transition-colors shrink-0">
                             <Menu size={18} />
                         </button>

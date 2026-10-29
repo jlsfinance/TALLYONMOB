@@ -1,0 +1,19 @@
+@media (max-width: 767px) {
+  .invoice-mobile-header .invoice-header-actions button:not(:last-child) { display: none; }
+  .invoice-mobile-header .invoice-header-title { display: flex; flex-direction: row; align-items: center; }
+  .invoice-preview-back { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px; color: var(--primary); background: var(--surface-container); }
+  .invoice-preview-label { display: flex; justify-content: space-between; max-width: 560px; margin: 0 auto 7px; color: var(--text-muted); font-size: 10px; font-weight: 800; letter-spacing: .07em; }
+  .invoice-preview-page { min-height: calc(100dvh - 52px); padding: 12px 10px 96px; background: var(--background); }
+  .invoice-preview-document { max-width: 560px; margin: 0 auto; padding: 8px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-container); }
+  .invoice-preview-document .printable-content { box-shadow: 0 4px 16px rgba(26, 54, 66, .10); }
+  .invoice-preview-summary { max-width: 560px; margin: 10px auto 0; padding: 13px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); color: var(--on-surface); }
+  .invoice-preview-summary-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .invoice-preview-summary-heading > div { min-width: 0; }
+  .invoice-preview-summary-heading h2 { margin-top: 4px; overflow-wrap: anywhere; font-size: 15px; font-weight: 800; }
+  .invoice-preview-summary-heading p, .invoice-preview-caption { color: var(--text-muted); font-size: 11px; }
+  .invoice-preview-summary-heading strong { flex: none; font-size: 16px; font-weight: 800; }
+  .invoice-preview-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(65px, 1fr); gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .invoice-preview-actions button { display: flex; min-width: 0; min-height: 44px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 9px; color: var(--primary); font-size: 10px; font-weight: 700; }
+  .invoice-preview-actions button:hover { background: var(--surface-hover); }
+  .invoice-preview-actions button.invoice-preview-done { background: var(--primary); color: var(--surface); font-size: 13px; }
+}

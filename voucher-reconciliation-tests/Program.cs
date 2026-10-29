@@ -29,6 +29,10 @@ liveCloud.Add(new CloudVoucherIdentity { Id = removedId, Guid = removedGuid, Alt
 foreach (var item in liveCloud) item.IsDeleted = false;
 var deletionDiff = VoucherReconciliation.Compare(full, liveCloud);
 Check(VoucherReconciliation.SafeDeleteCandidates(full, full, liveCloud, deletionDiff).Single().Id == removedId, "confirmed deletion");
+var duplicateCloud = liveCloud.Concat(full.Take(20).Select(v => { var duplicate = C(v.Guid, v.AlterId!); duplicate.IsDeleted = false; return duplicate; })).ToList();
+Check(VoucherReconciliation.SafeDeleteCandidates(full, full, duplicateCloud, VoucherReconciliation.Compare(full, duplicateCloud)).Single().Id == removedId, "duplicate unrelated cloud GUIDs must not block a unique confirmed deletion");
+var duplicateCandidate = duplicateCloud.Append(new CloudVoucherIdentity { Id = Guid.NewGuid().ToString(), Guid = removedGuid, AlterId = "9001", IsDeleted = false }).ToList();
+Check(VoucherReconciliation.SafeDeleteCandidates(full, full, duplicateCandidate, VoucherReconciliation.Compare(full, duplicateCandidate)).Count == 0, "ambiguous deletion candidate must remain blocked");
 Check(VoucherReconciliation.SafeDeleteCandidates(full, full.Skip(1).ToArray(), liveCloud, deletionDiff).Count == 0, "incomplete Tally index");
 var changedIndex = full.Select(v => T(v.Guid, v.AlterId!)).ToArray();
 changedIndex[0].AlterId = "9999";

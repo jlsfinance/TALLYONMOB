@@ -33,15 +33,25 @@ namespace TallySyncApp.Services
         public static List<CloudVoucherIdentity> SafeDeleteCandidates(
             IReadOnlyList<VoucherIndexEntry> first, IReadOnlyList<VoucherIndexEntry> second,
             IReadOnlyList<CloudVoucherIdentity> cloud, VoucherReconciliationResult diff)
+            => SafeDeleteCandidates(first, second, cloud, diff, out _);
+
+        public static List<CloudVoucherIdentity> SafeDeleteCandidates(
+            IReadOnlyList<VoucherIndexEntry> first, IReadOnlyList<VoucherIndexEntry> second,
+            IReadOnlyList<CloudVoucherIdentity> cloud, VoucherReconciliationResult diff, out string reason)
         {
-            if (first.Count < 20 || second.Count != first.Count) return new();
+            reason = "";
+            if (first.Count < 20 || second.Count != first.Count) { reason = "Tally index count is too small or changed between snapshots"; return new(); }
+            if (first.Any(v => string.IsNullOrWhiteSpace(v.Guid)) || second.Any(v => string.IsNullOrWhiteSpace(v.Guid))) { reason = "Tally index contains missing GUIDs"; return new(); }
             var firstKeys = first.Select(v => (v.Guid.Trim().ToUpperInvariant(), (v.AlterId ?? "").Trim())).ToHashSet();
             var secondKeys = second.Select(v => (v.Guid.Trim().ToUpperInvariant(), (v.AlterId ?? "").Trim())).ToHashSet();
-            if (firstKeys.Count != first.Count || secondKeys.Count != second.Count || !firstKeys.SetEquals(secondKeys)) return new();
-            if (first.Select(v => v.Guid.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != first.Count) return new();
-            if (first.Any(v => string.IsNullOrWhiteSpace(v.Guid) || !long.TryParse(v.AlterId, out var id) || id <= 0)) return new();
-            var activeKnown = cloud.Count(v => v.IsDeleted == false && !string.IsNullOrWhiteSpace(v.Guid));
-            if (activeKnown == 0 || first.Count < activeKnown * 0.999) return new();
+            if (firstKeys.Count != first.Count || secondKeys.Count != second.Count || !firstKeys.SetEquals(secondKeys)) { reason = "Tally snapshots contain duplicates or changed identities"; return new(); }
+            if (first.Select(v => v.Guid.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != first.Count) { reason = "Tally index contains duplicate GUIDs"; return new(); }
+            if (first.Any(v => string.IsNullOrWhiteSpace(v.Guid) || !long.TryParse(v.AlterId, out var id) || id <= 0)) { reason = "Tally index contains invalid ALTERIDs"; return new(); }
+            // Duplicate cloud rows must not inflate the number of distinct Tally identities.
+            // Duplicates remain ineligible for deletion via the candidate check below.
+            var activeKnown = cloud.Where(v => v.IsDeleted == false && !string.IsNullOrWhiteSpace(v.Guid))
+                .Select(v => v.Guid!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            if (activeKnown == 0 || first.Count < activeKnown * 0.999) { reason = $"Tally index coverage is insufficient (Tally={first.Count}, cloud active GUIDs={activeKnown})"; return new(); }
             var ids = new HashSet<string>(diff.PossibleDeletedIds, StringComparer.OrdinalIgnoreCase);
             var grouped = cloud.Where(v => v.IsDeleted == false && !string.IsNullOrWhiteSpace(v.Guid))
                 .GroupBy(v => v.Guid!.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -49,7 +59,7 @@ namespace TallySyncApp.Services
             var candidates = cloud.Where(v => ids.Contains(v.Id) && v.IsDeleted == false && !string.IsNullOrWhiteSpace(v.Guid)
                 && !string.IsNullOrWhiteSpace(v.AlterId) && grouped[v.Guid.Trim()] == 1
                 && string.Equals(v.Id, new Guid(MD5.HashData(Encoding.UTF8.GetBytes(v.Guid.Trim()))).ToString(), StringComparison.OrdinalIgnoreCase)).ToList();
-            if (candidates.Count != ids.Count || candidates.Count > 5 || candidates.Count > Math.Max(1, activeKnown / 1000)) return new();
+            if (candidates.Count != ids.Count || candidates.Count > 5 || candidates.Count > Math.Max(1, activeKnown / 1000)) { reason = $"Candidate identity or deletion limit failed (possible={ids.Count}, verified={candidates.Count})"; return new(); }
             return candidates;
         }
 

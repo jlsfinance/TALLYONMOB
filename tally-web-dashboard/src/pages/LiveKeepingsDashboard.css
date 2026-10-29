@@ -146,3 +146,14 @@
 .dashboard-dark .dashboard-sync-dismiss { color: #edb5a6; }
 @keyframes dashboard-sync-nudge { 0%, 85%, 100% { transform: translateX(0); } 88% { transform: translateX(2px); } 91% { transform: translateX(-2px); } 94% { transform: translateX(1px); } }
 @media (prefers-reduced-motion: reduce) { .dashboard-sync-warning-text { animation: none; } }
+
+/* Latest vouchers use one continuous surface, with actions beside each amount. */
+.dashboard-voucher-list { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.dashboard-voucher-row { padding: 10px 12px; background: var(--surface); }
+.dashboard-voucher-row + .dashboard-voucher-row { border-top: 1px solid var(--border); }
+.dashboard-voucher-row h4 { color: var(--on-surface); }
+.dashboard-voucher-right { min-width: 68px; }
+.dashboard-voucher-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 4px; }
+.dashboard-voucher-actions button { display: grid; place-items: center; width: 28px; height: 26px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-container); color: var(--primary); }
+.dashboard-voucher-actions button:first-child { color: #008b68; }
+.dashboard-voucher-actions button:active { transform: scale(.95); }

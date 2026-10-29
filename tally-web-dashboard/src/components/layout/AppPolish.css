@@ -56,6 +56,23 @@
 .app-sidebar-collapsed .sidebar-brand { padding-left: 6px; padding-right: 6px; gap: 2px; }
 .app-sidebar-collapsed .sidebar-navigation { padding-left: 6px; padding-right: 6px; }
 .app-sidebar-collapsed .sidebar-actions { padding-left: 6px; padding-right: 6px; }
+/* The invoice header stays in the page scroll and its actions fit on one line. */
+.app-shell.invoice-page-shell, .invoice-page-shell > main { overflow-x: clip; }
+.invoice-header-title { min-width: 0; }
+.invoice-header-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invoice-header-actions button { justify-content: center; border: 1px solid var(--border); background: var(--surface-container); color: var(--primary); box-shadow: none; }
+.invoice-header-actions button:hover { background: var(--surface-hover); }
+.invoice-header-actions button:first-child { color: #008c69; }
+@media (max-width: 767px) {
+  .invoice-mobile-header.standard-mobile-header { flex-wrap: nowrap; min-height: 52px; height: 52px; gap: 4px; padding: 4px 7px; }
+  .invoice-mobile-header.standard-mobile-header > .flex-1 { flex: 1 1 0; min-width: 0; overflow: hidden; }
+  .invoice-mobile-header #header-title-mobile { min-width: 0; overflow: hidden; }
+  .invoice-mobile-header #header-title-mobile > div, .invoice-mobile-header .invoice-header-title { min-width: 0; }
+  .invoice-mobile-header .invoice-header-title h1 { font-size: 12px; letter-spacing: 0; }
+  .invoice-mobile-header #header-actions-mobile, .invoice-mobile-header #header-actions-mobile > div { flex-shrink: 0; }
+  .invoice-mobile-header .invoice-header-actions { gap: 3px; }
+  .invoice-mobile-header .invoice-header-actions button { width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+}
 .app-content-standard { padding: 12px 14px 90px; }
 .app-content-standard .page-m3__header { margin-bottom: 14px; }
 .app-content-standard .page-m3__title { font-size: 22px; letter-spacing: -.02em; }
