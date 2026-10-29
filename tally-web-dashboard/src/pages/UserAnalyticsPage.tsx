@@ -13,6 +13,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, CartesianGrid
 } from 'recharts';
 import toast from 'react-hot-toast';
+import './InsightsSyncPages.css';
 
 interface ActivityLog {
   id: string;
@@ -171,8 +172,9 @@ export default function UserAnalyticsPage() {
   };
 
   return (
-    <div className="space-y-4 pb-24 max-w-7xl mx-auto">
-      <HeaderPortal>
+    <div className="analytics-app space-y-4 pb-24 max-w-7xl mx-auto">
+      <HeaderPortal type="title"><h1 className="insights-page-title">User Analytics</h1></HeaderPortal>
+      <HeaderPortal type="actions">
         <div className="flex items-center gap-2">
           <button onClick={handleRefresh} className="p-2 rounded-lg hover:bg-[var(--surface-variant)]" disabled={refreshing}>
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -183,13 +185,10 @@ export default function UserAnalyticsPage() {
         </div>
       </HeaderPortal>
 
-      <div>
-        <h1 className="text-xl font-black text-[var(--on-surface)]">User Analytics</h1>
-        <p className="text-xs text-[var(--text-muted)]">God-level tracking — every click, page, action</p>
-      </div>
+      <div className="insights-page-intro"><span>ACTIVITY OVERVIEW</span><p>God-level tracking — every click, page, action</p></div>
 
       {/* Time Range Selector */}
-      <div className="flex gap-2">
+      <div className="analytics-time-tabs flex gap-2">
         {TIME_RANGES.map(tr => (
           <button key={tr.key} onClick={() => setTimeRange(tr.key)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeRange === tr.key ? 'bg-indigo-500 text-white' : 'bg-[var(--surface-variant)] text-[var(--text-muted)]'}`}>
@@ -199,7 +198,7 @@ export default function UserAnalyticsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="analytics-metrics grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { icon: <Users size={16} />, label: 'Unique Users', value: stats.uniqueUsers, color: 'text-indigo-400' },
           { icon: <Eye size={16} />, label: 'Page Views', value: stats.pageViews, color: 'text-blue-400' },
@@ -307,7 +306,7 @@ export default function UserAnalyticsPage() {
 
         <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
           <h3 className="text-sm font-bold text-[var(--on-surface)] mb-3">Recent Activity</h3>
-          <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+          <div className="space-y-1.5">
             {recentActivity.slice(0, 15).map((log, i) => (
               <div key={i} className="flex items-center gap-2 text-[10px]">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: EVENT_COLORS[log.event_type] || '#64748b' }} />

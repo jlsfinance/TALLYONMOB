@@ -141,7 +141,11 @@ namespace TallySyncApp
                         try { Process.Start(new ProcessStartInfo(LoggingService.LogDirectory) { UseShellExecute = true }); } catch (Exception ex) { _logger?.LogWarning(ex, "OpenLogFolder failed"); }
                     },
                     Exit = () => Shutdown(),
-                    Tooltip = $"TallyLink {DeviceIdentityService.Cached?.DesktopVersion ?? ""}",
+                    #if DEBUG
+                    Tooltip = $"SYNCORA Debug {DeviceIdentityService.Cached?.DesktopVersion ?? ""}",
+#else
+                    Tooltip = $"SYNCORA {DeviceIdentityService.Cached?.DesktopVersion ?? ""}",
+#endif
                     StartHidden = true
                 });
                 ToastService.Attach(_tray.Icon!);

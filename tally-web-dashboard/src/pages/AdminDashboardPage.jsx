@@ -809,7 +809,7 @@ const AdminDashboardPage = () => {
                                     <div>
                                         <div className="email" style={{ fontWeight: 600 }}>Console access is deny-by-default</div>
                                         <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginTop: 6, lineHeight: 1.5 }}>
-                                            Enable the admin console with VITE_ENABLE_ADMIN_CONSOLE=true and then allow access via VITE_ADMIN_EMAILS or user metadata role set to admin or super_admin.
+                                            Sign in with the configured administrator account. Database access is also controlled by server-side policies.
                                         </div>
                                     </div>
                                     <span className="role-badge">Protected</span>

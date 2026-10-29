@@ -21,6 +21,7 @@ interface LicenseInfo {
 interface LicenseGateContextType {
     license: LicenseInfo;
     isLoading: boolean;
+    licenseError: string | null;
     hasFeature: (feature: string) => boolean;
     canAccess: (feature: string) => boolean;
     isReadOnly: boolean;
@@ -43,6 +44,7 @@ const defaultLicense: LicenseInfo = {
 const LicenseGateContext = createContext<LicenseGateContextType>({
     license: defaultLicense,
     isLoading: true,
+    licenseError: null,
     hasFeature: () => false,
     canAccess: () => false,
     isReadOnly: true,
@@ -91,8 +93,10 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const { user, selectedCompany } = useAuth() as any;
     const [license, setLicense] = useState<LicenseInfo>(defaultLicense);
     const [isLoading, setIsLoading] = useState(true);
+    const [licenseError, setLicenseError] = useState<string | null>(null);
 
     const checkLicense = useCallback(async () => {
+        setLicenseError(null);
         if (!user?.id) {
             setLicense(defaultLicense);
             setIsLoading(false);
@@ -112,6 +116,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
+            if (licError) throw licError;
 
             if (!lic) {
                 // No license — check for active trial in trial_history
@@ -148,21 +153,25 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
 
             // Has license
             const now = new Date();
-            const expiry = new Date(lic.expiry_date);
-            const plan = lic.plan as any;
-            const planSlug = plan?.slug || '';
+            const expiryValue = lic.expiry_date || lic.expires_at;
+            const expiry = expiryValue ? new Date(expiryValue) : null;
+            const { data: plan, error: planError } = lic.plan_id
+                ? await supabase.from('subscription_plans').select('name, slug, features').eq('id', lic.plan_id).maybeSingle()
+                : { data: null, error: null };
+            if (planError) throw planError;
+            const planSlug = plan?.slug || lic.plan_slug || '';
             const features = PLAN_FEATURES[planSlug] || plan?.features || [];
             const companyLimit = PLAN_LIMITS[planSlug] || 1;
-            const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / 86400000));
+            const daysLeft = expiry ? Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / 86400000)) : 0;
 
             let status: LicenseStatus = lic.status as LicenseStatus;
-            if (expiry <= now) status = 'expired';
+            if (expiry && expiry <= now) status = 'expired';
 
             setLicense({
                 status,
-                planName: plan?.name || 'Unknown',
+                planName: plan?.name || planSlug || 'Unknown',
                 planSlug,
-                expiryDate: lic.expiry_date,
+                expiryDate: expiryValue || '',
                 daysLeft,
                 licenseKey: lic.license_key,
                 features,
@@ -172,6 +181,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
             });
         } catch (err) {
             console.error('License check failed:', err);
+            setLicenseError('Subscription status could not be verified.');
             setLicense(defaultLicense);
         } finally {
             setIsLoading(false);
@@ -184,26 +194,24 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
 
     const hasFeature = useCallback((feature: string): boolean => {
         if (license.isSuperAdmin) return true;
-        if (license.status === 'expired' || license.status === 'blocked' || license.status === 'suspended') {
+        if (license.status === 'blocked' || license.status === 'suspended') {
             return !EXPIRED_BLOCKED.includes(feature);
         }
-        if (license.status === 'none') return ['dashboard', 'parties'].includes(feature);
-        return license.features.includes(feature) || license.features.includes('*');
+        return true; // Subscription requirements are paused while the app is free.
     }, [license]);
 
     const canAccess = useCallback((feature: string): boolean => {
         if (license.isSuperAdmin) return true;
-        if (license.status === 'expired' || license.status === 'blocked') return false;
-        if (license.status === 'none') return false;
+        if (license.status === 'blocked' || license.status === 'suspended') return false;
         return hasFeature(feature);
     }, [license, hasFeature]);
 
     // isReadOnly sirf tab true jab license expired/blocked/suspended hai
     // 'none' (no license) pe app usable hai, sirf banner dikhega
-    const isReadOnly = license.status === 'expired' || license.status === 'blocked' || license.status === 'suspended';
+    const isReadOnly = license.status === 'blocked' || license.status === 'suspended';
 
     return (
-        <LicenseGateContext.Provider value={{ license, isLoading, hasFeature, canAccess, isReadOnly, refresh: checkLicense }}>
+        <LicenseGateContext.Provider value={{ license, isLoading, licenseError, hasFeature, canAccess, isReadOnly, refresh: checkLicense }}>
             {children}
         </LicenseGateContext.Provider>
     );

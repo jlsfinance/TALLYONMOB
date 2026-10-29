@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, ArrowRight, RefreshCw, ArrowLeft, Search, MoreVertical, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
+import { supabase } from '@/lib/insforge';
 
 // Row-list design (like the approved mock) with full dark-mode support.
 // Selection, delete and refresh logic unchanged.
@@ -18,10 +19,24 @@ export default function SelectCompanyPage() {
     const [searchOpen, setSearchOpen] = useState(false);
     const [searchQ, setSearchQ] = useState('');
     const [menuFor, setMenuFor] = useState<string | null>(null);
+    const [syncTimes, setSyncTimes] = useState<Record<string, string | null | undefined>>({});
 
     useEffect(() => {
         refreshCompanies();
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        setSyncTimes({});
+        void Promise.all(companies.map(async (company: any) => {
+            const { data, error } = await supabase.from('sync_history')
+                .select('completed_at').eq('company_id', company.id)
+                .in('status', ['completed', 'success', 'successful'])
+                .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(1);
+            return [company.id, error ? undefined : (data?.[0]?.completed_at ?? null)] as const;
+        })).then(entries => { if (!cancelled) setSyncTimes(Object.fromEntries(entries)); });
+        return () => { cancelled = true; };
+    }, [companies]);
 
     // close row menu on outside click
     useEffect(() => {
@@ -134,7 +149,12 @@ export default function SelectCompanyPage() {
                 ) : (
                     <ul className={`divide-y ${hairline}`}>
                         <AnimatePresence initial={false}>
-                            {visible.map((company: any) => (
+                            {visible.map((company: any) => {
+                                const timestamp = syncTimes[company.id] || company.last_sync_at;
+                                const date = timestamp ? new Date(timestamp) : null;
+                                const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+                                const overdue = validDate && Date.now() - validDate.getTime() > 3 * 24 * 60 * 60 * 1000;
+                                return (
                                 <motion.li
                                     key={company.id}
                                     initial={{ opacity: 0, y: 6 }}
@@ -152,10 +172,10 @@ export default function SelectCompanyPage() {
                                     >
                                         <div className="min-w-0 flex-1">
                                             <p className={`text-[15px] font-semibold ${nameC} truncate`}>{company.name}</p>
-                                            <p className={`text-[13px] italic mt-0.5 ${statusC}`}>
-                                                {company.last_sync_at
-                                                    ? `Synced ${formatDistanceToNow(new Date(company.last_sync_at))} ago`
-                                                    : 'Not synced yet'}
+                                            <p className={`text-[13px] italic mt-0.5 ${validDate ? overdue ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400' : statusC}`}>
+                                                {validDate
+                                                    ? `${overdue ? 'Warning: last synced' : 'Synced'} ${formatDistanceToNow(validDate)} ago`
+                                                    : syncTimes[company.id] === null ? 'No successful sync recorded' : 'Sync status unavailable'}
                                             </p>
                                         </div>
 
@@ -201,7 +221,7 @@ export default function SelectCompanyPage() {
                                         </div>
                                     </div>
                                 </motion.li>
-                            ))}
+                            ); })}
                         </AnimatePresence>
                     </ul>
                 )}

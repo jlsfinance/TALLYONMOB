@@ -7,6 +7,10 @@ import {
     IndianRupee, Clock, ArrowUpRight, Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { HeaderPortal } from '../components/layout/HeaderPortal';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import './InactiveCustomersPage.css';
 
 interface InactiveCustomer {
     id: string;
@@ -22,6 +26,7 @@ interface InactiveCustomer {
 
 export default function InactiveCustomersPage() {
     const { selectedCompany } = useAuth() as any;
+    const navigate = useNavigate();
     const [customers, setCustomers] = useState<InactiveCustomer[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -120,20 +125,21 @@ export default function InactiveCustomersPage() {
     };
 
     const sendReEngagement = (customer: InactiveCustomer, channel: 'whatsapp' | 'email') => {
-        const companyName = selectedCompany?.name || 'us';
-        const message = `Hi ${customer.name}! 👋\n\nWe noticed we haven't heard from you in a while. We value your business and wanted to check in.\n\nWe'd love to continue serving you. Is there anything we can help with?\n\nWarm regards,\n${companyName}`;
+        const companyName = selectedCompany?.name || 'हमारी टीम';
+        const message = `नमस्ते ${customer.name} जी 🙏\n\nआशा है आप और आपका परिवार कुशल-मंगल होंगे। काफी समय से आपसे बात नहीं हुई, तो सोचा आपका हाल-चाल पूछ लें।\n\nआपका भरोसा और साथ हमारे लिए बहुत मायने रखता है। आपकी किसी भी जरूरत में हम खुशी से आपकी सेवा के लिए तैयार हैं। जब भी समय मिले, हमें जरूर याद कीजिएगा।\n\nसस्नेह,\n${companyName}`;
 
         if (channel === 'whatsapp') {
             const phone = customer.phone?.replace(/[^0-9]/g, '') || '';
-            const url = phone
-                ? `https://wa.me/91${phone}?text=${encodeURIComponent(message)}`
-                : `https://wa.me/?text=${encodeURIComponent(message)}`;
-            window.open(url, '_blank');
+            // Use an HTTPS share link so browsers without the WhatsApp app never open a blank custom-protocol tab.
+            const recipient = phone ? `91${phone}` : '';
+            const params = new URLSearchParams({ text: message });
+            const url = `https://wa.me/${recipient}?${params.toString()}`;
+            window.open(url, '_blank', 'noopener,noreferrer');
         } else {
-            const subject = `We miss you, ${customer.name}!`;
+            const subject = `${customer.name} जी, आपका हाल-चाल जानना चाहेंगे`;
             window.open(`mailto:${customer.email || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`);
         }
-        toast.success(`Re-engagement message sent to ${customer.name}`);
+        toast.success('संदेश तैयार है। कृपया खोलकर भेजें।');
     };
 
     const totalLostRevenue = useMemo(() =>
@@ -142,35 +148,27 @@ export default function InactiveCustomersPage() {
     );
 
     return (
-        <div className="min-h-screen bg-[var(--background)] p-4 md:p-6 pb-24">
-            {/* Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-[var(--on-surface)] flex items-center gap-2">
-                    <UserX className="w-6 h-6 text-red-400" />
-                    Inactive Customers
-                </h1>
-                <p className="text-sm text-[var(--text-muted)] mt-1">
-                    Find and re-engage customers who haven't transacted recently
-                </p>
-            </div>
+        <div className="inactive-page">
+            <HeaderPortal type="title"><div className="inactive-header-title"><button onClick={() => navigate('/reports')} aria-label="Back to reports"><ArrowLeft size={18}/></button><h1>Inactive Customers</h1></div></HeaderPortal>
+            <div className="inactive-intro"><span>CUSTOMER ACTIVITY</span><p>Find and re-engage customers who haven't transacted recently</p></div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
+            <div className="inactive-stats">
+                <div className="inactive-stat">
                     <div className="flex items-center gap-2 mb-2">
                         <UserX className="w-4 h-4 text-red-400" />
                         <span className="text-xs text-[var(--text-muted)]">Inactive</span>
                     </div>
                     <p className="text-xl font-bold text-red-400">{filtered.length}</p>
                 </div>
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
+                <div className="inactive-stat">
                     <div className="flex items-center gap-2 mb-2">
                         <TrendingDown className="w-4 h-4 text-amber-400" />
                         <span className="text-xs text-[var(--text-muted)]">Lost Revenue</span>
                     </div>
                     <p className="text-lg font-bold text-amber-400">{formatCurrency(totalLostRevenue)}</p>
                 </div>
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
+                <div className="inactive-stat">
                     <div className="flex items-center gap-2 mb-2">
                         <Clock className="w-4 h-4 text-blue-400" />
                         <span className="text-xs text-[var(--text-muted)]">Period</span>
@@ -180,8 +178,8 @@ export default function InactiveCustomersPage() {
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col md:flex-row gap-3 mb-4">
-                <div className="relative flex-1">
+            <div className="inactive-filters">
+                <div className="relative inactive-search">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
                     <input
                         type="text"
@@ -225,14 +223,14 @@ export default function InactiveCustomersPage() {
                     <p className="text-sm text-[var(--text-muted)]">All customers are actively transacting</p>
                 </div>
             ) : (
-                <div className="space-y-2">
+                <div className="inactive-list">
                     {filtered.map((customer) => (
                         <div
                             key={customer.id}
-                            className="bg-[var(--surface)] rounded-xl border border-[var(--border)] hover:border-[var(--border-hover)] transition-all"
+                            className="inactive-customer"
                         >
-                            <div className="p-4">
-                                <div className="flex items-start justify-between mb-2">
+                            <div className="inactive-customer-body">
+                                <div className="inactive-customer-top">
                                     <div className="flex-1 min-w-0">
                                         <h3 className="font-medium text-[var(--on-surface)] truncate">{customer.name}</h3>
                                         <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -244,7 +242,7 @@ export default function InactiveCustomersPage() {
                                             </span>
                                         </div>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="inactive-customer-amount">
                                         <p className="text-sm font-bold text-[var(--on-surface)]">{formatCurrency(customer.totalValue)}</p>
                                         <p className="text-xs text-[var(--text-muted)]">total business</p>
                                         {customer.current_balance > 0 && (

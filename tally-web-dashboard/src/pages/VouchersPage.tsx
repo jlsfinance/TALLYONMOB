@@ -151,7 +151,7 @@ export default function VouchersPage() {
                 sync_status: 'synced',
             }));
         },
-        { enabled: !!selectedCompany?.id && !!selectedFy, staleTime: 60 * 1000, refetchInterval: 60 * 1000, refetchOnWindowFocus: true }
+        { enabled: !!selectedCompany?.id && !!selectedFy, staleTime: 60 * 1000, refetchInterval: 60 * 1000, refetchOnWindowFocus: false }
     );
 
     // ── Compute month aggregates ──

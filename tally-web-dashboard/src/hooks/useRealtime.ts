@@ -21,6 +21,7 @@ export function useRealtimeSubscription(
     useEffect(() => {
         if (!enabled || !companyId || !table) return;
 
+        let disposed = false;
         const channel = supabase
             .channel(`realtime:${table}:${companyId}`)
             .on(
@@ -36,7 +37,8 @@ export function useRealtimeSubscription(
                 }
             )
             .subscribe((status: string) => {
-                if (status !== 'SUBSCRIBED') {
+                // Closing a channel during normal cleanup is expected. Report real failures.
+                if (!disposed && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')) {
                     console.warn(`[Realtime] ${table} subscription status:`, status);
                 }
             });
@@ -44,6 +46,7 @@ export function useRealtimeSubscription(
         channelRef.current = channel;
 
         return () => {
+            disposed = true;
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;

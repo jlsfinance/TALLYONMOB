@@ -9,6 +9,8 @@ import {
     Check, RotateCcw, FileText, ChevronRight, Zap
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import './InsightsSyncPages.css';
 import { supabase } from '@/lib/insforge';
 import { generateTallyVoucherXml, sendToTally, exportVouchersToTally } from '@/services/tallyExportService';
 
@@ -104,10 +106,10 @@ export default function TallySyncPage() {
 
     const handleTallyToWebSync = async () => {
         setTallyToWebSyncing(true);
-        toast.loading('Syncing latest records from Tally Cloud...', { id: 'tally-pull-sync' });
+        toast.loading('Refreshing cloud records...', { id: 'tally-pull-sync' });
         try {
             await Promise.all([loadTallyToWebData(), loadPendingVouchers()]);
-            toast.success('Sync complete! All records are up to date.', { id: 'tally-pull-sync' });
+            toast.success('Refresh requested.', { id: 'tally-pull-sync' });
         } catch (err: any) {
             toast.error('Sync error: ' + (err.message || 'Unknown error'), { id: 'tally-pull-sync' });
         } finally {
@@ -206,15 +208,16 @@ export default function TallySyncPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#0B1118] text-slate-100 pb-24 px-3 sm:px-6 pt-3 sm:pt-6 space-y-4 max-w-6xl mx-auto font-sans">
+        <div className="sync-hub bg-[#0B1118] text-slate-100 pb-24 px-3 sm:px-6 pt-3 sm:pt-6 space-y-4 max-w-6xl mx-auto font-sans">
+            <HeaderPortal type="title"><h1 className="insights-page-title">Tally Sync Hub</h1></HeaderPortal>
             {/* Top Bar Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 shadow-sm">
+            <div className="sync-intro flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#121B24] border border-[#1E2B38] rounded-2xl p-4 shadow-sm">
                 <div>
                     <div className="flex items-center gap-2.5">
-                        <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">Tally Sync Hub</h1>
+                        <span className="sync-overview-label">SYNC OVERVIEW</span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00E599]/10 text-[#00E599] border border-[#00E599]/25 flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#00E599] animate-pulse"></span>
-                            Live Sync Active
+                            Sync overview
                         </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
@@ -235,7 +238,7 @@ export default function TallySyncPage() {
             </div>
 
             {/* High-Contrast Segmented Tabs */}
-            <div className="bg-[#121B24] p-1.5 rounded-2xl border border-[#1E2B38] grid grid-cols-2 gap-1.5 shadow-sm">
+            <div className="sync-direction-tabs bg-[#121B24] p-1.5 rounded-2xl border border-[#1E2B38] grid grid-cols-2 gap-1.5 shadow-sm">
                 <button
                     onClick={() => setActiveTab('tally-to-web')}
                     className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
@@ -280,7 +283,7 @@ export default function TallySyncPage() {
             {activeTab === 'tally-to-web' && (
                 <div className="space-y-4 animate-fade-in">
                     {/* Live Sync Hero Card */}
-                    <div className="bg-gradient-to-br from-[#121B24] via-[#121B24] to-[#14262E] border border-[#1E2B38] rounded-2xl p-4 sm:p-5 shadow-sm">
+                    <div className="sync-company-card bg-gradient-to-br from-[#121B24] via-[#121B24] to-[#14262E] border border-[#1E2B38] rounded-2xl p-4 sm:p-5 shadow-sm">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="space-y-1">
                                 <span className="text-[10px] font-black tracking-widest text-[#00E599] uppercase">
@@ -291,7 +294,7 @@ export default function TallySyncPage() {
                                 </h2>
                                 <p className="text-xs text-slate-400 flex items-center gap-1.5">
                                     <Clock size={13} className="text-slate-400" />
-                                    Last synced: {stats.lastSync ? format(new Date(stats.lastSync), 'dd MMM yyyy, hh:mm a') : 'Synced recently'}
+                                    Last synced: {stats.lastSync ? format(new Date(stats.lastSync), 'dd MMM yyyy, hh:mm a') : 'Not available'}
                                 </p>
                             </div>
 
@@ -301,12 +304,12 @@ export default function TallySyncPage() {
                                 className="px-5 py-2.5 rounded-xl bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] font-black text-xs sm:text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-50"
                             >
                                 <RefreshCw size={15} className={tallyToWebSyncing ? 'animate-spin' : ''} />
-                                <span>{tallyToWebSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                                <span>{tallyToWebSyncing ? 'Refreshing...' : 'Refresh Data'}</span>
                             </button>
                         </div>
 
                         {/* Module Counts Grid */}
-                        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mt-5 pt-4 border-t border-[#1E2B38]">
+                        <div className="sync-counts grid grid-cols-3 gap-2.5 sm:gap-4 mt-5 pt-4 border-t border-[#1E2B38]">
                             <div className="bg-[#0B1118]/70 border border-[#1E2B38] rounded-xl p-3 text-center">
                                 <Database size={16} className="text-[#00E599] mx-auto mb-1 opacity-80" />
                                 <div className="text-lg sm:text-2xl font-black text-white tracking-tight">
@@ -375,10 +378,10 @@ export default function TallySyncPage() {
 
                         {syncHistory.length === 0 ? (
                             <div className="p-8 text-center text-xs text-slate-400">
-                                No sync history records found yet. Click "Sync Now" above to initiate a refresh.
+                                No sync history records found yet. Use Refresh Data above to check again.
                             </div>
                         ) : (
-                            <div className="divide-y divide-[#1A2634]">
+                            <div className="sync-history-list divide-y divide-[#1A2634]">
                                 {syncHistory.slice(0, 8).map((log: any, idx: number) => (
                                     <div key={log.id || idx} className="p-3.5 sm:px-4 flex items-center justify-between gap-3 hover:bg-[#16202C]/50 transition-colors">
                                         <div className="flex items-center gap-2.5 min-w-0">

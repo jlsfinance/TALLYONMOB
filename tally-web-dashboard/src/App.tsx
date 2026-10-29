@@ -87,6 +87,7 @@ const VouchersPage = lazyPage('VouchersPage', () => import('./pages/VouchersPage
 const VoucherDetailPage = lazyPage('VoucherDetailPage', () => import('./pages/VoucherDetailPage'));
 const StockPage = lazyPage('StockPage', () => import('./pages/StockPage'));
 const ReportsPage = lazyPage('ReportsPage', () => import('./pages/ReportsPage'));
+const ReportViewPage = lazyPage('ReportViewPage', () => import('./pages/ReportViewPage'));
 const StockSnapshotReport = lazyPage('StockSnapshotReport', () => import('./pages/StockSnapshotReport'));
 const StockGroupReport = lazyPage('StockGroupReport', () => import('./pages/StockGroupReport'));
 const SyncHistoryPage = lazyPage('SyncHistoryPage', () => import('./pages/SyncHistoryPage'));
@@ -109,6 +110,7 @@ const PrivacyPolicyPage = lazyPage('PrivacyPolicyPage', () => import('./pages/Pr
 const TermsPage = lazyPage('TermsPage', () => import('./pages/TermsPage'));
 const RefundPolicyPage = lazyPage('RefundPolicyPage', () => import('./pages/RefundPolicyPage'));
 const SupportPage = lazyPage('SupportPage', () => import('./pages/SupportPage'));
+const SyncHelpPage = lazyPage('SyncHelpPage', () => import('./pages/SyncHelpPage'));
 const SecurityPage = lazyPage('SecurityPage', () => import('./pages/SecurityPage'));
 const AccountDeletionPage = lazyPage('AccountDeletionPage', () => import('./pages/AccountDeletionPage'));
 const TrustCenterPage = lazyPage('TrustCenterPage', () => import('./pages/TrustCenterPage'));
@@ -207,6 +209,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
     if (!appMode &&
         location.pathname !== '/select-mode' &&
+        location.pathname !== '/subscription' &&
         location.pathname !== '/billing-launch' &&
         location.pathname !== '/onboarding' &&
         location.pathname !== '/admin' &&
@@ -216,6 +219,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
     if ((appMode === 'tally' || appMode === 'billing') && !selectedCompany &&
         location.pathname !== '/select-company' &&
+        location.pathname !== '/subscription' &&
         location.pathname !== '/billing-launch' &&
         location.pathname !== '/onboarding' &&
         location.pathname !== '/admin' &&
@@ -319,7 +323,7 @@ function AppContent() {
                 <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                 <Route path="/admin-panel" element={<AdminRoute><AdminPanel /></AdminRoute>} />
                 <Route path="/saas-admin" element={<AdminRoute><AdminPanelPage /></AdminRoute>} />
-                <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
+                <Route path="/subscription" element={<Navigate to="/dashboard" replace />} />
 
                 <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
                 <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
@@ -336,7 +340,7 @@ function AppContent() {
                 <Route path="/trust-center" element={<TrustCenterPage />} />
                 <Route path="/contact" element={<ContactUsPage />} />
                 <Route path="/about" element={<AboutUsPage />} />
-                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/pricing" element={<Navigate to="/" replace />} />
                 <Route path="/legal/:slug" element={<LegalTemplatePage />} />
 
                 <Route path="/portal/view" element={<CustomerPortalPage />} />
@@ -352,6 +356,7 @@ function AppContent() {
                                 <ReadOnlyBanner />
                                 <Routes>
                                     <Route path="/dashboard" element={<LiveKeepingsDashboard />} />
+                                    <Route path="/sync-help" element={<SyncHelpPage />} />
                                     <Route path="/legacy-dashboard" element={<DashboardPage />} />
                                     <Route path="/tally-dashboard" element={<TallyDataViewerPage />} />
                                     <Route path="/billing" element={<BillingDashboard />} />
@@ -369,6 +374,7 @@ function AppContent() {
                                     <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
                                     <Route path="/stock" element={<StockPage />} />
                                     <Route path="/reports" element={<ReportsPage />} />
+                        <Route path="/reports/view/:key" element={<ReportViewPage />} />
                                     <Route path="/reports/stock/:kind" element={<StockSnapshotReport />} />
                                     <Route path="/reports/stock-summary/:dimension" element={<StockGroupReport />} />
                                     <Route path="/stock/:id" element={<StockItemDetailPage />} />

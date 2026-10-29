@@ -23,13 +23,16 @@ export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) =>
         setTarget(el);
         setMobileTarget(mobileEl);
 
+        const hiddenElements: Array<{ element: HTMLElement; previous: string }> = [];
+        const hide = (element: Element | null) => { if (element instanceof HTMLElement) { hiddenElements.push({ element, previous: element.style.display }); element.style.display = 'none'; } };
+
         // Hide default header content when title is injected
         if (type === 'title') {
             if (el) {
                 const parent = el.closest('.flex-1');
                 if (parent) {
                     const defaultContent = parent.querySelector('.default-header-content');
-                    if (defaultContent) (defaultContent as HTMLElement).style.display = 'none';
+                    hide(defaultContent);
                 }
             }
             if (mobileEl) {
@@ -47,7 +50,7 @@ export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) =>
                 const parent = el.closest('.flex.items-center');
                 if (parent) {
                     const defaultActions = parent.querySelector('.default-header-actions');
-                    if (defaultActions) (defaultActions as HTMLElement).style.display = 'none';
+                    hide(defaultActions);
                 }
             }
             if (mobileEl) {
@@ -58,6 +61,7 @@ export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) =>
                 }
             }
         }
+        return () => { hiddenElements.forEach(({ element, previous }) => { element.style.display = previous; }); };
     }, [type]);
 
     if (!target && !mobileTarget) return null;

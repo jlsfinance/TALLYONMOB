@@ -13,6 +13,8 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <AssemblyName>TallyLink</AssemblyName>
+    <!-- Distinguish local debug builds without changing the installed release identity. -->
+    <AssemblyName Condition="'$(Configuration)' == 'Debug'">Syncora</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
     <Version>2.0.9</Version>
     <Authors>TallySync</Authors>

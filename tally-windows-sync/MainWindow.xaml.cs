@@ -11,6 +11,9 @@ namespace TallySyncApp
         public MainWindow()
         {
             InitializeComponent();
+#if DEBUG
+            Title = "SYNCORA - PC Sync (Debug)";
+#endif
 
             // Sidebar version label reads the real assembly version (no hardcode)
             SidebarVersionText.Text = "v" + (System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");

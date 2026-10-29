@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
+import TemporaryLicenseAdmin from './TemporaryLicenseAdmin';
+import AdminDirectory from './AdminDirectory';
+import AdminPlansEditor from './AdminPlansEditor';
 import toast from 'react-hot-toast';
 import {
     Users, Building2, CreditCard, Tag, Activity, TrendingUp,
@@ -11,11 +14,12 @@ import {
     Edit, Trash2, AlertTriangle, Mail, Phone, Key, Shield, UserPlus
 } from 'lucide-react';
 
-type Tab = 'dashboard' | 'users' | 'companies' | 'plans' | 'coupons' | 'payments' | 'activity' | 'leads' | 'user-detail' | 'company-detail' | 'reports';
+type Tab = 'dashboard' | 'users' | 'companies' | 'plans' | 'coupons' | 'payments' | 'activity' | 'leads' | 'user-detail' | 'company-detail' | 'reports' | 'license-management';
 
 const TABS: { key: Tab; label: string; icon: any }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { key: 'users', label: 'Users', icon: Users },
+    { key: 'license-management', label: 'License Management', icon: Shield },
     { key: 'companies', label: 'Companies', icon: Building2 },
     { key: 'plans', label: 'Plans', icon: CreditCard },
     { key: 'coupons', label: 'Coupons', icon: Tag },
@@ -33,22 +37,25 @@ export default function AdminPanelPage() {
     const { selectedCompany } = useAuth() as any;
     const [activeTab, setActiveTab] = useState<Tab>('dashboard');
     const [search, setSearch] = useState('');
+    const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
     const queryClient = useQueryClient();
 
     // ═══ DASHBOARD ═══
-    const { data: stats } = useQuery({
+    const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
         queryKey: ['admin-stats'],
         queryFn: async () => {
             try {
                 const [usersRes, licensesRes, paymentsRes, trialsRes, plansRes] = await Promise.all([
                     supabase.from('user_licenses').select('id, user_id', { count: 'exact', head: true }),
                     supabase.from('user_licenses').select('id, status, expires_at, expiry_date, created_at'),
-                    supabase.from('payments').select('id, total_amount, status, created_at'),
+                    supabase.from('payments').select('id, total_amount, final_amount, amount, status, created_at'),
                     supabase.from('trial_history').select('id', { count: 'exact', head: true }),
                     supabase.from('subscription_plans').select('*'),
                 ]);
+                const queryError = [usersRes, licensesRes, paymentsRes, trialsRes, plansRes].find(result => result.error)?.error;
+                if (queryError) throw queryError;
 
                 const licenses = licensesRes.data || [];
                 const payments = paymentsRes.data || [];
@@ -57,8 +64,10 @@ export default function AdminPanelPage() {
 
                 const active = licenses.filter(l => l.status === 'active' && new Date(l.expires_at || l.expiry_date) > now).length;
                 const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expires_at || l.expiry_date) <= now).length;
-                const totalRevenue = payments.filter(p => p.status === 'paid').reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
-                const mrr = payments.filter(p => p.status === 'paid' && new Date(p.created_at) >= monthStart).reduce((s, p) => s + (Number(p.total_amount) || 0), 0);
+                const paidPayments = payments.filter(p => p.status === 'paid' || p.status === 'completed');
+                const paymentAmount = (p: any) => Number(p.total_amount ?? p.final_amount ?? p.amount ?? 0);
+                const totalRevenue = paidPayments.reduce((s, p) => s + paymentAmount(p), 0);
+                const mrr = paidPayments.filter(p => new Date(p.created_at) >= monthStart).reduce((s, p) => s + paymentAmount(p), 0);
 
                 return {
                     totalUsers: usersRes.count || 0,
@@ -73,7 +82,7 @@ export default function AdminPanelPage() {
                 };
             } catch (e) {
                 console.error('Admin stats error:', e);
-                return { totalUsers: 0, activeUsers: 0, expiredUsers: 0, trialUsers: 0, totalRevenue: 0, mrr: 0, arr: 0, totalLicenses: 0, totalPayments: 0 };
+                throw e;
             }
         },
         enabled: activeTab === 'dashboard',
@@ -81,20 +90,22 @@ export default function AdminPanelPage() {
     });
 
     // ═══ USERS ═══
-    const { data: users = [] } = useQuery({
+    const { data: users = [], isError: usersError } = useQuery({
         queryKey: ['admin-users'],
         queryFn: async () => {
             const { data: licenses, error: licErr } = await supabase.from('user_licenses')
                 .select('id, user_id, email, license_key, status, expiry_date, tally_serial, company_gst, plan_id, created_at')
                 .order('created_at', { ascending: false });
-            if (licErr) console.error('License query error:', licErr);
+            if (licErr) throw licErr;
 
-            const { data: companyList } = await supabase.from('companies')
+            const { data: companyList, error: companyErr } = await supabase.from('companies')
                 .select('id, name, owner_id')
                 .order('created_at', { ascending: false });
 
-            const { data: plansList } = await supabase.from('subscription_plans')
+            if (companyErr) throw companyErr;
+            const { data: plansList, error: plansErr } = await supabase.from('subscription_plans')
                 .select('id, name, slug');
+            if (plansErr) throw plansErr;
 
             const plansMap = new Map((plansList || []).map((p: any) => [p.id, p]));
             const companiesByOwner = new Map<string, any[]>();
@@ -116,11 +127,11 @@ export default function AdminPanelPage() {
     });
 
     // ═══ COMPANIES ═══
-    const { data: companies = [] } = useQuery({
+    const { data: companies = [], isError: companiesError } = useQuery({
         queryKey: ['admin-companies'],
         queryFn: async () => {
             const { data, error } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
-            if (error) console.error('Companies query error:', error);
+            if (error) throw error;
 
             const ownerIds = [...new Set((data || []).map((c: any) => c.owner_id).filter(Boolean))];
             let emailMap = new Map<string, string>();
@@ -138,40 +149,45 @@ export default function AdminPanelPage() {
     });
 
     // ═══ PLANS ═══
-    const { data: plans = [] } = useQuery({
+    const { data: plans = [], isError: plansError } = useQuery({
         queryKey: ['admin-plans'],
         queryFn: async () => {
             const { data, error } = await supabase.from('subscription_plans').select('*').order('sort_order');
-            if (error) console.error('Plans query error:', error);
+            if (error) throw error;
             return data || [];
         },
-        enabled: activeTab === 'plans',
+        enabled: activeTab === 'plans' || activeTab === 'users',
     });
 
     // ═══ COUPONS ═══
-    const { data: coupons = [] } = useQuery({
+    const { data: coupons = [], isError: couponsError } = useQuery({
         queryKey: ['admin-coupons'],
         queryFn: async () => {
-            const { data } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
+            const { data, error } = await supabase.from('coupons').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
             return data || [];
         },
         enabled: activeTab === 'coupons',
     });
 
     // ═══ PAYMENTS ═══
-    const { data: payments = [] } = useQuery({
+    const { data: payments = [], isError: paymentsError } = useQuery({
         queryKey: ['admin-payments'],
         queryFn: async () => {
             const { data, error } = await supabase.from('payments')
                 .select('*')
                 .order('created_at', { ascending: false });
-            if (error) console.error('Payments query error:', error);
-
-            const userIds = [...new Set((data || []).map((p: any) => p.user_id).filter(Boolean))];
-            let emailMap = new Map<string, string>();
+            if (error) throw error;
+            const { data: trials, error: trialError } = await supabase.from('trial_history').select('id,user_id,trial_start,started_at,status').order('created_at', { ascending: false });
+            if (trialError) throw trialError;
+            const userIds = [...new Set([...(data || []), ...(trials || [])].map((p: any) => p.user_id).filter(Boolean))];
+            let emailMap = new Map<string, { email: string; name: string }>();
             if (userIds.length > 0) {
-                const { data: licenses } = await supabase.from('user_licenses').select('user_id, email').in('user_id', userIds);
-                (licenses || []).forEach((l: any) => { if (l.email) emailMap.set(l.user_id, l.email); });
+                for (let i = 0; i < userIds.length; i += 1000) {
+                    const { data: owners, error: ownerError } = await supabase.rpc('admin_payment_users', { p_user_ids: userIds.slice(i, i + 1000) });
+                    if (ownerError) throw ownerError;
+                    (owners || []).forEach((owner: any) => emailMap.set(owner.user_id, { email: owner.email, name: owner.full_name }));
+                }
             }
 
             const planSlugs = [...new Set((data || []).map((p: any) => p.plan_slug).filter(Boolean))];
@@ -181,35 +197,45 @@ export default function AdminPanelPage() {
                 (plansList || []).forEach((pl: any) => { if (pl.name) planMap.set(pl.slug, pl.name); });
             }
 
-            return (data || []).map((p: any) => ({
+            const paymentRows = (data || []).map((p: any) => ({
                 ...p,
-                _email: emailMap.get(p.user_id) || p.user_id?.slice(0, 8) || 'N/A',
+                _email: emailMap.get(p.user_id)?.email || p.user_id?.slice(0, 8) || 'N/A',
+                _name: emailMap.get(p.user_id)?.name || '',
                 _planName: planMap.get(p.plan_slug) || p.plan_slug?.replace(/_/g, ' ') || 'N/A',
             }));
+            const trialRows = (trials || []).map((t: any) => ({
+                id: `trial:${t.id}`, user_id: t.user_id, _trial: true, status: 'trial',
+                created_at: t.trial_start || t.started_at, amount: 0, payment_method: 'Trial',
+                _planName: 'Trial', _email: emailMap.get(t.user_id)?.email || t.user_id?.slice(0, 8) || 'N/A',
+                _name: emailMap.get(t.user_id)?.name || '',
+            }));
+            return [...paymentRows, ...trialRows].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         },
         enabled: activeTab === 'payments',
     });
 
     // ═══ ACTIVITY LOGS ═══
-    const { data: logs = [] } = useQuery({
+    const { data: logs = [], isError: logsError } = useQuery({
         queryKey: ['admin-logs'],
         queryFn: async () => {
-            const { data } = await supabase.from('activity_logs')
+            const { data, error } = await supabase.from('activity_logs')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(200);
+            if (error) throw error;
             return data || [];
         },
         enabled: activeTab === 'activity',
     });
 
     // ═══ LEADS ═══
-    const { data: leads = [] } = useQuery({
+    const { data: leads = [], isError: leadsError } = useQuery({
         queryKey: ['admin-leads'],
         queryFn: async () => {
-            const { data } = await supabase.from('sales_leads')
+            const { data, error } = await supabase.from('sales_leads')
                 .select('*')
                 .order('created_at', { ascending: false });
+            if (error) throw error;
             return data || [];
         },
         enabled: activeTab === 'leads',
@@ -217,17 +243,18 @@ export default function AdminPanelPage() {
 
     // Suspend user mutation
     const suspendMutation = useMutation({
-        mutationFn: async ({ licenseId, action }: { licenseId: string; action: 'suspended' | 'blocked' }) => {
-            const { error } = await supabase.from('user_licenses')
+        mutationFn: async ({ licenseId, action }: { licenseId: string; action: 'suspended' }) => {
+            const { data, error } = await supabase.from('user_licenses')
                 .update({ status: action, updated_at: new Date().toISOString() })
-                .eq('id', licenseId);
+                .eq('id', licenseId).select('id').maybeSingle();
             if (error) throw error;
+            if (!data) throw new Error('No license was updated');
         },
         onSuccess: () => {
             toast.success('User updated');
             queryClient.invalidateQueries({ queryKey: ['admin-users'] });
         },
-        onError: () => toast.error('Failed'),
+        onError: (error: any) => toast.error(error.message || 'Failed to suspend license'),
     });
 
     // Extend trial mutation
@@ -239,29 +266,66 @@ export default function AdminPanelPage() {
             if (!baseDate) throw new Error('No expiry date found');
             const newExpiry = new Date(baseDate);
             newExpiry.setDate(newExpiry.getDate() + days);
-            const { error } = await supabase.from('user_licenses')
+            const { data, error } = await supabase.from('user_licenses')
                 .update({ expires_at: newExpiry.toISOString(), expiry_date: newExpiry.toISOString(), updated_at: new Date().toISOString() })
-                .eq('id', licenseId);
+                .eq('id', licenseId).select('id').maybeSingle();
             if (error) throw error;
+            if (!data) throw new Error('No license was updated');
         },
         onSuccess: () => {
             toast.success('Trial extended');
             queryClient.invalidateQueries({ queryKey: ['admin-users'] });
         },
-        onError: () => toast.error('Failed'),
+        onError: (error: any) => toast.error(error.message || 'Failed to extend license'),
     });
 
     // Create coupon mutation
     const createCouponMutation = useMutation({
         mutationFn: async (coupon: any) => {
-            const { error } = await supabase.from('coupons').insert(coupon);
+            const { error } = await supabase.rpc('admin_create_targeted_coupon', {
+                p_code: coupon.code, p_discount_type: coupon.discount_type, p_discount_value: coupon.discount_value,
+                p_usage_limit: coupon.usage_limit, p_audience: coupon.audience, p_emails: coupon.emails,
+            });
             if (error) throw error;
         },
         onSuccess: () => {
             toast.success('Coupon created');
             queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
         },
+        onError: (error: any) => toast.error(error.message || 'Could not create coupon'),
     });
+
+    const changeCoupon = async (coupon: any, remove: boolean) => {
+        if (remove && !window.confirm(`Delete coupon ${coupon.code}?`)) return;
+        const query = remove ? supabase.from('coupons').delete() : supabase.from('coupons').update({ is_active: !coupon.is_active });
+        const { data, error } = await query.eq('id', coupon.id).select('id').maybeSingle();
+        if (error || !data) { toast.error(error?.message || 'Coupon was not changed'); return; }
+        toast.success(remove ? 'Coupon deleted' : 'Coupon updated');
+        void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
+    };
+
+    const editCoupon = async (coupon: any) => {
+        const code = window.prompt('Coupon code', coupon.code);
+        if (code === null) return;
+        const input = window.prompt(coupon.discount_type === 'percentage' ? 'Discount percentage' : 'Flat discount amount', String(coupon.discount_value));
+        if (input === null) return;
+        const value = Number(input);
+        if (!code.trim() || !input.trim() || !Number.isFinite(value) || value <= 0 || (coupon.discount_type === 'percentage' && value > 100)) { toast.error('Enter a valid code and discount'); return; }
+        const { data, error } = await supabase.from('coupons').update({ code: code.trim().toUpperCase(), discount_value: value }).eq('id', coupon.id).select('id').maybeSingle();
+        if (error || !data) { toast.error(error?.message || 'Coupon was not updated'); return; }
+        toast.success('Coupon updated');
+        void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
+    };
+
+    const reviewManualPayment = async (payment: any, decision: 'APPROVE' | 'REJECT') => {
+        const reason = window.prompt(`${decision === 'APPROVE' ? 'Confirm funds received' : 'Reject payment'}: enter a reason`);
+        if (!reason?.trim()) return;
+        const { error } = await supabase.rpc('admin_review_manual_payment', { p_payment_id: payment.id, p_decision: decision, p_reason: reason.trim() });
+        if (error) { toast.error(error.message || 'Payment review failed'); return; }
+        toast.success('Manual payment reviewed. License activation is not automatic.');
+        void queryClient.invalidateQueries({ queryKey: ['admin-payments'] });
+        void queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+    };
 
     // Assign license mutation
     const assignLicenseMutation = useMutation({
@@ -288,16 +352,17 @@ export default function AdminPanelPage() {
     // Revoke license mutation
     const revokeMutation = useMutation({
         mutationFn: async ({ licenseId }: { licenseId: string }) => {
-            const { error } = await supabase.from('user_licenses')
+            const { data, error } = await supabase.from('user_licenses')
                 .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-                .eq('id', licenseId);
+                .eq('id', licenseId).select('id').maybeSingle();
             if (error) throw error;
+            if (!data) throw new Error('No license was updated');
         },
         onSuccess: () => {
             toast.success('License revoked');
             queryClient.invalidateQueries({ queryKey: ['admin-users'] });
         },
-        onError: () => toast.error('Failed'),
+        onError: (error: any) => toast.error(error.message || 'Failed to revoke license'),
     });
 
     const filteredUsers = useMemo(() => {
@@ -341,12 +406,25 @@ export default function AdminPanelPage() {
                 })}
             </div>
 
+            {((activeTab === 'users' && (usersError || plansError)) || (activeTab === 'companies' && companiesError) ||
+              (activeTab === 'plans' && plansError) || (activeTab === 'coupons' && couponsError) ||
+              (activeTab === 'payments' && paymentsError) || (activeTab === 'activity' && logsError) ||
+              (activeTab === 'leads' && leadsError)) &&
+                <div role="alert" className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm">This section could not be loaded. Check your connection and administrator permissions. <button className="font-bold underline" onClick={() => { void queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith('admin-') }); }}>Retry</button></div>}
+
             {/* ═══ DASHBOARD TAB ═══ */}
+            {activeTab === 'license-management' && <TemporaryLicenseAdmin />}
             {activeTab === 'dashboard' && (
                 <div className="space-y-3 px-[2px]">
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
+                        <p className="text-sm font-bold">YouPI local gateway</p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">Open the gateway on the PC where YouPI is running. Subscription checkout is not connected yet.</p>
+                        <a href="http://127.0.0.1:6001/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white">Open YouPI admin</a>
+                    </div>
+                    {statsError ? <div role="alert" className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm">Admin data could not be loaded. Check database permissions and connection. <button onClick={() => refetchStats()} className="font-bold underline">Retry</button></div> : statsLoading ? <p className="text-sm text-[var(--text-muted)]">Loading admin data…</p> : <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {[
-                            { label: 'Total Users', value: stats?.totalUsers || 0, color: 'text-blue-500', icon: Users },
+                            { label: 'Licenses', value: stats?.totalUsers || 0, color: 'text-blue-500', icon: Users },
                             { label: 'Active', value: stats?.activeUsers || 0, color: 'text-emerald-500', icon: CheckCircle },
                             { label: 'Expired', value: stats?.expiredUsers || 0, color: 'text-red-500', icon: XCircle },
                             { label: 'Trial Users', value: stats?.trialUsers || 0, color: 'text-amber-500', icon: Clock },
@@ -360,26 +438,27 @@ export default function AdminPanelPage() {
                             </div>
                         ))}
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                         <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                             <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase">Revenue</span>
                             <p className="text-lg font-black text-emerald-500">{formatCurrency(stats?.totalRevenue || 0)}</p>
                         </div>
                         <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase">MRR</span>
+                            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase">This month's payments</span>
                             <p className="text-lg font-black text-blue-500">{formatCurrency(stats?.mrr || 0)}</p>
                         </div>
-                        <div className="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                            <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase">ARR</span>
-                            <p className="text-lg font-black text-purple-500">{formatCurrency(stats?.arr || 0)}</p>
-                        </div>
                     </div>
+                    </>}
                 </div>
             )}
 
-            {/* ═══ USERS TAB ═══ */}
+            {activeTab === 'users' && <AdminDirectory mode="users" />}
+            {activeTab === 'companies' && <AdminDirectory mode="companies" />}
+
+            {/* Preserve existing license actions alongside the directory. */}
             {activeTab === 'users' && (
                 <div className="space-y-2 px-[2px]">
+                    <h3 className="text-sm font-bold">License records</h3>
                     <AssignLicenseForm
                         plans={plans}
                         onSubmit={(email, planSlug, days) => assignLicenseMutation.mutate({ email, planSlug, days })}
@@ -430,10 +509,6 @@ export default function AdminPanelPage() {
                                             <button onClick={() => suspendMutation.mutate({ licenseId: u.id, action: 'suspended' })}
                                                 className="text-[9px] font-bold px-2 py-1 rounded bg-amber-500/10 text-amber-500 hover:bg-amber-500/20">Suspend</button>
                                         )}
-                                        {u.status !== 'blocked' && (
-                                            <button onClick={() => suspendMutation.mutate({ licenseId: u.id, action: 'blocked' })}
-                                                className="text-[9px] font-bold px-2 py-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20">Block</button>
-                                        )}
                                         {u.status !== 'cancelled' && (
                                             <button onClick={() => revokeMutation.mutate({ licenseId: u.id })}
                                                 className="text-[9px] font-bold px-2 py-1 rounded bg-slate-500/10 text-slate-400 hover:bg-slate-500/20">Revoke</button>
@@ -450,6 +525,7 @@ export default function AdminPanelPage() {
             {/* ═══ COMPANIES TAB ═══ */}
             {activeTab === 'companies' && (
                 <div className="space-y-3 px-[2px]">
+                    <h3 className="text-sm font-bold">Companies visible to this account</h3>
                     {(() => {
                         const grouped = new Map<string, any[]>();
                         companies.forEach((c: any) => {
@@ -491,7 +567,8 @@ export default function AdminPanelPage() {
             )}
 
             {/* ═══ PLANS TAB ═══ */}
-            {activeTab === 'plans' && (
+            {activeTab === 'plans' && <AdminPlansEditor plans={plans} reload={() => { void queryClient.invalidateQueries({ queryKey: ['admin-plans'] }); }} />}
+            {false && activeTab === 'plans' && (
                 <div className="space-y-1.5 px-[2px]">
                     {plans.map((p: any) => (
                         <div key={p.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
@@ -526,9 +603,10 @@ export default function AdminPanelPage() {
             {/* ═══ COUPONS TAB ═══ */}
             {activeTab === 'coupons' && (
                 <div className="space-y-1.5 px-[2px]">
-                    <CreateCouponForm onSubmit={(c) => createCouponMutation.mutate(c)} />
+                    <CreateCouponForm onSubmit={(c) => createCouponMutation.mutateAsync(c)} />
                     {coupons.map((c: any) => (
                         <div key={c.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+                            <CouponAudienceEditor coupon={c} onSaved={() => void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] })} />
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Tag size={12} className="text-purple-500" />
@@ -543,6 +621,11 @@ export default function AdminPanelPage() {
                                 <span>Used: {c.used_count}/{c.usage_limit || '∞'}</span>
                                 {c.expiry_date && <span>Exp: {new Date(c.expiry_date).toLocaleDateString()}</span>}
                             </div>
+                            <div className="mt-2 flex gap-2">
+                                <button className="rounded border border-[var(--border)] px-2 py-1 text-xs" onClick={() => void editCoupon(c)}>Edit</button>
+                                <button className="rounded border border-[var(--border)] px-2 py-1 text-xs" onClick={() => void changeCoupon(c, false)}>{c.is_active ? 'Deactivate' : 'Activate'}</button>
+                                <button className="rounded border border-red-300 px-2 py-1 text-xs text-red-600" onClick={() => void changeCoupon(c, true)}>Delete</button>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -551,6 +634,7 @@ export default function AdminPanelPage() {
             {/* ═══ PAYMENTS TAB ═══ */}
             {activeTab === 'payments' && (
                 <div className="space-y-1.5 px-[2px]">
+                    <label className="text-xs">Status <select value={paymentStatusFilter} onChange={e => setPaymentStatusFilter(e.target.value)} className="rounded border border-[var(--border)] bg-[var(--surface)] p-2"><option value="all">All</option><option value="pending">Pending</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="trial">Trial</option></select></label>
                     <div className="p-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center gap-3 text-[9px] font-bold text-[var(--text-muted)]">
                         <span className="flex-1">User</span>
                         <span className="w-20">Amount</span>
@@ -559,11 +643,12 @@ export default function AdminPanelPage() {
                         <span className="w-20">Method</span>
                         <span className="w-20">Date</span>
                     </div>
-                    {payments.map((p: any) => (
+                    {payments.filter((p: any) => paymentStatusFilter === 'all' || (paymentStatusFilter === 'completed' ? ['completed', 'paid'].includes(p.status) : p.status === paymentStatusFilter)).map((p: any) => (
                         <div key={p.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                     <div className="flex-1 min-w-0">
+                                        {p._name && <span className="text-[11px] font-bold truncate block">{p._name}</span>}
                                         <span className="text-[11px] font-bold truncate block">{p._email}</span>
                                         {p.razorpay_payment_id && <span className="text-[8px] text-[var(--text-muted)] font-mono block">{p.razorpay_payment_id}</span>}
                                     </div>
@@ -577,6 +662,7 @@ export default function AdminPanelPage() {
                                     <span className="w-20 text-[9px] text-[var(--text-muted)]">{new Date(p.created_at).toLocaleDateString('en-IN')}</span>
                                 </div>
                             </div>
+                            {!p._trial && p.status === 'pending' && String(p.payment_method || '').toLowerCase() === 'manual' && <div className="mt-2 flex gap-2"><button onClick={() => void reviewManualPayment(p, 'APPROVE')} className="rounded bg-emerald-600 px-3 py-1 text-xs text-white">Approve</button><button onClick={() => void reviewManualPayment(p, 'REJECT')} className="rounded border border-red-300 px-3 py-1 text-xs text-red-600">Reject</button></div>}
                         </div>
                     ))}
                     {payments.length === 0 && <p className="text-center text-[var(--text-muted)] text-xs py-8">No payments</p>}
@@ -648,13 +734,59 @@ export default function AdminPanelPage() {
     );
 }
 
+function CouponAudienceEditor({ coupon, onSaved }: { coupon: any; onSaved: () => void }) {
+    const [open, setOpen] = useState(false);
+    const [audience, setAudience] = useState<'global' | 'specific'>(coupon.audience === 'specific' ? 'specific' : 'global');
+    const [emails, setEmails] = useState('');
+    const [busy, setBusy] = useState(false);
+    const show = async () => {
+        setAudience(coupon.audience === 'specific' ? 'specific' : 'global');
+        setBusy(true);
+        const { data, error } = await supabase.rpc('admin_get_coupon_target_emails', { p_coupon_id: coupon.id });
+        setBusy(false);
+        if (error) { toast.error(error.message || 'Could not load coupon audience'); return; }
+        setEmails((data || []).map((row: any) => row.email).filter(Boolean).join('\n'));
+        setOpen(true);
+    };
+    const save = async () => {
+        const list = emails.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
+        if (audience === 'specific' && !list.length) { toast.error('Add at least one registered user email'); return; }
+        setBusy(true);
+        const { error } = await supabase.rpc('admin_set_coupon_audience', { p_coupon_id: coupon.id, p_audience: audience, p_emails: list });
+        setBusy(false);
+        if (error) { toast.error(error.message || 'Could not update coupon audience'); return; }
+        toast.success('Coupon audience updated');
+        setOpen(false);
+        onSaved();
+    };
+    return <div className="mb-2 text-xs">
+        <button type="button" className="rounded border border-[var(--border)] px-2 py-1" onClick={() => void show()} disabled={busy}>
+            Audience: {coupon.audience === 'specific' ? 'Specific users' : 'All users'} · Edit
+        </button>
+        {open && <div className="mt-2 space-y-2 rounded border border-[var(--border)] p-2">
+            <label className="block">Eligible users
+                <select className="mt-1 block w-full rounded border border-[var(--border)] bg-[var(--surface)] p-2" value={audience} onChange={event => setAudience(event.target.value as 'global' | 'specific')}>
+                    <option value="global">Global (all users)</option><option value="specific">Specific users</option>
+                </select>
+            </label>
+            {audience === 'specific' && <label className="block">Registered user emails, one per line or comma-separated
+                <textarea className="mt-1 block w-full rounded border border-[var(--border)] bg-[var(--surface)] p-2" rows={3} value={emails} onChange={event => setEmails(event.target.value)} />
+            </label>}
+            <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void save()} className="rounded bg-emerald-700 px-3 py-1 text-white">Save</button><button type="button" onClick={() => setOpen(false)} className="rounded border border-[var(--border)] px-3 py-1">Cancel</button></div>
+        </div>}
+    </div>;
+}
+
 // Inline create coupon form
-function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => void }) {
+function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => Promise<unknown> }) {
     const [open, setOpen] = useState(false);
     const [code, setCode] = useState('');
     const [type, setType] = useState<'flat' | 'percentage'>('flat');
     const [value, setValue] = useState('');
     const [limit, setLimit] = useState('');
+    const [audience, setAudience] = useState<'global' | 'specific'>('global');
+    const [emails, setEmails] = useState('');
+    const [saving, setSaving] = useState(false);
 
     if (!open) {
         return (
@@ -680,18 +812,30 @@ function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => void }) {
                 <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="Usage limit"
                     type="number" className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
             </div>
+            <label className="block text-xs">Audience
+                <select value={audience} onChange={e => setAudience(e.target.value as 'global' | 'specific')} className="ml-2 rounded border border-[var(--border)] bg-[var(--bg)] p-2">
+                    <option value="global">Global (All Users)</option><option value="specific">Specific Users</option>
+                </select>
+            </label>
+            {audience === 'specific' && <textarea value={emails} onChange={e => setEmails(e.target.value)} placeholder="Registered user emails, one per line" className="w-full rounded border border-[var(--border)] bg-[var(--bg)] p-2 text-xs" rows={3} />}
             <div className="flex gap-1">
-                <button onClick={() => {
+                <button disabled={saving} onClick={async () => {
                     if (!code || !value) return toast.error('Fill all fields');
-                    onSubmit({
+                    const selectedEmails = emails.split(/[\n,]+/).map(email => email.trim()).filter(Boolean);
+                    if (audience === 'specific' && selectedEmails.length === 0) return toast.error('Enter at least one registered user email');
+                    setSaving(true);
+                    try { await onSubmit({
                         code: code.toUpperCase(),
                         discount_type: type,
                         discount_value: Number(value),
                         usage_limit: limit ? Number(limit) : null,
-                        is_active: true,
+                        audience, emails: selectedEmails,
                     });
                     setOpen(false);
                     setCode(''); setValue(''); setLimit('');
+                    setEmails(''); setAudience('global');
+                    } catch { /* Mutation displays the backend error; preserve form input. */ }
+                    finally { setSaving(false); }
                 }} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--primary)] text-white">Create</button>
                 <button onClick={() => setOpen(false)} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">Cancel</button>
             </div>
@@ -807,7 +951,7 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
             const { data: lic } = await supabase.from('user_licenses').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
             setLicense(lic);
 
-            const { data: comps } = await supabase.from('companies').select('id, name, tally_serial, is_active, created_at, last_sync_at, owner_id').eq('owner_id', userId);
+            const { data: comps } = await supabase.from('companies').select('id, name, is_active, created_at, last_sync_at, owner_id').eq('owner_id', userId);
             setCompanies(comps || []);
 
             const { data: pays } = await supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false });
@@ -1047,7 +1191,7 @@ function CompanyDetailPanel({ companyId, onBack }: { companyId: string; onBack: 
                     {company.tally_serial && <div><span className="text-[var(--text-muted)]">Tally SN:</span> <span className="font-bold">{company.tally_serial}</span></div>}
                     {company.formal_name && <div><span className="text-[var(--text-muted)]">Formal:</span> <span className="font-bold">{company.formal_name}</span></div>}
                     {company.phone && <div><span className="text-[var(--text-muted)]">Phone:</span> <span className="font-bold">{company.phone}</span></div>}
-                    {company.gst_number && <div><span className="text-[var(--text-muted)]">GST:</span> <span className="font-bold font-mono">{company.gst_number}</span></div>}
+                    {company.gstin && <div><span className="text-[var(--text-muted)]">GST:</span> <span className="font-bold font-mono">{company.gstin}</span></div>}
                     {company.address && <div className="col-span-2"><span className="text-[var(--text-muted)]">Address:</span> <span className="font-bold">{company.address}</span></div>}
                     {company.owner_id && <div><span className="text-[var(--text-muted)]">Owner:</span> <span className="font-mono text-[8px]">{company.owner_id}</span></div>}
                     <div><span className="text-[var(--text-muted)]">Created:</span> {new Date(company.created_at).toLocaleDateString('en-IN')}</div>

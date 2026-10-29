@@ -8,44 +8,15 @@ type UserLike = {
     metadata?: MetadataRecord;
 } | null | undefined;
 
-const ADMIN_FLAG = String(import.meta.env.VITE_ENABLE_ADMIN_CONSOLE || '').trim().toLowerCase() === 'true';
-const ADMIN_EMAILS = String(import.meta.env.VITE_ADMIN_EMAILS || '')
-    .split(',')
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-const ADMIN_ROLES = new Set(['admin', 'super_admin']);
-
-function readRole(metadata: MetadataRecord): string {
-    return String(metadata?.role || metadata?.app_role || '').trim().toLowerCase();
-}
-
-function hasAllowedRole(value: string | null | undefined): boolean {
-    return ADMIN_ROLES.has(String(value || '').trim().toLowerCase());
-}
+// The database must independently enforce this restriction through RLS.
+const ADMIN_EMAIL = 'lovneetrathi@gmail.com';
 
 export function isAdminConsoleEnabled(): boolean {
-    return ADMIN_FLAG;
+    return String(import.meta.env.VITE_ENABLE_ADMIN_CONSOLE || 'true').trim().toLowerCase() !== 'false';
 }
 
 export function hasAdminAccess(user: UserLike): boolean {
-    if (!user) return false;
-
-    const email = String(user.email || '').trim().toLowerCase();
-
-    // Only allow the super admin email
-    if (email && ADMIN_EMAILS.includes(email)) return true;
-
-    const directRole = String(user.role || '').trim().toLowerCase();
-    const appRole = readRole(user.app_metadata);
-    const userRole = readRole(user.user_metadata);
-    const metadataRole = readRole(user.metadata);
-
-    return (
-        hasAllowedRole(directRole)
-        || hasAllowedRole(appRole)
-        || hasAllowedRole(userRole)
-        || hasAllowedRole(metadataRole)
-    );
+    return String(user?.email || '').trim().toLowerCase() === ADMIN_EMAIL;
 }
 
 export function getAdminAccessMessage(user: UserLike): string {

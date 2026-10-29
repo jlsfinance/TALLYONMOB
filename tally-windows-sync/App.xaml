@@ -3,9 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <!-- ========== COLOR PALETTE ========== -->
-        <Color x:Key="PrimaryColor">#2563EB</Color>
-        <Color x:Key="PrimaryDarkColor">#1D4ED8</Color>
-        <Color x:Key="PrimaryLightColor">#DBEAFE</Color>
+        <Color x:Key="PrimaryColor">#0B8968</Color>
+        <Color x:Key="PrimaryDarkColor">#087257</Color>
+        <Color x:Key="PrimaryLightColor">#E1F5EA</Color>
         <Color x:Key="SuccessColor">#10B981</Color>
         <Color x:Key="DangerColor">#EF4444</Color>
         <Color x:Key="WarningColor">#F59E0B</Color>
@@ -20,9 +20,9 @@
         <Color x:Key="Gray800">#1F2937</Color>
         <Color x:Key="Gray900">#111827</Color>
 
-        <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB"/>
-        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#1D4ED8"/>
-        <SolidColorBrush x:Key="PrimaryLightBrush" Color="#DBEAFE"/>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#0B8968"/>
+        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="#087257"/>
+        <SolidColorBrush x:Key="PrimaryLightBrush" Color="#E1F5EA"/>
         <SolidColorBrush x:Key="SuccessBrush" Color="#10B981"/>
         <SolidColorBrush x:Key="DangerBrush" Color="#EF4444"/>
         <SolidColorBrush x:Key="WarningBrush" Color="#F59E0B"/>
@@ -36,8 +36,8 @@
         <SolidColorBrush x:Key="SidebarBgBrush" Color="#1E293B"/>
 
         <!-- ========== CARD SHADOW ========== -->
-        <DropShadowEffect x:Key="CardShadow" BlurRadius="16" ShadowDepth="3" Color="#000000" Opacity="0.08"/>
-        <DropShadowEffect x:Key="CardShadowHover" BlurRadius="20" ShadowDepth="4" Color="#2563EB" Opacity="0.12"/>
+        <DropShadowEffect x:Key="CardShadow" BlurRadius="12" ShadowDepth="2" Color="#184535" Opacity="0.05"/>
+        <DropShadowEffect x:Key="CardShadowHover" BlurRadius="20" ShadowDepth="4" Color="#0B8968" Opacity="0.12"/>
 
         <!-- ========== GLOBAL STYLES ========== -->
 
@@ -53,7 +53,7 @@
 
         <!-- Modern Button -->
         <Style x:Key="ModernButton" TargetType="Button">
-            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Background" Value="#0B8968"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="14"/>
@@ -74,11 +74,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#1D4ED8"/>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#087257"/>
                                 <Setter TargetName="RootBorder" Property="Effect" Value="{StaticResource CardShadowHover}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#1E40AF"/>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#065D48"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="RootBorder" Property="Background" Value="#D1D5DB"/>
@@ -107,13 +107,13 @@
         <!-- Ghost Button -->
         <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="#0B8968"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#DBEAFE"/>
+                    <Setter Property="Background" Value="#E1F5EA"/>
                 </Trigger>
                 <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="#BFDBFE"/>
+                    <Setter Property="Background" Value="#C7EBD9"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -126,7 +126,7 @@
             <Setter Property="Margin" Value="8"/>
             <Setter Property="Effect" Value="{StaticResource CardShadow}"/>
             <Setter Property="BorderBrush" Value="#E5E7EB"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
         <!-- Status Card -->
@@ -138,9 +138,9 @@
 
         <!-- KPI Card -->
         <Style x:Key="KpiCard" TargetType="Border" BasedOn="{StaticResource Card}">
-            <Setter Property="Padding" Value="20"/>
-            <Setter Property="Margin" Value="6"/>
-            <Setter Property="MinHeight" Value="110"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="MinHeight" Value="98"/>
             <Setter Property="MinWidth" Value="200"/>
         </Style>
 
@@ -180,7 +180,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsFocused" Value="True">
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#0B8968"/>
                                 <Setter TargetName="Border" Property="Background" Value="White"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -217,7 +217,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsFocused" Value="True">
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#0B8968"/>
                                 <Setter TargetName="Border" Property="Background" Value="White"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -234,7 +234,7 @@
             <Setter Property="Height" Value="8"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Background" Value="#E5E7EB"/>
-            <Setter Property="Foreground" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="#0B8968"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">

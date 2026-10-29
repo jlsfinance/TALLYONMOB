@@ -85,45 +85,8 @@ export default function PricingPage() {
       return;
     }
 
-    setLoadingPlan(plan.planId);
-    try {
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        toast.error('Failed to load payment gateway. Check your internet.');
-        setLoadingPlan(null);
-        return;
-      }
-
-      const razorpay = new window.Razorpay({
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: plan.priceInPaise,
-        currency: 'INR',
-        name: 'SYNCORA TallyOnMobile',
-        description: `${plan.name} Plan - ${plan.price}${plan.duration}`,
-        prefill: {
-          email: user.email || '',
-          contact: '',
-        },
-        theme: {
-          color: '#6366f1',
-        },
-        handler: function (response: any) {
-          toast.success('Payment successful! Activating your plan...');
-          setLoadingPlan(null);
-          navigate('/subscription?payment=success&payment_id=' + response.razorpay_payment_id);
-        },
-        modal: {
-          ondismiss: function () {
-            setLoadingPlan(null);
-          },
-        },
-      });
-      razorpay.open();
-    } catch (err: any) {
-      console.error('Razorpay error:', err);
-      toast.error('Payment failed: ' + (err.message || 'Unknown error'));
-      setLoadingPlan(null);
-    }
+    // A browser checkout callback cannot verify payment or activate a plan.
+    toast.error('Online payments are not configured yet. Please contact support.');
   };
 
   return (

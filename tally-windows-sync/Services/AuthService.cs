@@ -17,6 +17,7 @@ namespace TallySyncApp.Services
         private readonly string _supabaseUrl;
         private readonly string _supabaseAnonKey;
         private readonly string _sessionFilePath;
+        private readonly SessionStore _sessionStore;
         
         public UserSession? CurrentSession { get; private set; }
         public event EventHandler<UserSession?>? SessionChanged;
@@ -30,6 +31,7 @@ namespace TallySyncApp.Services
                 "TallySync",
                 "session.json"
             );
+            _sessionStore = new SessionStore(_sessionFilePath);
             
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("apikey", _supabaseAnonKey);
@@ -389,18 +391,12 @@ namespace TallySyncApp.Services
         {
             try
             {
-                var directory = Path.GetDirectoryName(_sessionFilePath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
                 var json = JsonSerializer.Serialize(CurrentSession);
-                File.WriteAllText(_sessionFilePath, json);
+                _sessionStore.Save(json);
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore save errors
+                SyncLogger.Log($"Session could not be saved securely: {ex.GetType().Name}");
             }
         }
 
@@ -411,15 +407,20 @@ namespace TallySyncApp.Services
         {
             try
             {
-                if (File.Exists(_sessionFilePath))
+                var json = _sessionStore.Load(out bool legacy);
+                if (json != null)
                 {
-                    var json = File.ReadAllText(_sessionFilePath);
                     CurrentSession = JsonSerializer.Deserialize<UserSession>(json);
                     
                     // Check if session is still valid or can be refreshed via RefreshToken
                     if (CurrentSession != null && string.IsNullOrEmpty(CurrentSession.RefreshToken) && CurrentSession.ExpiresAt <= DateTime.UtcNow)
                     {
                         CurrentSession = null;
+                    }
+                    if (legacy && CurrentSession != null)
+                    {
+                        // Migrate only after the legacy session was read successfully.
+                        SaveSession();
                     }
                 }
             }

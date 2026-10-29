@@ -5,11 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         mc:Ignorable="d"
-        Title="TallyLink - TallySync" Height="680" Width="1080"
+        Title="SYNCORA - PC Sync" Height="680" Width="1080"
         MinHeight="600" MinWidth="900"
         Icon="app_icon.ico"
         FontFamily="Segoe UI"
-        Background="#F3F4F6"
+        Background="#F2F6F4"
         WindowStyle="SingleBorderWindow"
         AllowsTransparency="False">
 
@@ -29,8 +29,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="RootBorder"
+                                CornerRadius="9"
+                                Margin="8,2"
                                 Background="{TemplateBinding Background}"
-                                Height="{TemplateBinding Height}"
+                                Height="44"
                                 Padding="{TemplateBinding Padding}">
                             <Border.Child>
                                 <Grid>
@@ -38,7 +40,7 @@
                                     <Border x:Name="ActiveBar"
                                             Width="3"
                                             Height="0"
-                                            Background="#2563EB"
+                                            Background="#0B8968"
                                             CornerRadius="0,3,3,0"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Center"/>
@@ -91,14 +93,14 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="212"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!-- ======== LEFT SIDEBAR ======== -->
         <Border Grid.Column="0"
-                Background="#0F172A"
-                Width="220"
+                Background="#102C29"
+                Width="212"
                 HorizontalAlignment="Left">
             <Grid>
                 <Grid.RowDefinitions>
@@ -108,7 +110,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- App Branding -->
-                <Border Padding="20,24,20,20" BorderBrush="#1E293B" BorderThickness="0,0,0,1">
+                <Border Padding="20,24,20,20" BorderBrush="#284B43" BorderThickness="0,0,0,1">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -124,7 +126,7 @@
                                        FontWeight="Bold"/>
                         </Border>
                         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-                            <TextBlock Text="TallySync"
+                            <TextBlock Text="SYNCORA"
                                        Foreground="White"
                                        FontSize="16"
                                        FontWeight="Bold"/>
@@ -189,7 +191,7 @@
                                      VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1"
                                        Text="Tally Connection"
-                                       Foreground="#94A3B8"
+                                       Foreground="#A9C4B7"
                                        FontSize="12"/>
                         </Grid>
                         <Grid>
@@ -229,8 +231,8 @@
 
             <!-- ===== TOP HEADER BAR ===== -->
             <Border Background="White"
-                    Padding="24,14,24,14"
-                    BorderBrush="#E5E7EB"
+                    Padding="22,12,22,12"
+                    BorderBrush="#DDEAE3"
                     BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -244,19 +246,19 @@
                                Text="Dashboard"
                                FontSize="18"
                                FontWeight="Bold"
-                               Foreground="#1F2937"
+                               Foreground="#17342E"
                                VerticalAlignment="Center"/>
 
                     <!-- Sync Status Badge -->
                     <Border Grid.Column="1"
-                            Background="#EFF6FF"
+                            Background="#E4F6EC"
                             CornerRadius="20"
                             Padding="14,6"
                             Margin="0,0,14,0"
                             VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding Status.StatusText}"
-                                       Foreground="#1E40AF"
+                                       Foreground="#087A5D"
                                        FontSize="12"
                                        FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
@@ -314,7 +316,7 @@
             <!-- DASHBOARD PANEL -->
             <ScrollViewer x:Name="DashboardPanel"
                           Grid.Row="1"
-                          Background="#F9FAFB"
+                          Background="#F2F6F4"
                           Visibility="Visible">
                 <Grid Margin="24,20,24,20">
                     <Grid.RowDefinitions>
@@ -428,7 +430,7 @@
                                            Text="{Binding Status.ProgressPercentage, StringFormat='{}{0}%'}"
                                            FontSize="28"
                                            FontWeight="Bold"
-                                           Foreground="#2563EB"/>
+                                           Foreground="#0B8968"/>
                                 <TextBlock Grid.Row="2"
                                            Text="{Binding Status.TotalRecords, StringFormat='{}{0} total records'}"
                                            Foreground="#9CA3AF"
@@ -582,7 +584,7 @@
                                     </StackPanel>
 
                                     <TextBlock Grid.Column="1"
-                                               Text="Live Console Log"
+                                               Text="Sync activity"
                                                Foreground="#9CA3AF"
                                                FontSize="12"
                                                FontFamily="Consolas"
@@ -590,7 +592,7 @@
                                                VerticalAlignment="Center"/>
 
                                     <TextBlock Grid.Column="2"
-                                               Text="terminal"
+                                               Text="LIVE LOG"
                                                Foreground="#6B7280"
                                                FontSize="11"
                                                FontFamily="Consolas"

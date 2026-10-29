@@ -12,6 +12,7 @@ import { CommandPalette } from '../ui/CommandPalette';
 import GlobalSearch from '../GlobalSearch';
 import { prefetchVouchers, prefetchLedgers, prefetchStock, prefetchSales, invalidateDashboard } from '@/lib/prefetch';
 import { useFY, getFYDates, getFYStartYear } from '@/contexts/FYContext';
+import { queryClient } from '@/lib/queryClient';
 import { useRealtimeSubscription } from '@/hooks/useRealtime';
 
 import {
@@ -35,6 +36,7 @@ const routePrefetchMap: Record<string, () => Promise<any>> = {
     '/vouchers': () => import('../../pages/VouchersPage'),
     '/ledgers': () => import('../../pages/LedgersPage'),
     '/sales': () => import('../../pages/SalesPage'),
+    '/reports': () => import('../../pages/ReportsPage'),
     '/purchases': () => import('../../pages/PurchasesPage'),
     '/stock': () => import('../../pages/StockPage'),
     '/profit-loss': () => import('../../pages/ProfitLossPage'),
@@ -87,9 +89,9 @@ const NavItem = memo(({
     return (
         <SafeLink to={to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} onTouchStart={prefetchOnHover}>
             <div className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] mb-1
+                sidebar-nav-item flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)] mb-1
                 transition-all duration-150 group text-[13px]
-                ${active
+                ${active ? 'sidebar-nav-item-active' : ''} ${active
                     ? 'bg-[var(--primary)] text-white font-bold shadow-sm'
                     : 'text-[var(--text-muted)] hover:bg-[var(--surface-container)] hover:text-[var(--on-surface)] font-medium'
                 }
@@ -114,12 +116,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { navigate: safeNavigate } = useSafeNavigate();
     const location = useLocation();
     const lastRefreshRef = useRef(0);
+    const reportRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (reportRefreshTimer.current) clearTimeout(reportRefreshTimer.current); }, []);
 
-    // Refresh visible lists when a synced voucher is soft-deleted.
-    useRealtimeSubscription('vouchers', selectedCompany?.id, 'UPDATE', (payload: any) => {
-        if (payload?.new?.is_deleted !== true || !selectedCompany?.id) return;
-        invalidateDashboard(selectedCompany.id);
-        window.dispatchEvent(new CustomEvent('voucher-soft-deleted', { detail: { companyId: selectedCompany.id, id: payload.new.id } }));
+    // Debounce sync events so report caches refresh once after a batch, without clearing visible data.
+    useRealtimeSubscription('vouchers', selectedCompany?.id, '*', (payload: any) => {
+        const companyId = selectedCompany?.id;
+        if (!companyId) return;
+        if (payload?.new?.is_deleted === true) {
+            invalidateDashboard(companyId);
+            window.dispatchEvent(new CustomEvent('voucher-soft-deleted', { detail: { companyId, id: payload.new.id } }));
+        }
+        if (reportRefreshTimer.current) clearTimeout(reportRefreshTimer.current);
+        reportRefreshTimer.current = setTimeout(() => {
+            void queryClient.invalidateQueries({ predicate: q => (q.queryKey[0] === 'report-view' && q.queryKey[3] === companyId) || (['stock-snapshot-report', 'report-stock-groups', 'report-stock-group-items'].includes(String(q.queryKey[0])) && q.queryKey[2] === companyId) });
+        }, 5000);
     });
 
     // Cmd+K / Ctrl+K global search
@@ -145,7 +156,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const now = Date.now();
         if (now - lastRefreshRef.current < 900) return;
         lastRefreshRef.current = now;
-        if (selectedCompany?.id) invalidateDashboard(selectedCompany.id);
+        if (selectedCompany?.id) {
+            invalidateDashboard(selectedCompany.id);
+            void queryClient.invalidateQueries({ predicate: q => (q.queryKey[0] === 'report-view' && q.queryKey[3] === selectedCompany.id) || (['stock-snapshot-report', 'report-stock-groups', 'report-stock-group-items'].includes(String(q.queryKey[0])) && q.queryKey[2] === selectedCompany.id) });
+        }
         window.dispatchEvent(new CustomEvent('app-refresh-trigger'));
     };
 
@@ -156,7 +170,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const fy = selectedFY;
         const dates = getFYDates(fy);
         const timer = window.setTimeout(() => {
-            ['/dashboard', '/vouchers', '/ledgers', '/sales'].forEach(path => routePrefetchMap[path]().catch(() => {}));
+            ['/dashboard', '/vouchers', '/ledgers', '/sales', '/reports'].forEach(path => routePrefetchMap[path]().catch(() => {}));
             prefetchLedgers(companyId);
             prefetchVouchers(companyId, 'all', String(getFYStartYear(fy)));
             prefetchSales(companyId, dates.from, dates.to);
@@ -167,7 +181,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // Keep each main tab at its previous position when switching between tabs.
     const tabScrollPositions = useRef<Record<string, number>>({});
     useLayoutEffect(() => {
-        const mainTabs = ['/dashboard', '/ledgers', '/sales', '/vouchers'];
+        const mainTabs = ['/dashboard', '/ledgers', '/sales', '/vouchers', '/reports'];
         if (!mainTabs.includes(location.pathname)) return;
         const key = `${selectedCompany?.id || ''}:${selectedFY}:${location.pathname}`;
         window.scrollTo({ top: tabScrollPositions.current[key] || 0, behavior: 'instant' as ScrollBehavior });
@@ -259,7 +273,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 label: t('nav.settings'), // Settings
                 items: [
                     { to: '/settings', icon: <Settings size={18} />, label: t('nav.settings') },
-                    { to: '/subscription', icon: <Crown size={18} />, label: 'Subscription' },
                 ]
             }
         ];
@@ -308,10 +321,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             animate={{ x: 0 }}
                             exit={{ x: '-100%' }}
                             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                            className="fixed top-0 left-0 h-full w-[280px] z-[70] bg-white dark:bg-[#1E1E2E] border-r border-[var(--border)] md:hidden flex flex-col"
+                            className="app-sidebar app-sidebar-mobile fixed top-0 left-0 h-full w-[280px] z-[70] bg-white dark:bg-[#1E1E2E] border-r border-[var(--border)] md:hidden flex flex-col"
                         >
                             {/* Header — Branding + Close */}
-                            <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--border)]">
+                            <div className="sidebar-brand flex items-center justify-between px-4 h-14 border-b border-[var(--border)]">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-xl bg-[var(--primary)] flex items-center justify-center text-white">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -327,7 +340,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                             {/* User Profile Card */}
                             {user && (
-                                <div className="mx-3 mt-3 p-3 rounded-2xl bg-gradient-to-br from-[var(--primary)]/10 to-[var(--primary)]/5 border border-[var(--primary)]/20">
+                                <div className="sidebar-profile mx-3 mt-3 p-3 rounded-2xl bg-gradient-to-br from-[var(--primary)]/10 to-[var(--primary)]/5 border border-[var(--primary)]/20">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-xl bg-[var(--primary)] text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
                                             {user.email?.charAt(0).toUpperCase()}
@@ -359,10 +372,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             )}
 
                             {/* Navigation */}
-                            <nav className="flex-1 px-3 py-3 overflow-y-auto custom-scrollbar">
+                            <nav className="sidebar-navigation flex-1 px-3 py-3 overflow-y-auto custom-scrollbar">
                                 {navGroups.map((group, idx) => (
                                     <div key={idx} className="mb-4 last:mb-0">
-                                        <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)] opacity-50 px-2 mb-1.5">
+                                        <p className="sidebar-section-label text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)] opacity-50 px-2 mb-1.5">
                                             {group.label}
                                         </p>
                                         <div className="space-y-0.5">
@@ -371,7 +384,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                                     key={item.to}
                                                     to={item.to}
                                                     onClick={() => setShowMobileMenu(false)}
-                                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${
+                                                    className={`sidebar-nav-item flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-150 ${location.pathname === item.to ? 'sidebar-nav-item-active' : ''} ${
                                                         location.pathname === item.to
                                                             ? 'bg-[var(--primary)] text-white font-bold shadow-sm'
                                                             : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] font-medium'
@@ -389,7 +402,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                             </nav>
 
                             {/* Bottom Actions */}
-                            <div className="px-3 py-3 border-t border-[var(--border)] space-y-1.5">
+                            <div className="sidebar-actions px-3 py-3 border-t border-[var(--border)] space-y-1.5">
                                 <button
                                     onClick={toggleTheme}
                                     className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] text-sm font-medium transition-all"
@@ -413,14 +426,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {/* ===== DESKTOP SIDEBAR — LiveKeepings Style ===== */}
             <aside
                 className={`
-                    fixed top-0 left-0 h-full z-40 hidden md:flex flex-col
+                    app-sidebar app-sidebar-desktop ${sidebarOpen ? '' : 'app-sidebar-collapsed'} fixed top-0 left-0 h-full z-40 hidden md:flex flex-col
                     bg-white dark:bg-[#1E1E2E] border-r border-[var(--border)]
                     transition-all duration-200
                     ${sidebarOpen ? 'w-60' : 'w-[68px]'}
                 `}
             >
                 {/* Logo */}
-                <div className="h-14 flex items-center justify-between px-4 border-b border-[var(--border)]">
+                <div className="sidebar-brand h-14 flex items-center justify-between px-4 border-b border-[var(--border)]">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-[var(--radius-md)] bg-[var(--primary)] flex items-center justify-center text-white flex-shrink-0">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -481,11 +494,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </div>
                 )}
 
-                <nav className="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
+                <nav className="sidebar-navigation flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
                     {navGroups.map((group, idx) => (
                         <div key={idx} className="mb-4 last:mb-0">
                             {sidebarOpen && (
-                                <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] opacity-60">
+                                <div className="sidebar-section-label px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] opacity-60">
                                     {group.label}
                                 </div>
                             )}
@@ -504,7 +517,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </nav>
 
                 {/* Bottom */}
-                <div className="px-3 py-3 border-t border-[var(--border)] space-y-1.5">
+                <div className="sidebar-actions px-3 py-3 border-t border-[var(--border)] space-y-1.5">
                     <button
                         onClick={toggleTheme}
                         className={`
@@ -563,7 +576,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                         </div>
                     </header>
                 ) : (
-                    <header className={`standard-mobile-header ${location.pathname === '/vouchers' ? 'voucher-mobile-header' : ''} md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]`}>
+                    <header className={`standard-mobile-header ${location.pathname === '/vouchers' ? 'voucher-mobile-header' : ''} ${(location.pathname === '/reports' || location.pathname.startsWith('/reports/')) ? 'reports-mobile-header' : ''} md:hidden sticky top-0 z-50 h-14 flex items-center gap-1.5 px-2 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]`}>
                         <button onClick={() => setShowMobileMenu(true)} className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] text-[var(--on-surface)] transition-colors shrink-0">
                             <Menu size={18} />
                         </button>
@@ -599,7 +612,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
 
                 {/* Desktop Header — LiveKeepings Style */}
-                <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)]">
+                <header className={`hidden md:flex sticky top-0 z-30 h-14 items-center justify-between px-6 bg-white dark:bg-[#1E1E2E] border-b border-[var(--border)] ${location.pathname === '/dashboard' || location.pathname === '/' ? 'dashboard-desktop-header' : ''}`}>
                     <div className="flex items-center gap-4 flex-1">
                         <div id="header-title" className="flex items-center" />
                         <div id="header-search" className="flex-1 max-w-sm" />

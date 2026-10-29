@@ -11,6 +11,7 @@ import { SkeletonTable } from '../components/ui/Skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { subDays, format } from 'date-fns';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
+import './StockPage.css';
 
 export default function StockPage() {
     const { selectedCompany } = useAuth() as any;
@@ -308,7 +309,7 @@ export default function StockPage() {
                 />
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-[var(--surface-container)] rounded-xl w-full sm:w-fit border border-[var(--border)]">
+            <div className="stock-page-tabs flex items-center gap-1 p-1 bg-[var(--surface-container)] rounded-xl w-full sm:w-fit border border-[var(--border)]">
                 <button
                     onClick={() => setActiveTab('inventory')}
                     className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 rounded-lg text-[10px] sm:text-xs font-black uppercase transition-all ${activeTab === 'inventory' ? 'bg-[var(--surface)] text-[var(--primary)] shadow-sm border border-[var(--border)]' : 'text-[var(--text-muted)] hover:text-[var(--on-surface)]'}`}
@@ -341,46 +342,14 @@ export default function StockPage() {
                                 />
                             </motion.div>
                         ) : viewMode === 'grid' ? (
-                            <motion.div
-                                key="grid"
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-5"
-                            >
+                            <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="stock-joined-list">
                                 {filteredStock.map((item: any) => {
                                     const isLowStock = (item.current_stock || 0) < 10;
-                                    return (
-                                        <Card key={item.id} hover onClick={() => openStockItem(item)} className="h-full flex flex-col p-5 border-[var(--border)] group animate-fadeIn shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                                            <div className="flex justify-between items-start mb-6">
-                                                <div className={`p-4 rounded-2xl bg-gradient-to-br ${isLowStock ? 'from-red-500 to-amber-500' : 'from-blue-500 to-indigo-600'} text-white shadow-lg`}>
-                                                    <Package size={20} />
-                                                </div>
-                                                {isLowStock && (
-                                                    <Badge variant="error" className="text-[8px] font-black tracking-widest px-2 py-0.5 animate-pulse">
-                                                        CRITICAL
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            <h3 className="font-black text-[var(--on-surface)] text-sm mb-1.5 leading-tight group-hover:text-[var(--primary)] transition-colors min-h-[40px] line-clamp-2 uppercase tracking-tight">
-                                                {item.name}
-                                            </h3>
-                                            <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest opacity-60 truncate">
-                                                {item.stock_group || 'General Node'}
-                                            </p>
-                                            <div className="mt-8 space-y-3 pt-5 border-t border-[var(--border)]">
-                                                <div className="flex justify-between items-center text-right">
-                                                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Balance</span>
-                                                    <p className={`text-sm font-black ${isLowStock ? 'text-red-500' : 'text-[var(--on-surface)]'}`}>
-                                                        {formatQuantity(item.current_stock, item.unit)}
-                                                    </p>
-                                                </div>
-                                                <div className="flex justify-between items-center text-right">
-                                                    <span className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest">Liquidity</span>
-                                                    <p className="text-sm font-black text-emerald-500">{formatCurrency(item.closing_value)}</p>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    );
+                                    return <button type="button" key={item.id} onClick={() => openStockItem(item)} className="stock-joined-row">
+                                        <span className="stock-item-name"><strong>{item.name}</strong><small>{item.stock_group || 'General Node'}</small></span>
+                                        <span className="stock-item-numbers"><strong className={isLowStock ? 'stock-low' : ''}>{formatQuantity(item.current_stock, item.unit)}</strong><small>Liquidity {formatCurrency(item.closing_value)}</small></span>
+                                        <span className="stock-item-status">{isLowStock ? 'CRITICAL' : ''}</span>
+                                    </button>;
                                 })}
                             </motion.div>
                         ) : (

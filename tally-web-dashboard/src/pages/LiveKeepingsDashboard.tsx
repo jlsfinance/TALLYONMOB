@@ -1,3 +1,4 @@
+import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { useState, useEffect, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -65,6 +66,25 @@ export default memo(function LiveKeepingsDashboard() {
     const [voucherTypeFilter, setVoucherTypeFilter] = useState('All');
     const [recentVoucherFilter, setRecentVoucherFilter] = useState('All');
     const { isDark } = useTheme();
+    const [dismissedSyncWarning, setDismissedSyncWarning] = useState<string | null>(null);
+    const { data: lastSuccessfulSync } = useQuery({
+        queryKey: ['dashboard-last-successful-sync', selectedCompany?.id],
+        enabled: Boolean(selectedCompany?.id),
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
+        queryFn: async () => {
+            const { data, error } = await supabase.from('sync_history')
+                .select('completed_at').eq('company_id', selectedCompany.id)
+                .in('status', ['completed', 'success', 'successful'])
+                .not('completed_at', 'is', null).order('completed_at', { ascending: false }).limit(1);
+            if (error) throw error;
+            return data?.[0]?.completed_at || null;
+        },
+    });
+    const syncDate = lastSuccessfulSync ? new Date(lastSuccessfulSync) : null;
+    const syncAgeDays = syncDate && !Number.isNaN(syncDate.getTime())
+        ? Math.floor((Date.now() - syncDate.getTime()) / 86_400_000) : null;
+    const warningKey = `${selectedCompany?.id}:${lastSuccessfulSync}`;
 
     // Mobile Voucher Segment Filter
     const [mobileVoucherFilter, setMobileVoucherFilter] = useState<'all' | 'customers' | 'suppliers'>('all');
@@ -234,7 +254,7 @@ export default memo(function LiveKeepingsDashboard() {
         enabled: !!selectedCompany?.id,
         staleTime: 60 * 1000,
         refetchInterval: 60 * 1000,
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: false,
     });
 
     // Filtered lists for Desktop
@@ -291,6 +311,14 @@ export default memo(function LiveKeepingsDashboard() {
 
     return (
         <div className={`dashboard-app ${isDark ? 'dashboard-dark' : 'dashboard-light'} text-slate-100 max-w-7xl mx-auto`}>
+            {syncAgeDays !== null && syncAgeDays >= 3 && dismissedSyncWarning !== warningKey && (
+                <div className="dashboard-sync-warning" role="status">
+                    <AlertTriangle size={19} aria-hidden="true" />
+                    <span className="dashboard-sync-warning-text">Sync pending since {syncAgeDays} {syncAgeDays === 1 ? 'day' : 'days'}</span>
+                    <button type="button" className="dashboard-sync-help" onClick={() => navigate('/sync-help')}>GET HELP</button>
+                    <button type="button" className="dashboard-sync-dismiss" aria-label="Dismiss sync warning" onClick={() => setDismissedSyncWarning(warningKey)}><X size={16} /></button>
+                </div>
+            )}
             {/* ======================================================== */}
             {/* 📱 MOBILE VIEW (Exact layout as user reference image)   */}
             {/* ======================================================== */}
@@ -649,67 +677,8 @@ export default memo(function LiveKeepingsDashboard() {
             {/* 🖥️ DESKTOP / PC VIEW (Executive Dashboard System)        */}
             {/* ======================================================== */}
             <div className="hidden md:block space-y-4 pb-20">
-                {/* 1. HERO HEADER SECTION */}
-                <div className="p-5 rounded-2xl bg-[#121B24] border border-[#1E2B38] flex items-center justify-between gap-4 shadow-sm">
-                    <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-12 h-12 rounded-2xl bg-[#00E599]/10 border border-[#00E599]/20 flex items-center justify-center text-[#00E599] font-black text-xl shrink-0">
-                            <Building2 size={24} />
-                        </div>
-                        <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h1 className="text-xl font-black text-white tracking-tight truncate">
-                                    {selectedCompany?.name || 'Company'} Business Dashboard
-                                </h1>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#00E599]/15 text-[#00E599] border border-[#00E599]/30 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-[#00E599] animate-pulse" />
-                                    Tally Cloud Live
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-400 mt-0.5 truncate">
-                                Real-time Tally ERP intelligence, sales revenue, receivables & cash flow management
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        {/* FY Picker */}
-                        <div className="flex items-center bg-[#0B1118] border border-[#1E2B38] rounded-xl text-xs font-bold px-2 py-1.5 text-slate-300">
-                            <button onClick={() => stepFY(-1)} className="hover:text-white px-1 cursor-pointer">◀</button>
-                            <span className="px-2 border-x border-[#1E2B38] text-[11px] font-mono text-[#00E599]">
-                                {formatFYRange(selectedFY)}
-                            </span>
-                            <button onClick={() => stepFY(1)} className="hover:text-white px-1 cursor-pointer">▶</button>
-                        </div>
-
-                        {/* Pending Fix Button if any */}
-                        {pendingCount > 0 ? (
-                            <button
-                                onClick={() => navigate('/tally-sync')}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold hover:bg-amber-500/25 transition-all cursor-pointer"
-                            >
-                                <AlertTriangle size={13} />
-                                {pendingCount} Pending Sync
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => refetch()}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A2634] border border-[#24364A] text-slate-300 text-xs font-bold hover:bg-[#223347] transition-all cursor-pointer"
-                            >
-                                <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
-                                Refresh
-                            </button>
-                        )}
-
-                        {/* Quick Create Invoice CTA */}
-                        <button
-                            onClick={() => navigate('/create-invoice')}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00E599] hover:bg-[#00D284] text-[#0A1017] text-xs font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer"
-                        >
-                            <Plus size={15} />
-                            + Create Invoice
-                        </button>
-                    </div>
-                </div>
+                <HeaderPortal type="title"><h1 className="dashboard-desktop-title" title={selectedCompany?.name || 'Company'}>{selectedCompany?.name || 'Company'} <span>Dashboard</span></h1></HeaderPortal>
+                <HeaderPortal type="filters"><div className="dashboard-desktop-controls"><div className="dashboard-desktop-fy" aria-label="Financial year"><button onClick={() => stepFY(-1)} aria-label="Previous financial year">‹</button><span>{formatFYRange(selectedFY)}</span><button onClick={() => stepFY(1)} aria-label="Next financial year">›</button></div>{pendingCount > 0 ? <button className="dashboard-desktop-refresh" onClick={() => navigate('/tally-sync')}><AlertTriangle size={14}/><span>{pendingCount} Pending Sync</span></button> : <button className="dashboard-desktop-refresh" onClick={() => refetch()} aria-label="Refresh dashboard"><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''}/><span>Refresh</span></button>}</div></HeaderPortal>
 
                 {/* 2. TOP 4 EXECUTIVE KPI METRIC CARDS */}
                 <div className="dashboard-metrics grid grid-cols-3 gap-2">
