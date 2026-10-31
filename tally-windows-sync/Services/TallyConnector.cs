@@ -1788,6 +1788,7 @@ namespace TallySyncApp.Services
                         HsnCode = hsnCode,
                         GstRate = gstRate,
                         GstApplicable = gstApplicable,
+                        GstHistory = ParseGstSlabs(itemElement),
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });
@@ -1799,6 +1800,79 @@ namespace TallySyncApp.Services
             }
 
             return items;
+        }
+
+        /// <summary>
+        /// Stock groups with their GST rate history. Items whose rate is "As per Company/Stock
+        /// Group" inherit from here, so the pusher needs these to compute the real tax.
+        /// </summary>
+        public async Task<List<StockGroup>> GetStockGroupsWithGstAsync(string? companyName = null)
+        {
+            var request = @"
+<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>StockGroupCollection</ID></HEADER>
+  <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>
+    <TDL><TDLMESSAGE>
+      <COLLECTION NAME=""StockGroupCollection"" ISMODIFY=""No"">
+        <TYPE>Stock Group</TYPE>
+        <FETCH>NAME, PARENT, GSTDETAILS.LIST</FETCH>
+      </COLLECTION>
+    </TDLMESSAGE></TDL>
+  </DESC></BODY>
+</ENVELOPE>";
+
+            var doc = await SendRequestAsync(request, companyName);
+            if (doc == null) return new List<StockGroup>();
+
+            return doc.Descendants("STOCKGROUP")
+                .Select(g => new StockGroup
+                {
+                    Name = (GetAttribute(g, "NAME") ?? GetElementValue(g, "NAME") ?? "").Trim(),
+                    Parent = GetElementValue(g, "PARENT")?.Trim(),
+                    GstHistory = ParseGstSlabs(g),
+                })
+                .Where(g => g.Name.Length > 0)
+                .ToList();
+        }
+
+        /// <summary>
+        /// GST rate history of a master: one slab per GSTDETAILS.LIST, oldest first.
+        /// Exempt/Nil is a real 0%; a slab with no rate defers to the parent group.
+        /// </summary>
+        private static List<GstRateSlab> ParseGstSlabs(XElement element)
+        {
+            var slabs = new List<GstRateSlab>();
+            foreach (var details in element.Descendants()
+                .Where(x => x.Name.LocalName.Equals("GSTDETAILS.LIST", StringComparison.OrdinalIgnoreCase)))
+            {
+                var taxability = (GetElementValue(details, "TAXABILITY") ?? "").ToUpperInvariant();
+                decimal cgst = 0, sgst = 0, igst = 0, other = 0;
+                var hasRate = false;
+
+                foreach (var rateDetail in details.Descendants()
+                    .Where(x => x.Name.LocalName.Equals("RATEDETAILS.LIST", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var rateText = GetElementValue(rateDetail, "GSTRATE");
+                    if (string.IsNullOrWhiteSpace(rateText)) continue;
+                    hasRate = true;
+
+                    var head = (GetElementValue(rateDetail, "GSTRATEDUTYHEAD") ?? "").ToUpperInvariant();
+                    var rate = ParseDecimal(rateText);
+                    if (head.Contains("IGST")) igst += rate;
+                    else if (head.Contains("CGST")) cgst += rate;
+                    else if (head.Contains("SGST") || head.Contains("UTGST")) sgst += rate;
+                    else if (!head.Contains("CESS")) other += rate;
+                }
+
+                var exempt = taxability.Contains("EXEMPT") || taxability.Contains("NIL") || taxability.Contains("NON-GST");
+                slabs.Add(new GstRateSlab
+                {
+                    From = ParseDate(GetElementValue(details, "APPLICABLEFROM")),
+                    Inherits = !exempt && !hasRate,
+                    Rate = exempt ? 0 : igst > 0 ? igst : cgst + sgst > 0 ? cgst + sgst : other,
+                });
+            }
+            return slabs.OrderBy(s => s.From).ToList();
         }
 
         #region Helper Methods

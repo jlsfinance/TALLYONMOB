@@ -158,11 +158,6 @@ export default function CreateVoucherPage() {
         setStockEntries(stockEntries.filter((_, i) => i !== index));
     };
 
-    const itemSuggestions = (index: number) => {
-        const q = stockEntries[index]?.item_name?.toLowerCase() || '';
-        return allStockItems.filter(s => !q || s.name.toLowerCase().includes(q)).slice(0, 20);
-    };
-
     const totalAmount = useMemo(() => {
         return isMoneyVoucher ? Number(amount) || 0 : stockEntries.reduce((sum, e) => sum + (e.amount || 0), 0);
     }, [stockEntries, amount, isMoneyVoucher]);

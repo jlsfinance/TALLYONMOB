@@ -466,6 +466,28 @@ namespace TallySyncApp.Models
     }
 
     /// <summary>
+    /// One GST rate slab of a master. Tally keeps a rate history: the latest slab dated
+    /// on/before the voucher date is the one that applies.
+    /// </summary>
+    public class GstRateSlab
+    {
+        public DateTime From { get; set; }
+        public decimal Rate { get; set; }
+        /// <summary>"As per Company/Stock Group" — the rate lives on the parent group.</summary>
+        public bool Inherits { get; set; }
+    }
+
+    /// <summary>
+    /// Stock Group (needed only for its GST rate history)
+    /// </summary>
+    public class StockGroup
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Parent { get; set; }
+        public List<GstRateSlab> GstHistory { get; set; } = new();
+    }
+
+    /// <summary>
     /// Stock Item
     /// </summary>
     public class StockItem
@@ -524,6 +546,10 @@ namespace TallySyncApp.Models
         /// <summary>Item master has GST details (rate 0 means exempt, not "no GST").</summary>
         [JsonProperty("gst_applicable")]
         public bool GstApplicable { get; set; }
+
+        /// <summary>Date-wise GST rate history from the item master.</summary>
+        [JsonIgnore]
+        public List<GstRateSlab> GstHistory { get; set; } = new();
 
         [JsonProperty("master_id")]
         public string? MasterId { get; set; }

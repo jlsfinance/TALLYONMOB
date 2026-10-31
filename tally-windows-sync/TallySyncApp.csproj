@@ -15,7 +15,7 @@
     <AssemblyName>SyncoraConnector</AssemblyName>
     <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.0.0</Version>
+    <Version>3.1.1</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA Connector</Product>

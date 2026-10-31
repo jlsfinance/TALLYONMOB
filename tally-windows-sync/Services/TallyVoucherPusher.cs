@@ -32,7 +32,10 @@ namespace TallySyncApp.Services
             public List<Ledger> Ledgers = new();
             public DateTime LedgersAt = DateTime.MinValue;
             public Dictionary<string, string> StockUnits = new(StringComparer.OrdinalIgnoreCase);
-            public Dictionary<string, decimal> StockGstRates = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, List<GstRateSlab>> StockGstSlabs = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, string> StockParents = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, List<GstRateSlab>> GroupGstSlabs = new(StringComparer.OrdinalIgnoreCase);
+            public Dictionary<string, string> GroupParents = new(StringComparer.OrdinalIgnoreCase);
             public DateTime UnitsAt = DateTime.MinValue;
         }
 
@@ -71,11 +74,26 @@ namespace TallySyncApp.Services
                         .ToDictionary(g => g.Key, g => g.First().BaseUnit!.Trim(), StringComparer.OrdinalIgnoreCase);
 
                     // Only items with GST details in the master — their rate (even 0 = exempt) wins
-                    // over whatever the web form sent.
-                    ctx.StockGstRates = items
-                        .Where(i => i.GstApplicable && !string.IsNullOrWhiteSpace(i.Name))
+                    // over whatever the web form sent. Rates are date-wise, so the whole history
+                    // is kept and resolved against the voucher date at push time.
+                    var gstItems = items.Where(i => i.GstApplicable && !string.IsNullOrWhiteSpace(i.Name)).ToList();
+                    ctx.StockGstSlabs = gstItems
                         .GroupBy(i => i.Name!.Trim(), StringComparer.OrdinalIgnoreCase)
-                        .ToDictionary(g => g.Key, g => g.First().GstRate, StringComparer.OrdinalIgnoreCase);
+                        .ToDictionary(g => g.Key, g => g.First().GstHistory, StringComparer.OrdinalIgnoreCase);
+                    ctx.StockParents = items
+                        .Where(i => !string.IsNullOrWhiteSpace(i.Name) && !string.IsNullOrWhiteSpace(i.StockGroup))
+                        .GroupBy(i => i.Name!.Trim(), StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First().StockGroup!.Trim(), StringComparer.OrdinalIgnoreCase);
+
+                    // Items set to "As per Company/Stock Group" take the rate from here.
+                    var groups = await _tallyConnector.GetStockGroupsWithGstAsync(companyName) ?? new List<StockGroup>();
+                    ctx.GroupGstSlabs = groups
+                        .GroupBy(g => g.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First().GstHistory, StringComparer.OrdinalIgnoreCase);
+                    ctx.GroupParents = groups
+                        .Where(g => !string.IsNullOrWhiteSpace(g.Parent))
+                        .GroupBy(g => g.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First().Parent!.Trim(), StringComparer.OrdinalIgnoreCase);
                     ctx.UnitsAt = DateTime.UtcNow;
                 }
                 catch (Exception ex)
@@ -668,7 +686,7 @@ namespace TallySyncApp.Services
             var placeOfSupply = data["place_of_supply"]?.ToString() ?? state;
             var gstRegType = data["gst_registration_type"]?.ToString() ?? "Regular";
 
-            var gstError = ValidateItemGst(ctx, items, cgst, sgst, igst);
+            var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
 
             var tax = ResolveTaxLedgers(ctx, data, isInput: false, cgst, sgst, igst);
@@ -737,7 +755,7 @@ namespace TallySyncApp.Services
                 var taxable = item["taxable_amount"]?.Value<decimal>() ?? item["base_amount"]?.Value<decimal>() ?? (qty > 0 && rate > 0 ? (qty * rate - itemDiscountAmount) : amount);
                 if (taxable <= 0 && amount > 0) taxable = amount;
 
-                var itemGstRate = ItemGstRate(ctx, item);
+                var itemGstRate = ItemGstRate(ctx, item, date);
 
                 SyncLogger.Log($"    Sales Item #{itemIndex}: {itemName}, Qty: {qty}, Rate: {rate}, Taxable: {taxable}, Discount: {itemDiscountAmount}");
 
@@ -849,7 +867,7 @@ namespace TallySyncApp.Services
             var placeOfSupply = data["place_of_supply"]?.ToString() ?? state;
             var gstRegType = data["gst_registration_type"]?.ToString() ?? "Regular";
 
-            var gstError = ValidateItemGst(ctx, items, cgst, sgst, igst);
+            var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
 
             var tax = ResolveTaxLedgers(ctx, data, isInput: true, cgst, sgst, igst);
@@ -894,7 +912,7 @@ namespace TallySyncApp.Services
                 var taxable = item["taxable_amount"]?.Value<decimal>() ?? amount;
                 var unit = ResolveUnit(ctx, itemName, item["unit"]?.ToString());
 
-                var itemGstRate = ItemGstRate(ctx, item);
+                var itemGstRate = ItemGstRate(ctx, item, date);
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
@@ -966,7 +984,7 @@ namespace TallySyncApp.Services
                 }
             }
 
-            var gstError = ValidateItemGst(ctx, items, cgst, sgst, igst);
+            var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
 
             var tax = ResolveTaxLedgers(ctx, data, isInput: false, cgst, sgst, igst);
@@ -1019,7 +1037,7 @@ namespace TallySyncApp.Services
                 xml.AppendLine("                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>");
                 xml.AppendLine($"                <AMOUNT>-{taxable}</AMOUNT>");
                 xml.AppendLine("              </ACCOUNTINGALLOCATIONS.LIST>");
-                AppendItemGstRates(xml, ItemGstRate(ctx, item), igst > 0);
+                AppendItemGstRates(xml, ItemGstRate(ctx, item, date), igst > 0);
                 xml.AppendLine("            </ALLINVENTORYENTRIES.LIST>");
             }
 
@@ -1070,7 +1088,7 @@ namespace TallySyncApp.Services
                 }
             }
 
-            var gstError = ValidateItemGst(ctx, items, cgst, sgst, igst);
+            var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
 
             var tax = ResolveTaxLedgers(ctx, data, isInput: true, cgst, sgst, igst);
@@ -1123,7 +1141,7 @@ namespace TallySyncApp.Services
                 xml.AppendLine("                <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>");
                 xml.AppendLine($"                <AMOUNT>{taxable}</AMOUNT>");
                 xml.AppendLine("              </ACCOUNTINGALLOCATIONS.LIST>");
-                AppendItemGstRates(xml, ItemGstRate(ctx, item), igst > 0);
+                AppendItemGstRates(xml, ItemGstRate(ctx, item, date), igst > 0);
                 xml.AppendLine("            </ALLINVENTORYENTRIES.LIST>");
             }
 
@@ -1215,13 +1233,46 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// GST rate of an item line: the explicit rate, else derived from taxable value vs amount.
+        /// Rate of the slab that applies on a date, or null when the slab defers to the parent
+        /// group ("As per Company/Stock Group") or no slab is dated on/before it.
         /// </summary>
-        private static decimal ItemGstRate(CompanyContext ctx, JToken item)
+        private static decimal? SlabRate(List<GstRateSlab>? slabs, DateTime date)
+        {
+            var slab = slabs?.Where(s => s.From <= date).OrderByDescending(s => s.From).FirstOrDefault();
+            return slab == null || slab.Inherits ? null : slab.Rate;
+        }
+
+        /// <summary>
+        /// Effective GST rate from the Tally masters for a voucher date: item's own slab, else the
+        /// parent stock group chain. Null when the masters say nothing — the caller falls back.
+        /// </summary>
+        private static decimal? MasterGstRate(CompanyContext ctx, string itemName, DateTime date)
+        {
+            var rate = SlabRate(ctx.StockGstSlabs.GetValueOrDefault(itemName), date);
+            if (rate != null) return rate;
+
+            var group = ctx.StockParents.GetValueOrDefault(itemName);
+            for (var guard = 0; group != null && guard < 20; guard++)
+            {
+                rate = SlabRate(ctx.GroupGstSlabs.GetValueOrDefault(group), date);
+                if (rate != null) return rate;
+                group = ctx.GroupParents.GetValueOrDefault(group);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// GST rate of an item line: the Tally master for that date, else the explicit rate,
+        /// else derived from taxable value vs amount.
+        /// </summary>
+        private static decimal ItemGstRate(CompanyContext ctx, JToken item, DateTime date)
         {
             var name = item["stock_item_name"]?.ToString() ?? item["item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
-            if (!string.IsNullOrWhiteSpace(name) && ctx.StockGstRates.TryGetValue(name.Trim(), out var masterRate))
-                return masterRate;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var masterRate = MasterGstRate(ctx, name.Trim(), date);
+                if (masterRate != null) return masterRate.Value;
+            }
 
             var rate = item["gst_rate"]?.Value<decimal>() ?? item["gstRate"]?.Value<decimal>() ?? 0;
             if (rate > 0) return rate;
@@ -1235,7 +1286,8 @@ namespace TallySyncApp.Services
         /// Tax totals from the item lines. When an item's rate comes from the Tally master the tax
         /// must follow it — an exempt/0% item cannot post 18% just because the form said so.
         /// </summary>
-        private static string? ValidateItemGst(CompanyContext ctx, JArray items, decimal cgst, decimal sgst, decimal igst)
+        private static string? ValidateItemGst(CompanyContext ctx, JArray items, DateTime date,
+            decimal cgst, decimal sgst, decimal igst)
         {
             if (items.Count == 0) return null;
 
@@ -1244,9 +1296,10 @@ namespace TallySyncApp.Services
             foreach (var item in items)
             {
                 var name = item["stock_item_name"]?.ToString() ?? item["item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
-                usedMasterRate |= !string.IsNullOrWhiteSpace(name) && ctx.StockGstRates.ContainsKey(name.Trim());
+                usedMasterRate |= !string.IsNullOrWhiteSpace(name) &&
+                                  MasterGstRate(ctx, name.Trim(), date) != null;
 
-                var rate = ItemGstRate(ctx, item);
+                var rate = ItemGstRate(ctx, item, date);
                 if (rate <= 0) continue;
 
                 var taxable = item["taxable_amount"]?.Value<decimal>() ?? item["amount"]?.Value<decimal>() ?? 0;
