@@ -521,6 +521,10 @@ namespace TallySyncApp.Models
         [JsonProperty("gst_rate")]
         public decimal GstRate { get; set; }
 
+        /// <summary>Item master has GST details (rate 0 means exempt, not "no GST").</summary>
+        [JsonProperty("gst_applicable")]
+        public bool GstApplicable { get; set; }
+
         [JsonProperty("master_id")]
         public string? MasterId { get; set; }
 

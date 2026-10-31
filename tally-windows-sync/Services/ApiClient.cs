@@ -20,13 +20,10 @@ namespace TallySyncApp.Services
         private readonly string _apiKey; // Anon Key
         private string? _userToken; // Bearer Token for Auth
         private string? _ownerId;   // auth.uid() - RLS on every sync table is `owner_id = auth.uid()`
-        private readonly string _telegramBotToken;
-
-        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "")
+        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60)
         {
             _supabaseUrl = supabaseUrl.TrimEnd('/');
             _apiKey = apiKey;
-            _telegramBotToken = telegramBotToken;
 
             // FIX: Disable proxy to avoid intermittent DNS/connection issues (WSANO_DATA)
             var handler = new HttpClientHandler
@@ -1060,7 +1057,7 @@ namespace TallySyncApp.Services
                 return new ApiResponse<T>
                 {
                     Success = false,
-                    Error = $"Request failed: {ex.Message}"
+                    Error = $"Request failed: {ex.GetBaseException().Message}"
                 };
             }
         }
@@ -1090,10 +1087,28 @@ namespace TallySyncApp.Services
             }
         }
 
+        /// <summary>Atomically claim a pending row; only the connector that receives the row may import it.</summary>
+        public async Task<bool> TryClaimPendingTransactionAsync(string companyId, string transactionId)
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{Uri.EscapeDataString(transactionId)}&company_id=eq.{Uri.EscapeDataString(companyId)}&status=eq.pending&select=id";
+                using var request = new HttpRequestMessage(HttpMethod.Patch, url);
+                request.Headers.Add("Prefer", "return=representation");
+                request.Content = new StringContent("{\"status\":\"processing\"}", Encoding.UTF8, "application/json");
+                using var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode) return false;
+                var rows = Newtonsoft.Json.Linq.JArray.Parse(await response.Content.ReadAsStringAsync());
+                return rows.Count == 1 && string.Equals(rows[0]?["id"]?.ToString(), transactionId, StringComparison.Ordinal);
+            }
+            catch (Exception ex) { SyncLogger.Log($"⚠️ Pending transaction claim failed: {ex.Message}"); return false; }
+        }
+
         /// <summary>
         /// Update pending transaction status after Tally sync attempt
         /// </summary>
-        public async Task<bool> UpdatePendingTransactionStatusAsync(string transactionId, string status, string? tallyVoucherNumber = null, string? errorMessage = null)
+        public async Task<bool> UpdatePendingTransactionStatusAsync(string transactionId, string status, string? tallyVoucherNumber = null, string? errorMessage = null, int? retryCount = null)
         {
             try
             {
@@ -1103,6 +1118,7 @@ namespace TallySyncApp.Services
                 {
                     { "status", status }
                 };
+                if (retryCount.HasValue) updates["retry_count"] = retryCount.Value;
                 
                 if (!string.IsNullOrEmpty(tallyVoucherNumber))
                 {
@@ -1459,40 +1475,50 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Send Telegram Notification directly via Bot API
+        /// Send Telegram notification through the authenticated Supabase Edge Function.
+        /// The bot token stays server-side and the function only sends to this user's linked chat.
         /// </summary>
-        public async Task SendTelegramNotificationAsync(string chatId, string message)
+        public async Task<bool> SendTelegramNotificationAsync(string chatId, string message)
         {
+            if (string.IsNullOrWhiteSpace(_userToken) || string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(message))
+                return false;
+
             try
             {
-                var botToken = _telegramBotToken;
-                if (string.IsNullOrEmpty(botToken))
+                for (var attempt = 0; attempt < 2; attempt++)
                 {
-                    SyncLogger.Log("⚠️ Telegram Bot Token not configured in appsettings.json");
-                    return;
-                }
-                var url = $"https://api.telegram.org/bot{botToken}/sendMessage";
-                
-                var payload = new
-                {
-                    chat_id = chatId,
-                    text = message,
-                    parse_mode = "HTML"
-                };
+                    AddAuthHeader();
+                    var payload = JsonConvert.SerializeObject(new { chat_id = chatId, message });
+                    using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                    using var response = await _httpClient.PostAsync(
+                        $"{_supabaseUrl}/functions/v1/desktop-telegram-notify", content);
 
-                var json = JsonConvert.SerializeObject(payload);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                
-                // Use a separate client for Telegram to avoid Supabase headers
-                using (var tgClient = new HttpClient())
-                {
-                    await tgClient.PostAsync(url, content);
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && attempt == 0 && TokenRefresher != null)
+                    {
+                        var freshToken = await TokenRefresher();
+                        if (!string.IsNullOrWhiteSpace(freshToken))
+                        {
+                            SetUserToken(freshToken);
+                            continue;
+                        }
+                    }
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        SyncLogger.Log($"⚠️ Telegram notification service returned HTTP {(int)response.StatusCode}");
+                        return false;
+                    }
+
+                    var body = await response.Content.ReadAsStringAsync();
+                    var result = JsonConvert.DeserializeObject<Dictionary<string, bool>>(body);
+                    return result != null && result.TryGetValue("sent", out var sent) && sent;
                 }
             }
             catch (Exception ex)
             {
                 SyncLogger.Log($"⚠️ Failed to send Telegram notification: {ex.Message}");
             }
+            return false;
         }
     }
 }

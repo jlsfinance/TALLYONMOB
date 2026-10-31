@@ -1,7 +1,7 @@
 <Window x:Class="TallySyncApp.LoginWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SYNCORA - Sign In" Height="600" Width="440"
+        Title="SYNCORA Connector - Sign In" Height="600" Width="440"
         Icon="app_icon.ico"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -74,7 +74,7 @@
             <StackPanel Margin="0,36,0,10" HorizontalAlignment="Center">
                 <!-- Logo icon with floating animation -->
                 <Border Width="80" Height="80"
-                        Background="#FFFFFF"
+                        Background="#050A17"
                         CornerRadius="20"
                         RenderTransformOrigin="0.5,0.5">
                     <Border.RenderTransform>
@@ -85,18 +85,12 @@
                             <BeginStoryboard Storyboard="{StaticResource FloatingAnimation}"/>
                         </EventTrigger>
                     </Border.Triggers>
-                    <Grid>
-                        <TextBlock Text="⟳" FontSize="38"
-                                   Foreground="#0B8968"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   FontWeight="Bold"/>
-                    </Grid>
+                    <Image Source="syncora-connector.png" Stretch="UniformToFill"/>
                 </Border>
 
                 <TextBlock Text="SYNCORA" Foreground="White" FontSize="26"
                            FontWeight="Bold" HorizontalAlignment="Center" Margin="0,14,0,0"/>
-                <TextBlock Text="Tally sync for your business"
+                <TextBlock Text="CONNECTOR · Tally sync for your business"
                            Foreground="#B3E4CB" FontSize="12"
                            HorizontalAlignment="Center" Margin="0,5,0,0"/>
                 <TextBlock x:Name="VersionText" Text=""

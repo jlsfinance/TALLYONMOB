@@ -144,8 +144,7 @@ namespace TallySyncApp.Services
             _apiClient = new ApiClient(
                 supabaseUrl,
                 supabaseKey,
-                300,
-                _settings.SyncSettings.TelegramBotToken
+                300
             );
 
             // Set User Token if logged in
@@ -570,6 +569,8 @@ namespace TallySyncApp.Services
                     _isFirstRun = false;
                 }
 
+                var failedCompanies = new List<string>();
+                string? lastCompanyError = null;
                 foreach (var company in companies)
                 {
                     // ===== SYNC HISTORY TRACKING - declare outside try for catch access =====
@@ -641,6 +642,8 @@ namespace TallySyncApp.Services
                                 
                                 AddLog($"❌ Company registration FAILED: {compResult.Error}");
                                 SyncLogger.Log($"⚠️ Company sync warning: {compResult.Error}");
+                                failedCompanies.Add(company.Name);
+                                lastCompanyError = compResult.Error;
 
                                 // Company row is the membership anchor for ALL child-table RLS
                                 // (child policies check company_id IN owned companies). If it could
@@ -1430,7 +1433,7 @@ namespace TallySyncApp.Services
                                                      $"<i>Time: {DateTime.Now:HH:mm:ss}</i>";
                                     }
                                     
-                                    await _apiClient.SendTelegramNotificationAsync(tgChatId, telegramMsg);
+                                    var telegramSent = await _apiClient.SendTelegramNotificationAsync(tgChatId, telegramMsg);
                                     
                                     // SEND DAILY CLOSING REPORT (If after 8 PM)
                                     if (DateTime.Now.Hour >= 20 && totalSynced > 0)
@@ -1451,7 +1454,7 @@ namespace TallySyncApp.Services
                                         await _apiClient.SendTelegramNotificationAsync(tgChatId, reportSb.ToString());
                                     }
 
-                                    AddLog($"📨 Telegram notification sent to user.");
+                                    AddLog(telegramSent ? "📨 Telegram notification sent to user." : "⚠️ Telegram notification could not be sent.");
                                 }
                             }
                         }
@@ -1462,6 +1465,8 @@ namespace TallySyncApp.Services
                     }
                     catch (Exception ex)
                     {
+                        failedCompanies.Add(company.Name);
+                        lastCompanyError = ex.GetBaseException().Message;
                         Console.WriteLine($"❌ Error processing company {company.Name}: {ex.Message}");
                         UpdateStatus(SyncState.Error, $"Failed: {company.Name}", ex.Message);
 
@@ -1493,8 +1498,16 @@ namespace TallySyncApp.Services
                 }
 
                 // Update final status to avoid "1 records" confusion
-                Status.LastSyncTime = DateTime.Now;
                 Status.NextSyncTime = DateTime.Now.AddMinutes(_settings.SyncSettings.SyncIntervalMinutes);
+
+                if (failedCompanies.Count > 0)
+                {
+                    var failedNames = string.Join(", ", failedCompanies.Distinct());
+                    AddLog($"❌ Sync failed for: {failedNames}");
+                    UpdateStatus(SyncState.Error, $"Sync failed: {failedNames}", lastCompanyError);
+                    return;
+                }
+                Status.LastSyncTime = DateTime.Now;
                 
                 string msg = Status.TotalRecords == 0 
                     ? "Sync completed. No changes found." 
@@ -1911,7 +1924,8 @@ namespace TallySyncApp.Services
                 if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
                 {
                     var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
-                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, cloud, diff, out var safetyReason);
+                    var tallyAlterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);
+                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, tallyAlterIds, cloud, diff, out var safetyReason);
                     if (candidates.Count == 0)
                     {
                         AddLog("⚠️ Deletion skipped: identity or snapshot safety checks did not pass.");

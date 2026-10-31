@@ -36,7 +36,7 @@ function formatCompact(amount: number) {
 
 const QUICK_ACCESS_ITEMS = [
     { icon: <FileText size={18} />, label: 'Create Invoice', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', path: '/create-invoice', badge: 'NEW' },
-    { icon: <Package size={18} />, label: 'Record Purchase', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', path: '/create-voucher' },
+    { icon: <Package size={18} />, label: 'Record Purchase', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20', path: '/create-voucher?type=Purchase' },
     { icon: <Clock size={18} />, label: 'Day Book', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', path: '/day-book' },
     { icon: <Landmark size={18} />, label: 'Party Ledgers', color: 'text-purple-400 bg-purple-500/10 border-purple-500/20', path: '/ledgers' },
     { icon: <BarChart3 size={18} />, label: 'Profit & Loss', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20', path: '/profit-loss' },
@@ -484,7 +484,7 @@ export default memo(function LiveKeepingsDashboard() {
 
                         {/* 5. Record Purchase */}
                         <button
-                            onClick={() => navigate('/create-voucher')}
+                            onClick={() => navigate('/create-voucher?type=Purchase')}
                             className="shrink-0 snap-start w-24 p-3 rounded-2xl bg-[#121B24] border border-[#1E2B38] hover:border-slate-700 flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all text-center cursor-pointer"
                         >
                             <div className="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center justify-center">

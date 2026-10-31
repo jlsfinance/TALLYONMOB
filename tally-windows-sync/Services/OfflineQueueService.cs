@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Newtonsoft.Json;
@@ -18,6 +19,8 @@ namespace TallySyncApp.Services
 
         public OfflineQueueService(string databasePath = "sync_queue.db")
         {
+            if (!Path.IsPathRooted(databasePath))
+                databasePath = Path.Combine(AppContext.BaseDirectory, databasePath);
             _connectionString = $"Data Source={databasePath}";
             InitializeDatabase();
         }

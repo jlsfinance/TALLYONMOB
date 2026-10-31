@@ -255,9 +255,11 @@ const companyApi = {
     // Cascade-deletes all company-scoped rows via SECURITY DEFINER RPC (see
     // supabase/migrations/20251025_0000_delete_company_data.sql). Owner-only.
     const { data, error } = await db.rpc("delete_company_data", { p_company_id: companyId });
-    if (error) return { success: false, error: error.message };
-    const deleted = Number(Array.isArray(data) ? data[0] : data) || 0;
-    return { success: true, error: null, deleted };
+    if (error) return { success: false, error: error.code === '57014'
+      ? 'Company deletion timed out. No changes were saved. Please try again later.'
+      : error.message };
+    if (data !== true) return { success: false, error: 'Company was not deleted. Refresh and try again.' };
+    return { success: true, error: null };
   },
 };
 
@@ -518,11 +520,7 @@ const pendingTransactionApi = {
       created_by: user?.id || null,
       created_at: now,
     };
-    const batchInsert = await db.from("pending_transactions").insert([payload]).select().single();
-    if (!batchInsert.error) return batchInsert;
-    const objectInsert = await db.from("pending_transactions").insert(payload).select().single();
-    if (!objectInsert.error) return objectInsert;
-    return batchInsert;
+    return await db.from("pending_transactions").insert([payload]).select().single();
   },
   list: async (companyId, status = null) => {
     let q = db.from("pending_transactions").select("*").eq("company_id", companyId).order("created_at", { ascending: false });

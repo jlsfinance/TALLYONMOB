@@ -264,7 +264,7 @@ namespace TallySyncApp.Services
                 if (doc == null) return new List<Company>();
 
                 // Save for debugging if needed
-                File.WriteAllText("tally_response.xml", doc.ToString());
+                SyncLogger.SaveFile("tally_response.xml", doc.ToString());
                 // Using Log method if available, otherwise fallback to Console
                 Log("🔍 Tally Response received. Checking for companies...");
 
@@ -1767,6 +1767,11 @@ namespace TallySyncApp.Services
                         if (gstRate > 0) break;
                     }
 
+                    // "&#4; Applicable" / "&#4; Not Applicable" — exempt items are Applicable with rate 0.
+                    var gstApplicableText = GetElementValue(itemElement, "GSTAPPLICABLE") ?? "";
+                    var gstApplicable = gstApplicableText.IndexOf("Not Applicable", StringComparison.OrdinalIgnoreCase) < 0
+                                        && gstApplicableText.IndexOf("Applicable", StringComparison.OrdinalIgnoreCase) >= 0;
+
                     items.Add(new StockItem
                     {
                         Id = GetAttribute(itemElement, "GUID") ?? GetElementValue(itemElement, "GUID") ?? Guid.NewGuid().ToString(),
@@ -1782,6 +1787,7 @@ namespace TallySyncApp.Services
                             : ParseDecimal(GetElementValue(itemElement, "OPENINGRATE")),
                         HsnCode = hsnCode,
                         GstRate = gstRate,
+                        GstApplicable = gstApplicable,
                         MasterId = GetElementValue(itemElement, "MASTERID"),
                         AlterId = GetElementValue(itemElement, "ALTERID")
                     });

@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, Search, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { TrendingUp, Search, ChevronLeft, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { EmptyState } from '@/components/ui/GlassUI';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import TransactionCard from '@/components/shared/TransactionCard';
@@ -262,6 +262,13 @@ export default function SalesPage() {
                         onMonthChange={setSelectedMonth}
                         monthsInFy={monthsInFy}
                     />
+                    <button
+                        onClick={() => navigate('/create-voucher?type=Sales')}
+                        className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
+                        title="New Sale"
+                    >
+                        <Plus size={18} />
+                    </button>
                 </div>
             </HeaderPortal>
 

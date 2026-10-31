@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
 import AIFloatingButton from '../AIFloatingButton';
+import VoucherFab from '../VoucherFab';
 import { CommandPalette } from '../ui/CommandPalette';
 import GlobalSearch from '../GlobalSearch';
 import { prefetchVouchers, prefetchLedgers, prefetchStock, prefetchSales, invalidateDashboard } from '@/lib/prefetch';
@@ -707,6 +708,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             )}
 
             {location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && <AIFloatingButton />}
+            {location.pathname !== '/create-voucher' && location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && <VoucherFab />}
             <CommandPalette />
             <GlobalSearch open={showSearch} onClose={() => setShowSearch(false)} />
         </div>

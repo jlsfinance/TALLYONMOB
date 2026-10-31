@@ -12,7 +12,7 @@ namespace TallySyncApp
         {
             InitializeComponent();
 #if DEBUG
-            Title = "SYNCORA - PC Sync (Debug)";
+            Title = "SYNCORA Connector (Debug)";
 #endif
 
             // Sidebar version label reads the real assembly version (no hardcode)
@@ -31,10 +31,10 @@ namespace TallySyncApp
             // Set icon text for nav buttons (since can't use x:Key from resources in triggers)
             Loaded += (s, e) =>
             {
-                SetNavIcon(NavDashboard, "📊");
-                SetNavIcon(NavSyncStatus, "📋");
-                SetNavIcon(NavSettings, "⚙️");
-                SetNavIcon(NavHistory, "📜");
+                SetNavIcon(NavDashboard, "\uE80F");
+                SetNavIcon(NavSyncStatus, "\uE895");
+                SetNavIcon(NavSettings, "\uE713");
+                SetNavIcon(NavHistory, "\uE81C");
 
                 // Default to dashboard
                 PageTitle.Text = "Dashboard";

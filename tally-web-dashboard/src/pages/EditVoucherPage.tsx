@@ -305,19 +305,7 @@ export default function EditVoucherPage() {
 
                 if (error) throw error;
 
-                // Also update the local voucher record for immediate UI consistency
-                await supabase
-                    .from('vouchers')
-                    .update({
-                        party_name: partyName,
-                        voucher_date: voucherDate,
-                        narration: narration,
-                        total_amount: totalAmount,
-                        grand_total: totalAmount
-                    })
-                    .eq('id', voucher.id);
-
-                toast.success('Changes saved! Will sync to Tally on next sync.');
+                toast.success('Edit request saved. The Tally voucher stays unchanged until the connector supports verified edits.');
             }
 
             navigate(-1);

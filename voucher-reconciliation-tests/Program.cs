@@ -46,6 +46,19 @@ Check(VoucherReconciliation.SafeDeleteCandidates(full, full, unknownStateCloud, 
 var tooManyCloud = liveCloud.Where(v => v.Guid != "cloud-only").ToList();
 for (int i = 0; i < 6; i++) { var g = $"extra-{i}"; tooManyCloud.Add(new CloudVoucherIdentity { Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes(g))).ToString(), Guid = g, AlterId = (11000 + i).ToString(), IsDeleted = false }); }
 Check(VoucherReconciliation.SafeDeleteCandidates(full, full, tooManyCloud, VoucherReconciliation.Compare(full, tooManyCloud)).Count == 0, "bulk deletes blocked");
+var small = full.Take(6).ToArray();
+var smallCloud = small.Select(v => new CloudVoucherIdentity { Id = Guid.NewGuid().ToString(), Guid = v.Guid, AlterId = v.AlterId, IsDeleted = false }).ToList();
+smallCloud.Add(new CloudVoucherIdentity { Id = removedId, Guid = removedGuid, AlterId = "9000", IsDeleted = false });
+Check(VoucherReconciliation.SafeDeleteCandidates(small, small, smallCloud, VoucherReconciliation.Compare(small, smallCloud)).Single().Id == removedId, "one confirmed deletion in a small company");
+var secondGuid = "deleted-second";
+var twoDeleted = smallCloud.Append(new CloudVoucherIdentity { Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes(secondGuid))).ToString(), Guid = secondGuid, AlterId = "9002", IsDeleted = false }).ToList();
+Check(VoucherReconciliation.SafeDeleteCandidates(small, small, twoDeleted, VoucherReconciliation.Compare(small, twoDeleted)).Count == 2, "two confirmed deletions in a small company");
+var thirdGuid = "deleted-third";
+var threeDeleted = twoDeleted.Append(new CloudVoucherIdentity { Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes(thirdGuid))).ToString(), Guid = thirdGuid, AlterId = "9003", IsDeleted = false }).ToList();
+Check(VoucherReconciliation.SafeDeleteCandidates(small, small, threeDeleted, VoucherReconciliation.Compare(small, threeDeleted)).Count == 0, "three deletions remain blocked");
+Check(VoucherReconciliation.SafeDeleteCandidates(small, small.Skip(1).ToArray(), smallCloud, VoucherReconciliation.Compare(small, smallCloud)).Count == 0, "small company changed snapshot blocked");
+var smallDuplicate = smallCloud.Append(new CloudVoucherIdentity { Id = Guid.NewGuid().ToString(), Guid = removedGuid, AlterId = "9001", IsDeleted = false }).ToList();
+Check(VoucherReconciliation.SafeDeleteCandidates(small, small, smallDuplicate, VoucherReconciliation.Compare(small, smallDuplicate)).Count == 0, "small company duplicate blocked");
 Console.WriteLine("Voucher reconciliation checks passed.");
 
 namespace TallySyncApp.Models { public class VoucherIndexEntry { public string Guid { get; set; } = ""; public string? AlterId { get; set; } } }

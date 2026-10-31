@@ -12,19 +12,19 @@
     <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
-    <AssemblyName>TallyLink</AssemblyName>
-    <!-- Distinguish local debug builds without changing the installed release identity. -->
-    <AssemblyName Condition="'$(Configuration)' == 'Debug'">Syncora</AssemblyName>
+    <AssemblyName>SyncoraConnector</AssemblyName>
+    <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>2.0.9</Version>
-    <Authors>TallySync</Authors>
-    <Company>TallySync</Company>
-    <Product>TallySync - Tally Data Sync</Product>
+    <Version>3.0.0</Version>
+    <Authors>SYNCORA</Authors>
+    <Company>SYNCORA</Company>
+    <Product>SYNCORA Connector</Product>
     <Description>Sync Tally ERP data to cloud for mobile access</Description>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="syncora-connector.png" />
     <Resource Include="tallylink_logo.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>

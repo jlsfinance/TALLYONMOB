@@ -7,7 +7,27 @@ import './index.css'
 
 if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register(import.meta.env.DEV ? '/reminder-push-worker.js' : '/sw.js').catch(() => {})
+        if (import.meta.env.DEV) {
+            // Replace a production Workbox worker left on localhost with the
+            // push-only worker. Its fetches must never serve stale dev modules.
+            const staleController = navigator.serviceWorker.controller?.scriptURL.endsWith('/sw.js');
+            if (!staleController) sessionStorage.removeItem('syncora-dev-worker-refresh');
+            navigator.serviceWorker.register('/reminder-push-worker.js', { scope: '/' })
+                .then(async registration => {
+                    if (!staleController) return;
+                    await registration.update();
+                    const reload = () => {
+                        if (!sessionStorage.getItem('syncora-dev-worker-refresh')) {
+                            sessionStorage.setItem('syncora-dev-worker-refresh', '1');
+                            window.location.reload();
+                        }
+                    };
+                    navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
+                    registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+                }).catch(error => console.warn('Could not update localhost service worker:', error));
+        } else {
+            navigator.serviceWorker.register('/sw.js').catch(() => {})
+        }
     })
 }
 

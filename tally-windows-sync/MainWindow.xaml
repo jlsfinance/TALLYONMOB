@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         mc:Ignorable="d"
-        Title="SYNCORA - PC Sync" Height="680" Width="1080"
+        Title="SYNCORA Connector" Height="720" Width="1120"
         MinHeight="600" MinWidth="900"
         Icon="app_icon.ico"
         FontFamily="Segoe UI"
@@ -48,6 +48,7 @@
                                                 VerticalAlignment="Center"
                                                 Margin="14,0,0,0">
                                         <TextBlock x:Name="IconText"
+                                                   FontFamily="Segoe MDL2 Assets"
                                                    FontSize="18"
                                                    Width="24"
                                                    TextAlignment="Center"
@@ -64,13 +65,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#1E293B"/>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#174A61"/>
                                 <Setter TargetName="ActiveBar" Property="Height" Value="28"/>
                                 <Setter Property="Foreground" Value="White"/>
                                 <Setter TargetName="LabelText" Property="FontWeight" Value="SemiBold"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#334155"/>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#183B4E"/>
                                 <Setter Property="Foreground" Value="#E2E8F0"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -99,7 +100,7 @@
 
         <!-- ======== LEFT SIDEBAR ======== -->
         <Border Grid.Column="0"
-                Background="#102C29"
+                Background="#0D2131"
                 Width="212"
                 HorizontalAlignment="Left">
             <Grid>
@@ -110,29 +111,24 @@
                 </Grid.RowDefinitions>
 
                 <!-- App Branding -->
-                <Border Padding="20,24,20,20" BorderBrush="#284B43" BorderThickness="0,0,0,1">
+                <Border Padding="16,22,16,20" BorderBrush="#294254" BorderThickness="0,0,0,1">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="38" Height="38"
-                                Background="#2563EB"
-                                CornerRadius="10">
-                            <TextBlock Text="⟳" FontSize="20"
-                                       Foreground="White"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       FontWeight="Bold"/>
+                        <Border Width="42" Height="42" Background="#050A17" CornerRadius="12" ClipToBounds="True">
+                            <Image Source="syncora-connector.png" Stretch="UniformToFill"/>
                         </Border>
                         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="SYNCORA"
                                        Foreground="White"
                                        FontSize="16"
                                        FontWeight="Bold"/>
-                            <TextBlock Text="{Binding Status.CompanyName, StringFormat='{}{0}'}"
-                                       Foreground="#64748B"
+                            <TextBlock Text="CONNECTOR"
+                                       Foreground="#69C7EC"
                                        FontSize="11"
+                                       FontWeight="SemiBold"
                                        Margin="0,1,0,0"/>
                         </StackPanel>
                     </Grid>
@@ -244,7 +240,7 @@
                     <!-- Page Title -->
                     <TextBlock x:Name="PageTitle"
                                Text="Dashboard"
-                               FontSize="18"
+                                                   FontSize="18"
                                FontWeight="Bold"
                                Foreground="#17342E"
                                VerticalAlignment="Center"/>

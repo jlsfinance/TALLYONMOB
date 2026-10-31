@@ -335,11 +335,12 @@ export default function CreateInvoicePage() {
                 }))
             };
 
-            await pendingTransactionApi.create(
+            const { error: queueError } = await pendingTransactionApi.create(
                 selectedCompany.id,
                 'Sales',
                 invoiceData
             );
+            if (queueError) throw queueError;
 
             toast.success('Invoice saved successfully! Queued for Tally sync.');
             navigate('/sales');

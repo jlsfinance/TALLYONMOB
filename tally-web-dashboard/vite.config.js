@@ -38,6 +38,7 @@ export default defineConfig(({ mode }) => {
             react(),
             VitePWA({
                 registerType: 'autoUpdate',
+                injectRegister: null,
                 includeAssets: ['app_icon.svg', 'favicon.ico'],
                 manifest: false,
                 workbox: {

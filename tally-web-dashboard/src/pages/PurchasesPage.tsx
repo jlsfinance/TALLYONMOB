@@ -207,7 +207,7 @@ export default function PurchasesPage() {
                         <SlidersHorizontal size={16} />
                     </button>
                     <button
-                        onClick={() => navigate('/vouchers?type=Purchase')}
+                        onClick={() => navigate('/create-voucher?type=Purchase')}
                         className="w-9 h-9 flex items-center justify-center bg-[var(--primary)] text-white rounded-xl shadow-lg shadow-[var(--primary-glow)] hover:scale-105 transition-transform"
                         title="New Record"
                     >
