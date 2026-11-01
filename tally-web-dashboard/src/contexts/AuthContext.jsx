@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, companyApi, clearLocalSession, supabase } from '../lib/insforge';
-import { trialService } from '../lib/licensing';
+import { trialService, licenseService } from '../lib/licensing';
 import { Capacitor } from '@capacitor/core';
 
 const AuthContext = createContext({});
@@ -120,7 +120,7 @@ export const AuthProvider = ({ children }) => {
                         if (event === 'SIGNED_IN') {
                             (async () => {
                                 try {
-                                    const existing = await trialService.getActiveLicense(authUser.id);
+                                    const existing = await licenseService.getActiveLicense(authUser.id);
                                     if (!existing) {
                                         await trialService.activate({
                                             user_id: authUser.id,
