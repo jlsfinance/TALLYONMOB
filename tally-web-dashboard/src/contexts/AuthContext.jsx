@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, companyApi, clearLocalSession, supabase } from '../lib/insforge';
+import { trialService } from '../lib/licensing';
 import { Capacitor } from '@capacitor/core';
 
 const AuthContext = createContext({});
@@ -113,6 +114,34 @@ export const AuthProvider = ({ children }) => {
                     if (authUser) {
                         setUser(authUser);
                         loadCompanies();
+
+                        // Auto-assign 30-day free trial on first sign-in if no license exists
+                        // Covers Google OAuth signup and any other OAuth provider
+                        if (event === 'SIGNED_IN') {
+                            (async () => {
+                                try {
+                                    const existing = await trialService.getActiveLicense(authUser.id);
+                                    if (!existing) {
+                                        await trialService.activate({
+                                            user_id: authUser.id,
+                                            email: authUser.email || '',
+                                            company_name: (authUser.user_metadata?.full_name ||
+                                                authUser.user_metadata?.name || '').trim() || '',
+                                            mobile: authUser.user_metadata?.phone || '',
+                                            device_id: '',
+                                            device_fingerprint: '',
+                                            tally_serial: '',
+                                            company_gst: '',
+                                            company_pan: '',
+                                            ip_address: '',
+                                        });
+                                        console.log('Auto trial activated for new user:', authUser.id);
+                                    }
+                                } catch (err) {
+                                    console.error('Auto trial activation failed:', err);
+                                }
+                            })();
+                        }
                     }
                 });
 
@@ -210,6 +239,65 @@ export const AuthProvider = ({ children }) => {
 
     const signUp = async (email, password, fullName) => {
         const { data, error } = await auth.signUp({ email, password, name: fullName });
+        if (error) return { data, error };
+
+        const signedUpUser = data?.session?.user || data?.user || null;
+        if (signedUpUser) {
+            // Auto-assign 30-day free trial on signup (server-authoritative)
+            try {
+                const result = await trialService.activate({
+                    user_id: signedUpUser.id,
+                    email: signedUpUser.email,
+                    company_name: fullName || '',
+                    mobile: '',
+                    device_id: '',
+                    device_fingerprint: '',
+                    tally_serial: '',
+                    company_gst: '',
+                    company_pan: '',
+                    ip_address: '',
+                });
+
+                if (!result.success) {
+                    console.warn('Trial activate returned failure, falling back to Edge Function:', result.error);
+                    try {
+                        const { data: edgeData, error: edgeError } = await supabase.functions.invoke('auto-trial-on-signup', {
+                            body: {
+                                user_id: signedUpUser.id,
+                                email: signedUpUser.email,
+                                full_name: fullName || '',
+                            },
+                        });
+                        if (edgeError) {
+                            console.error('Edge function trial activation failed:', edgeError);
+                        } else {
+                            console.log('Edge function trial activated:', edgeData);
+                        }
+                    } catch (edgeErr) {
+                        console.error('Edge function call failed:', edgeErr);
+                    }
+                }
+            } catch (trialErr) {
+                console.error('Auto trial activation threw exception:', trialErr);
+                try {
+                    const { data: edgeData, error: edgeError } = await supabase.functions.invoke('auto-trial-on-signup', {
+                        body: {
+                            user_id: signedUpUser.id,
+                            email: signedUpUser.email,
+                            full_name: fullName || '',
+                        },
+                    });
+                    if (edgeError) {
+                        console.error('Edge function trial activation failed:', edgeError);
+                    } else {
+                        console.log('Edge function trial activated:', edgeData);
+                    }
+                } catch (edgeErr) {
+                    console.error('Edge function call failed:', edgeErr);
+                }
+            }
+        }
+
         return { data, error };
     };
 
@@ -225,6 +313,13 @@ export const AuthProvider = ({ children }) => {
 
     const sendVerificationEmail = async (email) => {
         const { error } = await auth.sendVerificationEmail({ email });
+        return { error };
+    };
+
+    const resetPasswordForEmail = async (email) => {
+        const { error } = await auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/auth/reset-password`,
+        });
         return { error };
     };
 
@@ -305,6 +400,7 @@ export const AuthProvider = ({ children }) => {
         signOut,
         verifyOtp,
         sendVerificationEmail,
+        resetPasswordForEmail,
         signInWithGoogle,
         selectCompany,
         deleteCompany,

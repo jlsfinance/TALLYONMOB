@@ -105,6 +105,7 @@ const LandingPage = lazyPage('LandingPage', () => import('./pages/LandingPage'))
 const ProfitLossPage = lazyPage('ProfitLossPage', () => import('./pages/ProfitLossPage'));
 const BalanceSheetPage = lazyPage('BalanceSheetPage', () => import('./pages/BalanceSheetPage'));
 const AuthCallback = lazyPage('AuthCallback', () => import('./pages/AuthCallback'));
+const ResetPassword = lazyPage('ResetPassword', () => import('./pages/ResetPassword'));
 const OnboardingPage = lazyPage('OnboardingPage', () => import('./pages/OnboardingPage'));
 const AdminDashboardPage = lazyPage('AdminDashboardPage', () => import('./pages/AdminDashboardPage'));
 const PrivacyPolicyPage = lazyPage('PrivacyPolicyPage', () => import('./pages/PrivacyPolicyPage'));
@@ -172,6 +173,7 @@ function warmCommonRouteChunks() {
         import('./pages/SalesPage'),
         ...(Capacitor.isNativePlatform() ? [import('./pages/NativeIntroPage')] : []),
         import('./pages/LoginPage'),
+        import('./pages/ResetPassword'),
         import('./pages/ModuleSelectionPage'),
         import('./pages/SelectCompanyPage'),
         import('./pages/TallyDataViewerPage'),
@@ -340,6 +342,7 @@ function AppContent() {
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/reset-password" element={<ResetPassword />} />
                 <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                 <Route path="/admin-panel" element={<AdminRoute><AdminPanel /></AdminRoute>} />

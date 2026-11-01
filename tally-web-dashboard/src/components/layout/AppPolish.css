@@ -193,9 +193,7 @@ html:not(.dark) .parties-screen [class~="text-rose-400"] { color: #bc3550; }
 /* Shared one-page scrolling and bottom navigation clearance for ledger and sales. */
 .ledger-layout, .ledger-layout > main { overflow-x: clip !important; overflow-y: visible !important; min-height: 100dvh; }
 @media (max-width: 767px) {
-  .app-shell .app-bottom-nav > div { padding-right: 58px; }
-  .app-shell .ai-floating-button { right: 9px; bottom: calc(10px + env(safe-area-inset-bottom)); width: 42px; height: 42px; }
-  .app-shell .ai-floating-button svg { width: 22px; height: 22px; }
+  .app-shell .app-bottom-nav > div { padding-right: 8px; }
 }
 .voucher-page-list, .sales-list { overflow: clip; }
 .voucher-page-row, .sales-list-row, .party-list-row { content-visibility: auto; contain-intrinsic-size: auto 64px; }

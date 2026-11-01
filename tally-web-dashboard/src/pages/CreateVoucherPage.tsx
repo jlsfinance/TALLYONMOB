@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, masterApi, pendingTransactionApi } from '../lib/insforge';
 import {
-    Plus, Save, X, Users, Package, Loader2, ArrowLeft
+    Plus, Save, X, Users, Package, Loader2, ChevronLeft
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -250,10 +250,10 @@ export default function CreateVoucherPage() {
     // Step 1: Voucher Type Selection
     if (step === 'type') {
         return (
-            <div className="min-h-screen bg-[var(--background)] p-4 md:p-6 pb-24">
+            <div className="voucher-dark min-h-screen bg-[var(--background)] p-4 md:p-6 pb-24">
                 <div className="mb-6">
                     <h1 className="text-2xl font-bold text-[var(--on-surface)] flex items-center gap-2">
-                        <Plus className="w-6 h-6 text-blue-400" />
+                        <Plus className="w-6 h-6 text-[#00E599]" />
                         Create Voucher
                     </h1>
                     <p className="text-sm text-[var(--text-muted)] mt-1">Select voucher type to create</p>
@@ -278,21 +278,35 @@ export default function CreateVoucherPage() {
 
     // Step 2: Voucher Form
     return (
-        <div className="min-h-screen bg-[var(--background)] p-4 md:p-6 pb-32">
-          <div className="mx-auto max-w-5xl">
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm">
-                <button onClick={() => setStep('type')} className="p-2 rounded-lg bg-[var(--surface)] border border-[var(--border)]">
-                    <ArrowLeft className="w-5 h-5 text-[var(--on-surface)]" />
+        <div className="voucher-dark min-h-screen bg-[var(--background)] pb-24 font-sans">
+          <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3 sm:px-6 py-2.5 shadow-sm">
+            <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
+                <button
+                    onClick={() => setStep('type')}
+                    className="w-9 h-9 rounded-xl bg-[#142032] border border-[#22334C] flex items-center justify-center text-slate-300 hover:text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-xs"
+                    aria-label="Back"
+                >
+                    <ChevronLeft size={20} />
                 </button>
-                <div>
-                    <h1 className="text-xl font-bold text-[var(--on-surface)]">New {voucherType}</h1>
-                    <p className="text-xs text-[var(--text-muted)]">Add details below to create your voucher</p>
+                <div className="min-w-0 flex-1 px-1">
+                    <h1 className="text-sm sm:text-base font-black text-white tracking-tight leading-tight whitespace-nowrap">New {voucherType}</h1>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Syncs to Tally on next sync</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving || (partyRequired && !partyName.trim())}
+                    className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] rounded-xl font-black text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    <span>{saving ? '...' : 'Save'}</span>
+                </button>
             </div>
+          </header>
 
+          <div className="max-w-5xl mx-auto p-3 sm:p-5">
             {['Contra', 'Debit Note', 'Credit Note'].includes(voucherType) && (
-                <div role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <div role="status" className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
                     Connector support for this voucher type has not been verified. Check Sync Status after saving.
                 </div>
             )}
@@ -368,47 +382,55 @@ export default function CreateVoucherPage() {
                         onChange={(e) => { setPartyName(e.target.value); setPartySearch(e.target.value); setShowPartyDropdown(true); }}
                         onFocus={() => setShowPartyDropdown(true)}
                         placeholder="Party name (new name bhi chalega)"
-                        className="w-full pl-10 pr-4 py-2.5 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm text-[var(--on-surface)] placeholder-[var(--text-muted)] focus:border-blue-500/50 focus:outline-none"
+                        className="w-full pl-10 pr-4 py-2.5 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm text-[var(--on-surface)] placeholder-[var(--text-muted)] focus:border-[#00E599] focus:outline-none"
                     />
                 </div>
                 {showPartyDropdown && filteredParties.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {filteredParties.map(p => (
-                            <button
-                                key={p.id}
-                                onClick={() => { setPartyName(p.name); setPartySearch(''); setShowPartyDropdown(false); }}
-                                className="w-full text-left px-4 py-2.5 hover:bg-[var(--background)] text-sm text-[var(--on-surface)] border-b border-[var(--border)] last:border-0 flex justify-between"
-                            >
-                                <span>{p.name}</span>
-                                <span className={`text-xs ${p.closing_balance > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                    {formatCurrency(Math.abs(p.closing_balance || 0))}
-                                </span>
-                            </button>
-                        ))}
+                        {filteredParties.map(p => {
+                            // ledgers table stores current_balance; closing_balance only exists in Tally XML.
+                            const balance = Number(p.current_balance ?? p.closing_balance ?? 0);
+                            return (
+                                <button
+                                    key={p.id}
+                                    onClick={() => { setPartyName(p.name); setPartySearch(''); setShowPartyDropdown(false); }}
+                                    className="w-full text-left px-4 py-2.5 hover:bg-[var(--background)] text-sm text-[var(--on-surface)] border-b border-[var(--border)] last:border-0 flex justify-between"
+                                >
+                                    <span>{p.name}</span>
+                                    <span className={`text-xs ${balance > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                        {formatCurrency(Math.abs(balance))}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
             </div>
 
             {/* Stock Items (for Sales/Purchase types) */}
             {hasStockEntries && (
-                <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                    {masterError && <p role="alert" className="mb-3 text-sm text-red-500">{masterError}</p>}
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-                            <Package className="w-3 h-3" /> Items
-                        </label>
-                        <button
-                            onClick={addStockEntry}
-                            className="text-xs text-blue-400 flex items-center gap-1 hover:text-blue-300"
-                        >
-                            <Plus className="w-3 h-3" /> Add Item
-                        </button>
+                <div className="mb-4 space-y-3">
+                    {masterError && <p role="alert" className="text-sm text-red-400">{masterError}</p>}
+
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Added Items</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#16202C] text-[#00E599] border border-[#22334C]">
+                                {stockEntries.length}
+                            </span>
+                        </div>
+                        {stockEntries.length > 0 && (
+                            <span className="text-xs font-bold text-slate-300">Subtotal: {formatCurrency(totalAmount)}</span>
+                        )}
                     </div>
 
                     {stockEntries.map((entry, i) => (
-                        <div key={i} className="bg-[var(--surface)] border border-[var(--border)] rounded-lg p-3 mb-2">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="relative flex-1">
+                        <div key={i} className="bg-[#121B24] border border-[#1E2B38] hover:border-[#2A3F55] rounded-2xl p-3.5 sm:p-4 shadow-sm transition-colors">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="w-10 h-10 rounded-xl bg-[#16202C] border border-[#22334C] flex items-center justify-center text-[#00E599] shrink-0">
+                                    <Package size={18} />
+                                </div>
+                                <div className="relative flex-1 min-w-0">
                                     <input
                                         type="text"
                                         value={entry.item_name}
@@ -420,80 +442,83 @@ export default function CreateVoucherPage() {
                                         }}
                                         onFocus={() => setShowItemDropdown(i)}
                                         onBlur={() => setTimeout(() => setShowItemDropdown(null), 150)}
-                                        placeholder="Item name"
-                                        className="w-full px-3 py-2 bg-[var(--background)] border border-[var(--border)] rounded-lg text-sm text-[var(--on-surface)]"
+                                        placeholder="Select Product..."
+                                        className="w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2.5 px-3.5 text-xs sm:text-sm font-bold text-white placeholder-slate-500 outline-none focus:border-[#00E599] transition-colors"
                                     />
                                     {showItemDropdown === i && itemSuggestions(i).length > 0 && (
-                                        <div className="absolute z-20 w-full mt-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                        <div className="absolute z-20 w-full mt-1 bg-[#121B24] border border-[#22334C] rounded-xl shadow-lg max-h-48 overflow-y-auto">
                                             {itemSuggestions(i).map(s => (
                                                 <button
                                                     key={s.id}
                                                     onMouseDown={(e) => { e.preventDefault(); selectStockItem(i, s); setShowItemDropdown(null); }}
-                                                    className="w-full text-left px-3 py-2 hover:bg-[var(--background)] text-sm text-[var(--on-surface)] border-b border-[var(--border)] last:border-0 flex justify-between gap-2"
+                                                    className="w-full text-left px-3 py-2 hover:bg-[#16202C] text-sm text-slate-200 border-b border-[#1E2B38] last:border-0 flex justify-between gap-2"
                                                 >
                                                     <span className="truncate">{s.name}</span>
-                                                    <span className="text-[10px] text-[var(--text-muted)] shrink-0">{s.unit || ''}</span>
+                                                    <span className="text-[10px] text-slate-400 shrink-0">{s.unit || ''}</span>
                                                 </button>
                                             ))}
                                         </div>
                                     )}
                                 </div>
-                                <button onClick={() => removeStockEntry(i)} className="p-1 text-red-400">
-                                    <X className="w-4 h-4" />
+                                <button
+                                    onClick={() => removeStockEntry(i)}
+                                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                    title="Remove item"
+                                >
+                                    <X size={16} />
                                 </button>
                             </div>
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 <div>
-                                    <label className="text-[10px] text-[var(--text-muted)]">Qty</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Qty</label>
                                     <input
                                         type="number"
                                         value={entry.quantity}
                                         onChange={(e) => updateStockEntry(i, 'quantity', Number(e.target.value))}
-                                        className="w-full px-2 py-1.5 bg-[var(--background)] border border-[var(--border)] rounded text-sm text-[var(--on-surface)]"
+                                        className="mt-1 w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs font-bold text-white outline-none focus:border-[#00E599] transition-colors"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-[var(--text-muted)]">Rate</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Rate</label>
                                     <input
                                         type="number"
                                         value={entry.rate}
                                         onChange={(e) => updateStockEntry(i, 'rate', Number(e.target.value))}
-                                        className="w-full px-2 py-1.5 bg-[var(--background)] border border-[var(--border)] rounded text-sm text-[var(--on-surface)]"
+                                        className="mt-1 w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs font-bold text-white outline-none focus:border-[#00E599] transition-colors"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-[var(--text-muted)]">GST %</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">GST %</label>
                                     <input
                                         type="number" min="0" max="100" step="0.01" inputMode="decimal"
                                         value={entry.gst_rate}
                                         onChange={(e) => updateStockEntry(i, 'gst_rate', Number(e.target.value))}
                                         aria-label={`GST percentage for item ${i + 1}`}
-                                        className="w-full px-2 py-1.5 bg-[var(--background)] border border-[var(--border)] rounded text-sm text-[var(--on-surface)]" />
+                                        className="mt-1 w-full bg-[#16202C] border border-[#22334C] rounded-xl py-2 px-3 text-xs font-bold text-white outline-none focus:border-[#00E599] transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-[var(--text-muted)]">Amount</label>
-                                    <p className="px-2 py-1.5 text-sm font-medium text-[var(--on-surface)]">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Amount</label>
+                                    <p className="mt-1 px-1 py-2 text-xs sm:text-sm font-black font-mono text-[#00E599]">
                                         {formatCurrency(entry.amount)}
                                     </p>
                                 </div>
                             </div>
-                            <div className="mt-3 flex items-center justify-between border-t border-[var(--border)] pt-2 text-xs text-[var(--text-muted)]">
-                                <span>GST ({entry.gst_rate}%)</span>
-                                <span className="font-semibold text-[var(--on-surface)]">{formatCurrency(entry.amount * entry.gst_rate / 100)}</span>
+                            <div className="mt-3 flex items-center justify-between border-t border-[#1E2B38] pt-2 text-xs">
+                                <span className="text-slate-400">GST ({entry.gst_rate}%)</span>
+                                <span className="font-bold text-[#00E599]">{formatCurrency(entry.amount * entry.gst_rate / 100)}</span>
                             </div>
-                            {entry.gst_rate === 0 && <p className="mt-2 text-xs text-[var(--text-muted)]">GST 0% hai. Item master mein rate na ho to yahan sahi GST % daalein.</p>}
+                            {entry.gst_rate === 0 && <p className="mt-2 text-xs text-slate-400">GST 0% hai. Item master mein rate na ho to yahan sahi GST % daalein.</p>}
                         </div>
                     ))}
 
-                    {stockEntries.length === 0 && (
-                        <button
-                            onClick={addStockEntry}
-                            className="w-full py-8 border-2 border-dashed border-[var(--border)] rounded-lg text-sm text-[var(--text-muted)] hover:border-blue-500/30 hover:text-blue-400 transition-all"
-                        >
-                            <Plus className="w-5 h-5 mx-auto mb-1" />
-                            Add first item
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={addStockEntry}
+                        className="w-full py-4 rounded-2xl border-2 border-dashed border-[#00E599]/35 bg-[#00E599]/5 hover:bg-[#00E599]/10 text-[#00E599] font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-xs"
+                    >
+                        <Plus size={17} />
+                        <span>+ Add New Item</span>
+                    </button>
                 </div>
             )}
 
@@ -532,23 +557,10 @@ export default function CreateVoucherPage() {
                 </div>
             )}
 
-            {/* Save Button */}
-            <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                <button
-                    onClick={handleSave}
-                    disabled={saving || (partyRequired && !partyName.trim())}
-                    className="w-full py-3 bg-blue-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-blue-600 disabled:opacity-50 transition-all"
-                >
-                    {saving ? (
-                        <><Loader2 className="w-5 h-5 animate-spin" /> Saving...</>
-                    ) : (
-                        <><Save className="w-5 h-5" /> Save {voucherType} Voucher</>
-                    )}
-                </button>
-                <p className="text-xs text-center text-[var(--text-muted)] mt-2">
-                    Will sync to Tally automatically on next sync
-                </p>
-            </div>
+            {/* Save lives in the sticky header, like create-invoice. */}
+            <p className="mt-4 text-center text-xs text-[var(--text-muted)]">
+                Will sync to Tally automatically on next sync
+            </p>
           </div>
         </div>
     );

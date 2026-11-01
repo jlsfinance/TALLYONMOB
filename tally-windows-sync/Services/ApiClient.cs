@@ -197,6 +197,11 @@ namespace TallySyncApp.Services
             // Explicit Log for Debugging
             SyncLogger.Log($"API CALL → table={tableName}, on_conflict={onConflict}, items={data.Count}");
 
+            // Vouchers and voucher-derived tables share one id scheme (see CompanyScopedVoucherIdsAsync).
+            bool companyScopedVoucherIds = tableName == "vouchers" || exactTableNames.Contains(tableName)
+                ? await CompanyScopedVoucherIdsAsync(companyUuid)
+                : false;
+
             // Assign company_id and convert to dictionary for Supabase
             var itemsWithCompanyId = new List<Dictionary<string, object>>();
             foreach (var item in data)
@@ -234,7 +239,7 @@ namespace TallySyncApp.Services
                         if (dict.ContainsKey("voucher_id"))
                         {
                             string voucherId = dict["voucher_id"]?.ToString() ?? Guid.NewGuid().ToString();
-                            dict["id"] = GenerateDeterministicGuid(voucherId).ToString();
+                            dict["id"] = VoucherRowId(companyUuid, voucherId, companyScopedVoucherIds);
                         }
                         dict.Remove("voucher_id"); // Remove the string version
                     }
@@ -348,7 +353,7 @@ namespace TallySyncApp.Services
                             if (!Guid.TryParse(itemId, out _))
                             {
                                 // Generate deterministic UUID from the non-UUID ID string
-                                dict["id"] = GenerateDeterministicGuid(itemId).ToString();
+                                dict["id"] = VoucherRowId(companyUuid, itemId, companyScopedVoucherIds);
                             }
                         }
                         
@@ -358,7 +363,7 @@ namespace TallySyncApp.Services
                             string vId = dict["voucher_id"]?.ToString() ?? "";
                             if (!string.IsNullOrEmpty(vId) && !Guid.TryParse(vId, out _))
                             {
-                                dict["voucher_id"] = GenerateDeterministicGuid(vId).ToString();
+                                dict["voucher_id"] = VoucherRowId(companyUuid, vId, companyScopedVoucherIds);
                             }
                         }
 
@@ -370,7 +375,7 @@ namespace TallySyncApp.Services
                             string cId = dict[childKey]?.ToString() ?? "";
                             if (!string.IsNullOrEmpty(cId) && !Guid.TryParse(cId, out _))
                             {
-                                dict[childKey] = GenerateDeterministicGuid(cId).ToString();
+                                dict[childKey] = VoucherRowId(companyUuid, cId, companyScopedVoucherIds);
                             }
                         }
                     }
@@ -425,6 +430,9 @@ namespace TallySyncApp.Services
                     companyUuid = GenerateDeterministicGuid(companyId).ToString();
                 }
 
+                // Vouchers and voucher-derived tables share one id scheme (see CompanyScopedVoucherIdsAsync).
+                bool companyScopedVoucherIds = await CompanyScopedVoucherIdsAsync(companyUuid);
+
                 // 1. Extract and sync Ledger Entries to voucher_ledger_entries
                 var allLedgerEntries = new List<Dictionary<string, object>>();
                 foreach (var voucher in vouchers)
@@ -442,9 +450,9 @@ namespace TallySyncApp.Services
                             string entryKey = $"{voucher.VoucherId}|ledger|{entry.LedgerName}|{ledgerIdx}";
                             var ledgerRow = new Dictionary<string, object>
                             {
-                                ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
+                                ["id"] = VoucherRowId(companyUuid, entryKey, companyScopedVoucherIds),
                                 ["company_id"] = companyUuid,
-                                ["voucher_id"] = GenerateDeterministicGuid(voucher.VoucherId).ToString(),
+                                ["voucher_id"] = VoucherRowId(companyUuid, voucher.VoucherId, companyScopedVoucherIds),
                                 ["ledger_name"] = entry.LedgerName ?? "",
                                 ["amount"] = entry.Amount,
                                 ["is_debit"] = entry.IsDebit
@@ -483,9 +491,9 @@ namespace TallySyncApp.Services
                             string entryKey = $"{voucher.VoucherId}|stock|{entry.StockItemName}|{stockIdx}";
                             var stockRow = new Dictionary<string, object>
                             {
-                                ["id"] = GenerateDeterministicGuid(entryKey).ToString(),
+                                ["id"] = VoucherRowId(companyUuid, entryKey, companyScopedVoucherIds),
                                 ["company_id"] = companyUuid,
-                                ["voucher_id"] = GenerateDeterministicGuid(voucher.VoucherId).ToString(),
+                                ["voucher_id"] = VoucherRowId(companyUuid, voucher.VoucherId, companyScopedVoucherIds),
                                 ["stock_item_name"] = entry.StockItemName ?? "",
                                 ["quantity"] = entry.Quantity,
                                 ["rate"] = entry.Rate,
@@ -644,6 +652,389 @@ namespace TallySyncApp.Services
             {
                 return null;
             }
+        }
+
+        /// <summary>License plan/status for the logged-in user (null when not logged in or unreachable).</summary>
+        public async Task<LicenseInfo?> GetLicenseInfoAsync()
+        {
+            if (string.IsNullOrEmpty(_ownerId)) return null;
+            try
+            {
+                AddAuthHeader();
+                var payload = JsonConvert.SerializeObject(new { p_user_id = _ownerId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/validate_user_license")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode) return null;
+                var rows = JsonConvert.DeserializeObject<List<LicenseInfo>>(await response.Content.ReadAsStringAsync());
+                return rows != null && rows.Count > 0 ? rows[0] : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Authoritative license validation for the PC Connector.
+        /// Calls the server-side validate_user_license RPC (server clock, never the local PC clock).
+        /// Distinguishes a real licence outcome from a network failure so the UI can show
+        /// "Network Verification Failed" separately from "Licence Expired".
+        /// </summary>
+        public async Task<LicenseResult> GetLicenseValidationAsync()
+        {
+            var notAvailable = new LicenseResult
+            {
+                Allowed = false,
+                Status = LicenseStatus.NetworkError,
+                IsNetworkError = true,
+                Message = "License server unreachable",
+                DisplayTitle = "Licence Verification Failed",
+                DisplayMessage = "Unable to verify your licence. Please connect to the internet and try again.",
+                DisplayAction = "Refresh License Status"
+            };
+
+            if (string.IsNullOrEmpty(_ownerId))
+            {
+                return new LicenseResult
+                {
+                    Allowed = false,
+                    Status = LicenseStatus.NoLicense,
+                    Message = "No user session",
+                    DisplayTitle = "No Active Licence Found",
+                    DisplayMessage = "No valid licence is associated with your account. Please contact the administrator or activate a licence.",
+                    DisplayAction = "Refresh License Status"
+                };
+            }
+
+            try
+            {
+                AddAuthHeader();
+                var payload = JsonConvert.SerializeObject(new { p_user_id = _ownerId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/validate_user_license")
+                {
+                    Content = content
+                };
+                var response = await _httpClient.SendAsync(request);
+
+                // Network / transport failure -> distinct from licence expiry
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"[License] validate_user_license HTTP {(int)response.StatusCode}");
+                    notAvailable.Message = $"Server returned {(int)response.StatusCode}";
+                    return notAvailable;
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                var rows = JsonConvert.DeserializeObject<List<LicenseInfo>>(json) ?? new List<LicenseInfo>();
+                var lic = rows.Count > 0 ? rows[0] : null;
+
+                if (lic == null)
+                {
+                    return new LicenseResult
+                    {
+                        Allowed = false,
+                        Status = LicenseStatus.NoLicense,
+                        Message = "No licence row",
+                        DisplayTitle = "No Active Licence Found",
+                        DisplayMessage = "No valid licence is associated with your account. Please contact the administrator or activate a licence.",
+                        DisplayAction = "Refresh License Status"
+                    };
+                }
+
+                return MapLicenseResult(lic);
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"[License] validate_user_license exception: {ex.Message}");
+                notAvailable.Message = ex.Message;
+                return notAvailable;
+            }
+        }
+
+        private static LicenseResult MapLicenseResult(LicenseInfo lic)
+        {
+            var result = new LicenseResult
+            {
+                PlanName = lic.PlanName,
+                ExpiryDate = lic.ExpiryDate,
+                DaysLeft = lic.DaysLeft,
+                Message = lic.Status ?? "unknown"
+            };
+
+            bool isTrial = !string.IsNullOrWhiteSpace(lic.PlanName)
+                && lic.PlanName.IndexOf("trial", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            switch ((lic.Status ?? "").ToLowerInvariant())
+            {
+                case "active":
+                    result.Allowed = true;
+                    result.Status = isTrial ? LicenseStatus.TrialActive : LicenseStatus.Active;
+                    result.Message = $"Active · {lic.DaysLeft} days left";
+                    result.DisplayTitle = isTrial ? "Free Trial Active" : "Licence Active";
+                    result.DisplayMessage = isTrial
+                        ? $"Your free trial is active. {lic.DaysLeft} day(s) remaining."
+                        : $"Your licence is active. {lic.DaysLeft} day(s) remaining.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+
+                case "expired":
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.Expired;
+                    result.Message = $"Expired · {lic.ExpiryDate:dd MMM yyyy}";
+                    result.DisplayTitle = isTrial ? "Your Free Trial Has Expired" : "Licence Expired";
+                    result.DisplayMessage = isTrial
+                        ? "Your 30-day free trial has ended. Upgrade or contact the administrator to continue syncing your Tally data."
+                        : "Your licence has expired. Please renew or contact the administrator to restore synchronisation.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+
+                case "suspended":
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.Suspended;
+                    result.Message = "Suspended";
+                    result.DisplayTitle = "Licence Access Restricted";
+                    result.DisplayMessage = "Your licence has been suspended. Please contact the administrator for assistance.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+
+                case "no_license":
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.NoLicense;
+                    result.Message = "No licence";
+                    result.DisplayTitle = "No Active Licence Found";
+                    result.DisplayMessage = "No valid licence is associated with your account. Please contact the administrator or activate a licence.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+
+                case "tally_mismatch":
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.TallyMismatch;
+                    result.Message = "Tally serial mismatch";
+                    result.DisplayTitle = "Licence Access Restricted";
+                    result.DisplayMessage = "Your licence is bound to a different Tally serial or account. Please contact support.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+
+                default:
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.Unknown;
+                    result.Message = $"Unknown status: {lic.Status}";
+                    result.DisplayTitle = "Licence Verification Failed";
+                    result.DisplayMessage = "Unable to determine your licence status. Please contact support.";
+                    result.DisplayAction = "Refresh License Status";
+                    break;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Merged licence history for the logged-in user: trial activations, licence creations,
+        /// extensions and payments. Read via the existing user_read_own_* RLS policies — no
+        /// schema change required. Returned newest-first.
+        /// </summary>
+        public async Task<List<LicenseHistoryEntry>> GetLicenseHistoryAsync(string userId)
+        {
+            var history = new List<LicenseHistoryEntry>();
+            try
+            {
+                AddAuthHeader();
+
+                // 1. Licence rows from user_licenses (user_read_own)
+                var licRows = await GetJsonRowsAsync(
+                    $"user_licenses?user_id=eq.{userId}&order=created_at.asc" +
+                    $"&select=id,plan_id,status,activation_date,expiry_date,license_key,created_at," +
+                    $"plan:subscription_plans(name)");
+                foreach (var r in licRows)
+                {
+                    var status = r["status"]?.ToString() ?? "";
+                    var planName = ExtractPlanName(r);
+                    history.Add(new LicenseHistoryEntry
+                    {
+                        EventType = status == "active" ? "license_activated" : $"license_{status}",
+                        Title = status == "active" ? "Licence Activated" : $"Licence {status.Replace('_', ' ')}",
+                        Description = $"Plan: {planName}",
+                        CreatedAt = ParseDate(r, "created_at") ?? DateTime.MinValue,
+                        PlanName = planName,
+                        Status = status,
+                        ExpiryDate = ParseDate(r, "expiry_date"),
+                        Icon = "🪪",
+                        Color = status == "active" ? "#0B8968" : "#DC2626"
+                    });
+                }
+
+                // 2. Trial activations from trial_history (user_read_own_trials)
+                var trialRows = await GetJsonRowsAsync(
+                    $"trial_history?user_id=eq.{userId}&order=created_at.asc" +
+                    $"&select=id,trial_start,trial_end,status,license_id,created_at");
+                foreach (var r in trialRows)
+                {
+                    history.Add(new LicenseHistoryEntry
+                    {
+                        EventType = "trial_activated",
+                        Title = "Free Trial Activated",
+                        Description = "30-day free trial started",
+                        CreatedAt = ParseDate(r, "trial_start") ?? ParseDate(r, "created_at") ?? DateTime.MinValue,
+                        PlanName = "Trial",
+                        Status = r["status"]?.ToString() ?? "trial",
+                        ExpiryDate = ParseDate(r, "trial_end"),
+                        Icon = "🎁",
+                        Color = "#2563EB"
+                    });
+                }
+
+                // 3. Paid purchases from payments (user_read_own_payments)
+                var payRows = await GetJsonRowsAsync(
+                    $"payments?user_id=eq.{userId}&order=created_at.asc" +
+                    $"&select=id,plan_id,status,total_amount,created_at,paid_at,expires_at");
+                foreach (var r in payRows)
+                {
+                    var status = r["status"]?.ToString() ?? "";
+                    if (!status.Equals("paid", StringComparison.OrdinalIgnoreCase)) continue;
+                    history.Add(new LicenseHistoryEntry
+                    {
+                        EventType = "license_purchased",
+                        Title = "Licence Purchased",
+                        Description = "Payment received",
+                        CreatedAt = ParseDate(r, "paid_at") ?? ParseDate(r, "created_at") ?? DateTime.MinValue,
+                        PlanName = "",
+                        Status = "paid",
+                        Amount = ParseDecimal(r, "total_amount"),
+                        Icon = "💳",
+                        Color = "#059669"
+                    });
+                }
+
+                // 4. Licence lifecycle events from activity_logs (trial_activated, extended,
+                // suspended, reactivated, etc.) — each event is its own row.
+                var logRows = await GetJsonRowsAsync(
+                    $"activity_logs?user_id=eq.{userId}&order=created_at.asc" +
+                    $"&action=in.(trial_activated,license_created,license_extended," +
+                    $"trial_extended,user_suspended,user_reactivated,license_reactivated," +
+                    $"license_revoked)" +
+                    $"&select=id,action,entity_type,entity_id,metadata,created_at");
+                foreach (var r in logRows)
+                {
+                    var action = r["action"]?.ToString() ?? "";
+                    var meta = r["metadata"] as Newtonsoft.Json.Linq.JObject;
+                    var planName = meta?["plan"]?.ToString() ?? meta?["plan_name"]?.ToString() ?? "";
+                    var days = meta?["days_added"]?.ToString() ?? meta?["duration"]?.ToString() ?? "";
+                    var reason = meta?["reason"]?.ToString() ?? "";
+
+                    var entry = new LicenseHistoryEntry
+                    {
+                        EventType = action,
+                        CreatedAt = ParseDate(r, "created_at") ?? DateTime.MinValue,
+                        PlanName = planName,
+                        Status = action,
+                        Icon = "📝",
+                        Color = "#6B7280"
+                    };
+
+                    switch (action.ToLowerInvariant())
+                    {
+                        case "trial_activated":
+                            entry.Title = "Free Trial Activated";
+                            entry.Description = string.IsNullOrWhiteSpace(days)
+                                ? "30-day free trial started"
+                                : $"Free trial activated for {days} day(s)";
+                            entry.Color = "#2563EB";
+                            break;
+                        case "license_created":
+                        case "license_activated":
+                            entry.Title = "Licence Created";
+                            entry.Description = string.IsNullOrWhiteSpace(planName)
+                                ? "New licence assigned"
+                                : $"Licence assigned — Plan: {planName}";
+                            entry.Color = "#0B8968";
+                            break;
+                        case "license_extended":
+                        case "trial_extended":
+                            entry.Title = "Licence Extended";
+                            entry.Description = string.IsNullOrWhiteSpace(reason)
+                                ? $"Extended by {days} day(s)"
+                                : $"Extended by {days} day(s) — {reason}";
+                            entry.Color = "#059669";
+                            break;
+                        case "user_suspended":
+                            entry.Title = "Licence Suspended";
+                            entry.Description = string.IsNullOrWhiteSpace(reason)
+                                ? "Licence suspended by admin"
+                                : $"Licence suspended — {reason}";
+                            entry.Color = "#DC2626";
+                            break;
+                        case "user_reactivated":
+                        case "license_reactivated":
+                            entry.Title = "Licence Reactivated";
+                            entry.Description = "Licence reactivated by admin";
+                            entry.Color = "#0B8968";
+                            break;
+                        case "license_revoked":
+                            entry.Title = "Licence Revoked";
+                            entry.Description = "Licence revoked by admin";
+                            entry.Color = "#DC2626";
+                            break;
+                        default:
+                            entry.Title = action.Replace('_', ' ');
+                            entry.Description = "Licence event recorded";
+                            break;
+                    }
+                    history.Add(entry);
+                }
+
+                history.Sort((a, b) => b.CreatedAt.CompareTo(a.CreatedAt));
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"[LicenseHistory] {ex.Message}");
+            }
+            return history;
+        }
+
+        private async Task<List<Dictionary<string, object>>> GetJsonRowsAsync(string path)
+        {
+            AddAuthHeader();
+            var url = $"{_supabaseUrl}/rest/v1/{path}";
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode) return new List<Dictionary<string, object>>();
+            var body = await response.Content.ReadAsStringAsync();
+            return JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(body)
+                ?? new List<Dictionary<string, object>>();
+        }
+
+        private static DateTime? ParseDate(Dictionary<string, object> r, string key)
+        {
+            if (!r.TryGetValue(key, out var v) || v == null) return null;
+            var s = v.ToString();
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            return DateTime.TryParse(s, out var d) ? d : (DateTime?)null;
+        }
+
+        private static decimal? ParseDecimal(Dictionary<string, object> r, string key)
+        {
+            if (!r.TryGetValue(key, out var v) || v == null) return null;
+            return decimal.TryParse(v.ToString(), out var d) ? d : (decimal?)null;
+        }
+
+        private static string ExtractPlanName(Dictionary<string, object> r)
+        {
+            if (r.TryGetValue("plan", out var p) && p != null)
+            {
+                var plan = p as Newtonsoft.Json.Linq.JObject;
+                if (plan != null)
+                {
+                    var name = plan["name"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            if (r.TryGetValue("plan_id", out var pid) && pid != null)
+                return $"Plan {pid}";
+            return "Unknown";
         }
 
         /// <summary>Fetch pending server pushes (web -> TallyLink channel).</summary>
@@ -1430,6 +1821,46 @@ namespace TallySyncApp.Services
         /// </summary>
         private Guid OwnerScopedGuid(string raw) =>
             GenerateDeterministicGuid(string.IsNullOrEmpty(_ownerId) ? raw : $"{_ownerId}|{raw}");
+
+        /// <summary>
+        /// Voucher rows (and everything derived from a voucher: sales, entries) are keyed by
+        /// md5(Tally GUID). That is global, so a company copied from another Tally company
+        /// reuses the GUIDs, the upsert lands on the other owner's row and RLS kills the whole
+        /// batch with 42501. New companies therefore key by company too. A company that already
+        /// has rows keeps the old scheme - re-keying it would duplicate every voucher.
+        /// </summary>
+        private readonly Dictionary<string, bool> _voucherIdScheme = new();
+
+        private async Task<bool> CompanyScopedVoucherIdsAsync(string companyUuid)
+        {
+            if (_voucherIdScheme.TryGetValue(companyUuid, out var cached)) return cached;
+
+            bool scoped = true;
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyUuid}&select=id,guid&limit=5";
+                var response = await _httpClient.GetAsync(url);
+                if (response.IsSuccessStatusCode)
+                {
+                    var rows = JsonConvert.DeserializeObject<List<CloudVoucherIdentity>>(
+                        await response.Content.ReadAsStringAsync()) ?? new List<CloudVoucherIdentity>();
+                    scoped = rows.Count == 0 ||
+                             rows.All(r => r.Guid != null && r.Id == VoucherRowId(companyUuid, r.Guid, true));
+                }
+            }
+            catch
+            {
+                // Network hiccup: assume the scheme the company already uses is unknown; the
+                // upsert itself will report the real error.
+            }
+
+            _voucherIdScheme[companyUuid] = scoped;
+            return scoped;
+        }
+
+        private static string VoucherRowId(string companyUuid, string raw, bool companyScoped) =>
+            GenerateDeterministicGuid(companyScoped ? $"{companyUuid}|{raw}" : raw).ToString();
 
         private static Guid GenerateDeterministicGuid(string input)
         {

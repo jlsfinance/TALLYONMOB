@@ -16,6 +16,7 @@
     <Window.Resources>
         <local:BoolToColorConverter x:Key="BoolToColorConverter" xmlns:local="clr-namespace:TallySyncApp" />
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" xmlns:local="clr-namespace:TallySyncApp" />
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" xmlns:local="clr-namespace:TallySyncApp" />
 
         <!-- Sidebar navigation button style -->
         <Style x:Key="NavButtonStyle" TargetType="RadioButton">
@@ -165,6 +166,16 @@
                                  GroupName="NavGroup"
                                  Checked="NavButton_Checked"
                                  Tag="HistoryPanel"/>
+                    <RadioButton x:Name="NavLicenseHistory"
+                                 Content="License History"
+                                 Style="{StaticResource NavButtonStyle}"
+                                 GroupName="NavGroup"
+                                 Checked="NavButton_Checked"
+                                 Tag="LicenseHistoryPanel">
+                        <RadioButton.Resources>
+                            <TextBlock x:Key="IconText" Text="📜"/>
+                        </RadioButton.Resources>
+                    </RadioButton>
                 </StackPanel>
 
                 <!-- Sidebar Footer -->
@@ -212,6 +223,25 @@
                                Foreground="#475569"
                                FontSize="11"
                                HorizontalAlignment="Center"/>
+
+                    <!-- Logout -->
+                    <Button Content="Logout"
+                            Click="LogoutButton_Click"
+                            Background="Transparent"
+                            Foreground="#EF4444"
+                            BorderThickness="0"
+                            Height="34"
+                            Padding="12,0"
+                            Margin="0,12,0,0"
+                            FontSize="12"
+                            Cursor="Hand"
+                            HorizontalAlignment="Left">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="6"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -328,6 +358,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- KPI Card 1: Records Synced -->
@@ -434,7 +465,59 @@
                                            Margin="0,4,0,0"/>
                             </Grid>
                         </Border>
+
+                        <!-- KPI Card 4: License -->
+                        <Border Grid.Column="3" Style="{StaticResource KpiCard}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Border Width="36" Height="36"
+                                            Background="#EDE9FE"
+                                            CornerRadius="10"
+                                            Margin="0,0,12,0">
+                                        <TextBlock Text="🔑" FontSize="18"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="License"
+                                               Foreground="#6B7280"
+                                               FontSize="13"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Grid.Row="1"
+                                           Text="{Binding LicensePlan}"
+                                           FontSize="26"
+                                           FontWeight="Bold"
+                                           Foreground="#1F2937"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding LicenseDetail}"
+                                           Foreground="#9CA3AF"
+                                           FontSize="12"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Grid>
+                        </Border>
                     </Grid>
+
+                    <!-- Buy Licence Button -->
+                    <Border Grid.Row="0" Margin="0,16,0,0" HorizontalAlignment="Center">
+                        <Button Command="{Binding BuyLicenceCommand}"
+                                Content="💳 Buy / Extend Licence"
+                                Style="{StaticResource ModernButton}"
+                                Background="#2563EB"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Height="40"
+                                Width="200"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Cursor="Hand"/>
+                    </Border>
 
                     <!-- Status Banner & Progress -->
                     <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,16">
@@ -882,6 +965,99 @@
                 </DataGrid>
             </Grid>
 
+            <!-- ===== LICENSE HISTORY PANEL ===== -->
+            <Grid x:Name="LicenseHistoryPanel"
+                  Grid.Row="1"
+                  Visibility="Collapsed"
+                  Margin="24,20,24,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16" Margin="0,0,0,16">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Licence History"
+                                   Foreground="#1F2937" FontSize="16" FontWeight="Bold"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding LicenseHistory.Count, StringFormat='({0} records)'}"
+                                   Foreground="#6B7280" FontSize="12"
+                                   VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                    </StackPanel>
+                </Border>
+
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding LicenseHistory}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          Background="White"
+                          BorderThickness="0"
+                          RowBackground="White"
+                          AlternatingRowBackground="#F9FAFB"
+                          GridLinesVisibility="None"
+                          HeadersVisibility="Column"
+                          RowHeaderWidth="0">
+                    <DataGrid.Resources>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#F3F4F6"/>
+                            <Setter Property="Foreground" Value="#374151"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Setter Property="Padding" Value="12,10"/>
+                            <Setter Property="BorderBrush" Value="#E5E7EB"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                        </Style>
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="Padding" Value="12,8"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="FontSize" Value="13"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                        </Style>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="BorderBrush" Value="#F3F4F6"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                            <Setter Property="MinHeight" Value="44"/>
+                            <Setter Property="Background" Value="White"/>
+                            <Style.Triggers>
+                                <Trigger Property="AlternationIndex" Value="1">
+                                    <Setter Property="Background" Value="#F9FAFB"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.Resources>
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Event" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Icon}"
+                                                   FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}"
+                                                       Foreground="#1F2937" FontWeight="SemiBold" FontSize="13"/>
+                                            <TextBlock Text="{Binding Description}"
+                                                       Foreground="#6B7280" FontSize="11"
+                                                       TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Date"
+                                            Binding="{Binding CreatedAt, StringFormat='{}{0:dd MMM yyyy HH:mm}'}"
+                                            Width="170"/>
+                        <DataGridTextColumn Header="Plan"
+                                            Binding="{Binding PlanName}" Width="120"/>
+                        <DataGridTextColumn Header="Status"
+                                            Binding="{Binding Status}" Width="100"/>
+                        <DataGridTextColumn Header="Expiry"
+                                            Binding="{Binding ExpiryDate, StringFormat='{}{0:dd MMM yyyy}'}"
+                                            Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
             <!-- ===== STATUS BAR (Footer) ===== -->
             <Border Grid.Row="2"
                     Background="White"
@@ -913,6 +1089,119 @@
                 </StatusBarItem>
                 </StatusBar>
             </Border>
+            <!-- ===== LICENCE BLOCKING OVERLAY (shown when sync is not permitted) ===== -->
+            <Grid Grid.RowSpan="3"
+                  Visibility="{Binding IsLicenseBlocked, Converter={StaticResource BoolToVisibilityConverter}}"
+                  Panel.ZIndex="100">
+                <Border Background="#7F000000"/>
+                <Border Style="{StaticResource Card}"
+                        Width="480"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Margin="32">
+                    <Grid Margin="32,28,32,32">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Icon -->
+                        <Border Width="64" Height="64"
+                                Background="#FEE2E2"
+                                CornerRadius="16"
+                                Margin="0,0,0,16">
+                            <TextBlock Text="🔒" FontSize="28"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Title -->
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding LicenseBlockTitle}"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Foreground="#1F2937"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <!-- Message -->
+                        <TextBlock Grid.Row="2"
+                                   Text="{Binding LicenseBlockMessage}"
+                                   FontSize="13"
+                                   Foreground="#6B7280"
+                                   TextWrapping="Wrap"
+                                   LineHeight="20"
+                                   Margin="0,0,0,16"/>
+
+                        <!-- Contact & free-extension note -->
+                        <StackPanel Grid.Row="3" Margin="0,0,0,20">
+                            <TextBlock Text="📞 Contact Support"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="#1F2937"
+                                       Margin="0,0,0,6"/>
+                            <TextBlock TextWrapping="Wrap"
+                                       LineHeight="18"
+                                       Foreground="#6B7280"
+                                       FontSize="12">
+                                            <Run Text="Admin: "/>
+                                            <Run Text="{Binding LicenseResult.SupportName}"/>
+                                            <LineBreak/>
+                                            <Run Text="Phone: "/>
+                                            <Run Text="{Binding LicenseResult.SupportPhone}"/>
+                                            <LineBreak/>
+                                            <Run Text="Email: "/>
+                                            <Run Text="{Binding LicenseResult.SupportEmail}"/>
+                            </TextBlock>
+                            <TextBlock Text="💡 Need more time? Request a free trial extension from the admin."
+                                       FontSize="11"
+                                       Foreground="#9CA3AF"
+                                       FontStyle="Italic"
+                                       Margin="0,10,0,0"/>
+                        </StackPanel>
+
+                        <!-- Action buttons -->
+                        <StackPanel Grid.Row="4" Orientation="Vertical" HorizontalAlignment="Right" Margin="0,4,0,0">
+                            <Button Command="{Binding RefreshLicenseCommand}"
+                                    Content="{Binding LicenseBlockAction}"
+                                    Style="{StaticResource ModernButton}"
+                                    Background="#DC2626"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Height="36"
+                                    Padding="16,0"
+                                    Margin="0,0,0,10"/>
+                            <Button Content="Buy Licence"
+                                    Click="BuyLicence_Click"
+                                    Background="#2563EB"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Height="36"
+                                    Padding="16,0"
+                                    Margin="0,0,0,10"/>
+                            <Button Content="Logout"
+                                    Click="LogoutButton_Click"
+                                    Background="#F3F4F6"
+                                    Foreground="#DC2626"
+                                    BorderThickness="0"
+                                    Height="36"
+                                    Padding="16,0"
+                                    Margin="0,0,0,10"/>
+                            <Button Content="Dismiss"
+                                    Style="{StaticResource GhostButton}"
+                                    Background="#F3F4F6"
+                                    Foreground="#374151"
+                                    BorderThickness="0"
+                                    Height="36"
+                                    Padding="16,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
         </Grid>
     </Grid>
 </Window>

@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
-import AIFloatingButton from '../AIFloatingButton';
 import VoucherFab from '../VoucherFab';
 import { CommandPalette } from '../ui/CommandPalette';
 import GlobalSearch from '../GlobalSearch';
@@ -553,7 +552,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 ${sidebarOpen ? 'md:ml-60' : 'md:ml-[68px]'}
             `}>
                 {/* Mobile Header — Pinned Company Card on Dashboard & Standard on other pages (Hidden on detail pages like /ledgers/:id and /create-invoice) */}
-                {(location.pathname === '/create-invoice' || (location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers')) ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
+                {(location.pathname === '/create-invoice' || location.pathname === '/create-voucher' || (location.pathname.startsWith('/ledgers/') && location.pathname !== '/ledgers')) ? null : (location.pathname === '/' || location.pathname === '/dashboard') ? (
                     <header className="dashboard-mobile-header md:hidden sticky top-0 z-50">
                         <div className="dashboard-header-main">
                             <button onClick={() => setShowMobileMenu(true)} className="dashboard-menu-button" aria-label="Open menu"><Menu size={20} /></button>
@@ -707,8 +706,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </nav>
             )}
 
-            {location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && <AIFloatingButton />}
-            {location.pathname !== '/create-voucher' && location.pathname !== '/create-invoice' && !location.pathname.startsWith('/invoice/') && <VoucherFab />}
+            {['/', '/dashboard', '/billing'].includes(location.pathname) && <VoucherFab />}
             <CommandPalette />
             <GlobalSearch open={showSearch} onClose={() => setShowSearch(false)} />
         </div>

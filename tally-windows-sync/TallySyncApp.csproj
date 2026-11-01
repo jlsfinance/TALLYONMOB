@@ -15,7 +15,7 @@
     <AssemblyName>SyncoraConnector</AssemblyName>
     <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.1.1</Version>
+    <Version>3.1.6</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA Connector</Product>
@@ -35,6 +35,7 @@
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
     <PackageReference Include="Microsoft.AspNet.SignalR.Client" Version="2.4.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2846.43" />
     <PackageReference Include="MongoDB.Bson" Version="3.12.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />

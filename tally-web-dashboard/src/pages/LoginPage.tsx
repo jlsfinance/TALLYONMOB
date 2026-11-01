@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Mail, Lock, ArrowRight, Shield, Sun, Moon, User, CheckCircle2, Building2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Shield, Sun, Moon, User, CheckCircle2, Building2, ArrowLeft, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '../contexts/types';
 import SEO from '../components/common/SEO';
@@ -24,7 +24,8 @@ export default function LoginPage() {
     const [tempToken, setTempToken] = useState('');
     const [tempUserId, setTempUserId] = useState('');
     const [tempEmail, setTempEmail] = useState('');
-    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, verify2FALogin } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any };
+    const [resetPasswordSent, setResetPasswordSent] = useState(false);
+    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, resetPasswordForEmail } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any; resetPasswordForEmail: any };
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
 
@@ -140,6 +141,25 @@ export default function LoginPage() {
         }
     };
 
+    const handleResetPassword = async () => {
+        const targetEmail = email.trim();
+        if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+            toast.error('Enter your email address first.');
+            return;
+        }
+        setLoading(true);
+        try {
+            const { error } = await resetPasswordForEmail(targetEmail);
+            if (error) throw error;
+            setResetPasswordSent(true);
+            toast.success('If an account exists with this email, a password reset link has been sent.');
+        } catch (error: any) {
+            toast.error(error.message || 'Could not send reset password email.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <main className="entry-screen login-screen">
             <SEO title={isLogin ? 'Sign In | SYNCORA — Free Tally Community & Cloud' : 'Create Account | SYNCORA — Free Tally Community & Cloud'} description="Sign in to SYNCORA TallyOnMobile. Access your Tally data on mobile and web." canonical="https://tallyonmob.vercel.app/login" />
@@ -155,10 +175,23 @@ export default function LoginPage() {
                         {!otpSent && !twoFactorRequired && <><label>Email<span className="login-field"><Mail size={17}/><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" autoComplete="email" required /></span></label><label>Password<span className="login-field"><Lock size={17}/><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete={isLogin ? 'current-password' : 'new-password'} required /></span></label></>}
                         {otpSent && <label>Verification code<span className="login-hint">Check {email} for a confirmation link or code. If this email is already registered, sign in instead.</span><span className="login-field"><Lock size={17}/><input type="text" value={otpCode} onChange={e => setOtpCode(e.target.value)} placeholder="Enter the code if provided" autoComplete="one-time-code" required /></span></label>}
                         {twoFactorRequired && <label>2FA Security Code<span className="login-hint">Enter the 6-digit code from your authenticator app.</span><span className="login-field"><Shield size={17}/><input type="text" maxLength={6} value={twoFactorCode} onChange={e => setTwoFactorCode(e.target.value)} placeholder="000000" autoComplete="one-time-code" required /></span></label>}
+                        {resetPasswordSent && <div className="login-hint reset-sent">Password reset link sent to {email}. Check your inbox and spam folder.</div>}
                         <button type="submit" disabled={loading} className="login-submit">{loading ? 'Please wait…' : isLogin ? (twoFactorRequired ? 'Verify 2FA' : 'Sign In') : (otpSent ? 'Verify Account' : 'Create Account')}{!loading && <ArrowRight size={17}/>}</button>
                     </form>
-                    {!twoFactorRequired && <div className="login-switch"><button type="button" disabled={loading} onClick={handleResendConfirmation}>Resend confirmation email</button></div>}
-                    <div className="login-switch"><button type="button" onClick={() => { setOtpSent(false); setOtpCode(''); setTwoFactorRequired(false); setIsLogin(!isLogin); }}>{isLogin ? <>Don't have an account? <strong>Sign up</strong></> : <>Already have an account? <strong>Sign in</strong></>}</button></div>
+                    {!twoFactorRequired && resetPasswordSent ? (
+                        <div className="login-switch"><button type="button" disabled={loading} onClick={() => setResetPasswordSent(false)}>Back to sign in</button></div>
+                    ) : (
+                        <>
+                            {!twoFactorRequired && otpSent ? (
+                                <div className="login-switch"><button type="button" disabled={loading} onClick={handleResendConfirmation}>Resend confirmation email</button></div>
+                            ) : (
+                                <>
+                                    {!twoFactorRequired && <div className="login-switch"><button type="button" disabled={loading} onClick={handleResetPassword}>Forgot password?</button></div>}
+                                    <div className="login-switch"><button type="button" onClick={() => { setOtpSent(false); setOtpCode(''); setTwoFactorRequired(false); setResetPasswordSent(false); setIsLogin(!isLogin); }}>{isLogin ? <>Don't have an account? <strong>Sign up</strong></> : <>Already have an account? <strong>Sign in</strong></>}</button></div>
+                                </>
+                            )}
+                        </>
+                    )}
                     <button type="button" className="login-back" onClick={() => navigate('/')}>← Back to home</button>
                 </section>
             </div>

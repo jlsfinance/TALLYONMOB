@@ -37,6 +37,10 @@ namespace TallySyncApp.Services
         public SyncStatus Status { get; private set; } = new();
         public Company? CurrentCompany { get; private set; }
 
+        // Last licence validation result, exposed so the UI can reflect it without
+        // making a duplicate RPC call. One validation per sync cycle.
+        public LicenseResult? LastLicenseResult { get; private set; }
+
         public event EventHandler<SyncStatus>? StatusChanged;
         public event EventHandler<SyncItemStatus>? ItemSynced;
         public event EventHandler<string>? SyncLogRequested;
@@ -374,6 +378,49 @@ namespace TallySyncApp.Services
         public ApiClient GetApiClient() => _apiClient!;
 
         /// <summary>
+        /// Centralised licence gate. Returns the licence result; Allowed=true only when
+        /// synchronisation is permitted. Enforced inside RunSyncAsync() so every entry
+        /// point (manual, auto, background, tray, force_sync, pending-queue retry) passes
+        /// through it. The decision is based solely on server-side data (validate_user_license
+        /// RPC, server clock) — never the local PC clock or a client-side cached flag.
+        /// </summary>
+        public async Task<LicenseResult> ValidateLicenseBeforeSyncAsync()
+        {
+            var lic = await _apiClient!.GetLicenseValidationAsync();
+            LastLicenseResult = lic;
+
+            if (!lic.Allowed)
+            {
+                AddLog($"⛔ Sync blocked by licence: {lic.Status} ({lic.Message})");
+                SyncLogger.Log($"[License] BLOCKED: {lic.Status} ({lic.Message})");
+                UpdateStatus(SyncState.Error, lic.DisplayTitle, lic.DisplayMessage);
+            }
+            else
+            {
+                AddLog($"✅ Licence OK: {lic.Status} ({lic.Message})");
+                SyncLogger.Log($"[License] OK: {lic.Status} ({lic.Message})");
+                // Clear a previous licence-error state so the UI can return to idle
+                if (Status.State == SyncState.Error
+                    && !string.IsNullOrEmpty(Status.Error)
+                    && Status.Error.IndexOf("licence", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    UpdateStatus(SyncState.Idle, "Ready");
+                }
+            }
+
+            return lic;
+        }
+
+        /// <summary>
+        /// Returns true if the current (cached) licence state permits synchronisation.
+        /// Used by the UI to enable/disable sync controls without an extra RPC call.
+        /// </summary>
+        public bool IsSyncPermittedByLicense()
+        {
+            return LastLicenseResult?.Allowed == true;
+        }
+
+        /// <summary>
         /// Start background sync timer
         /// </summary>
         public async Task<List<Company>> GetOpenCompaniesAsync()
@@ -455,6 +502,18 @@ namespace TallySyncApp.Services
 
             try
             {
+                // ===== LICENCE GATE (enforced for every sync entry point) =====
+                // Manual, Auto-Sync, background timer, tray Sync Now, SignalR force_sync,
+                // and pending-queue retry all funnel through RunSyncAsync(), so a single
+                // check here blocks them all without touching the sync queue.
+                var licence = await ValidateLicenseBeforeSyncAsync();
+                if (!licence.Allowed)
+                {
+                    // Sync is blocked. Do NOT clear or touch the pending queue — queued
+                    // transactions must resume safely once the licence is reactivated.
+                    return;
+                }
+
                 // AUDIT FIX: Auto-refresh auth token before sync to prevent 401 expiry failures
                 if (App.AuthService != null && App.AuthService.IsLoggedIn)
                 {
@@ -1619,6 +1678,14 @@ namespace TallySyncApp.Services
         /// </summary>
         private async Task ProcessQueueAsync()
         {
+            // Licence gate: never process the pending queue without a valid licence.
+            // Uses the cached result from RunSyncAsync() so no duplicate RPC is made.
+            if (!IsSyncPermittedByLicense())
+            {
+                SyncLogger.Log("⛔ Queue processing blocked: no valid licence");
+                return;
+            }
+
             var pendingItems = await _offlineQueue!.GetPendingItemsAsync();
 
             if (pendingItems.Count == 0) return;
@@ -1921,7 +1988,15 @@ namespace TallySyncApp.Services
                     var description = $"{suspect.PartyName ?? "Unknown party"} | {suspect.VoucherType ?? "Voucher"} #{suspect.VoucherNumber ?? "?"} | id {suspect.Id}".Replace("\r", " ").Replace("\n", " ");
                     SyncLogger.Log($"[Reconcile] Possible deleted (not yet confirmed): {description}");
                 }
-                if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
+                // A half-loaded company (wrong data folder, restore in progress) answers with a tiny
+                // index; deleting on that basis hides real vouchers on the web. Trust deletions only
+                // when Tally still sees at least half of what the cloud has.
+                if (diff.PossibleDeletedIds.Count > cloud.Count / 2)
+                {
+                    AddLog($"⚠️ Deletion skipped: Tally index has {tally.Count} vouchers vs {cloud.Count} on web — company data may not be fully loaded.");
+                    SyncLogger.Log($"[Reconcile] Deletion skipped: mass delete {diff.PossibleDeletedIds.Count}/{cloud.Count}.");
+                }
+                else if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
                 {
                     var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                     var tallyAlterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);

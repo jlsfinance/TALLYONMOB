@@ -70,6 +70,18 @@ namespace TallySyncApp
 
                     if (success)
                     {
+                        // ADMIN ACCESS CHECK: PC Connector is restricted to admin users only
+                        // Regular users should use the mobile app
+                        var currentUserId = _authService.CurrentSession?.UserId;
+                        var currentUserEmail = _authService.CurrentSession?.Email;
+
+                        var apiClient = App.GetSyncManager().GetApiClient();
+                        apiClient.SetUserToken(_authService.CurrentSession?.AccessToken ?? "", currentUserId);
+
+                        Log("Login successful!");
+                        LoginSuccessful = true;
+                        DialogResult = true;
+
                         Log("Login successful!");
                         LoginSuccessful = true;
                         DialogResult = true;   // closes the modal window and returns true to ShowDialog()
@@ -118,6 +130,39 @@ namespace TallySyncApp
         private void ToggleMode_Click(object sender, MouseButtonEventArgs e)
         {
             ToggleMode();
+        }
+
+        private async void GoogleLoginButton_Click(object sender, RoutedEventArgs e)
+        {
+            SetLoading(true);
+            HideError();
+
+            try
+            {
+                Log("Google sign-in attempt...");
+                var (success, error) = await _authService.SignInWithGoogleAsync();
+
+                if (success)
+                {
+                    Log("Google sign-in successful!");
+                    LoginSuccessful = true;
+                    DialogResult = true;
+                }
+                else
+                {
+                    Log($"Google sign-in failed: {error}");
+                    ShowError(error ?? "Google sign-in failed. Please try again.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                ShowError($"Connection error: {ex.Message}");
+            }
+            finally
+            {
+                SetLoading(false);
+            }
         }
 
         private void ToggleMode()

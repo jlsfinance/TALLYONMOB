@@ -550,3 +550,14 @@ body {
 /* A single readable typeface across app controls and text. */
 body, button, input, select, textarea { font-family: "Google Sans Flex", "Inter", system-ui, sans-serif; }
 .app-shell :where(h1, h2, h3, h4, p, span, label, button, input, select, textarea, td, th, a, div) { font-family: "Google Sans Flex", "Inter", system-ui, sans-serif !important; }
+
+/* Create-voucher page reuses the create-invoice dark shell (same palette). */
+.voucher-dark {
+  --background: #0B1118;
+  --surface: #121B24;
+  --border: #1E2B38;
+  --on-surface: #E6EDF3;
+  --text-muted: #94A3B8;
+  --primary: #00E599;
+  color-scheme: dark;
+}

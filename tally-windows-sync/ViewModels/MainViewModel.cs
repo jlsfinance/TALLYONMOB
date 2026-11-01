@@ -25,6 +25,11 @@ namespace TallySyncApp.ViewModels
         public ICommand SaveSettingsCommand { get; }
         public ICommand TestConnectionCommand { get; }
         public ICommand ToggleVoucherReconciliationCommand { get; }
+        public ICommand RefreshLicenseCommand { get; }
+        public ICommand LoadLicenseHistoryCommand { get; }
+        public ICommand BuyLicenceCommand { get; }
+
+        public ObservableCollection<LicenseHistoryEntry> LicenseHistory { get; } = new();
         public string VoucherReconciliationModeText => Settings.SyncSettings.UseSafeVoucherReconciliation
             ? "Safe reconciliation ON — click to restore previous mode"
             : "Previous mode ON — click to enable safe reconciliation";
@@ -60,6 +65,78 @@ namespace TallySyncApp.ViewModels
             set { _userEmail = value; OnPropertyChanged(); }
         }
 
+        private string _licensePlan = "—";
+        public string LicensePlan
+        {
+            get => _licensePlan;
+            set { _licensePlan = value; OnPropertyChanged(); }
+        }
+
+        private string _licenseDetail = "Checking…";
+        public string LicenseDetail
+        {
+            get => _licenseDetail;
+            set { _licenseDetail = value; OnPropertyChanged(); }
+        }
+
+        // --- Licence enforcement UI state ---
+        private LicenseResult? _licenseResult;
+        public LicenseResult? LicenseResult
+        {
+            get => _licenseResult;
+            set { _licenseResult = value; OnPropertyChanged(); }
+        }
+
+        private bool _isLicenseBlocked;
+        public bool IsLicenseBlocked
+        {
+            get => _isLicenseBlocked;
+            set { _isLicenseBlocked = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSyncAllowed)); }
+        }
+
+        /// <summary>True when the licence permits synchronisation.</summary>
+        public bool IsSyncAllowed => !IsLicenseBlocked;
+
+        private string _licenseStatusText = "Checking…";
+        public string LicenseStatusText
+        {
+            get => _licenseStatusText;
+            set { _licenseStatusText = value; OnPropertyChanged(); }
+        }
+
+        private string _licenseStatusColor = "#9CA3AF";
+        public string LicenseStatusColor
+        {
+            get => _licenseStatusColor;
+            set { _licenseStatusColor = value; OnPropertyChanged(); }
+        }
+
+        private string _licenseBlockTitle = "";
+        public string LicenseBlockTitle
+        {
+            get => _licenseBlockTitle;
+            set { _licenseBlockTitle = value; OnPropertyChanged(); }
+        }
+
+        private string _licenseBlockMessage = "";
+        public string LicenseBlockMessage
+        {
+            get => _licenseBlockMessage;
+            set { _licenseBlockMessage = value; OnPropertyChanged(); }
+        }
+
+        private string _licenseBlockAction = "Refresh License Status";
+        public string LicenseBlockAction
+        {
+            get => _licenseBlockAction;
+            set { _licenseBlockAction = value; OnPropertyChanged(); }
+        }
+
+        // Tracks the date the last expiry warning was shown, so each 7/3/1-day warning
+        // appears only once per day (not on every login / sync cycle).
+        private DateTime? _lastLicenseWarningDate;
+        private LicenseStatus? _lastAppliedLicenseStatus;
+
         public MainViewModel()
         {
             _syncManager = App.GetSyncManager();
@@ -73,6 +150,14 @@ namespace TallySyncApp.ViewModels
                 {
                     // Force UI update for progress
                     OnPropertyChanged(nameof(Status));
+
+                    // Reflect the licence gate result into the UI so the blocking screen
+                    // also appears for auto-sync / background cycles (not just manual commands).
+                    var lic = _syncManager.LastLicenseResult;
+                    if (lic != null)
+                    {
+                        ApplyLicenseResult(lic);
+                    }
                 });
             };
 
@@ -94,6 +179,9 @@ namespace TallySyncApp.ViewModels
             FullResyncCommand = new RelayCommand(async () => await FullResync());
             SaveSettingsCommand = new RelayCommand(SaveSettings);
             TestConnectionCommand = new RelayCommand(async () => await TestConnection());
+            RefreshLicenseCommand = new RelayCommand(async () => await RefreshLicenseAsync());
+            LoadLicenseHistoryCommand = new RelayCommand(async () => await LoadLicenseHistoryAsync());
+            BuyLicenceCommand = new RelayCommand(async () => await BuyLicenceAsync());
             ToggleVoucherReconciliationCommand = new RelayCommand(() => {
                 if (_syncManager.SetSafeVoucherReconciliation(!Settings.SyncSettings.UseSafeVoucherReconciliation))
                 {
@@ -108,11 +196,13 @@ namespace TallySyncApp.ViewModels
             
             // Initial functionality check
             Task.Run(async () => await LoadLogs());
+            _ = LoadLicenseAsync();
+            _ = LoadLicenseHistoryAsync();
         }
 
         private async Task StartSync()
         {
-            if (!await CheckSerialAndConfirmAsync()) return;
+            if (!await EnsureLicenseForSyncAsync()) return;
 
             try
             {
@@ -136,6 +226,7 @@ namespace TallySyncApp.ViewModels
         private async Task ManualSync()
         {
             if (!await CheckSerialAndConfirmAsync()) return;
+            if (!await EnsureLicenseForSyncAsync()) return;
 
             IsSyncing = true;
             Log("Starting incremental sync (naya/badla hua data)...");
@@ -148,6 +239,7 @@ namespace TallySyncApp.ViewModels
         private async Task FullResync()
         {
             if (!await CheckSerialAndConfirmAsync()) return;
+            if (!await EnsureLicenseForSyncAsync()) return;
 
             var confirm = MessageBox.Show(
                 "Full resync poora historical data dobara upload karega (thoda time lagega).\n\nChalana hai?",
@@ -199,6 +291,211 @@ namespace TallySyncApp.ViewModels
                 RecentLogs.Clear();
                 foreach (var log in logs) RecentLogs.Add(log);
             });
+        }
+
+        private async Task LoadLicenseAsync()
+        {
+            try
+            {
+                var lic = await _syncManager.GetApiClient().GetLicenseValidationAsync();
+                ApplyLicenseResult(lic);
+            }
+            catch
+            {
+                ApplyLicenseResult(new LicenseResult
+                {
+                    Allowed = false,
+                    Status = LicenseStatus.NetworkError,
+                    IsNetworkError = true,
+                    Message = "Unable to reach licence server",
+                    DisplayTitle = "Licence Verification Failed",
+                    DisplayMessage = "Unable to verify your licence. Please connect to the internet and try again.",
+                    DisplayAction = "Refresh License Status"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Load licence history from Supabase (trial_history, user_licenses, payments) via the
+        /// existing user_read_own_* RLS policies. Newest first.
+        /// </summary>
+        internal async Task LoadLicenseHistoryAsync()
+        {
+            try
+            {
+                var userId = App.AuthService?.CurrentSession?.UserId;
+                if (string.IsNullOrEmpty(userId)) return;
+
+                var history = await _syncManager.GetApiClient().GetLicenseHistoryAsync(userId);
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    LicenseHistory.Clear();
+                    foreach (var h in history) LicenseHistory.Add(h);
+                });
+            }
+            catch (Exception ex)
+            {
+                Log($"Licence history load failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Refresh licence status on demand (Refresh License Status button / revalidation).
+        /// Does not touch any sync data or the pending queue.
+        /// </summary>
+        private async Task RefreshLicenseAsync()
+        {
+            Log("Refreshing licence status...");
+            await LoadLicenseAsync();
+            if (IsLicenseBlocked)
+            {
+                Log($"⛔ Licence blocked: {LicenseBlockMessage}");
+            }
+            else
+            {
+                Log($"✅ Licence OK: {LicenseStatusText}");
+            }
+        }
+
+        /// <summary>
+        /// Opens the licence purchase page INSIDE the PC Connector app using an embedded browser (WebView2).
+        /// Payment is processed server-side (payment gateway webhook verifies and creates the licence).
+        /// The connector never handles money or licence keys — it only re-validates on the next sync.
+        /// </summary>
+        private async Task BuyLicenceAsync()
+        {
+            try
+            {
+                // Web purchase page URL — configure in appsettings.json under "LicencePurchaseUrl"
+                string url = "https://tallyonmobile.com/buy-licence";
+                try
+                {
+                    var cfg = Settings?.SyncSettings?.LicencePurchaseUrl;
+                    if (!string.IsNullOrWhiteSpace(cfg)) url = cfg;
+                }
+                catch { /* use default */ }
+
+                Log("Opening licence purchase window...");
+                
+                var purchaseWindow = new LicensePurchaseWindow(url);
+                purchaseWindow.Owner = System.Windows.Application.Current.MainWindow;
+                purchaseWindow.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
+                purchaseWindow.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                Log($"Could not open purchase page: {ex.Message}");
+                MessageBox.Show("Licence खरीद पेज नहीं खुल सका। कृपया वेबसाइट पर जाकर खरीदें।", "Buy Licence",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>
+        /// Apply a licence validation result to the UI. Idempotent.
+        /// Sets the blocking-screen state and the existing KPI card properties.
+        /// Never deletes, clears or resets the sync queue.
+        /// </summary>
+        private void ApplyLicenseResult(LicenseResult lic)
+        {
+            // Avoid redundant work when the status hasn't changed
+            if (_lastAppliedLicenseStatus == lic.Status && _isLicenseBlocked == !lic.Allowed)
+                return;
+            _lastAppliedLicenseStatus = lic.Status;
+
+            _licenseResult = lic;
+            LicenseResult = lic;
+            IsLicenseBlocked = !lic.Allowed;
+
+            // Existing KPI card (kept for backward compatibility with the dashboard card)
+            var planName = lic.PlanName;
+            if (string.IsNullOrWhiteSpace(planName) || planName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                // Fall back to a friendly name based on the authoritative server status
+                planName = lic.Status switch
+                {
+                    LicenseStatus.TrialActive => "Trial",
+                    LicenseStatus.Active => "Active",
+                    _ => "—"
+                };
+            }
+            LicensePlan = planName;
+            LicenseDetail = lic.Allowed
+                ? $"Active · {lic.DaysLeft} days left"
+                : lic.Status == LicenseStatus.Expired
+                    ? $"Expired · {lic.ExpiryDate:dd MMM yyyy}"
+                    : (lic.Status.ToString() ?? "Inactive").Replace('_', ' ');
+
+            // Blocking-screen content
+            LicenseStatusText = lic.Message;
+            LicenseStatusColor = lic.Allowed ? "#0B8968" : "#DC2626";
+            LicenseBlockTitle = lic.DisplayTitle;
+            LicenseBlockMessage = lic.DisplayMessage;
+            LicenseBlockAction = lic.DisplayAction;
+
+            if (lic.Allowed)
+            {
+                Log($"✅ Licence OK: {lic.Status} ({lic.Message})");
+                // Advisory 7 / 3 / 1 day trial-expiry warning, once per day
+                if (lic.DaysLeft > 0 && lic.DaysLeft <= 7)
+                {
+                    ShowExpiryWarningIfDue(lic.DaysLeft);
+                }
+            }
+            else
+            {
+                Log($"⛔ Licence blocked: {lic.Status} — {lic.DisplayMessage}");
+            }
+        }
+
+        /// <summary>
+        /// Pre-flight licence check for manual sync commands. Returns true only when
+        /// synchronisation is permitted. Does not modify the pending queue.
+        /// </summary>
+        private async Task<bool> EnsureLicenseForSyncAsync()
+        {
+            try
+            {
+                var lic = await _syncManager.GetApiClient().GetLicenseValidationAsync();
+                ApplyLicenseResult(lic);
+                if (!lic.Allowed)
+                {
+                    Log($"⛔ Sync blocked: {lic.DisplayMessage}");
+                }
+                return lic.Allowed;
+            }
+            catch
+            {
+                ApplyLicenseResult(new LicenseResult
+                {
+                    Allowed = false,
+                    Status = LicenseStatus.NetworkError,
+                    IsNetworkError = true,
+                    DisplayTitle = "Licence Verification Failed",
+                    DisplayMessage = "Unable to verify your licence. Please connect to the internet and try again.",
+                    DisplayAction = "Refresh License Status"
+                });
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Show a 7 / 3 / 1 day trial-expiry advisory, once per day.
+        /// Logged (not a blocking popup) so it isn't repeated on every login.
+        /// </summary>
+        private void ShowExpiryWarningIfDue(int daysLeft)
+        {
+            var today = DateTime.Today;
+            if (_lastLicenseWarningDate.HasValue && _lastLicenseWarningDate.Value.Date == today) return;
+
+            string msg = daysLeft switch
+            {
+                <= 1 => "Your free trial expires tomorrow. Contact your administrator to extend or activate your licence.",
+                <= 3 => $"Only {daysLeft} days left in your free trial.",
+                _ => $"Your free trial expires in {daysLeft} days. Plan ahead to continue uninterrupted syncing."
+            };
+
+            Log($"⚠️ {msg}");
+            _lastLicenseWarningDate = today;
         }
 
         private async Task<bool> CheckSerialAndConfirmAsync()

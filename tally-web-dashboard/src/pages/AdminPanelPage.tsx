@@ -314,11 +314,13 @@ export default function AdminPanelPage() {
                 p_tally_serial: tallySerial || null,
             });
             if (error) throw error;
-            if (data && !data[0]?.success) throw new Error(data[0]?.message || 'Failed');
-            return data;
+            // assign_license returns a jsonb object, not an array
+            const result = Array.isArray(data) ? data[0] : data;
+            if (result && !result.success) throw new Error(result.message || 'Failed');
+            return result;
         },
         onSuccess: (data) => {
-            toast.success(data?.[0]?.message || 'License assigned');
+            toast.success(data?.message || 'License assigned');
             queryClient.invalidateQueries({ queryKey: ['admin-users'] });
             queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
         },

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using TallySyncApp.ViewModels;
 
 namespace TallySyncApp
 {
@@ -63,6 +64,7 @@ namespace TallySyncApp
             SyncStatusPanel.Visibility = Visibility.Collapsed;
             SettingsPanel.Visibility = Visibility.Collapsed;
             HistoryPanel.Visibility = Visibility.Collapsed;
+            LicenseHistoryPanel.Visibility = Visibility.Collapsed;
 
             // Show selected panel
             var tag = btn.Tag?.ToString();
@@ -84,6 +86,12 @@ namespace TallySyncApp
                     HistoryPanel.Visibility = Visibility.Visible;
                     PageTitle.Text = "History";
                     break;
+                case "LicenseHistoryPanel":
+                    LicenseHistoryPanel.Visibility = Visibility.Visible;
+                    PageTitle.Text = "Licence History";
+                    if (DataContext is ViewModels.MainViewModel vm)
+                        _ = vm.LoadLicenseHistoryAsync();
+                    break;
             }
         }
 
@@ -99,6 +107,68 @@ namespace TallySyncApp
             if (result == MessageBoxResult.Yes)
             {
                 App.Logout();
+            }
+        }
+
+        /// <summary>
+        /// Dismiss the licence blocking overlay temporarily. The overlay re-appears on the
+        /// next sync cycle if the licence is still invalid — this does not bypass enforcement.
+        /// </summary>
+        private void DismissLicenseBlock_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is ViewModels.MainViewModel vm)
+            {
+                vm.IsLicenseBlocked = false;
+            }
+        }
+
+        /// <summary>
+        /// Opens the web purchase page in the default browser so the user can buy / extend a licence.
+        /// Payment is processed server-side — the connector never handles money or licence keys.
+        /// </summary>
+        private void BuyLicence_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var vm = DataContext as ViewModels.MainViewModel;
+                string url = vm?.LicenseResult != null
+                    ? (vm.LicenseResult.SupportEmail != null
+                        ? ReadPurchaseUrlFromSettings() : "https://tallyonmobile.com/buy-licence")
+                    : "https://tallyonmobile.com/buy-licence";
+                url = ReadPurchaseUrlFromSettings();
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"खरीद पेज नहीं खुल सका: {ex.Message}", "Buy Licence",
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
+        }
+
+        private string ReadPurchaseUrlFromSettings()
+        {
+            try
+            {
+                var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
+                if (!System.IO.File.Exists(path)) return "https://tallyonmobile.com/buy-licence";
+                var txt = System.IO.File.ReadAllText(path);
+                var key = "\"LicencePurchaseUrl\":";
+                var idx = txt.IndexOf(key);
+                if (idx < 0) return "https://tallyonmobile.com/buy-licence";
+                var q1 = txt.IndexOf('"', idx + key.Length);
+                var q2 = txt.IndexOf('"', q1 + 1);
+                if (q1 < 0 || q2 < 0) return "https://tallyonmobile.com/buy-licence";
+                var url = txt.Substring(q1 + 1, q2 - q1 - 1);
+                return string.IsNullOrWhiteSpace(url) ? "https://tallyonmobile.com/buy-licence" : url;
+            }
+            catch
+            {
+                return "https://tallyonmobile.com/buy-licence";
             }
         }
     }
@@ -128,6 +198,20 @@ namespace TallySyncApp
         {
             if (value is string s) return string.IsNullOrEmpty(s) ? Visibility.Collapsed : Visibility.Visible;
             return value == null ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    // Helper to convert boolean to visibility (true = Visible, false = Collapsed)
+    public class BoolToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value is bool b && b ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

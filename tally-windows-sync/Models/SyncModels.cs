@@ -167,6 +167,7 @@ namespace TallySyncApp.Models
         public bool EnableVoucherSync { get; set; } = true;
         public bool UseFastExtractor { get; set; } = false;
         public bool UseSafeVoucherReconciliation { get; set; } = true;
+        public string LicencePurchaseUrl { get; set; } = "https://tallyonmobile.com/buy-licence";
     }
 
     public class DatabaseSettings

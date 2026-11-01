@@ -106,8 +106,21 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Tally's own spelling of a ledger name. Tally accepts CR/LF inside master names, and the
+        /// web only has the trimmed version, so map back to the exact name or the push fails with
+        /// "Ledger does not exist".
+        /// </summary>
+        private static string TallyLedgerName(CompanyContext ctx, string name)
+        {
+            var trimmed = name.Trim();
+            return ctx.Ledgers.FirstOrDefault(l =>
+                       string.Equals(l.Name?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase))?.Name ?? trimmed;
+        }
+
+        /// <summary>
         /// Pick a real ledger from the company. Exact preferred name wins; otherwise the first
         /// ledger in the group whose name contains every mustContain and none of mustNotContain.
+        /// Returns the name exactly as Tally stores it.
         /// </summary>
         private static string? FindLedger(CompanyContext ctx, string? preferred, string? group,
             string[]? mustContain = null, string[]? mustNotContain = null)
@@ -116,7 +129,7 @@ namespace TallySyncApp.Services
             {
                 var exact = ctx.Ledgers.FirstOrDefault(l =>
                     string.Equals(l.Name?.Trim(), preferred.Trim(), StringComparison.OrdinalIgnoreCase));
-                if (exact != null) return exact.Name!.Trim();
+                if (exact != null) return exact.Name!;
             }
 
             var candidates = ctx.Ledgers.Where(l => !string.IsNullOrWhiteSpace(l.Name)).ToList();
@@ -143,7 +156,7 @@ namespace TallySyncApp.Services
                     .ToList();
             }
 
-            return candidates.OrderBy(l => l.Name!.Length).FirstOrDefault()?.Name?.Trim();
+            return candidates.OrderBy(l => l.Name!.Length).FirstOrDefault()?.Name;
         }
 
         /// <summary>
@@ -190,7 +203,7 @@ namespace TallySyncApp.Services
 
             var existing = ctx.Ledgers.FirstOrDefault(l =>
                 string.Equals(l.Name?.Trim(), partyName.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (existing != null) return existing.Name!.Trim();
+            if (existing != null) return existing.Name!;
 
             // Ledger list unavailable — let Tally report the missing ledger instead of guessing.
             if (ctx.Ledgers.Count == 0) return partyName;
@@ -446,7 +459,7 @@ namespace TallySyncApp.Services
                 }
                 
                 var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
-                var partyName = voucherData["party_name"]?.ToString() ?? "";
+                var partyName = TallyLedgerName(ctx, voucherData["party_name"]?.ToString() ?? "");
                 var narration = voucherData["narration"]?.ToString() ?? "";
                 var guid = ResolveVoucherGuid(transaction);
 
@@ -1484,6 +1497,7 @@ namespace TallySyncApp.Services
             foreach (var e in arr)
             {
                 var name = e["ledger_name"]?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(name)) name = TallyLedgerName(ctx, name);
                 var amount = e["amount"]?.Value<decimal>() ?? 0;
                 if (string.IsNullOrWhiteSpace(name) || amount <= 0) continue;
 
@@ -1644,12 +1658,16 @@ namespace TallySyncApp.Services
         private static string EscapeXml(string value)
         {
             if (string.IsNullOrEmpty(value)) return "";
+            // CR/LF must go out as character references: XML parsers normalise raw CRLF to LF, and
+            // Tally stores some master names with a literal CRLF — a normalised name is "not found".
             return value
                 .Replace("&", "&amp;")
                 .Replace("<", "&lt;")
                 .Replace(">", "&gt;")
                 .Replace("\"", "&quot;")
-                .Replace("'", "&apos;");
+                .Replace("'", "&apos;")
+                .Replace("\r", "&#13;")
+                .Replace("\n", "&#10;");
         }
     }
 }
