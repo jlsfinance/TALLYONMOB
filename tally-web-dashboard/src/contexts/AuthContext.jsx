@@ -165,7 +165,13 @@ export const AuthProvider = ({ children }) => {
             );
 
             const { data, error } = result || {};
-            if (error) throw error;
+            if (error && error.message?.includes('session')) {
+                // Session genuinely expired/invalid
+                console.log('Session expired, clearing...');
+                await clearLocalSession();
+                resetAuthState();
+                return;
+            }
 
             const sessionUser = data?.user || data?.session?.user || null;
 
@@ -173,16 +179,13 @@ export const AuthProvider = ({ children }) => {
                 setUser(sessionUser);
                 await loadCompanies();
             } else {
-                resetAuthState();
+                // No session yet - this is normal for first visit
+                setLoading(false);
+                return;
             }
         } catch (error) {
-            if (isAuthSessionError(error)) {
-                console.log('Session invalid/expired, clearing local auth state...');
-                await clearLocalSession();
-                resetAuthState();
-            } else {
-                console.error('Session check error:', error);
-            }
+            // Don't clear session on every error - might be network issue
+            console.error('Session check error:', error);
         } finally {
             setLoading(false);
         }

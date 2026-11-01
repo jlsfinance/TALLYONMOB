@@ -106,6 +106,7 @@ const ProfitLossPage = lazyPage('ProfitLossPage', () => import('./pages/ProfitLo
 const BalanceSheetPage = lazyPage('BalanceSheetPage', () => import('./pages/BalanceSheetPage'));
 const AuthCallback = lazyPage('AuthCallback', () => import('./pages/AuthCallback'));
 const ResetPassword = lazyPage('ResetPassword', () => import('./pages/ResetPassword'));
+const LicensePage = lazyPage('LicensePage', () => import('./pages/LicensePage'));
 const OnboardingPage = lazyPage('OnboardingPage', () => import('./pages/OnboardingPage'));
 const AdminDashboardPage = lazyPage('AdminDashboardPage', () => import('./pages/AdminDashboardPage'));
 const PrivacyPolicyPage = lazyPage('PrivacyPolicyPage', () => import('./pages/PrivacyPolicyPage'));
@@ -343,6 +344,7 @@ function AppContent() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/auth/reset-password" element={<ResetPassword />} />
+                <Route path="/license" element={<LicensePage />} />
                 <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
                 <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                 <Route path="/admin-panel" element={<AdminRoute><AdminPanel /></AdminRoute>} />
