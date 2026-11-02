@@ -114,3 +114,8 @@ backups/
 # Android upload credentials
 .secrets/
 **/android/key.properties
+
+# Signing / Play credentials (never commit)
+.secrets/
+**/key.properties
+**/*-service-account.json
