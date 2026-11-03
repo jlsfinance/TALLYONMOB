@@ -4,6 +4,8 @@
 //
 //   node scripts/upload-play.mjs --check
 //   node scripts/upload-play.mjs --aab app/build/outputs/bundle/release/app-release.aab --track internal --notes "Bug fixes"
+//   node scripts/upload-play.mjs --listing ../../../play-store-assets/listing.json
+//   (both flags together = one edit, one commit)
 //
 // Env: PLAY_KEY (default ../../../.secrets/play-service-account.json), PLAY_PACKAGE (default com.syncoraa.app)
 import fs from 'node:fs';
@@ -70,34 +72,99 @@ if (args.check) {
   process.exit(0);
 }
 
-if (!args.aab || args.aab === true) fail('pass --aab <path to .aab>');
-const aabPath = path.resolve(args.aab);
-if (!fs.existsSync(aabPath)) fail(`AAB not found: ${aabPath}`);
-if (path.extname(aabPath) !== '.aab') fail('Google Play needs an .aab, not an .apk');
+if (args.status) {
+  const edit = await call(tok, 'POST', `/applications/${PACKAGE}/edits`, {});
+  const { tracks = [] } = await call(tok, 'GET', `/applications/${PACKAGE}/edits/${edit.id}/tracks`);
+  for (const t of tracks) {
+    const codes = (t.releases || []).flatMap((r) => r.versionCodes || []);
+    if (codes.length) console.log(`track ${t.track}: ${codes.join(',')} (${(t.releases || []).map((r) => r.status).join(',')})`);
+  }
+  const { listings = [] } = await call(tok, 'GET', `/applications/${PACKAGE}/edits/${edit.id}/listings`);
+  for (const l of listings) {
+    const parts = [];
+    for (const type of ['icon', 'featureGraphic', 'phoneScreenshots', 'sevenInchScreenshots', 'tenInchScreenshots']) {
+      const { images = [] } = await call(tok, 'GET', `/applications/${PACKAGE}/edits/${edit.id}/listings/${l.language}/${type}`);
+      if (images.length) parts.push(`${type}=${images.length}`);
+    }
+    console.log(`listing ${l.language}: "${l.title}" | ${parts.join(' ')}`);
+  }
+  await call(tok, 'DELETE', `/applications/${PACKAGE}/edits/${edit.id}`);
+  process.exit(0);
+}
+
+const aabPath = args.aab && args.aab !== true ? path.resolve(args.aab) : null;
+if (aabPath && !fs.existsSync(aabPath)) fail(`AAB not found: ${aabPath}`);
+if (aabPath && path.extname(aabPath) !== '.aab') fail('Google Play needs an .aab, not an .apk');
+if (!aabPath && !args.listing) fail('pass --aab <path to .aab> and/or --listing <listing.json>');
 const track = args.track || 'internal';
 const notes = args.notes || '';
 
 const edit = await call(tok, 'POST', `/applications/${PACKAGE}/edits`, {});
 console.log(`edit ${edit.id}`);
 
-const uploadRes = await fetch(
-  `${UPLOAD}/applications/${PACKAGE}/edits/${edit.id}/bundles?uploadType=media`,
-  {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/octet-stream' },
-    body: fs.readFileSync(aabPath),
-  }
-);
-const uploadText = await uploadRes.text();
-if (!uploadRes.ok) fail(`upload failed -> ${uploadRes.status} ${uploadText.slice(0, 400)}`);
-const bundle = JSON.parse(uploadText);
-console.log(`uploaded versionCode ${bundle.versionCode}`);
+if (aabPath) {
+  const uploadRes = await fetch(
+    `${UPLOAD}/applications/${PACKAGE}/edits/${edit.id}/bundles?uploadType=media`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/octet-stream' },
+      body: fs.readFileSync(aabPath),
+    }
+  );
+  const uploadText = await uploadRes.text();
+  if (!uploadRes.ok) fail(`upload failed -> ${uploadRes.status} ${uploadText.slice(0, 400)}`);
+  const bundle = JSON.parse(uploadText);
+  console.log(`uploaded versionCode ${bundle.versionCode}`);
 
-await call(tok, 'PUT', `/applications/${PACKAGE}/edits/${edit.id}/tracks/${track}`, {
-  track,
-  releases: [{ versionCodes: [String(bundle.versionCode)], status: 'completed', ...(notes ? { releaseNotes: [{ language: 'en-IN', text: notes }] } : {}) }],
-});
-console.log(`assigned to ${track}`);
+  await call(tok, 'PUT', `/applications/${PACKAGE}/edits/${edit.id}/tracks/${track}`, {
+    track,
+    releases: [{ versionCodes: [String(bundle.versionCode)], status: 'completed', ...(notes ? { releaseNotes: [{ language: 'en-IN', text: notes }] } : {}) }],
+  });
+  console.log(`assigned to ${track}`);
+}
+
+if (args.listing) {
+  const listingPath = path.resolve(args.listing);
+  const dir = path.dirname(listingPath);
+  const L = JSON.parse(fs.readFileSync(listingPath, 'utf8'));
+  const { listings = [] } = await call(tok, 'GET', `/applications/${PACKAGE}/edits/${edit.id}/listings`);
+  const langs = listings.map((l) => l.language);
+  const language = langs.includes('en-IN') ? 'en-IN' : langs.find((l) => l.startsWith('en')) || 'en-US';
+  console.log(`listing language ${language} (existing: ${langs.join(',') || 'none'})`);
+
+  await call(tok, 'PUT', `/applications/${PACKAGE}/edits/${edit.id}/listings/${language}`, {
+    language,
+    title: L.title,
+    shortDescription: L.shortDescription,
+    fullDescription: L.fullDescription,
+  });
+  console.log(`text updated: "${L.title}"`);
+
+  const putImage = async (imageType, file) => {
+    const p = path.join(dir, file);
+    if (!fs.existsSync(p)) fail(`image not found: ${p}`);
+    const res = await fetch(
+      `${UPLOAD}/applications/${PACKAGE}/edits/${edit.id}/listings/${language}/${imageType}?uploadType=media`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'image/png' },
+        body: fs.readFileSync(p),
+      }
+    );
+    const text = await res.text();
+    if (!res.ok) fail(`${imageType} upload failed -> ${res.status} ${text.slice(0, 300)}`);
+    console.log(`  ${imageType} <- ${file}`);
+  };
+
+  // clear first so re-runs replace instead of appending duplicates
+  const clearImages = (imageType) =>
+    call(tok, 'DELETE', `/applications/${PACKAGE}/edits/${edit.id}/listings/${language}/${imageType}`);
+
+  if (L.icon) { await clearImages('icon'); await putImage('icon', L.icon); }
+  if (L.featureGraphic) { await clearImages('featureGraphic'); await putImage('featureGraphic', L.featureGraphic); }
+  if (L.screenshots?.length) await clearImages('phoneScreenshots');
+  for (const shot of L.screenshots || []) await putImage('phoneScreenshots', shot);
+}
 
 await call(tok, 'POST', `/applications/${PACKAGE}/edits/${edit.id}:commit`);
 console.log('committed — Play Console me review ke liye chala gaya');

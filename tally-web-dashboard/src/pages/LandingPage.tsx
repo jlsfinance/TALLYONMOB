@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/common/SEO';
+import { APP_INFO } from '../config/appInfo';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowRight, ArrowLeft, Smartphone, Monitor, Cloud, Zap, Shield, CheckCircle,
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react';
 
 const GITHUB_DOWNLOADS = {
-    pc: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink-Setup-3.1.0.exe',
+    pc: APP_INFO.pcDownloadUrl,
     android: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest/download/TallyLink.apk',
     releases: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 };
@@ -107,7 +108,7 @@ const JOURNEY_STEPS = [
         icon: <ArrowRight size={28} />,
         color: 'from-cyan-500 to-teal-600',
         details: ['Runs as Windows Service', 'Auto-detects Tally changes', 'Encrypted transmission (TLS 1.3)', 'Offline queue with auto-retry'],
-        download: { url: GITHUB_DOWNLOADS.releases, label: 'Download for Windows', icon: <Monitor size={14} /> }
+        download: { url: GITHUB_DOWNLOADS.pc, label: 'Download for Windows', icon: <Monitor size={14} /> }
     },
     {
         step: 3,
@@ -223,12 +224,10 @@ export default function LandingPage() {
                     </div>
                     {/* Download Buttons */}
                     <div className="flex flex-col sm:flex-row gap-3 justify-center mt-4">
-                        <a href={GITHUB_DOWNLOADS.releases} target="_blank" rel="noopener noreferrer"
-                            className="group px-6 py-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-sm font-bold transition-all flex items-center justify-center gap-2 text-cyan-200">
+                        <a href={GITHUB_DOWNLOADS.pc} className="group px-6 py-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-sm font-bold transition-all flex items-center justify-center gap-2 text-cyan-200">
                             <Monitor size={16} /> Download for Windows
                         </a>
-                        <a href={GITHUB_DOWNLOADS.releases} target="_blank" rel="noopener noreferrer"
-                            className="group px-6 py-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-sm font-bold transition-all flex items-center justify-center gap-2 text-emerald-200">
+                        <a href={GITHUB_DOWNLOADS.android} className="group px-6 py-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-sm font-bold transition-all flex items-center justify-center gap-2 text-emerald-200">
                             <Smartphone size={16} /> Download Android APK
                         </a>
                     </div>
@@ -462,8 +461,8 @@ export default function LandingPage() {
                                 <li><button onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-white transition-colors">Features</button></li>
                                 <li><button onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-white transition-colors">Pricing</button></li>
                                 <li><button onClick={() => document.getElementById('journey')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-white transition-colors">How it Works</button></li>
-                                <li><a href={GITHUB_DOWNLOADS.releases} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1"><Monitor size={10} /> Windows App</a></li>
-                                <li><a href={GITHUB_DOWNLOADS.releases} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1"><Smartphone size={10} /> Android APK</a></li>
+                                <li><a href={GITHUB_DOWNLOADS.pc} className="hover:text-white transition-colors flex items-center gap-1"><Monitor size={10} /> Windows App</a></li>
+                                <li><a href={GITHUB_DOWNLOADS.android} className="hover:text-white transition-colors flex items-center gap-1"><Smartphone size={10} /> Android APK</a></li>
                             </ul>
                         </div>
                         <div>

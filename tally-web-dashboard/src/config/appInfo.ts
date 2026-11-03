@@ -1,7 +1,7 @@
 ﻿export const APP_INFO = {
     name: 'JLS Bill',
     packageName: 'com.jls.billbook',
-    company: 'JLS Bill',
+    company: 'Shaurya Ltd',
     siteUrl: import.meta.env.VITE_APP_SITE_URL || 'https://jlsbillbook.app',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.jls.billbook',
     supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com',
@@ -16,7 +16,7 @@
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
+    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.1.8/SyncoraConnector-Setup-3.1.8.exe',
     androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 

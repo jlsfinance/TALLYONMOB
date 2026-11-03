@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { useAuth } from '../contexts/AuthContext';
+import { APP_INFO } from '../config/appInfo';
 import {
     Users,
     Building2,
@@ -657,9 +658,9 @@ const AdminDashboardPage = () => {
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                         <input type="url" value={downloadUrl} onChange={(e) => setDownloadUrl(e.target.value)} placeholder="https://..." style={{ flex: 1 }} />
                                         <button
-                                            onClick={() => setDownloadUrl('/TallyLinkSetup.exe')}
+                                            onClick={() => setDownloadUrl(APP_INFO.pcDownloadUrl)}
                                             style={{ padding: '0 12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontSize: '12px' }}
-                                            title="Use /TallyLinkSetup.exe from public folder"
+                                            title="Use the latest published installer"
                                         >
                                             Use Local Installer
                                         </button>

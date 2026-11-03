@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { APP_INFO } from '../config/appInfo';
 import {
     Download,
     Monitor,
@@ -28,7 +29,7 @@ const OnboardingPage = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const [companies, setCompanies] = useState([]);
     const [isChecking, setIsChecking] = useState(false);
-    const [downloadUrl, setDownloadUrl] = useState('/TallyLinkSetup.exe');
+    const [downloadUrl, setDownloadUrl] = useState(APP_INFO.pcDownloadUrl);
     const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
 
     useEffect(() => {

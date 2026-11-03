@@ -1,0 +1,13 @@
+{
+  "title": "SYNCORA - Tally on Mobile",
+  "shortDescription": "View your Tally vouchers, ledgers and balances on mobile. Syncs from your PC.",
+  "fullDescription": "SYNCORA brings your Tally company data to your phone and browser.\n\nInstall the free Windows connector on the computer that runs Tally, sign in, and your vouchers, party ledgers, balances and reports stay in sync. Nothing in Tally is modified - the connector reads data through Tally's own interface and never writes back.\n\nWHAT YOU GET\n- Business dashboard: sales, purchases, receivables and payables at a glance\n- Party ledgers: balances, ageing and full transaction history\n- Vouchers: search by party, number, date or amount, open full voucher detail, share PDF\n- Outstanding bills: 30/60/90 day ageing for follow-ups\n- Multi-company: switch between synced companies from one login\n- Works alongside TallyPrime and Tally ERP 9, including multi-user setups\n\nHOW IT WORKS\n1. Create your SYNCORA account\n2. Download the Windows connector from our website and install it on the Tally PC (no admin rights needed)\n3. Sign in to the connector and let it sync - after that the data is available on mobile and web\n\nPRIVACY AND SECURITY\n- Tally data is read-only; your books are never altered\n- Traffic is encrypted in transit (TLS 1.2+)\n- Account-based access with per-user permissions\n- Data deletion available from Settings at any time\n\nSYNCORA is an independent product. Tally and TallyPrime are trademarks of Tally Solutions Pvt. Ltd. and are not affiliated with this app.\n\nSupport: lovneetrathi@gmail.com",
+  "icon": "store-icon-512.png",
+  "featureGraphic": "feature-graphic.png",
+  "screenshots": [
+    "screenshot-1-dashboard.png",
+    "screenshot-2-ledgers.png",
+    "screenshot-3-vouchers.png",
+    "screenshot-4-sync.png"
+  ]
+}

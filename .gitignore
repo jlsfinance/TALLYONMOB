@@ -119,3 +119,8 @@ backups/
 .secrets/
 **/key.properties
 **/*-service-account.json
+
+# Play Store asset working files (regenerable, large renders)
+play-store-assets/raw/
+play-store-assets/icon-options/
+

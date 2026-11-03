@@ -423,7 +423,7 @@ export const adminService = {
      * Get dashboard stats
      */
     async getDashboardStats() {
-        const { data } = await supabase.from('admin_dashboard_stats').select('*').single();
+        const { data } = await supabase.rpc('get_admin_dashboard_stats');
         return data;
     },
 
@@ -463,10 +463,7 @@ export const adminService = {
      * Get all payments
      */
     async getPayments(params?: { status?: string; page?: number }) {
-        const { data } = await supabase
-            .from('admin_recent_payments')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const { data } = await supabase.rpc('get_admin_recent_payments', { p_limit: 100 });
 
         return data || [];
     },

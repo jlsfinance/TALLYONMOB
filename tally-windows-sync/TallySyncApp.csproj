@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -15,7 +15,7 @@
     <AssemblyName>SyncoraConnector</AssemblyName>
     <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.1.7</Version>
+    <Version>3.1.8</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA Connector</Product>

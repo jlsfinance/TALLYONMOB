@@ -20,10 +20,12 @@ namespace TallySyncApp.Services
         private readonly string _apiKey; // Anon Key
         private string? _userToken; // Bearer Token for Auth
         private string? _ownerId;   // auth.uid() - RLS on every sync table is `owner_id = auth.uid()`
-        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60)
+        private readonly string _telegramBotToken;
+        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "")
         {
             _supabaseUrl = supabaseUrl.TrimEnd('/');
             _apiKey = apiKey;
+            _telegramBotToken = telegramBotToken ?? string.Empty;
 
             // FIX: Disable proxy to avoid intermittent DNS/connection issues (WSANO_DATA)
             var handler = new HttpClientHandler
@@ -1911,7 +1913,14 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<bool> SendTelegramNotificationAsync(string chatId, string message)
         {
-            if (string.IsNullOrWhiteSpace(_userToken) || string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(message))
+            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(message))
+                return false;
+
+            // Direct bot call first: the edge function returned HTTP 500 in the field.
+            // shortcut: bot token ships in appsettings; remove the direct path once the edge function is stable.
+            if (await SendTelegramDirectAsync(chatId, message)) return true;
+
+            if (string.IsNullOrWhiteSpace(_userToken))
                 return false;
 
             try
@@ -1948,6 +1957,40 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 SyncLogger.Log($"⚠️ Failed to send Telegram notification: {ex.Message}");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Send straight to the Telegram Bot API when a bot token is configured locally.
+        /// </summary>
+        private async Task<bool> SendTelegramDirectAsync(string chatId, string message)
+        {
+            if (string.IsNullOrWhiteSpace(_telegramBotToken)) return false;
+
+            try
+            {
+                var payload = JsonConvert.SerializeObject(new
+                {
+                    chat_id = chatId,
+                    text = message,
+                    parse_mode = "HTML",
+                    disable_web_page_preview = true,
+                });
+
+                using var tgClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+                using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var response = await tgClient.PostAsync(
+                    $"https://api.telegram.org/bot{_telegramBotToken}/sendMessage", content);
+
+                if (response.IsSuccessStatusCode) return true;
+
+                var error = await response.Content.ReadAsStringAsync();
+                SyncLogger.Log($"Telegram direct send returned HTTP {(int)response.StatusCode}: {error}");
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"Telegram direct send failed: {ex.Message}");
             }
             return false;
         }

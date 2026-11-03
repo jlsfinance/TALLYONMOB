@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { APP_INFO } from '../config/appInfo';
 import { supabase } from '../lib/insforge';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { GlassCard, KPICard, ProgressRing, BarChart3D } from '../components/3d';
@@ -360,7 +361,7 @@ export default function Dashboard3DPage() {
                         <button className="dashboard-3d__action-btn" onClick={() => navigate('/vouchers')}>
                             <span>📄</span> Vouchers
                         </button>
-                        <button className="dashboard-3d__action-btn" onClick={() => window.open('/TallyLink.exe', '_blank')}>
+                        <button className="dashboard-3d__action-btn" onClick={() => window.open(APP_INFO.pcDownloadUrl, '_blank')}>
                             <img src="/tallylink_logo.png" alt="SYNCORA TallyOnMobile" style={{ width: '24px', height: '24px', marginRight: '8px' }} />
                             Download SYNCORA TallyOnMobile PC App
                         </button>

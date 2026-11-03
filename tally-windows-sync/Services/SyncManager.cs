@@ -148,7 +148,8 @@ namespace TallySyncApp.Services
             _apiClient = new ApiClient(
                 supabaseUrl,
                 supabaseKey,
-                300
+                300,
+                _settings.SyncSettings.TelegramBotToken
             );
 
             // Set User Token if logged in
