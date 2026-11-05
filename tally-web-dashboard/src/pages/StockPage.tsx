@@ -25,13 +25,10 @@ export default function StockPage() {
     const [deadStock, setDeadStock] = useState<any[]>([]);
 
     const { data: stockItemsData, isLoading: stockItemsLoading } = useQuery(
-        ['stockItems', selectedCompany?.id, selectedGroup],
+        ['stockItems', selectedCompany?.id],
         async () => {
             if (!selectedCompany?.id) return [];
-            const { data, error } = await stockApi.list(
-                selectedCompany.id,
-                selectedGroup !== 'all' ? selectedGroup : null
-            );
+            const { data, error } = await stockApi.list(selectedCompany.id);
             if (error) throw error;
             return data || [];
         },
@@ -53,22 +50,11 @@ export default function StockPage() {
         };
     }, [stockItems]);
 
-    const { data: groupsData } = useQuery(
-        ['stockGroups', selectedCompany?.id],
-        async () => {
-            if (!selectedCompany?.id) return [];
-            const { data, error } = await stockApi.getGroups(selectedCompany.id);
-            if (error) throw error;
-            return data || [];
-        },
-        {
-            enabled: !!selectedCompany?.id,
-            staleTime: 5 * 60 * 1000,
-            refetchOnWindowFocus: false,
-        }
+    // Groups come from the loaded items so we don't run a second full-table query.
+    const groups: string[] = useMemo(
+        () => [...new Set(stockItems.map((s: any) => s.stock_group).filter(Boolean))].sort() as string[],
+        [stockItems]
     );
-
-    const groups = groupsData || [];
 
     const loadAnalysis = async () => {
         setAnalysisLoading(true);
@@ -109,8 +95,10 @@ export default function StockPage() {
     };
 
     const filteredStock = stockItems.filter((item: any) =>
-        item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
+        (selectedGroup === 'all' || item.stock_group === selectedGroup) && (
+            item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            item.stock_group?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
     );
 
     const handleDownloadPDF = async () => {

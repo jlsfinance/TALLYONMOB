@@ -273,7 +273,7 @@ export default function StockItemDetailPage() {
 
             setCustomers(Object.values(custMap).sort((a, b) => b.val - a.val));
             setSuppliers(Object.values(suppMap).sort((a, b) => b.val - a.val));
-            await loadStockHistory(itemData);
+            // History tab loads itself from the filters effect; calling it here too doubled every request.
         } catch (error: any) {
             console.error('Error loading item details:', error);
         } finally {

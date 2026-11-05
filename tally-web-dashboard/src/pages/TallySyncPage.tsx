@@ -3,16 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import {
-    RefreshCw, Send, CheckCircle2, ArrowRight,
-    Download, Upload, Loader2, Database, Users, Package,
+    RefreshCw,
+    Loader2, Database, Users, Package,
     Clock, ShieldCheck, ArrowDownCircle, ArrowUpCircle,
-    Check, RotateCcw, FileText, ChevronRight, Zap
+    Check, FileText, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import './InsightsSyncPages.css';
 import { supabase } from '@/lib/insforge';
-import { generateTallyVoucherXml, sendToTally, exportVouchersToTally } from '@/services/tallyExportService';
 
 function formatCurrency(amount: number) {
     return new Intl.NumberFormat('en-IN', {
@@ -28,11 +27,7 @@ export default function TallySyncPage() {
     const [activeTab, setActiveTab] = useState<'tally-to-web' | 'web-to-tally'>('tally-to-web');
 
     // Web to Tally Push states
-    const [syncing, setSyncing] = useState(false);
-    const [syncResult, setSyncResult] = useState<{ exported: number; failed: number; errors: string[] } | null>(null);
-    const [pendingVouchers, setPendingVouchers] = useState<any[]>([]);
     const [queue, setQueue] = useState<any[]>([]);
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Tally to Web Pull states
@@ -67,29 +62,19 @@ export default function TallySyncPage() {
         }
     }, [selectedCompany?.id]);
 
-    const loadPendingVouchers = useCallback(async () => {
+    const loadWebVouchers = useCallback(async () => {
         if (!selectedCompany?.id) return;
         setLoading(true);
         try {
-            // Get vouchers from web
-            const { data: vouchers } = await supabase
-                .from('vouchers')
-                .select('id, voucher_type, voucher_number, party_name, grand_total, voucher_date, narration')
-                .eq('company_id', selectedCompany.id)
-                .eq('is_deleted', false)
-                .order('voucher_date', { ascending: false })
-                .limit(50);
-
-            setPendingVouchers(vouchers || []);
-
-            // Reverse-sync push queue (created on web -> PC app pushes to Tally)
-            const { data: queueRows } = await supabase
+            // Web/mobile-created vouchers are queued here for the PC agent; nothing from Tally import lands here.
+            const { data, error } = await supabase
                 .from('pending_transactions')
                 .select('id, transaction_type, status, error_message, tally_voucher_number, created_at, synced_at, voucher_data')
                 .eq('company_id', selectedCompany.id)
                 .order('created_at', { ascending: false })
-                .limit(100);
-            setQueue(queueRows || []);
+                .limit(200);
+            if (error) throw error;
+            setQueue(data || []);
         } catch (err) {
             console.error('Load error:', err);
         } finally {
@@ -99,76 +84,26 @@ export default function TallySyncPage() {
 
     useEffect(() => {
         if (selectedCompany?.id) {
-            loadPendingVouchers();
+            loadWebVouchers();
             loadTallyToWebData();
         }
-    }, [selectedCompany?.id, loadPendingVouchers, loadTallyToWebData]);
+    }, [selectedCompany?.id, loadWebVouchers, loadTallyToWebData]);
+
+    const pendingCount = queue.filter(t => t.status === 'pending').length;
+    const syncedCount = queue.filter(t => t.status === 'synced').length;
+    const failedCount = queue.filter(t => t.status === 'failed').length;
 
     const handleTallyToWebSync = async () => {
         setTallyToWebSyncing(true);
         toast.loading('Refreshing cloud records...', { id: 'tally-pull-sync' });
         try {
-            await Promise.all([loadTallyToWebData(), loadPendingVouchers()]);
+            await Promise.all([loadTallyToWebData(), loadWebVouchers()]);
             toast.success('Refresh requested.', { id: 'tally-pull-sync' });
         } catch (err: any) {
             toast.error('Sync error: ' + (err.message || 'Unknown error'), { id: 'tally-pull-sync' });
         } finally {
             setTallyToWebSyncing(false);
         }
-    };
-
-    const syncSelectedToTally = async () => {
-        if (selectedIds.length === 0) {
-            toast.error('Select vouchers to push to Tally');
-            return;
-        }
-
-        setSyncing(true);
-        setSyncResult(null);
-
-        try {
-            const vouchersToSync = pendingVouchers.filter(v => selectedIds.includes(v.id));
-            const result = await exportVouchersToTally(vouchersToSync);
-            setSyncResult(result);
-
-            if (result.exported > 0) {
-                toast.success(`${result.exported} vouchers synced to Tally!`);
-            }
-            if (result.failed > 0) {
-                toast.error(`${result.failed} vouchers failed to sync`);
-            }
-
-            setSelectedIds([]);
-            loadPendingVouchers();
-        } catch (err: any) {
-            toast.error('Sync failed: ' + err.message);
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    const syncSingleVoucher = async (voucher: any) => {
-        try {
-            const xml = generateTallyVoucherXml({
-                ...voucher,
-                company_name: selectedCompany?.name || ''
-            });
-            const result = await sendToTally(xml);
-
-            if (result.success) {
-                toast.success(`Voucher ${voucher.voucher_number || ''} synced!`);
-            } else {
-                toast.error(`Push notice: ${result.error || 'Check PC companion app'}`);
-            }
-        } catch (err: any) {
-            toast.error('Sync error: ' + err.message);
-        }
-    };
-
-    const toggleSelect = (id: string) => {
-        setSelectedIds(prev =>
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-        );
     };
 
     const retryTransaction = async (t: any) => {
@@ -180,31 +115,8 @@ export default function TallySyncPage() {
             toast.error('Retry failed: ' + error.message);
         } else {
             toast.success('Queued again for Tally push');
-            loadPendingVouchers();
+            loadWebVouchers();
         }
-    };
-
-    const toggleSelectAll = () => {
-        if (selectedIds.length === pendingVouchers.length) {
-            setSelectedIds([]);
-        } else {
-            setSelectedIds(pendingVouchers.map(v => v.id));
-        }
-    };
-
-    const exportXml = (voucher: any) => {
-        const xml = generateTallyVoucherXml({
-            ...voucher,
-            company_name: selectedCompany?.name || ''
-        });
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${voucher.voucher_number || 'voucher'}.xml`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success('XML downloaded!');
     };
 
     return (
@@ -227,11 +139,11 @@ export default function TallySyncPage() {
 
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                     <button
-                        onClick={activeTab === 'tally-to-web' ? handleTallyToWebSync : loadPendingVouchers}
-                        disabled={syncing || tallyToWebSyncing}
+                        onClick={activeTab === 'tally-to-web' ? handleTallyToWebSync : loadWebVouchers}
+                        disabled={tallyToWebSyncing}
                         className="px-3.5 py-2 rounded-xl bg-[#16202C] hover:bg-[#1C2A3A] border border-[#22334C] text-slate-200 text-xs font-bold flex items-center gap-2 active:scale-95 transition-all cursor-pointer shadow-xs"
                     >
-                        <RefreshCw size={14} className={syncing || tallyToWebSyncing ? 'animate-spin text-[#00E599]' : ''} />
+                        <RefreshCw size={14} className={loading || tallyToWebSyncing ? 'animate-spin text-[#00E599]' : ''} />
                         <span>Refresh Data</span>
                     </button>
                 </div>
@@ -268,9 +180,9 @@ export default function TallySyncPage() {
                             <div className="leading-tight font-black">Web to Tally (Push)</div>
                             <div className="text-[10px] opacity-75 font-medium hidden sm:block">Push created invoices to Tally</div>
                         </div>
-                        {pendingVouchers.length > 0 && (
+                        {queue.length > 0 && (
                             <span className="w-5 h-5 rounded-full bg-[#00E599]/20 text-[#00E599] border border-[#00E599]/40 text-[10px] font-black flex items-center justify-center ml-1">
-                                {pendingVouchers.length}
+                                {queue.length}
                             </span>
                         )}
                     </div>
@@ -414,179 +326,53 @@ export default function TallySyncPage() {
             {/* ========================================================================= */}
             {activeTab === 'web-to-tally' && (
                 <div className="space-y-4 animate-fade-in">
-                    {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {/* Status Overview */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                         <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-3 sm:p-4 text-center shadow-sm">
-                            <p className="text-lg sm:text-2xl font-black text-white">{pendingVouchers.length}</p>
-                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Total Vouchers</p>
+                            <p className="text-lg sm:text-2xl font-black text-white">{queue.length}</p>
+                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Total</p>
                         </div>
                         <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-3 sm:p-4 text-center shadow-sm">
-                            <p className="text-lg sm:text-2xl font-black text-[#00E599]">{selectedIds.length}</p>
-                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Selected</p>
+                            <p className="text-lg sm:text-2xl font-black text-amber-400">{pendingCount}</p>
+                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Pending</p>
                         </div>
                         <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-3 sm:p-4 text-center shadow-sm">
-                            <p className="text-lg sm:text-2xl font-black text-cyan-400">{queue.length}</p>
-                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Push Queue</p>
+                            <p className="text-lg sm:text-2xl font-black text-[#00E599]">{syncedCount}</p>
+                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Synced</p>
+                        </div>
+                        <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl p-3 sm:p-4 text-center shadow-sm">
+                            <p className="text-lg sm:text-2xl font-black text-red-400">{failedCount}</p>
+                            <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase mt-0.5">Failed</p>
                         </div>
                     </div>
 
-                    {/* Sync Actions Bar */}
-                    <div className="flex gap-2 sm:gap-3">
-                        <button
-                            onClick={syncSelectedToTally}
-                            disabled={syncing || selectedIds.length === 0}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 sm:py-3 px-4 rounded-xl sm:rounded-2xl bg-[#00E599] hover:bg-[#00c985] text-[#0B1118] font-black text-xs sm:text-sm shadow-md disabled:opacity-40 disabled:cursor-not-allowed active:scale-98 transition-all cursor-pointer"
-                        >
-                            {syncing ? (
-                                <>
-                                    <Loader2 size={16} className="animate-spin" />
-                                    <span>Pushing to Tally...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Send size={15} />
-                                    <span>Push to Tally ({selectedIds.length})</span>
-                                </>
-                            )}
-                        </button>
-
-                        <button
-                            onClick={toggleSelectAll}
-                            className="px-3.5 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-[#22334C] bg-[#16202C] hover:bg-[#1E2D3D] text-xs sm:text-sm font-bold text-slate-200 transition-all cursor-pointer active:scale-95"
-                        >
-                            {selectedIds.length === pendingVouchers.length && pendingVouchers.length > 0 ? 'Deselect All' : 'Select All'}
-                        </button>
-                    </div>
-
-                    {/* Push Result Banner */}
-                    {syncResult && (
-                        <div className={`p-3 sm:p-4 border rounded-2xl flex items-start gap-3 shadow-sm ${
-                            syncResult.failed === 0
-                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                        }`}>
-                            {syncResult.failed === 0 ? (
-                                <CheckCircle2 size={18} className="text-emerald-400 shrink-0 mt-0.5" />
-                            ) : (
-                                <RefreshCw size={18} className="text-amber-400 shrink-0 mt-0.5" />
-                            )}
-                            <div>
-                                <p className="text-xs sm:text-sm font-bold">
-                                    {syncResult.exported} exported successfully, {syncResult.failed} failed
-                                </p>
-                                {syncResult.errors.length > 0 && (
-                                    <div className="mt-1 space-y-0.5 text-xs text-red-300">
-                                        {syncResult.errors.map((err, i) => (
-                                            <p key={i}>• {err}</p>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Vouchers List */}
+                    {/* Web-created Vouchers */}
                     <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl overflow-hidden shadow-sm">
-                        <div className="p-3.5 sm:p-4 border-b border-[#1E2B38] flex items-center justify-between">
-                            <h3 className="text-xs sm:text-sm font-black text-white">Vouchers Ready to Push</h3>
-                            <span className="text-xs text-slate-400">{pendingVouchers.length} available</span>
+                        <div className="p-3.5 sm:p-4 border-b border-[#1E2B38] flex items-center justify-between gap-3">
+                            <div>
+                                <h3 className="text-xs sm:text-sm font-black text-white">Vouchers Created on Web</h3>
+                                <p className="text-[10px] text-slate-400">Every voucher created in the app with its Tally push status</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-slate-400">{queue.length} total</span>
+                                <button
+                                    onClick={loadWebVouchers}
+                                    className="p-1.5 rounded-lg bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-slate-300"
+                                    title="Refresh"
+                                >
+                                    <RefreshCw size={12} />
+                                </button>
+                            </div>
                         </div>
 
                         {loading ? (
                             <div className="p-8 text-center">
-                                <RefreshCw size={20} className="animate-spin text-[#00E599] mx-auto mb-2" />
+                                <Loader2 size={20} className="animate-spin text-[#00E599] mx-auto mb-2" />
                                 <p className="text-xs text-slate-400">Loading vouchers...</p>
                             </div>
-                        ) : pendingVouchers.length === 0 ? (
+                        ) : queue.length === 0 ? (
                             <div className="p-8 text-center text-xs text-slate-400">
-                                No pending vouchers created on web found.
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-[#1A2634]">
-                                {pendingVouchers.map((v: any) => (
-                                    <div
-                                        key={v.id}
-                                        className="flex items-center gap-2.5 sm:gap-3 py-2.5 px-3 sm:px-4 hover:bg-[#16202C]/60 transition-colors"
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.includes(v.id)}
-                                            onChange={() => toggleSelect(v.id)}
-                                            className="w-4 h-4 rounded border-[#22334C] text-[#00E599] focus:ring-[#00E599] bg-[#0B1118] cursor-pointer"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                                                    v.voucher_type === 'Sales' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
-                                                    v.voucher_type === 'Purchase' ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30' :
-                                                    v.voucher_type === 'Receipt' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
-                                                    'bg-slate-700 text-slate-300'
-                                                }`}>
-                                                    {v.voucher_type}
-                                                </span>
-                                                <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-xs">
-                                                    {v.party_name || 'Unknown'}
-                                                </p>
-                                            </div>
-                                            <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5">
-                                                #{v.voucher_number || 'NA'} • {v.voucher_date ? format(new Date(v.voucher_date), 'dd MMM yyyy') : ''}
-                                            </p>
-                                        </div>
-
-                                        <p className="text-xs sm:text-sm font-black text-white whitespace-nowrap">
-                                            {formatCurrency(v.grand_total)}
-                                        </p>
-
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                                onClick={() => exportXml(v)}
-                                                className="p-1.5 rounded-lg bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-slate-300 hover:text-white transition-colors"
-                                                title="Download XML"
-                                            >
-                                                <Download size={13} />
-                                            </button>
-                                            <button
-                                                onClick={() => syncSingleVoucher(v)}
-                                                className="p-1.5 rounded-lg bg-[#00E599]/15 hover:bg-[#00E599]/25 border border-[#00E599]/30 text-[#00E599] transition-colors"
-                                                title="Push to Tally"
-                                            >
-                                                <Send size={13} />
-                                            </button>
-                                            <button
-                                                onClick={() => navigate(`/invoice/${v.id}`, { state: { voucher: v, from: '/tally-sync' } })}
-                                                className="p-1.5 rounded-lg bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-slate-400 hover:text-white transition-colors"
-                                                title="View"
-                                            >
-                                                <ArrowRight size={13} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Tally Push Queue (Reverse Sync via PC App) */}
-                    <div className="bg-[#121B24] border border-[#1E2B38] rounded-2xl overflow-hidden shadow-sm">
-                        <div className="p-3.5 sm:p-4 border-b border-[#1E2B38] flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xs sm:text-sm font-black text-white">
-                                    Desktop App Push Queue
-                                </h3>
-                                <p className="text-[10px] text-slate-400">Transactions processed by TallyLink Companion</p>
-                            </div>
-                            <button
-                                onClick={loadPendingVouchers}
-                                className="p-1.5 rounded-lg bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-slate-300"
-                                title="Refresh"
-                            >
-                                <RefreshCw size={12} />
-                            </button>
-                        </div>
-
-                        {queue.length === 0 ? (
-                            <div className="p-6 text-center text-xs text-slate-400">
-                                No entries yet — invoices created on mobile appear here as the PC companion pushes them to Tally.
+                                No vouchers created on web or mobile yet.
                             </div>
                         ) : (
                             <div className="divide-y divide-[#1A2634]">
@@ -647,7 +433,7 @@ export default function TallySyncPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {[
                                 { step: '1', title: 'Create on Web/Mobile', desc: 'Generate bills, sales or payment entries on your phone' },
-                                { step: '2', title: 'Auto-Queued or Push', desc: 'Select voucher and click Push to Tally or let PC agent auto-detect' },
+                                { step: '2', title: 'Auto-Queued', desc: 'TallyLink Companion picks the voucher up from this queue automatically' },
                                 { step: '3', title: 'Available in Tally', desc: 'Instant voucher insertion into Tally Prime company books' },
                             ].map((item, i) => (
                                 <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl bg-[#0B1118]/60 border border-[#1E2B38]">

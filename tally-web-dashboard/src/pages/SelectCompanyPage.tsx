@@ -14,7 +14,7 @@ import { APP_INFO } from '@/config/appInfo';
 // Selection, delete and refresh logic unchanged.
 
 export default function SelectCompanyPage() {
-    const { companies, selectCompany, deleteCompany, refreshCompanies, setAppMode, appMode } = useAuth() as AuthContextType;
+    const { companies, selectCompany, deleteCompany, refreshCompanies, appMode } = useAuth() as AuthContextType;
     const { navigate } = useSafeNavigate();
     const { isDark } = useTheme();
     const [searchOpen, setSearchOpen] = useState(false);
@@ -59,13 +59,12 @@ export default function SelectCompanyPage() {
     }, [menuFor]);
 
     const handleBack = () => {
-        setAppMode(null);
-        navigate('/select-mode');
+        navigate('/dashboard');
     };
 
     const handleSelect = (company: any) => {
         selectCompany(company);
-        navigate(appMode === 'billing' ? '/billing' : '/dashboard');
+        navigate('/dashboard');
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {

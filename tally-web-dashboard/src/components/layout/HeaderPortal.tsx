@@ -4,9 +4,11 @@ import { createPortal } from 'react-dom';
 interface HeaderPortalProps {
     children: React.ReactNode;
     type: 'title' | 'actions' | 'search' | 'filters';
+    /** Skip the mobile header slot (pages that already render their own mobile header). */
+    desktopOnly?: boolean;
 }
 
-export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) => {
+export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type, desktopOnly = false }) => {
     const [target, setTarget] = useState<HTMLElement | null>(null);
     const [mobileTarget, setMobileTarget] = useState<HTMLElement | null>(null);
 
@@ -19,7 +21,7 @@ export const HeaderPortal: React.FC<HeaderPortalProps> = ({ children, type }) =>
                 type === 'filters' ? 'header-filters-mobile' : 'header-actions-mobile';
 
         const el = document.getElementById(desktopId);
-        const mobileEl = document.getElementById(mobileId);
+        const mobileEl = desktopOnly ? null : document.getElementById(mobileId);
         setTarget(el);
         setMobileTarget(mobileEl);
 

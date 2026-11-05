@@ -5,8 +5,7 @@ import { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffec
 import './AppPolish.css';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';import { useTheme } from '@/contexts/ThemeContext';
 import LanguageSelector from './LanguageSelector';
 import VoucherFab from '../VoucherFab';
 import { CommandPalette } from '../ui/CommandPalette';
@@ -28,7 +27,6 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import SafeLink from '../common/SafeLink';
-import { useSafeNavigate } from '@/hooks/useSafeNavigate';
 import { hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 import { getPendingCount } from '@/lib/offlineQueue';
 
@@ -114,7 +112,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     const [pendingOffline, setPendingOffline] = useState(0);
-    const { navigate: safeNavigate } = useSafeNavigate();
     const location = useLocation();
     const lastRefreshRef = useRef(0);
     const reportRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -529,18 +526,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     >
                         {isDark ? <Sun size={18} className="text-amber-500" /> : <Moon size={18} className="text-slate-500" />}
                         {sidebarOpen && <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>}
-                    </button>
-
-                    <button
-                        onClick={() => safeNavigate('/select-mode')}
-                        className={`
-                            w-full flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-md)]
-                            text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] text-sm font-medium
-                            transition-all ${sidebarOpen ? '' : 'justify-center'}
-                        `}
-                    >
-                        <ArrowLeftRight size={16} />
-                        {sidebarOpen && <span>Switch Mode</span>}
                     </button>
                 </div>
             </aside>

@@ -1,4 +1,5 @@
 import { ReminderDialog } from '@/components/reminders/ReminderDialog';
+import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import './LedgerDetailPage.css';
 import { PartyItemsBreakdownView, PartyTransactedItem } from '@/components/ledger/PartyItemsBreakdownView';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -1051,61 +1052,66 @@ export default function LedgerDetailPage() {
             {/* PC / DESKTOP LAYOUT (Screen >= md) — Matches Image 2 100%                 */}
             {/* ========================================================================= */}
             <div className="hidden md:block max-w-7xl mx-auto p-6 space-y-5 pb-20">
-                {/* 1. Desktop Party Header Card */}
-                <div className="p-5 rounded-2xl bg-[#121B24] border border-[#1E2B38] flex items-center justify-between shadow-xs">
-                    <div className="flex items-center gap-4">
+                {/* Party header now lives in the app header bar (single header) */}
+                <HeaderPortal type="title" desktopOnly>
+                    <div className="flex items-center gap-2.5 min-w-0">
                         <button
                             onClick={() => navigate('/ledgers')}
-                            className="w-10 h-10 rounded-xl bg-[#16202C] border border-[#223244] flex items-center justify-center text-slate-300 hover:text-white hover:border-slate-500 transition-colors cursor-pointer"
+                            className="w-8 h-8 rounded-lg border border-[var(--border)] flex items-center justify-center text-[var(--on-surface-variant)] hover:text-[var(--on-surface)] hover:bg-[var(--surface-container)] transition-colors cursor-pointer shrink-0"
                             title="Back to parties"
                         >
-                            <ChevronLeft size={20} />
+                            <ChevronLeft size={18} />
                         </button>
-                        <div>
-                            <div className="flex items-center gap-2.5">
-                                <h1 className="text-2xl font-black text-white tracking-tight">{ledger.name}</h1>
-                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-sm font-black text-[var(--on-surface)] tracking-tight truncate max-w-[150px] lg:max-w-[220px] xl:max-w-[300px]">{ledger.name}</h1>
+                                <span className="hidden xl:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
                                     ✓ Verified Party
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-1">
-                                Closing Balance: <span className="font-bold text-[#00E599]">{formatCurrency(closingBalance)}</span> • Contact: <span className="text-slate-300 font-mono">{ledger.phone || '+91 98765 43210'}</span>
+                            <p className="text-[10px] text-[var(--text-muted)] truncate">
+                                Closing: <span className="font-bold text-[#00A36C] dark:text-[#00E599]">{formatCurrency(closingBalance)}</span>
+                                <span className="hidden lg:inline"> • {ledger.phone || '+91 98765 43210'}</span>
                             </p>
                         </div>
                     </div>
+                </HeaderPortal>
 
-                    {/* Action Buttons Row */}
-                    <div className="flex items-center gap-2.5">
+                <HeaderPortal type="actions" desktopOnly>
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={handleCall}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#16202C] border border-[#223244] hover:bg-[#1E2B38] text-white text-xs font-bold transition-all cursor-pointer"
+                            title="Call"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[var(--on-surface)] text-[11px] font-bold hover:bg-[var(--surface-container)] transition-all cursor-pointer"
                         >
                             <Phone size={14} className="text-rose-400" />
-                            CALL
+                            <span className="hidden xl:inline">CALL</span>
                         </button>
                         <button
                             onClick={() => navigate('/create-invoice', { state: { party_name: ledger.name } })}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#00D284] hover:bg-[#00BF76] text-black text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#00D284] hover:bg-[#00BF76] text-black text-[11px] font-black shadow-sm transition-all cursor-pointer"
                         >
-                            <Plus size={16} />
-                            CREATE ENTRY
+                            <Plus size={14} />
+                            <span className="hidden xl:inline">CREATE ENTRY</span>
                         </button>
                         <button
                             onClick={handleShareLedger}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#16202C] border border-[#223244] hover:bg-[#1E2B38] text-white text-xs font-bold transition-all cursor-pointer"
+                            title="Share ledger"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[var(--on-surface)] text-[11px] font-bold hover:bg-[var(--surface-container)] transition-all cursor-pointer"
                         >
                             <Share2 size={14} />
-                            SHARE LEDGER
+                            <span className="hidden xl:inline">SHARE</span>
                         </button>
                         <button
                             onClick={handleSetReminder}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#16202C] border border-[#223244] hover:bg-[#1E2B38] text-white text-xs font-bold transition-all cursor-pointer"
+                            title="Set reminder"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--border)] text-[var(--on-surface)] text-[11px] font-bold hover:bg-[var(--surface-container)] transition-all cursor-pointer"
                         >
                             <Bell size={14} className="text-amber-400" />
-                            SET REMINDER
+                            <span className="hidden xl:inline">REMINDER</span>
                         </button>
                     </div>
-                </div>
+                </HeaderPortal>
 
                 {/* 2. Desktop Segmented Tabs Bar */}
                 <div className="flex items-center gap-8 border-b border-[#1E2B38] pt-1 pb-3 text-xs font-black tracking-wider">

@@ -20,6 +20,25 @@ const EmptyState = ({ icon, title, description }: { icon: React.ReactNode, title
     </div>
 );
 
+// GST return style panel + table cells
+const Panel = ({ title, subtitle, children }: { title: string, subtitle?: string, children: React.ReactNode }) => (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+        <div className="px-4 pt-4 pb-3 border-b border-[var(--border)]">
+            <h3 className="text-[11px] font-black uppercase tracking-widest text-[var(--on-surface)]">{title}</h3>
+            {subtitle && <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)] mt-0.5">{subtitle}</p>}
+        </div>
+        {children}
+    </div>
+);
+
+const Th = ({ children, align = 'right' }: { children: React.ReactNode, align?: 'left' | 'right' }) => (
+    <th className={`px-3 py-2.5 text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)] whitespace-nowrap ${align === 'left' ? 'text-left' : 'text-right'}`}>{children}</th>
+);
+
+const Td = ({ children, align = 'right', bold = false }: { children: React.ReactNode, align?: 'left' | 'right', bold?: boolean }) => (
+    <td className={`px-3 py-2.5 text-[11px] tabular-nums whitespace-nowrap ${align === 'left' ? 'text-left' : 'text-right'} ${bold ? 'font-black text-[var(--on-surface)]' : 'font-semibold text-[var(--on-surface-variant)]'}`}>{children}</td>
+);
+
 const SALE_VOUCHER_TYPES = ['Sales', 'Sales Invoice'];
 const PURCHASE_VOUCHER_TYPES = ['Purchase', 'Purchase Invoice'];
 const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i;
@@ -727,35 +746,40 @@ export default function GSTReportsPage() {
     if (!selectedCompany) return null;
 
     const tabs = [
-        { key: 'summary', label: 'Matrix', icon: <PieChart size={16} /> },
-        { key: 'rates', label: 'Rates', icon: <ShieldCheck size={16} /> },
-        { key: 'pos', label: 'Places', icon: <Building2 size={16} /> },
-        { key: 'b2b', label: 'B2B Flow', icon: <Building2 size={16} /> },
-        { key: 'b2c', label: 'B2C Flow', icon: <User size={16} /> },
-        { key: 'hsn', label: 'HSN Core', icon: <Package size={16} /> },
+        { key: 'summary', label: 'Dashboard', icon: <PieChart size={16} /> },
+        { key: 'b2b', label: 'GSTR-1 · B2B', icon: <Building2 size={16} /> },
+        { key: 'b2c', label: 'B2C', icon: <User size={16} /> },
+        { key: 'hsn', label: 'HSN', icon: <Package size={16} /> },
+        { key: 'rates', label: 'Rate-wise', icon: <ShieldCheck size={16} /> },
+        { key: 'pos', label: 'Place of Supply', icon: <Building2 size={16} /> },
         { key: 'gstr3b', label: 'GSTR-3B', icon: <Activity size={16} /> },
     ];
+
+    const os = reportData?.gstr3b?.outwardSupplies;
+    const itc = reportData?.gstr3b?.inputTaxCredit;
+    const np = reportData?.gstr3b?.netPayable;
+    const outwardTax = os ? os.igst + os.cgst + os.sgst + os.cess : 0;
+    const itcTotal = itc ? itc.igst + itc.cgst + itc.sgst + itc.cess : 0;
+    const b2bTaxable = reportData ? reportData.b2b.reduce((s: number, i: any) => s + (i.taxableValue || 0), 0) : 0;
+    const b2bTax = reportData ? reportData.b2b.reduce((s: number, i: any) => s + i.igst + i.cgst + i.sgst + i.cess, 0) : 0;
+    const hsnTaxable = reportData ? reportData.hsnSummary.reduce((s: number, h: any) => s + h.taxableValue, 0) : 0;
+    const hsnTax = reportData ? reportData.hsnSummary.reduce((s: number, h: any) => s + h.igst + h.cgst + h.sgst + (h.cess || 0), 0) : 0;
+    const b2cTax = reportData ? reportData.b2c.cgst + reportData.b2c.sgst + reportData.b2c.igst + reportData.b2c.cess : 0;
+    const periodLabel = monthsInFy.find((m) => m.key === period)?.label || period;
+    const dueDate = (day: number) => {
+        const [year, month] = period.split('-').map(Number);
+        return format(new Date(year, month, day), 'dd MMM yyyy');
+    };
+    const rateMax = reportData ? Math.max(1, ...reportData.rateSummary.map((r: any) => r.taxable)) : 1;
+    const rateTotals = (reportData?.rateSummary || []).reduce((a: any, r: any) => ({ taxable: a.taxable + r.taxable, igst: a.igst + r.igst, cgst: a.cgst + r.cgst, sgst: a.sgst + r.sgst, cess: a.cess + r.cess }), { taxable: 0, igst: 0, cgst: 0, sgst: 0, cess: 0 });
+    const gstin = selectedCompany?.gstin || 'GSTIN not set';
 
     return (
         <div className="space-y-4 max-w-7xl mx-auto pb-24">
             <HeaderPortal type="title">
-                <div>
-                    <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] uppercase tracking-tighter leading-none">Compliance Hub</h1>
-                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1">{selectedCompany.name} ? GST</p>
-                </div>
-            </HeaderPortal>
-
-            <HeaderPortal type="actions">
-                <div className="flex items-center gap-2">
-                    <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-3 py-2 text-[var(--success)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--success)]/20 shadow-sm">
-                        <Download size={14} /> <span className="hidden sm:inline">GSTR-1</span>
-                    </button>
-                    <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 text-[var(--primary)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--primary)]/20 shadow-sm">
-                        <Download size={14} /> <span className="hidden sm:inline">GSTR-3B</span>
-                    </button>
-                    <button onClick={handleExportCSV} disabled={!reportData || loading} className="px-3 py-2 text-[var(--on-surface)] text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-[var(--on-surface)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5 border border-[var(--border)] shadow-sm">
-                        <Download size={14} /> <span className="hidden sm:inline">Export CSV</span>
-                    </button>
+                <div className="min-w-0">
+                    <h1 className="text-sm md:text-base font-black text-[var(--on-surface)] uppercase tracking-tight leading-none truncate">GST Reports</h1>
+                    <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest leading-none mt-1 truncate">{gstin} · FY {selectedFy}</p>
                 </div>
             </HeaderPortal>
 
@@ -763,30 +787,43 @@ export default function GSTReportsPage() {
                 <CompactYearFilter selectedFy={selectedFy} onFyChange={setSelectedFy} />
             </HeaderPortal>
 
-            {/* Month Segment Slider */}
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide py-1">
-                {monthsInFy.map((m) => {
-                    const isActive = period === m.key;
-                    return (
-                        <button
-                            key={m.key}
-                            onClick={() => setPeriod(m.key)}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap border ${isActive ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-lg' : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--on-surface-variant)]'}`}
-                        >
-                            {m.label}
-                        </button>
-                    );
-                })}
+            {/* Period selector + return exports */}
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto scrollbar-hide px-1 py-1">
+                    {monthsInFy.map((m) => {
+                        const isActive = period === m.key;
+                        return (
+                            <button
+                                key={m.key}
+                                onClick={() => setPeriod(m.key)}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap border ${isActive ? 'bg-[var(--primary)] text-white border-[var(--primary)] shadow-lg' : 'bg-[var(--surface-variant)] border-[var(--border)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                            >
+                                {m.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--success)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
+                        <Download size={13} /> GSTR-1 JSON
+                    </button>
+                    <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--primary)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
+                        <Download size={13} /> GSTR-3B JSON
+                    </button>
+                    <button onClick={handleExportCSV} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--on-surface)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--surface-active)] transition-all disabled:opacity-30 flex items-center gap-1.5">
+                        <Download size={13} /> CSV
+                    </button>
+                </div>
             </div>
 
-
-            {/* Navigation Matrix */}
-            <div className="flex gap-2 p-1.5 bg-[var(--surface-variant)] rounded-2xl border border-[var(--border)] overflow-x-auto scrollbar-hide">
+            {/* Section navigation */}
+            <div className="flex gap-1.5 p-1.5 bg-[var(--surface-variant)] rounded-2xl border border-[var(--border)] overflow-x-auto scrollbar-hide">
                 {tabs.map((tab) => (
                     <button
                         key={tab.key}
                         onClick={() => setActiveTab(tab.key as any)}
-                        className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.key ? 'bg-[var(--on-surface)] text-[var(--surface)]' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
+                        className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.key ? 'bg-[var(--on-surface)] text-[var(--surface)] shadow-sm' : 'text-[var(--on-surface-variant)] hover:bg-[var(--surface-active)]'}`}
                     >
                         {tab.icon} {tab.label}
                     </button>
@@ -806,264 +843,646 @@ export default function GSTReportsPage() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3 }}
+                        className="space-y-4"
                     >
-                        {/* Summary Tab */}
+                        {/* ================= DASHBOARD ================= */}
                         {activeTab === 'summary' && (
                             <div className="space-y-4">
+                                {/* Return status */}
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">GSTR-1 · Outward supplies · {periodLabel}</p>
+                                            <p className="text-sm font-black text-[var(--on-surface)] mt-1">Statement of outward supplies</p>
+                                            <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5">Due {dueDate(11)} · {reportData.totals.salesCount} invoices</p>
+                                        </div>
+                                        <Badge variant="warning" className="shrink-0 text-[8px]">DRAFT</Badge>
+                                    </div>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">GSTR-3B · Summary return · {periodLabel}</p>
+                                            <p className="text-sm font-black text-[var(--on-surface)] mt-1">Self-assessed tax &amp; ITC</p>
+                                            <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5">Due {dueDate(20)} · {reportData.totals.purchasesCount} purchases</p>
+                                        </div>
+                                        <Badge variant="warning" className="shrink-0 text-[8px]">DRAFT</Badge>
+                                    </div>
+                                </div>
+
+                                {/* Key figures */}
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Outward Taxable</p>
-                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(reportData.gstr3b.outwardSupplies.taxable)}</p>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                                        <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)]">Outward Taxable Value</p>
+                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(os.taxable)}</p>
+                                        <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] mt-1">{reportData.totals.salesCount} invoices</p>
                                     </div>
-                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Exempted/Nil</p>
-                                        <p className="text-lg font-black text-blue-500 mt-1">{formatCurrency(reportData.totals.exemptedSales)}</p>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                                        <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)]">Tax Liability</p>
+                                        <p className="text-lg font-black text-amber-500 mt-1">{formatCurrency(outwardTax)}</p>
+                                        <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] mt-1">IGST {formatCurrency(os.igst)} · C+S {formatCurrency(os.cgst + os.sgst)}</p>
                                     </div>
-                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Input Tax Credit</p>
-                                        <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</p>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                                        <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)]">Input Tax Credit</p>
+                                        <p className="text-lg font-black text-emerald-500 mt-1">{formatCurrency(itcTotal)}</p>
+                                        <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] mt-1">{reportData.totals.purchasesCount} purchase bills</p>
                                     </div>
-                                    <div className="bg-[var(--surface-variant)] p-4 rounded-2xl border border-[var(--border)]">
-                                        <p className="text-[8px] font-black text-[var(--text-muted)] uppercase tracking-widest">Net Tax Payable</p>
-                                        <p className="text-lg font-black text-amber-500 mt-1">{formatCurrency(reportData.gstr3b.netPayable.total)}</p>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                                        <p className="text-[8px] font-black uppercase tracking-widest text-[var(--text-muted)]">Net Tax Payable</p>
+                                        <p className="text-lg font-black text-[var(--on-surface)] mt-1">{formatCurrency(np.total)}</p>
+                                        <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] mt-1">after ITC set-off</p>
                                     </div>
                                 </div>
 
-                                <div className="grid md:grid-cols-2 gap-4">
-                                    <div className="bg-[var(--surface-variant)]/50 p-6 rounded-3xl border border-[var(--border)]">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <ShieldCheck size={14} className="text-[var(--primary)]" /> Top GST Rates
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {reportData.rateSummary.slice(0, 3).map((r: any) => (
-                                                <div key={r.rate} className="flex items-center justify-between">
-                                                    <span className="text-xs font-bold text-[var(--on-surface)]">{r.rate}% GST</span>
-                                                    <div className="text-right">
-                                                        <p className="text-xs font-black">{formatCurrency(r.taxable)}</p>
-                                                        <div className="w-32 h-1 bg-[var(--border)] rounded-full mt-1 overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-[var(--primary)] text-right"
-                                                                style={{ width: `${Math.min(100, (r.taxable / (reportData.gstr3b.outwardSupplies.taxable || 1)) * 100)}%` }}
-                                                            />
-                                                        </div>
+                                {/* 3.1 and 4.0 tables */}
+                                <div className="grid lg:grid-cols-2 gap-4">
+                                    <Panel title="3.1 Outward taxable supplies" subtitle="Other than zero-rated, nil and exempted">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Th align="left">Nature of supply</Th>
+                                                        <Th>Taxable value</Th>
+                                                        <Th>IGST</Th>
+                                                        <Th>CGST</Th>
+                                                        <Th>SGST</Th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[var(--border)]">
+                                                    <tr>
+                                                        <Td align="left">(a) Outward taxable supplies (other than zero rated, nil and exempted)</Td>
+                                                        <Td>{formatCurrency(os.taxable)}</Td>
+                                                        <Td>{formatCurrency(os.igst)}</Td>
+                                                        <Td>{formatCurrency(os.cgst)}</Td>
+                                                        <Td>{formatCurrency(os.sgst)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(b) Outward taxable supplies (zero rated)</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(c) Other outward supplies (nil rated, exempted)</Td>
+                                                        <Td>{formatCurrency(reportData.totals.exemptedSales)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(d) Inward supplies (liable to reverse charge)</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Td align="left" bold>Total</Td>
+                                                        <Td bold>{formatCurrency(os.taxable + reportData.totals.exemptedSales)}</Td>
+                                                        <Td bold>{formatCurrency(os.igst)}</Td>
+                                                        <Td bold>{formatCurrency(os.cgst)}</Td>
+                                                        <Td bold>{formatCurrency(os.sgst)}</Td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </Panel>
+
+                                    <Panel title="4. Eligible ITC" subtitle="Credit available for set-off">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Th align="left">Details</Th>
+                                                        <Th>IGST</Th>
+                                                        <Th>CGST</Th>
+                                                        <Th>SGST</Th>
+                                                        <Th>Cess</Th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[var(--border)]">
+                                                    <tr>
+                                                        <Td align="left">(A) ITC available — all other ITC</Td>
+                                                        <Td>{formatCurrency(itc.igst)}</Td>
+                                                        <Td>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(B) ITC reversed</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(C) Net ITC available (A − B)</Td>
+                                                        <Td>{formatCurrency(itc.igst)}</Td>
+                                                        <Td>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(D) Ineligible ITC</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Td align="left" bold>Total ITC available</Td>
+                                                        <Td bold>{formatCurrency(itc.igst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </Panel>
+                                </div>
+
+                                {/* GSTR-1 snapshot + rate distribution */}
+                                <div className="grid lg:grid-cols-2 gap-4">
+                                    <Panel title="GSTR-1 snapshot" subtitle={`Sections for ${periodLabel}`}>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Th align="left">Section</Th>
+                                                        <Th>Records</Th>
+                                                        <Th>Taxable value</Th>
+                                                        <Th>Tax</Th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[var(--border)]">
+                                                    <tr>
+                                                        <Td align="left">4A · B2B invoices (registered)</Td>
+                                                        <Td>{reportData.b2b.length}</Td>
+                                                        <Td>{formatCurrency(b2bTaxable)}</Td>
+                                                        <Td>{formatCurrency(b2bTax)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">7 · B2C (others)</Td>
+                                                        <Td>{reportData.b2c.count}</Td>
+                                                        <Td>{formatCurrency(reportData.b2c.taxableValue)}</Td>
+                                                        <Td>{formatCurrency(b2cTax)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">8 · Nil rated / exempted</Td>
+                                                        <Td>{reportData.totals.exemptedSales > 0 ? 'Yes' : '—'}</Td>
+                                                        <Td>{formatCurrency(reportData.totals.exemptedSales)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">12 · HSN summary</Td>
+                                                        <Td>{reportData.hsnSummary.length}</Td>
+                                                        <Td>{formatCurrency(hsnTaxable)}</Td>
+                                                        <Td>{formatCurrency(hsnTax)}</Td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Td align="left" bold>Outward total</Td>
+                                                        <Td bold>{reportData.totals.salesCount}</Td>
+                                                        <Td bold>{formatCurrency(os.taxable)}</Td>
+                                                        <Td bold>{formatCurrency(outwardTax)}</Td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </Panel>
+
+                                    <Panel title="Rate-wise distribution" subtitle="Taxable value by GST rate">
+                                        <div className="p-4 space-y-3">
+                                            {reportData.rateSummary.length === 0 ? (
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] py-6 text-center">No rated supplies</p>
+                                            ) : reportData.rateSummary.map((r: any) => (
+                                                <div key={r.rate}>
+                                                    <div className="flex items-center justify-between text-[11px] font-bold">
+                                                        <span className="text-[var(--on-surface)]">{r.rate}% GST</span>
+                                                        <span className="text-[var(--on-surface)]">{formatCurrency(r.taxable)} <span className="text-[var(--text-muted)] font-semibold">· tax {formatCurrency(r.cgst + r.sgst + r.igst + r.cess)}</span></span>
+                                                    </div>
+                                                    <div className="mt-1 h-1.5 w-full rounded-full bg-[var(--border)] overflow-hidden">
+                                                        <div className="h-full rounded-full bg-[var(--primary)]" style={{ width: `${Math.max(2, Math.min(100, (r.taxable / rateMax) * 100))}%` }} />
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
-                                    </div>
-
-                                    <div className="bg-[var(--surface-variant)]/50 p-6 rounded-3xl border border-[var(--border)]">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <Building2 size={14} className="text-[var(--primary)]" /> Place of Supply
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {reportData.posSummary.slice(0, 3).map((p: any) => (
-                                                <div key={p.state} className="flex items-center justify-between">
-                                                    <span className="text-xs font-bold text-[var(--on-surface)] truncate max-w-[100px]">{p.state}</span>
-                                                    <div className="text-right">
-                                                        <p className="text-xs font-black">{formatCurrency(p.taxable)}</p>
-                                                        <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-tighter">{p.count} Invoices</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    </Panel>
                                 </div>
+
+                                {/* Place of supply */}
+                                <Panel title="Place of supply" subtitle="State-wise outward supplies">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full min-w-[560px] border-collapse">
+                                            <thead className="bg-[var(--surface-variant)]/70">
+                                                <tr>
+                                                    <Th align="left">State</Th>
+                                                    <Th>Invoices</Th>
+                                                    <Th>Taxable value</Th>
+                                                    <Th>IGST</Th>
+                                                    <Th>CGST</Th>
+                                                    <Th>SGST</Th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-[var(--border)]">
+                                                {reportData.posSummary.map((p: any) => (
+                                                    <tr key={p.state}>
+                                                        <Td align="left">{p.state}</Td>
+                                                        <Td>{p.count}</Td>
+                                                        <Td>{formatCurrency(p.taxable)}</Td>
+                                                        <Td>{formatCurrency(p.igst)}</Td>
+                                                        <Td>{formatCurrency(p.cgst)}</Td>
+                                                        <Td>{formatCurrency(p.sgst)}</Td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot className="bg-[var(--surface-variant)]/70">
+                                                <tr>
+                                                    <Td align="left" bold>Total</Td>
+                                                    <Td bold>{reportData.totals.salesCount}</Td>
+                                                    <Td bold>{formatCurrency(os.taxable)}</Td>
+                                                    <Td bold>{formatCurrency(os.igst)}</Td>
+                                                    <Td bold>{formatCurrency(os.cgst)}</Td>
+                                                    <Td bold>{formatCurrency(os.sgst)}</Td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </Panel>
                             </div>
                         )}
 
-                        {/* Rate-wise Tab */}
+                        {/* ================= RATE-WISE ================= */}
                         {activeTab === 'rates' && (
-                            <div className="space-y-3">
-                                <div className="bg-[var(--surface-variant)] p-4 rounded-t-2xl border border-[var(--border)] grid grid-cols-5 text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
-                                    <div className="col-span-1">Tax Rate</div>
-                                    <div className="text-right">Taxable Val</div>
-                                    <div className="text-right">IGST</div>
-                                    <div className="text-right">CGST/SGST</div>
-                                    <div className="text-right">Total</div>
+                            <Panel title="Rate-wise summary" subtitle="Section 12 · tax rate wise outward supplies">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[640px] border-collapse">
+                                        <thead className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Th align="left">GST rate</Th>
+                                                <Th>Taxable value</Th>
+                                                <Th>IGST</Th>
+                                                <Th>CGST</Th>
+                                                <Th>SGST</Th>
+                                                <Th>Cess</Th>
+                                                <Th>Total tax</Th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border)]">
+                                            {reportData.rateSummary.map((r: any) => (
+                                                <tr key={r.rate}>
+                                                    <Td align="left" bold>{r.rate}%</Td>
+                                                    <Td>{formatCurrency(r.taxable)}</Td>
+                                                    <Td>{formatCurrency(r.igst)}</Td>
+                                                    <Td>{formatCurrency(r.cgst)}</Td>
+                                                    <Td>{formatCurrency(r.sgst)}</Td>
+                                                    <Td>{formatCurrency(r.cess)}</Td>
+                                                    <Td bold>{formatCurrency(r.cgst + r.sgst + r.igst + r.cess)}</Td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Td align="left" bold>Total</Td>
+                                                <Td bold>{formatCurrency(rateTotals.taxable)}</Td>
+                                                <Td bold>{formatCurrency(rateTotals.igst)}</Td>
+                                                <Td bold>{formatCurrency(rateTotals.cgst)}</Td>
+                                                <Td bold>{formatCurrency(rateTotals.sgst)}</Td>
+                                                <Td bold>{formatCurrency(rateTotals.cess)}</Td>
+                                                <Td bold>{formatCurrency(rateTotals.igst + rateTotals.cgst + rateTotals.sgst + rateTotals.cess)}</Td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
                                 </div>
-                                <div className="grid gap-2">
-                                    {reportData.rateSummary.map((r: any) => (
-                                        <div key={r.rate} className="bg-[var(--surface-variant)]/30 p-4 rounded-xl border border-[var(--border)] grid grid-cols-5 items-center">
-                                            <div className="text-xs font-black">{r.rate}% GST</div>
-                                            <div className="text-right text-[11px] font-bold">{formatCurrency(r.taxable)}</div>
-                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(r.igst)}</div>
-                                            <div className="text-right text-[11px] font-bold text-emerald-500">{formatCurrency(r.cgst + r.sgst)}</div>
-                                            <div className="text-right text-xs font-black">{formatCurrency(r.total)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            </Panel>
                         )}
 
-                        {/* POS Tab */}
+                        {/* ================= PLACE OF SUPPLY ================= */}
                         {activeTab === 'pos' && (
-                            <div className="grid gap-3">
-                                {reportData.posSummary.map((p: any) => (
-                                    <div key={p.state} className="bg-[var(--surface-variant)]/50 p-4 rounded-2xl border border-[var(--border)] flex justify-between items-center">
-                                        <div>
-                                            <h4 className="text-xs font-black text-[var(--on-surface)] uppercase">{p.state}</h4>
-                                            <p className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{p.count} Transactions</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm font-black text-[var(--primary)]">{formatCurrency(p.taxable)}</p>
-                                            <div className="flex gap-2 justify-end mt-1">
-                                                <span className="text-[8px] font-bold text-emerald-500">C+S: {formatCurrency(p.cgst + p.sgst)}</span>
-                                                <span className="text-[8px] font-bold text-amber-500">I: {formatCurrency(p.igst)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <Panel title="Place of supply" subtitle="State-wise outward supplies">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[560px] border-collapse">
+                                        <thead className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Th align="left">State</Th>
+                                                <Th>Invoices</Th>
+                                                <Th>Taxable value</Th>
+                                                <Th>IGST</Th>
+                                                <Th>CGST</Th>
+                                                <Th>SGST</Th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border)]">
+                                            {reportData.posSummary.map((p: any) => (
+                                                <tr key={p.state}>
+                                                    <Td align="left">{p.state}</Td>
+                                                    <Td>{p.count}</Td>
+                                                    <Td>{formatCurrency(p.taxable)}</Td>
+                                                    <Td>{formatCurrency(p.igst)}</Td>
+                                                    <Td>{formatCurrency(p.cgst)}</Td>
+                                                    <Td>{formatCurrency(p.sgst)}</Td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Td align="left" bold>Total</Td>
+                                                <Td bold>{reportData.totals.salesCount}</Td>
+                                                <Td bold>{formatCurrency(os.taxable)}</Td>
+                                                <Td bold>{formatCurrency(os.igst)}</Td>
+                                                <Td bold>{formatCurrency(os.cgst)}</Td>
+                                                <Td bold>{formatCurrency(os.sgst)}</Td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </Panel>
                         )}
 
-                        {/* B2B Tab */}
+                        {/* ================= B2B ================= */}
                         {activeTab === 'b2b' && (
-                            <div className="space-y-4">
-                                {reportData.b2b.length === 0 ? (
-                                    <EmptyState icon={<Building2 size={40} />} title="No B2B Events" description="No registered dealer sales found" />
-                                ) : (
-                                    <div className="grid gap-3">
-                                        {reportData.b2b.map((inv: any, i: number) => (
-                                            <div key={i} className="bg-[var(--surface-variant)]/50 p-4 rounded-2xl border border-[var(--border)] flex justify-between items-center gap-4">
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[8px] font-black text-[var(--primary)] tracking-widest uppercase">{inv.gstin}</span>
-                                                        <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase">#{inv.invoiceNumber}</span>
-                                                    </div>
-                                                    <h4 className="text-xs font-black text-[var(--on-surface)] uppercase truncate mt-1">{inv.partyName}</h4>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)] mt-0.5">{inv.invoiceDate}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-sm font-black text-emerald-500">{formatCurrency(inv.invoiceValue)}</p>
-                                                    <p className="text-[8px] font-bold text-[var(--text-muted)]">GST: {formatCurrency(inv.cgst + inv.sgst + inv.igst)}</p>
-                                                </div>
-                                            </div>
-                                        ))}
+                            reportData.b2b.length === 0 ? (
+                                <EmptyState icon={<Building2 size={40} />} title="No B2B Events" description="No registered dealer sales found" />
+                            ) : (
+                                <Panel title="4A · B2B invoices" subtitle={`Registered dealers · ${reportData.b2b.length} invoices`}>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full min-w-[980px] border-collapse">
+                                            <thead className="bg-[var(--surface-variant)]/70">
+                                                <tr>
+                                                    <Th align="left">GSTIN / Party</Th>
+                                                    <Th align="left">Invoice</Th>
+                                                    <Th>Date</Th>
+                                                    <Th>Taxable value</Th>
+                                                    <Th>IGST</Th>
+                                                    <Th>CGST</Th>
+                                                    <Th>SGST</Th>
+                                                    <Th>Invoice value</Th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-[var(--border)]">
+                                                {reportData.b2b.map((inv: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <Td align="left">
+                                                            <p className="text-[9px] font-black tracking-widest text-[var(--primary)]">{inv.gstin}</p>
+                                                            <p className="text-[11px] font-bold text-[var(--on-surface)] mt-0.5">{inv.partyName}</p>
+                                                        </Td>
+                                                        <Td align="left">#{inv.invoiceNumber || '—'}</Td>
+                                                        <Td>{inv.invoiceDate ? format(new Date(inv.invoiceDate), 'dd MMM yy') : '—'}</Td>
+                                                        <Td>{formatCurrency(inv.taxableValue)}</Td>
+                                                        <Td>{formatCurrency(inv.igst)}</Td>
+                                                        <Td>{formatCurrency(inv.cgst)}</Td>
+                                                        <Td>{formatCurrency(inv.sgst)}</Td>
+                                                        <Td bold>{formatCurrency(inv.invoiceValue)}</Td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot className="bg-[var(--surface-variant)]/70">
+                                                <tr>
+                                                    <Td align="left" bold>Total</Td>
+                                                    <Td bold>{reportData.b2b.length} invoices</Td>
+                                                    <Td bold>—</Td>
+                                                    <Td bold>{formatCurrency(b2bTaxable)}</Td>
+                                                    <Td bold>{formatCurrency(reportData.b2b.reduce((s: number, i: any) => s + i.igst, 0))}</Td>
+                                                    <Td bold>{formatCurrency(reportData.b2b.reduce((s: number, i: any) => s + i.cgst, 0))}</Td>
+                                                    <Td bold>{formatCurrency(reportData.b2b.reduce((s: number, i: any) => s + i.sgst, 0))}</Td>
+                                                    <Td bold>{formatCurrency(reportData.b2b.reduce((s: number, i: any) => s + i.invoiceValue, 0))}</Td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
                                     </div>
-                                )}
-                            </div>
+                                </Panel>
+                            )
                         )}
 
-                        {/* B2C Tab */}
+                        {/* ================= B2C ================= */}
                         {activeTab === 'b2c' && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <GlassCard className="p-6">
-                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Retail Aggregate</p>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Volume</span>
-                                            <span className="text-lg font-black">{reportData.b2c.count} bills</span>
-                                        </div>
-                                        <div className="flex justify-between border-t border-[var(--border)] pt-4">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Grand Total</span>
-                                            <span className="text-xl font-black text-[var(--primary)]">{formatCurrency(reportData.b2c.invoiceValue)}</span>
-                                        </div>
-                                    </div>
-                                </GlassCard>
-                                <GlassCard className="p-6">
-                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Tax Components</p>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">CGST</span>
-                                            <span className="text-sm font-black">{formatCurrency(reportData.b2c.cgst)}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">SGST</span>
-                                            <span className="text-sm font-black">{formatCurrency(reportData.b2c.sgst)}</span>
-                                        </div>
-                                        <div className="flex justify-between border-t border-[var(--border)] pt-4">
-                                            <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">IGST</span>
-                                            <span className="text-sm font-black text-amber-500">{formatCurrency(reportData.b2c.igst)}</span>
-                                        </div>
-                                    </div>
-                                </GlassCard>
-                                <GlassCard className="p-6 flex flex-col justify-center items-center text-center">
-                                    <PieChart size={24} className="text-[var(--primary)] mb-2" />
-                                    <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Tax to Value Ratio</p>
-                                    <p className="text-2xl font-black text-[var(--on-surface)]">
-                                        {Math.round(((reportData.b2c.cgst + reportData.b2c.sgst + reportData.b2c.igst + reportData.b2c.cess) / (reportData.b2c.taxableValue || 1)) * 100)}%
-                                    </p>
-                                </GlassCard>
-                            </div>
-                        )}
-
-                        {/* HSN Tab */}
-                        {activeTab === 'hsn' && (
-                            <div className="space-y-3">
-                                <div className="bg-[var(--surface-variant)] p-4 rounded-t-2xl border border-[var(--border)] grid grid-cols-6 text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">
-                                    <div className="col-span-2">HSN/Description</div>
-                                    <div className="text-right">Quantity</div>
-                                    <div className="text-right">Taxable</div>
-                                    <div className="text-right">Tax (I+C+S+Cess)</div>
-                                    <div className="text-right">Total</div>
-                                </div>
-                                <div className="grid gap-2">
-                                    {reportData.hsnSummary.map((hsn: any, i: number) => (
-                                        <div key={i} className="bg-[var(--surface-variant)]/30 p-4 rounded-xl border border-[var(--border)] grid grid-cols-6 items-center">
-                                            <div className="col-span-2 min-w-0">
-                                                <p className="text-[10px] font-black text-[var(--primary)] tracking-widest">{hsn.hsn}</p>
-                                                <h4 className="text-[10px] font-bold text-[var(--on-surface)] uppercase truncate pr-4">{hsn.description}</h4>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Retail aggregate</p>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between">
+                                                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Volume</span>
+                                                <span className="text-lg font-black text-[var(--on-surface)]">{reportData.b2c.count} bills</span>
                                             </div>
-                                            <div className="text-right text-xs font-bold text-[var(--on-surface)]">{hsn.quantity} {hsn.uqc}</div>
-                                            <div className="text-right text-[11px] font-medium opacity-70">{formatCurrency(hsn.taxableValue)}</div>
-                                            <div className="text-right text-[11px] font-bold text-amber-500">{formatCurrency(hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0))}</div>
-                                            <div className="text-right text-xs font-black text-[var(--on-surface)]">{formatCurrency(hsn.totalValue + hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0))}</div>
+                                            <div className="flex justify-between border-t border-[var(--border)] pt-4">
+                                                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Grand total</span>
+                                                <span className="text-xl font-black text-[var(--primary)]">{formatCurrency(reportData.b2c.invoiceValue)}</span>
+                                            </div>
                                         </div>
-                                    ))}
+                                    </div>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-4">Tax components</p>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between">
+                                                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">CGST</span>
+                                                <span className="text-sm font-black text-[var(--on-surface)]">{formatCurrency(reportData.b2c.cgst)}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">SGST</span>
+                                                <span className="text-sm font-black text-[var(--on-surface)]">{formatCurrency(reportData.b2c.sgst)}</span>
+                                            </div>
+                                            <div className="flex justify-between border-t border-[var(--border)] pt-4">
+                                                <span className="text-[10px] uppercase font-bold text-[var(--text-muted)]">IGST</span>
+                                                <span className="text-sm font-black text-amber-500">{formatCurrency(reportData.b2c.igst)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 flex flex-col justify-center items-center text-center">
+                                        <PieChart size={24} className="text-[var(--primary)] mb-2" />
+                                        <p className="text-[9px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">Tax to value ratio</p>
+                                        <p className="text-2xl font-black text-[var(--on-surface)]">
+                                            {Math.round((b2cTax / (reportData.b2c.taxableValue || 1)) * 100)}%
+                                        </p>
+                                    </div>
                                 </div>
+
+                                <Panel title="7 · B2C (others)" subtitle="Unregistered and composition dealers, consolidated">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full min-w-[720px] border-collapse">
+                                            <thead className="bg-[var(--surface-variant)]/70">
+                                                <tr>
+                                                    <Th align="left">Type</Th>
+                                                    <Th>Bills</Th>
+                                                    <Th>Taxable value</Th>
+                                                    <Th>IGST</Th>
+                                                    <Th>CGST</Th>
+                                                    <Th>SGST</Th>
+                                                    <Th>Cess</Th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-[var(--border)]">
+                                                <tr>
+                                                    <Td align="left">B2C (others) — consolidated</Td>
+                                                    <Td>{reportData.b2c.count}</Td>
+                                                    <Td>{formatCurrency(reportData.b2c.taxableValue)}</Td>
+                                                    <Td>{formatCurrency(reportData.b2c.igst)}</Td>
+                                                    <Td>{formatCurrency(reportData.b2c.cgst)}</Td>
+                                                    <Td>{formatCurrency(reportData.b2c.sgst)}</Td>
+                                                    <Td>{formatCurrency(reportData.b2c.cess)}</Td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Panel>
                             </div>
                         )}
 
-                        {/* GSTR-3B Tab */}
-                        {activeTab === 'gstr3b' && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <GlassCard className="p-8">
-                                        <h3 className="text-xs font-black uppercase text-emerald-500 mb-6 border-b pb-3 flex justify-between items-center">
-                                            3.1 Outbound Supply Metrics
-                                            <Badge variant="success" className="text-[8px]">LIABILITY</Badge>
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Taxable Value</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.outwardSupplies.taxable)}</span></div>
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.outwardSupplies.igst)}</span></div>
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst)}</span></div>
-                                            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.outwardSupplies.sgst)}</span></div>
-                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Gross Liability</span><span className="text-lg font-black text-[var(--primary)]">{formatCurrency(reportData.gstr3b.outwardSupplies.cgst + reportData.gstr3b.outwardSupplies.sgst + reportData.gstr3b.outwardSupplies.igst + reportData.gstr3b.outwardSupplies.cess)}</span></div>
-                                        </div>
-                                    </GlassCard>
+                        {/* ================= HSN ================= */}
+                        {activeTab === 'hsn' && (
+                            <Panel title="12 · HSN summary" subtitle={`${reportData.hsnSummary.length} HSN codes`}>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[860px] border-collapse">
+                                        <thead className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Th align="left">HSN / Description</Th>
+                                                <Th>UQC</Th>
+                                                <Th>Quantity</Th>
+                                                <Th>Taxable value</Th>
+                                                <Th>IGST</Th>
+                                                <Th>CGST</Th>
+                                                <Th>SGST</Th>
+                                                <Th>Total</Th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border)]">
+                                            {reportData.hsnSummary.map((hsn: any, i: number) => (
+                                                <tr key={i}>
+                                                    <Td align="left">
+                                                        <p className="text-[10px] font-black tracking-widest text-[var(--primary)]">{hsn.hsn}</p>
+                                                        <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5">{hsn.description || '—'}</p>
+                                                    </Td>
+                                                    <Td>{hsn.uqc}</Td>
+                                                    <Td>{hsn.quantity}</Td>
+                                                    <Td>{formatCurrency(hsn.taxableValue)}</Td>
+                                                    <Td>{formatCurrency(hsn.igst)}</Td>
+                                                    <Td>{formatCurrency(hsn.cgst)}</Td>
+                                                    <Td>{formatCurrency(hsn.sgst)}</Td>
+                                                    <Td bold>{formatCurrency(hsn.taxableValue + hsn.igst + hsn.cgst + hsn.sgst + (hsn.cess || 0))}</Td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-[var(--surface-variant)]/70">
+                                            <tr>
+                                                <Td align="left" bold>Total</Td>
+                                                <Td bold>—</Td>
+                                                <Td bold>—</Td>
+                                                <Td bold>{formatCurrency(hsnTaxable)}</Td>
+                                                <Td bold>{formatCurrency(reportData.hsnSummary.reduce((s: number, h: any) => s + h.igst, 0))}</Td>
+                                                <Td bold>{formatCurrency(reportData.hsnSummary.reduce((s: number, h: any) => s + h.cgst, 0))}</Td>
+                                                <Td bold>{formatCurrency(reportData.hsnSummary.reduce((s: number, h: any) => s + h.sgst, 0))}</Td>
+                                                <Td bold>{formatCurrency(hsnTaxable + hsnTax)}</Td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </Panel>
+                        )}
 
-                                    <GlassCard className="p-8">
-                                        <h3 className="text-xs font-black uppercase text-blue-500 mb-6 border-b pb-3 flex justify-between items-center">
-                                            4.0 Inbound Credit Summary
-                                            <Badge variant="default" className="text-[8px]">INPUT ASSET</Badge>
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">All Other ITC</span><span className="text-sm font-black">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</span></div>
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Integrated Tax (IGST)</span><span className="text-sm font-black text-amber-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.igst)}</span></div>
-                                            <div className="flex justify-between items-center"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">Central Tax (CGST)</span><span className="text-sm font-black text-blue-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst)}</span></div>
-                                            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3"><span className="text-[10px] font-black opacity-50 uppercase tracking-widest">State Tax (SGST)</span><span className="text-sm font-black text-blue-600">{formatCurrency(reportData.gstr3b.inputTaxCredit.sgst)}</span></div>
-                                            <div className="flex justify-between items-center pt-2"><span className="text-[11px] font-black uppercase tracking-widest">Total Eligible ITC</span><span className="text-lg font-black text-emerald-500">{formatCurrency(reportData.gstr3b.inputTaxCredit.cgst + reportData.gstr3b.inputTaxCredit.sgst + reportData.gstr3b.inputTaxCredit.igst + reportData.gstr3b.inputTaxCredit.cess)}</span></div>
+                        {/* ================= GSTR-3B ================= */}
+                        {activeTab === 'gstr3b' && (
+                            <div className="space-y-4">
+                                <div className="grid lg:grid-cols-2 gap-4">
+                                    <Panel title="3.1 Outward supplies" subtitle="Liability for the period">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Th align="left">Nature of supply</Th>
+                                                        <Th>Taxable value</Th>
+                                                        <Th>IGST</Th>
+                                                        <Th>CGST</Th>
+                                                        <Th>SGST</Th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[var(--border)]">
+                                                    <tr>
+                                                        <Td align="left">(a) Outward taxable supplies (other than zero rated, nil and exempted)</Td>
+                                                        <Td>{formatCurrency(os.taxable)}</Td>
+                                                        <Td>{formatCurrency(os.igst)}</Td>
+                                                        <Td>{formatCurrency(os.cgst)}</Td>
+                                                        <Td>{formatCurrency(os.sgst)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(c) Other outward supplies (nil rated, exempted)</Td>
+                                                        <Td>{formatCurrency(reportData.totals.exemptedSales)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                        <Td>{formatCurrency(0)}</Td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Td align="left" bold>Gross liability</Td>
+                                                        <Td bold>{formatCurrency(os.taxable + reportData.totals.exemptedSales)}</Td>
+                                                        <Td bold>{formatCurrency(os.igst)}</Td>
+                                                        <Td bold>{formatCurrency(os.cgst)}</Td>
+                                                        <Td bold>{formatCurrency(os.sgst)}</Td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
                                         </div>
-                                    </GlassCard>
+                                    </Panel>
+
+                                    <Panel title="4. Eligible ITC" subtitle="Input tax credit">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Th align="left">Details</Th>
+                                                        <Th>IGST</Th>
+                                                        <Th>CGST</Th>
+                                                        <Th>SGST</Th>
+                                                        <Th>Cess</Th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-[var(--border)]">
+                                                    <tr>
+                                                        <Td align="left">(A) ITC available — all other ITC</Td>
+                                                        <Td>{formatCurrency(itc.igst)}</Td>
+                                                        <Td>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                    <tr>
+                                                        <Td align="left">(C) Net ITC available (A − B)</Td>
+                                                        <Td>{formatCurrency(itc.igst)}</Td>
+                                                        <Td>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot className="bg-[var(--surface-variant)]/70">
+                                                    <tr>
+                                                        <Td align="left" bold>Total ITC available</Td>
+                                                        <Td bold>{formatCurrency(itc.igst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.cgst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.sgst)}</Td>
+                                                        <Td bold>{formatCurrency(itc.cess)}</Td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </Panel>
                                 </div>
 
-                                <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-[40px] text-white overflow-hidden relative">
-                                    <div className="absolute -right-10 -bottom-10 opacity-5">
-                                        <PieChart size={300} />
-                                    </div>
-                                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                                    <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                         <div>
-                                            <h4 className="text-[10px] font-black uppercase tracking-[4px] text-slate-400 mb-2">Settlement Forecast</h4>
-                                            <p className="text-4xl font-black text-white tracking-tighter">
-                                                {formatCurrency(reportData.gstr3b.netPayable.total)}
+                                            <p className="text-[9px] font-black uppercase tracking-[3px] text-[var(--text-muted)]">5. Net tax payable</p>
+                                            <p className="text-3xl font-black text-[var(--on-surface)] mt-1 tracking-tight">{formatCurrency(np.total)}</p>
+                                            <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-1">
+                                                IGST {formatCurrency(np.igst)} · CGST {formatCurrency(np.cgst)} · SGST {formatCurrency(np.sgst)} · Cess {formatCurrency(np.cess)}
                                             </p>
-                                            <p className="text-[9px] font-bold text-slate-500 mt-2 uppercase tracking-widest italic">
-                                                * Net tax payable after adjustment of eligible ITC.
-                                            </p>
+                                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)] mt-2">Net tax payable after adjustment of eligible ITC for {periodLabel}</p>
                                         </div>
-                                        <button onClick={() => exportJSON('gstr3b')} className="bg-white text-slate-900 hover:bg-slate-200 border-none px-10 py-5 rounded-[20px] text-[11px] font-black uppercase tracking-widest h-auto cursor-pointer">
-                                            Download 3B Draft
+                                        <button onClick={() => exportJSON('gstr3b')} className="shrink-0 px-5 py-3 rounded-xl bg-[var(--primary)] text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
+                                            <Download size={14} /> Download 3B draft
                                         </button>
                                     </div>
                                 </div>

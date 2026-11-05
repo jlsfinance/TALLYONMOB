@@ -71,10 +71,7 @@ function lazyPage<TModule extends { default: unknown }>(
 
 const NativeIntroPage = lazyPage('NativeIntroPage', () => import('./pages/NativeIntroPage'));
 const LoginPage = lazyPage('LoginPage', () => import('./pages/LoginPage'));
-const ModuleSelectionPage = lazyPage('ModuleSelectionPage', () => import('./pages/ModuleSelectionPage'));
 const SelectCompanyPage = lazyPage('SelectCompanyPage', () => import('./pages/SelectCompanyPage'));
-const BillingLaunchPage = lazyPage('BillingLaunchPage', () => import('./pages/BillingLaunchPage'));
-const BillingDashboard = lazyPage('BillingDashboard', () => import('./pages/BillingDashboard'));
 const DashboardPage = lazyPage('DashboardPage', () => import('./pages/DashboardPage'));
 const TallyDataViewerPage = lazyPage('TallyDataViewerPage', () => import('./pages/TallyDataViewerPage'));
 const LiveKeepingsDashboard = lazyPage('LiveKeepingsDashboard', () => import('./pages/LiveKeepingsDashboard'));
@@ -175,11 +172,9 @@ function warmCommonRouteChunks() {
         ...(Capacitor.isNativePlatform() ? [import('./pages/NativeIntroPage')] : []),
         import('./pages/LoginPage'),
         import('./pages/ResetPassword'),
-        import('./pages/ModuleSelectionPage'),
         import('./pages/SelectCompanyPage'),
         import('./pages/TallyDataViewerPage'),
         import('./pages/DashboardPage'),
-        import('./pages/BillingDashboard'),
     ]);
 }
 
@@ -201,36 +196,17 @@ function RouteLoader() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading, selectedCompany, appMode } = useAuth() as any;
+    const { user, loading, selectedCompany } = useAuth() as any;
     const location = useLocation();
 
     if (loading) return <RouteLoader />;
     if (!user) return <Navigate to="/login" replace />;
 
-    if (appMode === 'billing' && (
-        location.pathname === '/dashboard'
-        || location.pathname === '/billing-launch'
-    )) {
-        return <Navigate to="/billing" replace />;
-    }
-
-    if (!appMode &&
-        location.pathname !== '/select-mode' &&
-        location.pathname !== '/subscription' &&
-        location.pathname !== '/billing-launch' &&
-        location.pathname !== '/onboarding' &&
-        location.pathname !== '/admin' &&
-        location.pathname !== '/login') {
-        return <Navigate to="/select-mode" replace />;
-    }
-
-    if ((appMode === 'tally' || appMode === 'billing') && !selectedCompany &&
+    if (!selectedCompany &&
         location.pathname !== '/select-company' &&
         location.pathname !== '/subscription' &&
-        location.pathname !== '/billing-launch' &&
         location.pathname !== '/onboarding' &&
         location.pathname !== '/admin' &&
-        location.pathname !== '/select-mode' &&
         location.pathname !== '/') {
         return <Navigate to="/select-company" replace />;
     }
@@ -251,17 +227,13 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function HomeRedirect() {
-    const { user, loading, appMode, selectedCompany } = useAuth() as any;
+    const { user, loading, selectedCompany } = useAuth() as any;
 
     if (loading) return <RouteLoader />;
 
     if (user) {
-        if (!appMode) return <Navigate to="/select-mode" replace />;
-        if ((appMode === 'tally' || appMode === 'billing') && !selectedCompany) {
-            return <Navigate to="/select-company" replace />;
-        }
-
-        return <Navigate to={appMode === 'billing' ? '/billing' : '/dashboard'} replace />;
+        if (!selectedCompany) return <Navigate to="/select-company" replace />;
+        return <Navigate to="/dashboard" replace />;
     }
 
     if (Capacitor.isNativePlatform()) {
@@ -351,9 +323,9 @@ function AppContent() {
                 <Route path="/saas-admin" element={<AdminRoute><AdminPanelPage /></AdminRoute>} />
                 <Route path="/subscription" element={<Navigate to="/dashboard" replace />} />
 
-                <Route path="/select-mode" element={<ProtectedRoute><ModuleSelectionPage /></ProtectedRoute>} />
+                <Route path="/select-mode" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
-                <Route path="/billing-launch" element={<ProtectedRoute><Navigate to="/billing" replace /></ProtectedRoute>} />
+                <Route path="/billing-launch" element={<Navigate to="/dashboard" replace />} />
 
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/syncora" element={<SyncoraLandingPage />} />
@@ -385,7 +357,7 @@ function AppContent() {
                                     <Route path="/sync-help" element={<SyncHelpPage />} />
                                     <Route path="/legacy-dashboard" element={<DashboardPage />} />
                                     <Route path="/tally-dashboard" element={<TallyDataViewerPage />} />
-                                    <Route path="/billing" element={<BillingDashboard />} />
+                                    <Route path="/billing" element={<Navigate to="/dashboard" replace />} />
                                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
                                     <Route path="/dashboard-3d" element={<Dashboard3DPage />} />
                                     <Route path="/ledgers" element={<LedgersPage />} />

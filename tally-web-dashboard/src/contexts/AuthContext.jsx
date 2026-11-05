@@ -6,9 +6,8 @@ const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
 
-const sanitizeAppMode = (value) => {
-    return value === 'tally' || value === 'billing' ? value : null;
-};
+// Module chooser removed: the app is Tally-on-Mobile only, so appMode is always 'tally'.
+const sanitizeAppMode = () => 'tally';
 
 const isAuthSessionError = (error) => {
     const message = String(error?.message || '').toLowerCase();

@@ -202,20 +202,42 @@ const chunkValues = (values, chunkSize = 40) => {
   return chunks;
 };
 
+// PostgREST caps one response at 1000 rows. Page through in parallel batches until a short page.
+// shortcut: 40k rows per call; move the list to a server-side RPC if a company grows past that.
+const fetchAllPages = async (buildQuery, { pageSize = 1000, maxRows = 40000 } = {}) => {
+  const rows = [];
+  for (let batch = 0; ; batch++) {
+    const offsets = [0, 1, 2, 3].map((i) => (batch * 4 + i) * pageSize);
+    const results = await Promise.all(offsets.map((from) => buildQuery().range(from, from + pageSize - 1)));
+    let done = false;
+    for (const { data, error } of results) {
+      if (error) return { data: rows, error };
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) done = true;
+    }
+    if (done || rows.length >= maxRows) return { data: rows.slice(0, maxRows), error: null };
+  }
+};
+
 const fetchVouchersByIds = async ({ companyId, voucherIds, select, partyName = null, partyLike = false, fromDate = null, toDate = null, voucherTypes = null }) => {
   const uniqIds = [...new Set((voucherIds || []).filter(Boolean))];
   if (!companyId || uniqIds.length === 0) return { data: [], error: null };
-  const chunks = chunkValues(uniqIds, 40);
+  // 200 ids per request (~7 KB URL) and 5 requests in flight: a 6k-voucher item loads in seconds, not minutes.
+  const chunks = chunkValues(uniqIds, 200);
   const rows = [];
-  for (const idChunk of chunks) {
-    let q = db.from("vouchers").select(select).eq("company_id", companyId).in("id", idChunk);
-    if (partyName) q = partyLike ? q.ilike("party_name", "%" + partyName + "%") : q.eq("party_name", partyName);
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    if (voucherTypes?.length) q = q.in("voucher_type", voucherTypes);
-    const res = await q;
-    if (res.error) return { data: rows, error: res.error };
-    rows.push(...(res.data || []));
+  for (let i = 0; i < chunks.length; i += 5) {
+    const batch = await Promise.all(chunks.slice(i, i + 5).map((idChunk) => {
+      let q = db.from("vouchers").select(select).eq("company_id", companyId).in("id", idChunk);
+      if (partyName) q = partyLike ? q.ilike("party_name", "%" + partyName + "%") : q.eq("party_name", partyName);
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      if (voucherTypes?.length) q = q.in("voucher_type", voucherTypes);
+      return q;
+    }));
+    for (const res of batch) {
+      if (res.error) return { data: rows, error: res.error };
+      rows.push(...(res.data || []));
+    }
   }
   return { data: rows, error: null };
 };
@@ -287,11 +309,11 @@ const ledgerApi = {
       if (!companyId || !ledgerName || !itemName) return { data: [], error: null };
       // shortcut: insforge_ledger_item_history RPC DB me nahi hai (sirf 404 console noise),
       // isliye seedha tables se merge karte hain. RPC banega to yahan call wapas laga do.
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
+      let entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
       if (entriesRes.error) return entriesRes;
       let entryRows = entriesRes.data || [];
       if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
+        entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
         if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
       }
       const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
@@ -332,8 +354,8 @@ const voucherApi = {
     if (q.error || !q.data) return q;
     const lookupIds = [...new Set([q.data.id, q.data.voucher_id, id].filter(Boolean))];
     const [ledgerRes, stockRes] = await Promise.all([
-      db.from("voucher_ledger_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).in("voucher_id", lookupIds),
-      db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).in("voucher_id", lookupIds),
+      db.from("voucher_ledger_entries").select("*").eq('is_deleted', false).in("voucher_id", lookupIds),
+      db.from("voucher_stock_entries").select("*").eq('is_deleted', false).in("voucher_id", lookupIds),
     ]);
     return { data: { ...q.data, ledger_entries: ledgerRes.data || [], stock_entries: stockRes.data || [] }, error: q.error || ledgerRes.error || stockRes.error || null };
   },
@@ -394,11 +416,17 @@ const purchasesApi = {
 };
 
 // â”€â”€â”€ Stock API â”€â”€â”€
+const STOCK_LIST_COLUMNS = "id, name, stock_group, current_stock, unit, closing_value, opening_stock, gst_rate, base_unit, is_deleted";
+const STOCK_ENTRY_COLUMNS = "id, voucher_id, quantity, amount, rate, is_inward, tax_rate";
+
 const stockApi = {
   list: async (companyId, stockGroup = null) => {
-    let q = db.from("stock_items").select("*").eq("company_id", companyId).order("name");
-    if (stockGroup) q = q.eq("stock_group", stockGroup);
-    return await q;
+    const { data, error } = await fetchAllPages(() => {
+      let q = db.from("stock_items").select(STOCK_LIST_COLUMNS).eq("company_id", companyId).order("name").order("id");
+      if (stockGroup) q = q.eq("stock_group", stockGroup);
+      return q;
+    });
+    return { data: data || [], error };
   },
   getById: async (id) => db.from("stock_items").select("*").eq("id", id).single(),
   getGroups: async (companyId) => {
@@ -419,11 +447,11 @@ const stockApi = {
         if (item?.name) itemName = item.name;
       }
       const voucherTypesParam = voucherTypes?.length ? voucherTypes : null;
-      let entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).eq("company_id", companyId).eq("stock_item_name", itemName).limit(limit);
+      let entriesRes = await fetchAllPages(() => db.from("voucher_stock_entries").select(STOCK_ENTRY_COLUMNS).eq('is_deleted', false).eq("company_id", companyId).eq("stock_item_name", itemName).order("id"), { maxRows: limit });
       if (entriesRes.error) return entriesRes;
       let entryRows = entriesRes.data || [];
       if (entryRows.length === 0 && itemName) {
-        entriesRes = await db.from("voucher_stock_entries").select("*").eq('is_deleted', false).eq('is_deleted', false).eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").limit(limit);
+        entriesRes = await fetchAllPages(() => db.from("voucher_stock_entries").select(STOCK_ENTRY_COLUMNS).eq('is_deleted', false).eq("company_id", companyId).ilike("stock_item_name", "%" + String(itemName).trim() + "%").order("id"), { maxRows: limit });
         if (!entriesRes.error && Array.isArray(entriesRes.data)) entryRows = entriesRes.data;
       }
       const voucherIds = [...new Set(entryRows.map((e) => e.voucher_id).filter(Boolean))];
