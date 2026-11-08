@@ -25,10 +25,12 @@ export default function SubscriptionPage() {
     const checkoutRequest=useRef<{key:string;id:string}|null>(null);
     const apiBase=String(import.meta.env.VITE_SUBSCRIPTION_API_URL || '').replace(/\/$/,'');
     const availability=useQuery({ queryKey:['checkout-availability',apiBase], queryFn:async()=>{
-        const response=await fetch(apiBase+'/api/v1/subscriptions/availability',{signal:AbortSignal.timeout(10000)});
+        const response=await fetch(apiBase+'/api/v1/subscriptions/availability',{cache:'no-store',signal:AbortSignal.timeout(10000)});
         if(!response.ok) throw new Error('Checkout unavailable');
-        return response.json() as Promise<{enabled:boolean}>;
+        return response.json() as Promise<{enabled:boolean;testMode?:boolean}>;
     },retry:1,refetchInterval:30000 });
+    const testRestricted = Boolean(availability.data?.testMode && !license.isAdmin);
+    const paymentLabel = availability.isLoading ? 'Checking payments…' : availability.isError ? 'Payment connection failed' : testRestricted ? 'Live payments not enabled' : availability.data?.enabled ? (availability.data.testMode ? 'Continue to test payment' : 'Continue to payment') : 'Payment unavailable';
     const subscriptionRequest=async(path:string,body?:unknown)=>{
         const {data:{session}}=await supabase.auth.getSession();
         if(!session) throw new Error('Please sign in to continue.');
@@ -197,9 +199,12 @@ export default function SubscriptionPage() {
                     {validQuote && validQuote.discount > 0 && <div className="subscription-total"><span>Coupon discount</span><span>−{formatPlanPrice(validQuote.discount)}</span></div>}
                     <div className="subscription-total"><strong>After discount</strong><strong>{formatPlanPrice(validQuote?.final_amount ?? selectedPlan.price)}</strong></div>
                     <p className="subscription-coupon-message">The final payable amount is verified by the server when checkout starts.</p>
-                    {!availability.data?.enabled && <p role="status" className="subscription-unavailable">Online payments are not available yet. Contact support to activate a plan.</p>}
+                    {availability.isLoading && <p role="status">Checking payment availability…</p>}
+                    {availability.isError && <p role="alert">Could not connect to payments. <button type="button" onClick={()=>void availability.refetch()} className="underline">Retry</button></p>}
+                    {!availability.isLoading && !availability.isError && !availability.data?.enabled && <p role="status" className="subscription-unavailable">Online payments are not configured yet. Contact support to activate a plan.</p>}
+                    {availability.data?.testMode && <p role="status">{testRestricted ? 'Payments are currently being tested. Contact support for activation.' : 'Test mode: no real money will be charged.'}</p>}
                     {checkoutError && <p role="alert">{checkoutError}</p>}
-                    <button type="button" onClick={()=>void beginCheckout()} disabled={!availability.data?.enabled || !validQuote || checkoutBusy || !user?.id} className="subscription-buy"><CreditCard size={17} /> {checkoutBusy ? 'Preparing checkout…' : availability.data?.enabled ? 'Continue to payment' : 'Payment unavailable'}</button>
+                    <button type="button" onClick={()=>void beginCheckout()} disabled={!availability.data?.enabled || testRestricted || !validQuote || checkoutBusy || !user?.id} className="subscription-buy"><CreditCard size={17} /> {checkoutBusy ? 'Preparing checkout…' : paymentLabel}</button>
                     <button type="button" className="subscription-change" onClick={() => dialogRef.current?.close()}>Compare other plans</button>
                 </div>}
             </dialog>

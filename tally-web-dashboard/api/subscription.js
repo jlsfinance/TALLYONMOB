@@ -37,7 +37,7 @@ export function createSubscriptionHandler(getDependencies = dependencies) {
             const route = searchParams.get('route') || pathname.replace(/^\/api\/v1\/subscriptions\/?/, '');
             const { db, service } = getDependencies();
             if (route === 'availability' && req.method === 'GET') {
-                return res.status(200).json({ enabled: Boolean(db && service?.configured()) });
+                return res.status(200).json({ enabled: Boolean(db && service?.configured()), testMode: /^rzp_test_/i.test(process.env.RAZORPAY_KEY_ID || '') });
             }
             const checkoutId = /^checkout\/([0-9a-f-]{36})$/i.exec(route)?.[1];
             if (!((route === 'webhook' || route === 'checkout') && req.method === 'POST') && !(checkoutId && req.method === 'GET')) {

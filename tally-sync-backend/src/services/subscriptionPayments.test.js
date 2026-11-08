@@ -1,6 +1,16 @@
 const crypto = require('crypto');
 const { SubscriptionPayments, verifyWebhook } = require('./subscriptionPayments');
 const env = { RAZORPAY_KEY_ID:'rzp_test_test123', RAZORPAY_KEY_SECRET:'secret-test-123', RAZORPAY_WEBHOOK_SECRET:'webhook-test-123' };
+test.each([false,true])('production test payments require a verified administrator (%s)',async isAdmin=>{
+    const db={from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{is_admin:isAdmin,is_active:true}})})})})};
+    const service=new SubscriptionPayments({db,env:{...env,VERCEL_ENV:'production'}});
+    if(isAdmin) await expect(service.assertPaymentMode('user-a')).resolves.toBeUndefined();
+    else await expect(service.assertPaymentMode('user-a')).rejects.toMatchObject({status:403});
+});
+test('live keys do not apply the test-only administrator restriction',async()=>{
+    const service=new SubscriptionPayments({db:{},env:{...env,RAZORPAY_KEY_ID:'rzp_live_test123',VERCEL_ENV:'production'}});
+    await expect(service.assertPaymentMode('user-a')).resolves.toBeUndefined();
+});
 const order = { id:'11111111-1111-4111-8111-111111111111',user_id:'user-a',gateway_link_id:'plink_test',amount_paise:15900,status:'pending' };
 const link = { id:'plink_test',status:'paid',amount:15900,amount_paid:15900,currency:'INR',reference_id:order.id,notes:{subscription_order_id:order.id},order_id:'order_test',payments:[{status:'captured',payment_id:'pay_test'}] };
 const payment = { id:'pay_test',status:'captured',captured:true,amount:15900,currency:'INR',amount_refunded:0,order_id:'order_test' };

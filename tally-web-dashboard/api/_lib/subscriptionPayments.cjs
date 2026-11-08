@@ -19,6 +19,12 @@ class SubscriptionPayments {
         return /^rzp_(test|live)_[a-z0-9]+$/i.test(this.env.RAZORPAY_KEY_ID || '')
             && [this.env.RAZORPAY_KEY_SECRET, this.env.RAZORPAY_WEBHOOK_SECRET].every(s => s && s.length >= 8 && !/your_|placeholder|xxxxx|change.?me/i.test(s));
     }
+    async assertPaymentMode(userId) {
+        if (this.env.VERCEL_ENV !== 'production' || !/^rzp_test_/i.test(this.env.RAZORPAY_KEY_ID || '')) return;
+        const { data, error } = await this.db.from('user_profiles').select('is_admin,is_active').eq('id', userId).maybeSingle();
+        if (error) throw new PaymentError('Payment account verification unavailable');
+        if (!data?.is_admin || data.is_active === false) throw new PaymentError('Payments are in test mode. Contact support.', 403);
+    }
     async api(path, body) {
         if (!this.configured()) throw new PaymentError('Online payments are not configured yet. Contact support.');
         const response = await this.fetch('https://api.razorpay.com/v1' + path, {
@@ -39,6 +45,7 @@ class SubscriptionPayments {
     }
     async create(user, token, { planSlug, couponCode, requestId }) {
         if (!this.configured()) throw new PaymentError('Online payments are not configured yet. Contact support.');
+        await this.assertPaymentMode(user.id);
         if (!['monthly', 'half_yearly', 'yearly'].includes(planSlug) || !/^[0-9a-f-]{36}$/i.test(requestId || '') || (couponCode && (typeof couponCode !== 'string' || couponCode.length > 80))) throw new PaymentError('Invalid checkout request', 400);
         const { data: order, error } = await this.userClient(token).rpc('create_subscription_order', {
             p_plan_slug: planSlug, p_coupon_code: couponCode || null, p_request_id: requestId
@@ -70,6 +77,7 @@ class SubscriptionPayments {
     }
     async reconcile(order) {
         if (order.status === 'paid') return { status: 'paid', orderId: order.id };
+        await this.assertPaymentMode(order.user_id);
         if (!order.gateway_link_id) return { status: 'pending', orderId: order.id };
         const link = await this.api('/payment_links/' + encodeURIComponent(order.gateway_link_id));
         if (link.status !== 'paid') return { status: ['expired', 'cancelled'].includes(link.status) ? link.status : 'pending', orderId: order.id };
