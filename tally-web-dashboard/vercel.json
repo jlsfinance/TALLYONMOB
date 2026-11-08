@@ -1,6 +1,10 @@
 {
     "rewrites": [
         {
+            "source": "/api/v1/subscriptions/:path*",
+            "destination": "/api/subscription?route=:path*"
+        },
+        {
             "source": "/api/(.*)",
             "destination": "/api/$1"
         },

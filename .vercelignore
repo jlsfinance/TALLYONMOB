@@ -1,0 +1,14 @@
+# Only the Vercel web project belongs in this deployment.
+*
+!tally-web-dashboard
+!tally-web-dashboard/**
+tally-web-dashboard/node_modules/**
+tally-web-dashboard/dist/**
+tally-web-dashboard/android/**
+tally-web-dashboard/.vercel/**
+**/.env
+**/.env.*
+**/*.jks
+**/*.keystore
+**/key.properties
+**/service-account*.json
