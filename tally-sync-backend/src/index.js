@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(helmet());
 app.use(cors()); // Allow all origins for dev
-app.use(express.json({ limit: '50mb' })); // Large payload for Tally data
+app.use(express.json({ limit: '50mb', verify: (req, _res, buffer) => { if (req.originalUrl.endsWith('/webhook')) req.rawBody = Buffer.from(buffer); } }));
 app.use(morgan('dev'));
 
 // Import Routes
@@ -28,6 +28,7 @@ const telegramService = require('./services/telegramService');
 const recurringRoutes = require('./routes/recurring');
 const portalRoutes = require('./routes/portal');
 const reportRoutes = require('./routes/reports');
+const identityRoutes = require('./routes/identityRoutes');
 
 // Use Routes
 app.use('/api/v1/sync', syncRoutes);
@@ -37,12 +38,14 @@ app.use('/api/v1/contact', contactRoutes);
 app.use('/api/v1/reminders', reminderRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/subscriptions', require('./routes/subscriptionRoutes').subscriptionRoutes);
 app.use('/api/v1/team', teamRoutes);
 app.use('/api/v1/backup', backupRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/recurring', recurringRoutes);
 app.use('/api/v1/portal', portalRoutes);
 app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/companies', identityRoutes);
 
 // Health Check
 app.get('/', (req, res) => {

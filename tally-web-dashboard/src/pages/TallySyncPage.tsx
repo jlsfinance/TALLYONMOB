@@ -6,9 +6,10 @@ import {
     RefreshCw,
     Loader2, Database, Users, Package,
     Clock, ShieldCheck, ArrowDownCircle, ArrowUpCircle,
-    Check, FileText, ChevronRight
+    Check, FileText, ChevronRight, MonitorDown
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { APP_INFO } from '@/config/appInfo';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import './InsightsSyncPages.css';
 import { supabase } from '@/lib/insforge';
@@ -264,10 +265,20 @@ export default function TallySyncPage() {
                                 <p className="text-xs text-slate-400 mt-0.5">
                                     Runs seamlessly in background on PC to auto-sync vouchers, parties, and inventory without manual intervention.
                                 </p>
+                                <p className="text-[10px] font-semibold text-slate-500 mt-1">v{APP_INFO.pcVersion} · Windows 10/11</p>
                             </div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                            <a
+                                href={APP_INFO.pcDownloadUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 active:scale-95 transition-all"
+                            >
+                                <MonitorDown size={14} />
+                                <span>Download for Windows</span>
+                            </a>
                             <button
                                 onClick={() => navigate('/sync-history')}
                                 className="px-3.5 py-1.5 rounded-xl bg-[#16202C] hover:bg-[#1E2D3D] border border-[#22334C] text-xs font-bold text-slate-300 flex items-center gap-1.5 active:scale-95 transition-all"

@@ -1,8 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
 
-type LicenseStatus = 'active' | 'trial' | 'expired' | 'suspended' | 'blocked' | 'none';
+type LicenseStatus = 'active' | 'trial' | 'expired' | 'suspended' | 'blocked' | 'none' | 'revoked' | 'unknown';
 type UserRole = 'super_admin' | 'admin' | 'sales_manager' | 'support_agent' | 'account_manager' | 'user';
 
 interface LicenseInfo {
@@ -95,120 +95,52 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const [licenseError, setLicenseError] = useState<string | null>(null);
 
+    const requestVersion = useRef(0);
     const checkLicense = useCallback(async () => {
-        setLicenseError(null);
-        if (!user?.id) {
-            setLicense(defaultLicense);
-            setIsLoading(false);
-            return;
-        }
-
+        const version = ++requestVersion.current;
+        if (!user?.id) { setLicense(defaultLicense); setIsLoading(false); return; }
         try {
-            // Check if super admin
-            const isSuperAdmin = user.email === 'lovneetrathi@gmail.com';
-
-            // Get active license
-            const { data: lic, error: licError } = await supabase
-                .from('user_licenses')
-                .select('*')
-                .eq('user_id', user.id)
-                .in('status', ['active', 'suspended'])
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            if (licError) throw licError;
-
-            if (!lic) {
-                // No license — check for active trial in trial_history
-                const { data: trial } = await supabase
-                    .from('trial_history')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .eq('trial_used', true)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (trial && new Date(trial.trial_end) > new Date()) {
-                    // Active trial
-                    const daysLeft = Math.ceil((new Date(trial.trial_end).getTime() - Date.now()) / 86400000);
-                    setLicense({
-                        status: 'trial',
-                        planName: 'Trial',
-                        planSlug: 'trial',
-                        expiryDate: trial.trial_end,
-                        daysLeft,
-                        licenseKey: 'TRIAL',
-                        features: PLAN_FEATURES.trial,
-                        companyLimit: 1,
-                        isAdmin: isSuperAdmin,
-                        isSuperAdmin,
-                    });
-                } else {
-                    setLicense({ ...defaultLicense, isAdmin: isSuperAdmin, isSuperAdmin });
-                }
-                setIsLoading(false);
-                return;
+            let result;
+            for (let attempt=0; attempt<3; attempt++) {
+                result = await supabase.rpc('get_subscription_access').abortSignal(AbortSignal.timeout(12000));
+                if (!result.error) break;
+                if (['42501','PGRST301','PGRST302'].includes(result.error.code)) break;
+                if (attempt<2) await new Promise(resolve => setTimeout(resolve, 500*(attempt+1)));
             }
-
-            // Has license
-            const now = new Date();
-            const expiryValue = lic.expiry_date || lic.expires_at;
-            const expiry = expiryValue ? new Date(expiryValue) : null;
-            const { data: plan, error: planError } = lic.plan_id
-                ? await supabase.from('subscription_plans').select('name, slug, features').eq('id', lic.plan_id).maybeSingle()
-                : { data: null, error: null };
-            if (planError) throw planError;
-            const planSlug = plan?.slug || lic.plan_slug || '';
-            const features = PLAN_FEATURES[planSlug] || plan?.features || [];
-            const companyLimit = PLAN_LIMITS[planSlug] || 1;
-            const daysLeft = expiry ? Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / 86400000)) : 0;
-
-            let status: LicenseStatus = lic.status as LicenseStatus;
-            if (expiry && expiry <= now) status = 'expired';
-
-            setLicense({
-                status,
-                planName: plan?.name || planSlug || 'Unknown',
-                planSlug,
-                expiryDate: expiryValue || '',
-                daysLeft,
-                licenseKey: lic.license_key,
-                features,
-                companyLimit,
-                isAdmin: isSuperAdmin || ['super_admin', 'admin'].includes(status as any),
-                isSuperAdmin,
-            });
+            if (result?.error) throw result.error;
+            if (!result?.data || typeof result.data.valid !== 'boolean') throw new Error('Invalid subscription response');
+            if (version !== requestVersion.current) return;
+            const r=result.data;
+            const status: LicenseStatus = r.valid!==true && ['active','trial'].includes(r.status) ? 'unknown' : r.status==='no_license' ? 'none' : ['active','trial','expired','suspended','blocked','revoked'].includes(r.status) ? r.status : 'unknown';
+            setLicense({ status, planName:r.plan_name || 'None', planSlug:r.plan_slug || '', expiryDate:r.expiry_date || '',
+                daysLeft:r.days_left || 0, licenseKey:r.license_key || '', features:PLAN_FEATURES[r.plan_slug] || [],
+                companyLimit:r.company_limit ?? 0, isAdmin:r.is_admin===true, isSuperAdmin:r.is_admin===true });
+            setLicenseError(null);
         } catch (err) {
-            console.error('License check failed:', err);
-            setLicenseError('Subscription status could not be verified.');
-            setLicense(defaultLicense);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [user?.id, user?.email]);
+            if (version !== requestVersion.current) return;
+            // Keep the last server result visible; availability errors never become expiry.
+            setLicenseError('Subscription verification is temporarily unavailable. Retrying automatically.');
+        } finally { if (version === requestVersion.current) setIsLoading(false); }
+    }, [user?.id]);
 
     useEffect(() => {
-        checkLicense();
+        setLicense(defaultLicense); setLicenseError(null); setIsLoading(true);
+        void checkLicense();
+        const timer=window.setInterval(() => void checkLicense(),30000);
+        const focus=() => void checkLicense();
+        window.addEventListener('focus',focus);
+        return () => { requestVersion.current++; window.clearInterval(timer); window.removeEventListener('focus',focus); };
     }, [checkLicense]);
+    const expiryReached = !!license.expiryDate && new Date(license.expiryDate).getTime()<=Date.now();
+    const verifiedActive = !licenseError && !expiryReached && ['active','trial'].includes(license.status);
 
     const hasFeature = useCallback((feature: string): boolean => {
         if (license.isSuperAdmin) return true;
-        if (license.status === 'blocked' || license.status === 'suspended') {
-            return !EXPIRED_BLOCKED.includes(feature);
-        }
-        return true; // Subscription requirements are paused while the app is free.
-    }, [license]);
-
-    const canAccess = useCallback((feature: string): boolean => {
-        if (license.isSuperAdmin) return true;
-        if (license.status === 'blocked' || license.status === 'suspended') return false;
-        return hasFeature(feature);
-    }, [license, hasFeature]);
-
-    // isReadOnly sirf tab true jab license expired/blocked/suspended hai
-    // 'none' (no license) pe app usable hai, sirf banner dikhega
-    const isReadOnly = license.status === 'blocked' || license.status === 'suspended';
+        if (!verifiedActive) return ![...EXPIRED_BLOCKED,...PREMIUM_FEATURES].includes(feature);
+        return true; // All three duration plans and the 30-day trial grant app access.
+    }, [license.isSuperAdmin, verifiedActive]);
+    const canAccess = useCallback((feature: string) => license.isSuperAdmin || (verifiedActive && hasFeature(feature)), [license.isSuperAdmin,verifiedActive,hasFeature]);
+    const isReadOnly = !license.isSuperAdmin && !verifiedActive;
 
     return (
         <LicenseGateContext.Provider value={{ license, isLoading, licenseError, hasFeature, canAccess, isReadOnly, refresh: checkLicense }}>

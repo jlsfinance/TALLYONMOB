@@ -17,6 +17,8 @@
         <local:BoolToColorConverter x:Key="BoolToColorConverter" xmlns:local="clr-namespace:TallySyncApp" />
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter" xmlns:local="clr-namespace:TallySyncApp" />
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" xmlns:local="clr-namespace:TallySyncApp" />
+        <local:StringToBrushConverter x:Key="StringToBrushConverter" xmlns:local="clr-namespace:TallySyncApp" />
+        <local:InverseBoolConverter x:Key="InverseBoolConverter" xmlns:local="clr-namespace:TallySyncApp" />
 
         <!-- Sidebar navigation button style -->
         <Style x:Key="NavButtonStyle" TargetType="RadioButton">
@@ -268,12 +270,18 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Page Title -->
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                     <TextBlock x:Name="PageTitle"
                                Text="Dashboard"
                                                    FontSize="18"
                                FontWeight="Bold"
                                Foreground="#17342E"
                                VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CompanyDisplayName}"
+                               ToolTip="{Binding CompanyDisplayName}"
+                               FontSize="12" Foreground="#526A78"
+                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
 
                     <!-- Sync Status Badge -->
                     <Border Grid.Column="1"
@@ -384,12 +392,13 @@
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Grid.Row="1"
-                                           Text="{Binding Status.ProcessedRecords}"
+                                           Text="{Binding CloudRecordsText}"
+                                           ToolTip="{Binding CloudRecordsDetail}"
                                            FontSize="32"
                                            FontWeight="Bold"
                                            Foreground="#1F2937"/>
                                 <TextBlock Grid.Row="2"
-                                           Text="Total this session"
+                                           Text="Supabase total"
                                            Foreground="#9CA3AF"
                                            FontSize="12"
                                            Margin="0,4,0,0"/>
@@ -419,12 +428,12 @@
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Grid.Row="1"
-                                           Text="{Binding Status.LastSyncTime, StringFormat='{}{0:HH:mm:ss}'}"
+                                           Text="{Binding CloudLastSyncTime}"
                                            FontSize="28"
                                            FontWeight="Bold"
                                            Foreground="#1F2937"/>
                                 <TextBlock Grid.Row="2"
-                                           Text="{Binding Status.LastSyncTime, StringFormat='{}{0:dd MMM yyyy}'}"
+                                           Text="{Binding CloudLastSyncDate}"
                                            Foreground="#9CA3AF"
                                            FontSize="12"
                                            Margin="0,4,0,0"/>
@@ -504,23 +513,17 @@
                         </Border>
                     </Grid>
 
-                    <!-- Buy Licence Button -->
-                    <Border Grid.Row="0" Margin="0,16,0,0" HorizontalAlignment="Center">
-                        <Button Command="{Binding BuyLicenceCommand}"
-                                Content="💳 Buy / Extend Licence"
-                                Style="{StaticResource ModernButton}"
-                                Background="#2563EB"
-                                Foreground="White"
-                                BorderThickness="0"
-                                Height="40"
-                                Width="200"
-                                FontSize="13"
-                                FontWeight="SemiBold"
-                                Cursor="Hand"/>
-                    </Border>
+                    <!-- Account actions occupy their own row; never cover KPI values. -->
+                    <Grid Grid.Row="1" Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding CloudDataStatus}" Foreground="#64748B" FontSize="11" VerticalAlignment="Center" Margin="0,0,16,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CloudDataStatus}"/>
+                        <Button Grid.Column="1" Command="{Binding BuyLicenceCommand}" Content="Buy / Extend Subscription"
+                                Style="{StaticResource ModernButton}" Background="#2563EB" Foreground="White"
+                                Height="40" Padding="18,0" FontSize="13" FontWeight="SemiBold" Cursor="Hand"/>
+                    </Grid>
 
                     <!-- Status Banner & Progress -->
-                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,16">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -637,7 +640,7 @@
                     </Border>
 
                     <!-- Live Log Terminal -->
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0" Margin="0,0,0,0">
+                    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0" Margin="0,0,0,0">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -903,7 +906,12 @@
                   Grid.Row="1"
                   Visibility="Collapsed"
                   Margin="24,20,24,20">
-                <DataGrid ItemsSource="{Binding RecentLogs}"
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,12">
+                    <Button DockPanel.Dock="Right" Content="Refresh" Command="{Binding RefreshCloudHistoryCommand}" Style="{StaticResource ModernButton}" Padding="16,8"/>
+                    <TextBlock Text="{Binding CloudDataStatus}" Foreground="#64748B" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,16,0"/>
+                </DockPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding CloudSyncHistory}"
                           AutoGenerateColumns="False"
                           CanUserAddRows="False"
                           IsReadOnly="True"
@@ -943,24 +951,13 @@
                         </Style>
                     </DataGrid.Resources>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Time"
-                                            Binding="{Binding Timestamp, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}"
-                                            Width="160"/>
-                        <DataGridTextColumn Header="Type" Binding="{Binding DataType}" Width="120"/>
-                        <DataGridTextColumn Header="Records" Binding="{Binding RecordCount}" Width="80"/>
-                        <DataGridTemplateColumn Header="Status" Width="80">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Success, Converter={x:Null}}"
-                                               Foreground="{Binding Success, Converter={StaticResource BoolToColorConverter}}"
-                                               FontWeight="SemiBold"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Duration"
-                                            Binding="{Binding DurationMs, StringFormat='{}{0}ms'}"
-                                            Width="100"/>
-                        <DataGridTextColumn Header="Error" Binding="{Binding Error}" Width="*"/>
+                        <DataGridTextColumn Header="Started" Binding="{Binding LocalStartedAt, StringFormat='{}{0:dd MMM yyyy HH:mm:ss}'}" Width="165"/>
+                        <DataGridTextColumn Header="Company" Binding="{Binding CompanyName}" Width="130"/>
+                        <DataGridTextColumn Header="Type" Binding="{Binding SyncType}" Width="90"/>
+                        <DataGridTextColumn Header="Records" Binding="{Binding RecordsSynced, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+                        <DataGridTextColumn Header="Duration" Binding="{Binding DurationText}" Width="90"/>
+                        <DataGridTextColumn Header="Details" Binding="{Binding Error}" Width="*" MinWidth="180"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>

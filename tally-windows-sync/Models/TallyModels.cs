@@ -159,6 +159,15 @@ namespace TallySyncApp.Models
         public string VoucherType { get; set; } = string.Empty;
         public string VoucherNumber { get; set; } = string.Empty;
         public string? AlterId { get; set; }
+        public DateTime? Date { get; set; }
+    }
+
+    public enum IndexCompleteness
+    {
+        Complete,    // Every ALTERID from 1 to last found is captured
+        Incomplete,  // Scan stopped before covering all ALTERIDs (maxWindows reached)
+        Unknown,     // Cannot determine completeness
+        Failed       // Request error occurred
     }
 
     public class VoucherLedgerEntry
@@ -588,6 +597,12 @@ namespace TallySyncApp.Models
 
         [JsonProperty("phone")]
         public string? Phone { get; set; }
+
+        [JsonProperty("tally_guid")]
+        public string? TallyGuid { get; set; }
+
+        [JsonProperty("data_path")]
+        public string? DataPath { get; set; }
 
         [JsonProperty("financial_year_start")]
         public DateTime? FinancialYearStart { get; set; }

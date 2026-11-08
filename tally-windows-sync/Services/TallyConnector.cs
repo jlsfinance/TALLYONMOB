@@ -250,7 +250,7 @@ namespace TallySyncApp.Services
         <TDLMESSAGE>
           <COLLECTION NAME=""CompanyCollection"">
             <TYPE>Company</TYPE>
-            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, GSTIN, CMPGSTIN, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATENAME, COUNTRYNAME, PINCODE, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE, INCOMETAXNUMBER, ISGSTON</FETCH>
+            <FETCH>NAME, GUID, ADDRESS.LIST, GSTREGISTRATIONNUMBER, GSTIN, CMPGSTIN, PARTYGSTIN, PHONENUMBER, LEDGERPHONE, LEDGERMOBILE, EMAIL, LEDGEREMAIL, STATENAME, COUNTRYNAME, PINCODE, STATE, LEDSTATENAME, COUNTRYOFRESIDENCE, INCOMETAXNUMBER, ISGSTON, DATA_PATH</FETCH>
           </COLLECTION>
         </TDLMESSAGE>
       </TDL>
@@ -300,6 +300,13 @@ namespace TallySyncApp.Services
 
                     name = name.Trim();
                     Log($"   ✅ Found Company: '{name}'");
+
+                    // Capture Tally Company GUID from XML response (Phase 1: capture only, not used for identity yet)
+                    string? tallyGuid = GetElementValue(comp, "GUID")?.Trim();
+                    if (!string.IsNullOrWhiteSpace(tallyGuid))
+                        Log($"   🔑 Tally GUID: {tallyGuid}");
+                    else
+                        Log($"   ⚠️ No Tally GUID returned for company '{name}'");
                     
                     // IMPORTANT: Must match CleanCompanyId() logic exactly!
                     // STRICT MATCHING: Generate ID from Hash of full name to differentiate even minor changes
@@ -355,6 +362,8 @@ namespace TallySyncApp.Services
                         {
                             Id = sanitizedId,
                             Name = name,
+                            TallyGuid = tallyGuid,
+                            DataPath = GetElementValue(comp, "DATA_PATH"),
                             Gstin = compGstin,
                             Address = string.Join(", ", addressParts),
                             State = compState,
@@ -976,6 +985,20 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Live-verified on TallyPrime: collection exports ignore SVFROMDATE/SVTODATE
+        /// (three different ranges returned the identical set), so the full-history period
+        /// is enforced inside the TDL formula instead. "&gt;=" works, "&lt;" / "&lt;=" return
+        /// nothing, and a date literal past the company's last voucher date makes Tally
+        /// return an EMPTY collection - so the range is lower-bounded only. Nothing real is
+        /// lost: a voucher cannot exist before the books start, and future-dated ones are
+        /// still genuine Tally data.
+        /// </summary>
+        private static string FullHistoryDateFilter()
+        {
+            return "$DATE &gt;= $$Date:\"19000101\"";
+        }
+
+        /// <summary>
         /// Light index request: ALTERIDs of all vouchers (a few bytes each).
         /// Used to cut the company into 100-voucher windows so no Tally request is heavy.
         /// </summary>
@@ -993,6 +1016,8 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
         <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
@@ -1002,7 +1027,7 @@ namespace TallySyncApp.Services
             <FETCH>ALTERID</FETCH>
             <FILTER>AllVouchers</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0 AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1029,6 +1054,86 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Fetches voucher ALTERIDs in bounded windows so no single Tally request is heavy.
+        /// Dynamic traversal: continues until an empty window is returned AFTER data has been found,
+        /// which indicates ALTERID space is exhausted. Skips empty windows at the start
+        /// (ALTERIDs can start at a high number like 79412).
+        /// </summary>
+        public async Task<(List<long> AlterIds, IndexCompleteness Completeness)> GetVoucherAlterIdsWindowedAsync(
+            string companyName, int windowSize = 1000, int maxWindows = 2000)
+        {
+            var allIds = new List<long>();
+            long from = 1;
+            int emptyRuns = 0;
+            bool foundData = false;
+
+            for (int w = 0; w < maxWindows; w++)
+            {
+                long to = from + windowSize - 1;
+
+                var request = $@"
+<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>AlterIdWindow</ID></HEADER>
+  <BODY><DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
+        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL><TDLMESSAGE>
+        <COLLECTION NAME=""AlterIdWindow"" ISMODIFY=""No"">
+          <TYPE>Voucher</TYPE>
+          <FETCH>ALTERID</FETCH>
+          <FILTER>AlterWindow</FILTER>
+        </COLLECTION>
+        <SYSTEM TYPE=""Formulae"" NAME=""AlterWindow"">$$NumValue:$ALTERID &gt;= {from} AND $$NumValue:$ALTERID &lt;= {to} AND $DATE &gt;= $$Date:""19000101""</SYSTEM>
+      </TDLMESSAGE></TDL>
+  </DESC></BODY>
+</ENVELOPE>";
+
+                var doc = await SendRequestAsync(request, companyName, 60);
+                if (doc == null)
+                {
+                    emptyRuns++;
+                    from = to + 1;
+                    continue;
+                }
+
+                var ids = doc.Descendants()
+                    .Where(e => e.Name.LocalName == "VOUCHER")
+                    .Select(v => v.Elements().FirstOrDefault(c => c.Name.LocalName == "ALTERID")?.Value)
+                    .Where(v => !string.IsNullOrWhiteSpace(v))
+                    .Select(v => long.TryParse(v!.Trim(), out var n) ? n : 0)
+                    .Where(n => n > 0)
+                    .Distinct()
+                    .ToList();
+
+                if (ids.Count == 0)
+                {
+                    if (foundData)
+                    {
+                        // Tally returned empty window after we found data - we've reached the end
+                        break;
+                    }
+                    emptyRuns++;
+                    continue;
+                }
+
+                emptyRuns = 0;
+                foundData = true;
+                allIds.AddRange(ids);
+
+                from = to + 1;
+            }
+
+            var completeness = foundData ? IndexCompleteness.Complete : IndexCompleteness.Incomplete;
+            SyncLogger.Log($"Windowed ALTERID index: {allIds.Count} vouchers across {(from - 1) / windowSize} window(s) (empty windows: {emptyRuns}, completeness: {completeness})");
+
+            return (allIds.Distinct().OrderBy(n => n).ToList(), completeness);
+        }
+
+        /// <summary>
         /// Fetch vouchers in one ALTERID window (used with 100-wide windows).
         /// </summary>
         public async Task<List<Voucher>> GetVouchersByAlterRangeAsync(string companyName, long fromAlterId, long toAlterId, Dictionary<string, string>? stockItemHsnCache = null)
@@ -1045,6 +1150,8 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
         <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
@@ -1054,7 +1161,7 @@ namespace TallySyncApp.Services
             <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PLACEOFSUPPLY, PARTYGSTIN, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
             <FILTER>AlterRange</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""AlterRange"">$$NumValue:$ALTERID &gt;= {fromAlterId} AND $$NumValue:$ALTERID &lt;= {toAlterId}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""AlterRange"">$$NumValue:$ALTERID &gt;= {fromAlterId} AND $$NumValue:$ALTERID &lt;= {toAlterId} AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1087,23 +1194,25 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
         <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
           <COLLECTION NAME=""VoucherIndexFull"" ISMODIFY=""No"">
             <TYPE>Voucher</TYPE>
-            <FETCH>ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER</FETCH>
+            <FETCH>ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE</FETCH>
             <FILTER>AllVouchers</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0 AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>";
 
-            SyncLogger.Log($"Fetching full voucher index for {companyName}");
+            SyncLogger.Log($"Fetching full voucher index for {companyName} (19000101..{DateTime.Today:yyyyMMdd})");
 
             var doc = await SendRequestAsync(request, companyName, 60);
             var result = new List<VoucherIndexEntry>();
@@ -1117,16 +1226,23 @@ namespace TallySyncApp.Services
                 string vn = (GetElementValue(v, "VOUCHERNUMBER") ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(guid) || string.IsNullOrWhiteSpace(vt)) continue;
                 if (!seen.Add($"{guid}|{vt}|{vn}")) continue;
+                var rawDate = (GetElementValue(v, "DATE") ?? string.Empty).Trim();
+                DateTime? date = DateTime.TryParseExact(rawDate, "yyyyMMdd", null,
+                    System.Globalization.DateTimeStyles.None, out var d) ? d : null;
                 result.Add(new VoucherIndexEntry
                 {
                     Guid = guid,
                     VoucherType = vt,
                     VoucherNumber = vn,
-                    AlterId = GetElementValue(v, "ALTERID")
+                    AlterId = GetElementValue(v, "ALTERID"),
+                    Date = date
                 });
             }
 
-            SyncLogger.Log($"Full voucher index: {result.Count} entries");
+            SyncLogger.Log($"Full voucher index: {result.Count} entries" +
+                (result.Any(x => x.Date.HasValue)
+                    ? $" ({result.Min(x => x.Date):yyyy-MM-dd}..{result.Max(x => x.Date):yyyy-MM-dd})"
+                    : " (no dates returned)"));
             return result;
         }
 
@@ -1227,7 +1343,7 @@ namespace TallySyncApp.Services
             <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PLACEOFSUPPLY, PARTYGSTIN, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
             <FILTER>VtVnFilter</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""VtVnFilter"">$VoucherTypeName = ""{vtSafe}"" AND ({vnFilter})</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""VtVnFilter"">$VoucherTypeName = ""{vtSafe}"" AND ({vnFilter}) AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>

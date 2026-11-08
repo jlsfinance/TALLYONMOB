@@ -321,7 +321,7 @@ function AppContent() {
                 <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                 <Route path="/admin-panel" element={<AdminRoute><AdminPanel /></AdminRoute>} />
                 <Route path="/saas-admin" element={<AdminRoute><AdminPanelPage /></AdminRoute>} />
-                <Route path="/subscription" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/subscription" element={<SubscriptionPage />} />
 
                 <Route path="/select-mode" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/select-company" element={<ProtectedRoute><SelectCompanyPage /></ProtectedRoute>} />
@@ -338,7 +338,7 @@ function AppContent() {
                 <Route path="/trust-center" element={<TrustCenterPage />} />
                 <Route path="/contact" element={<ContactUsPage />} />
                 <Route path="/about" element={<AboutUsPage />} />
-                <Route path="/pricing" element={<Navigate to="/" replace />} />
+                <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/legal/:slug" element={<LegalTemplatePage />} />
 
                 <Route path="/portal/view" element={<CustomerPortalPage />} />
@@ -351,6 +351,7 @@ function AppContent() {
                     element={
                         <ProtectedRoute>
                             <AppLayout>
+                                <SubscriptionGate>
                                 <ReadOnlyBanner />
                                 <Routes>
                                     <Route path="/dashboard" element={<LiveKeepingsDashboard />} />
@@ -430,6 +431,7 @@ function AppContent() {
                                     <Route path="/biometric-login" element={<Navigate to="/" replace />} />
                                     <Route path="/day-book" element={<DayBookPage />} />
                                 </Routes>
+                                </SubscriptionGate>
                             </AppLayout>
                             <UpdateBanner />
                         </ProtectedRoute>

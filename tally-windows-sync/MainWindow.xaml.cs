@@ -12,6 +12,7 @@ namespace TallySyncApp
         public MainWindow()
         {
             InitializeComponent();
+            Closed += (_, _) => (DataContext as MainViewModel)?.Dispose();
 #if DEBUG
             Title = "SYNCORA Connector (Debug)";
 #endif
@@ -85,6 +86,7 @@ namespace TallySyncApp
                 case "HistoryPanel":
                     HistoryPanel.Visibility = Visibility.Visible;
                     PageTitle.Text = "History";
+                    if (DataContext is MainViewModel historyVm) _ = historyVm.LoadCloudSyncOverviewAsync();
                     break;
                 case "LicenseHistoryPanel":
                     LicenseHistoryPanel.Visibility = Visibility.Visible;
@@ -128,49 +130,10 @@ namespace TallySyncApp
         /// </summary>
         private void BuyLicence_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                var vm = DataContext as ViewModels.MainViewModel;
-                string url = vm?.LicenseResult != null
-                    ? (vm.LicenseResult.SupportEmail != null
-                        ? ReadPurchaseUrlFromSettings() : "https://tallyonmobile.com/buy-licence")
-                    : "https://tallyonmobile.com/buy-licence";
-                url = ReadPurchaseUrlFromSettings();
-
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = url,
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show($"खरीद पेज नहीं खुल सका: {ex.Message}", "Buy Licence",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-            }
+            if (DataContext is MainViewModel vm && vm.BuyLicenceCommand.CanExecute(null))
+                vm.BuyLicenceCommand.Execute(null);
         }
 
-        private string ReadPurchaseUrlFromSettings()
-        {
-            try
-            {
-                var path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
-                if (!System.IO.File.Exists(path)) return "https://tallyonmobile.com/buy-licence";
-                var txt = System.IO.File.ReadAllText(path);
-                var key = "\"LicencePurchaseUrl\":";
-                var idx = txt.IndexOf(key);
-                if (idx < 0) return "https://tallyonmobile.com/buy-licence";
-                var q1 = txt.IndexOf('"', idx + key.Length);
-                var q2 = txt.IndexOf('"', q1 + 1);
-                if (q1 < 0 || q2 < 0) return "https://tallyonmobile.com/buy-licence";
-                var url = txt.Substring(q1 + 1, q2 - q1 - 1);
-                return string.IsNullOrWhiteSpace(url) ? "https://tallyonmobile.com/buy-licence" : url;
-            }
-            catch
-            {
-                return "https://tallyonmobile.com/buy-licence";
-            }
-        }
     }
 
     // Helper to convert boolean connection status to color
@@ -212,6 +175,42 @@ namespace TallySyncApp
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return value is bool b && b ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    // Helper to invert boolean visibility
+    public class InverseBoolConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return value is bool b && b ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    // Helper to convert hex color string to SolidColorBrush
+    public class StringToBrushConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is string hex && !string.IsNullOrWhiteSpace(hex))
+            {
+                try
+                {
+                    return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+                }
+                catch { return new SolidColorBrush(Colors.Gray); }
+            }
+            return new SolidColorBrush(Colors.Gray);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

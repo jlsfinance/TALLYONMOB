@@ -61,17 +61,14 @@ namespace TallySyncApp.Services
             public int CancelledCount { get; set; }
         }
 
-        public TallyFastExtractor(string tallyUrl = "http://127.0.0.1:9000", int batchSize = 100, int throttleMs = 40)
+        public TallyFastExtractor(string tallyUrl = "http://127.0.0.1:9000", int batchSize = 100, int throttleMs = 40, HttpMessageHandler? handler = null)
         {
             _tallyUrl = tallyUrl.TrimEnd('/').Replace("localhost", "127.0.0.1");
             _batchSize = batchSize > 0 ? batchSize : 100;
             _throttleMs = throttleMs >= 0 ? throttleMs : 40;
 
-            _httpClient = new HttpClient
-            {
-                // Short timeout: a wedged Tally must not stall a sync pass for 2 minutes per request.
-                Timeout = TimeSpan.FromSeconds(45)
-            };
+            _httpClient = handler == null ? new HttpClient() : new HttpClient(handler);
+            _httpClient.Timeout = TimeSpan.FromSeconds(45);
             _httpClient.DefaultRequestHeaders.Add("Accept", "text/xml");
         }
 
@@ -97,7 +94,7 @@ namespace TallySyncApp.Services
                 await Task.Delay(2000, ct);
                 stats = await GetVoucherStatisticsInternalAsync(companyName, ct);
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 SyncLogger.Log($"[FastExtractor] VoucherType stats retry failed: {ex.Message}");
@@ -213,18 +210,16 @@ namespace TallySyncApp.Services
         /// Never runs an exploded Voucher Register over a date range - that is what
         /// wedges Tally's single-threaded HTTP server.
         /// </summary>
-        public async Task<List<Voucher>> GetModifiedVouchersFastAsync(
-            string companyName,
-            long afterAlterId,
-            Dictionary<string, string>? hsnCache = null,
-            Action<int, int>? progressCallback = null,
-            CancellationToken ct = default)
+        public async Task<List<long>> GetModifiedVoucherAlterIdsAsync(string companyName, long afterAlterId, CancellationToken ct = default)
         {
-            if (afterAlterId <= 0) return new List<Voucher>();
+            ct.ThrowIfCancellationRequested();
+            if (afterAlterId <= 0) return new List<long>();
 
-            // shortcut: index scan is bounded to 12 months so Tally walks its date index
-            // instead of every voucher. Older edits are caught by the P1/P3 reconciliation pass.
-            string fromStr = DateTime.Today.AddMonths(-12).ToString("yyyyMMdd");
+            // ALTERID alone bounds the scan (Tally increments it on every edit, even for an
+            // old-dated voucher). The previous 12-month date window was a no-op anyway
+            // because collection exports ignore SVFROMDATE/SVTODATE (verified live), and it
+            // would permanently miss edits made to vouchers dated over a year ago.
+            string fromStr = "19000101";
             string toStr = DateTime.Today.ToString("yyyyMMdd");
 
             var indexRequest = $@"<ENVELOPE>
@@ -257,21 +252,35 @@ namespace TallySyncApp.Services
 </ENVELOPE>";
 
             var indexXml = await SendTallyRequestAsync(indexRequest, ct);
+            ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(indexXml))
             {
                 SyncLogger.Log("[FastExtractor] Incremental: Tally did not answer the ALTERID index - aborting this pass.");
-                return new List<Voucher>();
+                throw new InvalidOperationException("Tally did not answer the modified voucher index; checkpoint retained.");
             }
 
             var alterIds = ExtractAlterIds(indexXml);
             if (alterIds.Count == 0)
             {
                 SyncLogger.Log($"[FastExtractor] Incremental: no voucher changed after ALTERID {afterAlterId}");
-                return new List<Voucher>();
+                return new List<long>();
             }
 
             alterIds.Sort();
             SyncLogger.Log($"[FastExtractor] Incremental: {alterIds.Count} voucher(s) changed after ALTERID {afterAlterId}");
+
+            ct.ThrowIfCancellationRequested();
+            return alterIds;
+        }
+
+        public async Task<List<Voucher>> GetModifiedVouchersFastAsync(
+            string companyName,
+            long afterAlterId,
+            Dictionary<string, string>? hsnCache = null,
+            Action<int, int>? progressCallback = null,
+            CancellationToken ct = default)
+        {
+            var alterIds = await GetModifiedVoucherAlterIdsAsync(companyName, afterAlterId, ct);
 
             var results = new List<Voucher>();
             int consecutiveFailures = 0;
@@ -333,6 +342,16 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Live-verified on TallyPrime: collection exports ignore SVFROMDATE/SVTODATE,
+        /// so the full-history period is enforced in the TDL formula instead (lower bound only -
+        /// "&lt;"/"&lt;=" return nothing and a literal past the last voucher date empties the result).
+        /// </summary>
+        private static string FullHistoryDateFilter()
+        {
+            return "$DATE &gt;= $$Date:\"19000101\"";
+        }
+
+        /// <summary>
         /// Fetches vouchers using native numeric range traversal (zero-hang, LK parity).
         /// Evaluates 2 numbers instead of 100 interpreted OR expressions.
         /// </summary>
@@ -347,6 +366,7 @@ namespace TallySyncApp.Services
             string filterCondition = minId == maxId
                 ? $"$$NumValue:$ALTERID = {minId}"
                 : $"$$NumValue:$ALTERID &gt;= {minId} AND $$NumValue:$ALTERID &lt;= {maxId}";
+            filterCondition += " AND " + FullHistoryDateFilter();
 
             var request = $@"<ENVELOPE>
   <HEADER>
@@ -359,6 +379,8 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
         <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
@@ -387,6 +409,7 @@ namespace TallySyncApp.Services
         /// </summary>
         private async Task<string> SendTallyRequestAsync(string requestXml, CancellationToken ct)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
                 SyncLogger.Log($"[FastExtractor] >>> Tally Request: XML Length {requestXml.Length}");
@@ -398,6 +421,10 @@ namespace TallySyncApp.Services
                     var raw = await response.Content.ReadAsStringAsync(ct);
                     return SanitizeXml(raw);
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // User Stop is not a Tally/network failure.
             }
             catch (Exception ex)
             {

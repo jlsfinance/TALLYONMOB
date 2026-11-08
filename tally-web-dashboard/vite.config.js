@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
     const rawSupabaseUrl = String(env.VITE_SUPABASE_URL || '').trim()
     const server = {
         port: 3000,
-        proxy: {},
+        proxy: { '/api/v1/subscriptions': { target: 'http://127.0.0.1:5000', changeOrigin: true } },
         watch: {
             ignored: ['**/android/**', '**/ios/**', '**/node_modules/**'],
         },

@@ -3,8 +3,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
 import { Lock, Shield, Clock, Crown, Mail, Phone } from 'lucide-react';
 import SEO from '../components/common/SEO';
+import { useNavigate } from 'react-router-dom';
 
 export default function LicensePage() {
+    const navigate = useNavigate();
     const { user } = useAuth() as any;
     const [license, setLicense] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -55,7 +57,7 @@ export default function LicensePage() {
                     <p className="text-[var(--on-surface)]/60 mb-8">No license is associated with your account.</p>
                     <div className="flex gap-3 justify-center">
                         <button
-                            onClick={() => window.location.href = '/subscription'}
+                            onClick={() => navigate('/subscription')}
                             className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)]"
                         >
                             Buy License

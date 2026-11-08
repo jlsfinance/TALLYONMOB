@@ -168,7 +168,7 @@ namespace TallySyncApp.Models
         public bool UseFastExtractor { get; set; } = false;
         public bool UseSafeVoucherReconciliation { get; set; } = true;
         public string TelegramBotToken { get; set; } = string.Empty;
-        public string LicencePurchaseUrl { get; set; } = "https://tallyonmobile.com/buy-licence";
+        public string LicencePurchaseUrl { get; set; } = "https://tallyonmob.vercel.app/subscription";
     }
 
     public class DatabaseSettings

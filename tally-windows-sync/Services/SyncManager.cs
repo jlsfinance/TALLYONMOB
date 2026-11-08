@@ -1,12 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using System.Text;
 using Newtonsoft.Json;
 using TallySyncApp.Models;
 using TallySyncApp;
@@ -27,9 +28,18 @@ namespace TallySyncApp.Services
         private System.Timers.Timer? _syncTimer;
         private CancellationTokenSource? _cancellationTokenSource;
         private bool _isSyncing = false;
-        private bool _isFirstRun = true;
+        private VoucherBatchJournal? _voucherJournal;
+        private CloudSyncProgress? _cloudHistoryProgress;
+        // Set when a full-history index could not prove it covers the cloud data.
+        // Drives "partial" sync history instead of "completed".
+        private string? _historicalCoverageError;
         private readonly object _syncLock = new object();
         private Dictionary<string, string> _hsnCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // Local SQLite store for company identity mappings (GUID + path + source -> company_id).
+        // Lazy-initialized on first use with the logged-in user's owner_id.
+        private CompanyMappingStore? _mappingStore;
+        private readonly object _mappingStoreLock = new object();
 
         // Vouchers per Tally request. Small batches keep Tally (and low-end PCs) alive.
         private const int TALLY_BATCH_SIZE = 100;
@@ -126,6 +136,7 @@ namespace TallySyncApp.Services
             _tallyConnector?.Dispose();
             _apiClient?.Dispose();
             _offlineQueue?.Dispose();
+            _voucherJournal?.Dispose();
 
             // Create new instances
             _tallyConnector = new TallyConnector(
@@ -168,6 +179,7 @@ namespace TallySyncApp.Services
             };
 
             _offlineQueue = new OfflineQueueService(_settings.Database.Path);
+            _voucherJournal = new VoucherBatchJournal();
         }
 
         /// <summary>
@@ -309,64 +321,13 @@ namespace TallySyncApp.Services
 
                     try
                     {
-                        await UploadListAsync("vouchers", fetched, "id");
+                        await PersistVoucherBatchesAsync(company, fetched, new List<string>(), _cancellationTokenSource?.Token ?? default);
                         repaired += fetched.Count;
-
-                        var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, fetched);
-                        if (ledgerEntries > 0 || stockEntries > 0)
-                            AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
-
-                        var salesVouchers = fetched.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
-                        if (salesVouchers.Count > 0)
-                        {
-                            var sales = _tallyConnector.MapVouchersToSales(salesVouchers, company.Name);
-                            var salesFlat = sales.Select(s => new {
-                                id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
-                                invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
-                                party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
-                                party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
-                                gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
-                                taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
-                                sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
-                                cess_amount = s.CessAmount, round_off = s.RoundOff,
-                                net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
-                                narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
-                            }).ToList();
-                            await UploadListAsync("sales", salesFlat, "id");
-                            var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
-                            if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
-                        }
-
-                        var purchaseVouchers = fetched.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
-                        if (purchaseVouchers.Count > 0)
-                        {
-                            var purchases = _tallyConnector.MapVouchersToPurchases(purchaseVouchers, company.Name);
-                            var purchasesFlat = purchases.Select(p => new {
-                                id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
-                                invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
-                                party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
-                                party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
-                                discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
-                                cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
-                                igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
-                                round_off = p.RoundOff, net_amount = p.NetAmount,
-                                is_cancelled = p.IsCancelled, narration = p.Narration,
-                                master_id = p.MasterId, alter_id = p.AlterId
-                            }).ToList();
-                            await UploadListAsync("purchases", purchasesFlat, "id");
-                            var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
-                            if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
-                        }
-
-                        var billAllocations = _tallyConnector.ExtractBillAllocations(fetched, company.Name);
-                        if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
-
-                        var bankAllocations = _tallyConnector.ExtractBankAllocations(fetched, company.Name);
-                        if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
                     }
                     catch (Exception ex)
                     {
                         AddLog($"   ⚠️ Repair upload failed: {ex.Message}");
+                        throw;
                     }
 
                     await Task.Delay(300);
@@ -389,6 +350,7 @@ namespace TallySyncApp.Services
         {
             var lic = await _apiClient!.GetLicenseValidationAsync();
             LastLicenseResult = lic;
+            Status.IsServerConnected = !lic.IsNetworkError;
 
             if (!lic.Allowed)
             {
@@ -434,13 +396,20 @@ namespace TallySyncApp.Services
         {
             if (_syncTimer != null) return;
 
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            // FIX: Mark first run complete when user explicitly starts auto-sync
-            _isFirstRun = false;
+            lock (_syncLock)
+            {
+                if (_isSyncing && _cancellationTokenSource?.IsCancellationRequested == true)
+                    throw new InvalidOperationException("Previous sync is stopping. Please try again shortly.");
+                if (!_isSyncing || _cancellationTokenSource == null)
+                {
+                    _cancellationTokenSource?.Dispose();
+                    _cancellationTokenSource = new CancellationTokenSource();
+                }
+            }
+            var startupToken = _cancellationTokenSource.Token;
 
             _syncTimer = new System.Timers.Timer(_settings.SyncSettings.SyncIntervalMinutes * 60 * 1000);
-            _syncTimer.Elapsed += async (s, e) => await RunSyncAsync();
+            _syncTimer.Elapsed += async (s, e) => { if (!startupToken.IsCancellationRequested) await RunSyncAsync(); };
             _syncTimer.AutoReset = true;
             _syncTimer.Start();
 
@@ -453,8 +422,13 @@ namespace TallySyncApp.Services
             // FIX: Trigger immediate first sync when auto-sync is started
             _ = Task.Run(async () => 
             {
-                await Task.Delay(2000); // Small delay to let UI update
-                await RunSyncAsync(isManual: false, forceResync: false);
+                try
+                {
+                    await Task.Delay(2000, startupToken); // Stop also cancels a not-yet-started pass.
+                    startupToken.ThrowIfCancellationRequested();
+                    await RunSyncAsync(isManual: false, forceResync: false);
+                }
+                catch (OperationCanceledException) when (startupToken.IsCancellationRequested) { }
             });
         }
 
@@ -468,6 +442,7 @@ namespace TallySyncApp.Services
             _syncTimer = null;
 
             _cancellationTokenSource?.Cancel();
+            Status.NextSyncTime = null;
 
             UpdateStatus(SyncState.Idle, "Sync stopped");
             Console.WriteLine("Background sync stopped");
@@ -487,6 +462,7 @@ namespace TallySyncApp.Services
         private async Task RunSyncAsync(bool isManual = false, bool forceResync = false)
         {
             AddLog($"🚀 Sync requested (Manual: {isManual}, Force: {forceResync})");
+            CancellationToken runToken;
 
             // FIX 4: Hard Lock + isSyncing flag
             lock (_syncLock)
@@ -497,6 +473,10 @@ namespace TallySyncApp.Services
                      Console.WriteLine("Sync already in progress, skipping...");
                      return;
                 }
+                var cancellation = SyncRunCancellation.Prepare(_cancellationTokenSource, isManual);
+                if (cancellation == null) return;
+                _cancellationTokenSource = cancellation;
+                runToken = cancellation.Token;
                 _isSyncing = true;
             }
             var overallStopwatch = Stopwatch.StartNew();
@@ -548,6 +528,12 @@ namespace TallySyncApp.Services
                     AddLog("❌ Tally not available. Ensure Tally Prime is open and running on localhost.");
                     Console.WriteLine("Tally not available, skipping sync");
                     return;
+                }
+
+                // Retry any pending cloud identity mappings from a previous interrupted sync
+                if (App.AuthService?.IsLoggedIn == true && !string.IsNullOrEmpty(App.AuthService.CurrentSession?.UserId))
+                {
+                    await SyncPendingMappingsAsync(App.AuthService.CurrentSession.UserId);
                 }
 
                 // P2: license guard - this Tally serial must belong to the logged-in account.
@@ -621,18 +607,13 @@ namespace TallySyncApp.Services
                 Status.TotalRecords = 0;
                 Status.ProcessedRecords = 0;
 
-                // Safety: Clear old queue on first run to avoid stuck loops
-                if (_isFirstRun || isManual) 
-                {
-                    await _offlineQueue!.ClearQueueAsync();
-                    if (isManual) AddLog("🧹 Cleared error queue for fresh start.");
-                    _isFirstRun = false;
-                }
+                // Pending uploads survive application restarts and manual syncs.
 
                 var failedCompanies = new List<string>();
                 string? lastCompanyError = null;
                 foreach (var company in companies)
                 {
+                    runToken.ThrowIfCancellationRequested();
                     // ===== SYNC HISTORY TRACKING - declare outside try for catch access =====
                     string syncType = "incremental"; // Default
                     string? syncHistoryId = null;
@@ -640,8 +621,9 @@ namespace TallySyncApp.Services
                     int masterDataSynced = 0;
                     decimal totalSalesAmountFetched = 0;
                     var highValueAlerts = new List<string>();
-                    const decimal HighValueThreshold = 50000; // ₹50,000 threshold for alerts
                     var syncedVoucherIds = new List<string>();
+                    _historicalCoverageError = null;
+                    _cloudHistoryProgress = null;
 
                     try
                     {
@@ -663,9 +645,13 @@ namespace TallySyncApp.Services
                         catch (Exception tgEx) { SyncLogger.Log($"⚠️ Telegram Start notification failed: {tgEx.Message}"); }
 
                         CurrentCompany = company;
+                        Status.CompanyName = company.Name;
                         UpdateStatus(SyncState.Syncing, $"Processing: {company.Name}");
 
                         // Sync company info first
+                        // Declare ownerId here so it's in scope for the entire company processing block
+                        string ownerId = CurrentCompany.OwnerId ?? App.AuthService.CurrentSession?.UserId ?? string.Empty;
+
                         if (serverOk)
                         {
                             // Inject OwnerId for RLS
@@ -678,12 +664,42 @@ namespace TallySyncApp.Services
                             {
                                 AddLog($"⚠️ Warning: No Owner ID assigned. Company might not be visible on website if RLS is enabled.");
                             }
-                            
+
+                            // Keep previously synced rows/checkpoints when the folder moves.
+                            // A local GUID mapping is independent of its recorded data path.
+                            await EnsureMappingStoreInitializedAsync(VoucherOwnerId);
+                            if (!string.IsNullOrWhiteSpace(CurrentCompany.TallyGuid))
+                            {
+                                var known = _mappingStore!.GetByGuid(VoucherOwnerId, CurrentCompany.TallyGuid)
+                                    .Select(map => new ExistingCompanyIdentity(map.SupabaseCompanyId, map.TallyGuid)).ToList();
+                                if (known.Count > 0)
+                                {
+                                    var resolved = CompanyCloudIdentity.Resolve(CurrentCompany.Name, CurrentCompany.TallyGuid, null, known);
+                                    if (!Guid.TryParse(resolved, out _)) throw new InvalidDataException("Saved company mapping has an invalid cloud ID.");
+                                    CurrentCompany.Id = resolved;
+                                }
+                            }
                             var compResult = await _apiClient!.SyncCompanyAsync(CurrentCompany);
                             if (compResult.Success)
                             {
                                 SyncLogger.Log($"✅ Company metadata synced: {company.Name}");
                                 AddLog($"✅ Company registered in Cloud: {company.Name} (ID: {company.Id})");
+
+                                // Record identity in every extractor mode, including FastExtractor.
+                                // The existing retry flow confirms new mappings with the cloud.
+                                if (!string.IsNullOrWhiteSpace(company.TallyGuid))
+                                {
+                                    var identity = new CompanyIdentityMap
+                                    {
+                                        SupabaseCompanyId = company.Id, TallyGuid = company.TallyGuid,
+                                        DataPath = company.DataPath ?? "", SourceId = GenerateSourceId(company.DataPath ?? ""),
+                                        OwnerId = VoucherOwnerId, RegisteredAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+                                        IsActive = true, IsVerified = false, ConfirmationState = "pending"
+                                    };
+                                    if (_mappingStore!.GetByGuidAndPath(VoucherOwnerId, company.TallyGuid, identity.DataPath) == null &&
+                                        !_mappingStore.SaveWithPendingState(identity))
+                                        throw new IOException("Could not persist company identity; stopped before data sync.");
+                                }
 
                                 if (company.FinancialYearStart != null)
                                 {
@@ -725,7 +741,9 @@ namespace TallySyncApp.Services
                         // "first sync" banke poora history dobara uthata tha.
                         await _apiClient!.FailRunningSyncsAsync(company.Id);
 
-                        long lastVoucherAlterId = await _apiClient!.GetMaxAlterIdAsync(company.Id, "vouchers");
+                        long lastVoucherAlterId = _voucherJournal!.GetCheckpoint(VoucherOwnerId, company.Id)
+                            ?? await _apiClient!.GetMaxAlterIdAsync(company.Id, "vouchers");
+                        _voucherJournal.EnsureCheckpoint(VoucherOwnerId, company.Id, lastVoucherAlterId);
                         long lastLedgerAlterId = await _apiClient.GetMaxAlterIdAsync(company.Id, "ledgers");
 
                         bool isFirstSync = lastVoucherAlterId == 0 || forceResync;
@@ -735,6 +753,7 @@ namespace TallySyncApp.Services
                         else syncType = "incremental";
 
                         syncHistoryId = await _apiClient!.StartSyncHistoryAsync(company.Id, syncType);
+                        if (!string.IsNullOrEmpty(syncHistoryId)) _cloudHistoryProgress = new CloudSyncProgress { HistoryId = syncHistoryId };
                         AddLog($"🔎 Sync type: {syncType} (last voucher ALTERID: {lastVoucherAlterId}, ledger: {lastLedgerAlterId})");
 
                         /* 
@@ -755,8 +774,15 @@ namespace TallySyncApp.Services
                         Status.TotalRecords = 0; 
                         Status.ProcessedRecords = 0;
                         
-                        // Process queue for this company
+                        // Complete interrupted batches BEFORE any new voucher work.
+                        var resumed = await ReplayVoucherBatchesAsync(company, highValueAlerts, runToken);
+                        vouchersSynced += resumed.Vouchers;
+                        salesSynced += resumed.Sales;
+                        purchasesSynced += resumed.Purchases;
+                        totalSalesAmountFetched += resumed.SalesAmount;
                         await ProcessQueueAsync();
+                        lastVoucherAlterId = _voucherJournal.GetCheckpoint(VoucherOwnerId, company.Id) ?? lastVoucherAlterId;
+                        isFirstSync = lastVoucherAlterId == 0 || forceResync;
 
                         // ===========================================
                         // TWO-WAY SYNC: Push Cloud entries TO Tally
@@ -943,9 +969,10 @@ namespace TallySyncApp.Services
                             if (_settings.SyncSettings.UseFastExtractor)
                             {
                                 AddLog("⚡ [FastExtractor] LiveKeeping Mode Active - Zero-Hang Sync Running");
-                                var (fVouchers, fSales, fSalesAmt) = await SyncHistoricalVouchersFastAsync(
-                                    company, hsnCache, highValueAlerts, _cancellationTokenSource?.Token ?? default);
+                                var (fVouchers, fSales, fSalesAmt, fPurchases) = await SyncHistoricalVouchersFastAsync(
+                                    company, hsnCache, highValueAlerts, runToken);
                                 vouchersSynced += fVouchers;
+                                purchasesSynced += fPurchases;
                                 salesSynced += fSales;
                                 totalSalesAmountFetched += fSalesAmt;
                             }
@@ -953,11 +980,74 @@ namespace TallySyncApp.Services
                             {
                             // Full historical voucher sync: 100 vouchers per Tally request.
                             // Small batches keep Tally memory low and let weak PCs keep up.
-                            bool allChunksSuccessful = true;
                             int totalVouchersFound = 0;
 
                             UpdateStatus(SyncState.Syncing, "First Sync: reading voucher index...");
-                            var alterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);
+                            // Windowed ALTERID index (bounded windows - no single heavy Tally request).
+                            var (alterIds, completeness) = await _tallyConnector!.GetVoucherAlterIdsWindowedAsync(company.Name);
+
+                            // Register company identity with cloud (GUID + Data Path + Source ID)
+                            // Source ID is stable per (PC, data path) — prevents duplicate mappings on re-sync.
+                            // Mapping is saved locally as PENDING until cloud confirms activation.
+                            string registerSourceId = GenerateSourceId(company.DataPath ?? "");
+                            var registerResult = await _apiClient!.RegisterCompanyIdentityAsync(
+                                company.Id,
+                                company.TallyGuid ?? "",  // Tally GUID from GetOpenCompaniesAsync
+                                company.DataPath ?? "", // Data path from Tally company info
+                                registerSourceId,  // Source ID - stable per PC + directory
+                                false  // switch_main_path = false for new registration
+                            );
+
+                            if (!registerResult.Success)
+                            {
+                                // Try to extract a user-friendly message from the response body
+                                string userMsg = registerResult.Message ?? registerResult.Error ?? "unknown error";
+                                try
+                                {
+                                    var errorBody = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object?>>(registerResult.Message ?? "{}");
+                                    if (errorBody != null && errorBody.TryGetValue("message", out var innerMsg) && innerMsg != null)
+                                        userMsg = innerMsg.ToString()!;
+                                }
+                                catch { }
+
+                                string logMsg = $"❌ Company identity registration FAILED: {userMsg}. Cannot sync without confirmed cloud identity.";
+                                AddLog(logMsg);
+                                SyncLogger.Log($"[CompanyIdentity] {company.Name}: {userMsg}");
+                                failedCompanies.Add(company.Name);
+                                lastCompanyError = "Company identity registration failed: " + userMsg;
+                                continue; // Skip this company - cannot sync without identity mapping
+                            }
+
+                            // Save mapping locally as PENDING (cloud activation not yet confirmed)
+                            var pendingMap = new CompanyIdentityMap
+                            {
+                                SupabaseCompanyId = company.Id,
+                                TallyGuid = company.TallyGuid ?? "",
+                                DataPath = company.DataPath ?? "",
+                                SourceId = registerSourceId,
+                                OwnerId = ownerId,
+                                RegisteredAt = DateTime.UtcNow,
+                                LastSeenAt = DateTime.UtcNow,
+                                IsVerified = false,
+                                IsActive = true,
+                                ConfirmationState = "pending",
+                            };
+                            bool pendingSaved = _mappingStore!.SaveWithPendingState(pendingMap);
+                            if (!pendingSaved)
+                            {
+                                // Duplicate already exists locally — check if it's pending and needs confirmation
+                                var existing = _mappingStore.GetByGuidAndPath(ownerId, company.TallyGuid ?? "", company.DataPath ?? "");
+                                if (existing != null && existing.ConfirmationState == "pending")
+                                {
+                                    AddLog($"⚠️ Local mapping already pending for '{company.Name}'. Will retry cloud confirmation.");
+                                }
+                                else
+                                {
+                                    AddLog($"⚠️ Could not save pending mapping locally for '{company.Name}'.");
+                                }
+                            }
+
+                            SyncLogger.Log($"✅ Company identity registered (pending cloud confirm): {company.Name} (ALTERID: {alterIds.Count} vouchers)");
 
                             if (alterIds.Count == 0)
                             {
@@ -973,106 +1063,30 @@ namespace TallySyncApp.Services
 
                             for (int batchNo = 0; batchNo < totalBatches; batchNo++)
                             {
-                                var ids = alterIds.Skip(batchNo * TALLY_BATCH_SIZE).Take(TALLY_BATCH_SIZE).ToList();
+                                var ids = alterIds.OrderBy(id => id).Skip(batchNo * TALLY_BATCH_SIZE).Take(TALLY_BATCH_SIZE).ToList();
                                 string rangeDisplay = $"batch {batchNo + 1}/{totalBatches}";
 
                                 try 
                                 {
                                     var allVouchers = await _tallyConnector!.GetVouchersByAlterRangeAsync(company.Name, ids.First(), ids.Last(), hsnCache);
-                                    if (allVouchers.Count == 0) continue;
+                                    if (allVouchers.Count == 0) throw new IOException("Tally did not return the requested batch; checkpoint retained.");
 
-                                        totalVouchersFound += allVouchers.Count;
-                                        
-                                        // 1. Upload all vouchers (General list)
-                                        await UploadListAsync("vouchers", allVouchers, "id");
-                                        vouchersSynced += allVouchers.Count;
-                                        AddLog($"✅ {allVouchers.Count} vouchers ({rangeDisplay})");
-                                        
-                                        // 2. Sync voucher line items (ledger entries and stock entries)
-                                        var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, allVouchers);
-                                        if (ledgerEntries > 0 || stockEntries > 0)
-                                        {
-                                            AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
-                                        }
-
-                                        // 2. Extract Sales Locally (No extra Tally call)
-                                        var salesVouchers = allVouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
-                                        if (salesVouchers.Count > 0)
-                                        {
-                                            var sales = _tallyConnector.MapVouchersToSales(salesVouchers, company.Name);
-                                            var salesFlat = sales.Select(s => new {
-                                                id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
-                                                invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
-                                                party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
-                                                party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
-                                                gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
-                                                taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
-                                                sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
-                                                cess_amount = s.CessAmount, round_off = s.RoundOff,
-                                                net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
-                                                narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
-                                            }).ToList();
-                                            await UploadListAsync("sales", salesFlat, "id");
-                                            salesSynced += salesVouchers.Count;
-
-                                            var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
-                                            if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
-                                            AddLog($"   📊 {salesVouchers.Count} sales synced");
-
-                                            // TRACK FOR SMART ALERTS
-                                            totalSalesAmountFetched += sales.Sum(s => s.NetAmount);
-                                            foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
-                                            {
-                                                highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
-                                            }
-                                        }
-
-                                        // 3. Extract Purchases Locally (No extra Tally call)
-                                        var purchaseVouchers = allVouchers.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
-                                        if (purchaseVouchers.Count > 0)
-                                        {
-                                            var purchases = _tallyConnector.MapVouchersToPurchases(purchaseVouchers, company.Name);
-                                            var purchasesFlat = purchases.Select(p => new {
-                                                id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
-                                                invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
-                                                party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
-                                                party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
-                                                discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
-                                                cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
-                                                igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
-                                                round_off = p.RoundOff, net_amount = p.NetAmount,
-                                                is_cancelled = p.IsCancelled, narration = p.Narration,
-                                                master_id = p.MasterId, alter_id = p.AlterId
-                                            }).ToList();
-                                            await UploadListAsync("purchases", purchasesFlat, "id");
-                                            purchasesSynced += purchaseVouchers.Count;
-
-                                            var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
-                                            if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
-                                            AddLog($"   🛒 {purchaseVouchers.Count} purchases synced");
-                                        }
-
-                                    // 4. Extract Allocations & Notes (Batched Vouchers)
-                                    if (allVouchers.Count > 0)
-                                    {
-                                        var billAllocations = _tallyConnector.ExtractBillAllocations(allVouchers, company.Name);
-                                        if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
-
-                                        var bankAllocations = _tallyConnector.ExtractBankAllocations(allVouchers, company.Name);
-                                        if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
-
-                                        var notes = _tallyConnector.ExtractDebitCreditNotes(allVouchers, company.Name);
-                                        if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
-                                    }
-
+                                        if (ids.Except(allVouchers.Select(v => long.TryParse(v.AlterId, out var n) ? n : 0)).Any())
+                                            throw new IOException("Tally returned an incomplete voucher batch; checkpoint retained.");
+                                        var saved = await PersistVoucherBatchesAsync(company, allVouchers, highValueAlerts, runToken);
+                                        totalVouchersFound += saved.Vouchers;
+                                        vouchersSynced += saved.Vouchers;
+                                        salesSynced += saved.Sales;
+                                        purchasesSynced += saved.Purchases;
+                                        totalSalesAmountFetched += saved.SalesAmount;
                                     // Track Progress
                                     Status.ProcessedRecords = totalVouchersFound;
                                     UpdateStatus(SyncState.Syncing, $"Synced {totalVouchersFound} vouchers...");
                                 } 
                                 catch (Exception ex) 
                                 {
-                                    allChunksSuccessful = false;
                                     AddLog($"❌ {rangeDisplay}: {ex.Message}");
+                                    throw;
                                 }
 
                                 // Tally stops answering when it is overloaded (big company, huge export).
@@ -1088,11 +1102,11 @@ namespace TallySyncApp.Services
                             }
 
                             AddLog($"📊 First sync complete: {totalVouchersFound} vouchers");
-                            }
                         }
-                        else
-                        {
-                            // ======= INCREMENTAL SYNC: ALTERID-BASED =======
+                        }
+                    else
+                    {
+                        // ======= INCREMENTAL SYNC: ALTERID-BASED =======
                             // This catches ANY modification - even 6-month old entries!
                             AddLog($"🔄 Incremental sync (ALTERID > {lastVoucherAlterId})");
                             UpdateStatus(SyncState.Syncing, "Checking for modifications...");
@@ -1100,41 +1114,17 @@ namespace TallySyncApp.Services
                             // Calculate total to sync first (for progress bar)
                             int totalToSync = 0;
                             List<Ledger> finalLedgers = new List<Ledger>();
-                            List<Voucher> finalVouchers = new List<Voucher>();
 
                             // 1. Check Ledgers - Always attempt fetch (use 0 for first incremental pass)
                             finalLedgers = await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
                             totalToSync += finalLedgers.Count;
                             
-                            // 2. Check Vouchers
-                            // FIX: Removed flag check to ensure modified vouchers always sync
-                            if (_settings.SyncSettings.UseFastExtractor)
-                            {
-                                using var fastExtractor = new TallyFastExtractor($"http://{_settings.TallySettings.Host}:{_settings.TallySettings.Port}", _settings.SyncSettings.BatchSize, 40);
-                                finalVouchers = await fastExtractor.GetModifiedVouchersFastAsync(company.Name, lastVoucherAlterId, hsnCache, (done, total) => {
-                                    Status.ProcessedRecords = done;
-                                    UpdateStatus(SyncState.Syncing, $"Fetching modified vouchers ({done}/{total})...");
-                                }, _cancellationTokenSource?.Token ?? default);
-                            }
-                            else
-                            {
-                                finalVouchers = await _tallyConnector!.GetModifiedVouchersAsync(company.Name, lastVoucherAlterId, hsnCache);
-                            }
-                            totalToSync += finalVouchers.Count;
-
-                            // Update Status counts
-                            Status.TotalRecords = totalToSync;
+                            // Each indexed payload batch must have complete ALTERID coverage.
+                            using var indexExtractor = new TallyFastExtractor($"http://{_settings.TallySettings.Host}:{_settings.TallySettings.Port}", TALLY_BATCH_SIZE, 40);
+                            var changedIds = await indexExtractor.GetModifiedVoucherAlterIdsAsync(company.Name, lastVoucherAlterId,
+                                runToken);
+                            Status.TotalRecords = finalLedgers.Count + changedIds.Count;
                             Status.ProcessedRecords = 0;
-
-                            if (totalToSync == 0)
-                            {
-                                UpdateStatus(SyncState.Syncing, "No changes found.");
-                                AddLog($"✅ System is up to date.");
-                            }
-                            else
-                            {
-                                UpdateStatus(SyncState.Syncing, $"Found {totalToSync} changes to sync...");
-                            }
 
                             // 1. Sync modified LEDGERS
                             if (finalLedgers.Count > 0)
@@ -1155,112 +1145,17 @@ namespace TallySyncApp.Services
                                 await SyncDataTypeAsync("ledgers", async () => await _tallyConnector!.GetLedgersAsync(company.Name));
                             }
                             
-                            // 2. Sync modified VOUCHERS
-                            // Use 'finalVouchers' instead of 'modifiedVouchers'
-                            if (finalVouchers.Count > 0)
+                            if (changedIds.Count > 0)
                             {
-                                await UploadListAsync("vouchers", finalVouchers, "id");
-                                vouchersSynced += finalVouchers.Count;
-                                Status.ProcessedRecords += finalVouchers.Count;
-                                AddLog($"📝 Synced {finalVouchers.Count} modified vouchers");
-                                
-                                // Sync voucher line items (ledger entries and stock entries)
-                                var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, finalVouchers);
-                                if (ledgerEntries > 0 || stockEntries > 0)
-                                {
-                                    AddLog($"   📋 {ledgerEntries} ledger entries, {stockEntries} stock entries");
-                                }
-                                
-                                
-                                // Show sample of what was modified
-                                foreach (var v in finalVouchers.Take(5))
-                                {
-                                    AddLog($"   📄 {v.VoucherType} #{v.VoucherNumber} ({v.VoucherDate:dd-MMM-yy}) - ALTERID: {v.AlterId}");
-                                }
-
-                                if (finalVouchers.Any())
-                                {
-                                    var lastDate = finalVouchers.Max(v => v.VoucherDate);
-                                    AddLog($"🕒 Last Entry Found: {lastDate:dd-MMM-yyyy}");
-                                }
-                                
-                                // Also sync Sales/Purchases for modified vouchers
-                                // Optimization: Map existing vouchers instead of re-fetching from Tally
-                                if (finalVouchers.Any())
-                                {
-                                    // 1. Map existing vouchers to Sales
-                                    var salesVouchers = finalVouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
-                                    if (salesVouchers.Count > 0)
-                                    {
-                                        var sales = _tallyConnector.MapVouchersToSales(salesVouchers, company.Name);
-                                        var salesFlat = sales.Select(s => new {
-                                            id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
-                                            invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
-                                            party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
-                                            party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
-                                            gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
-                                            taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
-                                            sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
-                                            cess_amount = s.CessAmount, round_off = s.RoundOff,
-                                            net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
-                                            narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
-                                        }).ToList();
-                                        await UploadListAsync("sales", salesFlat, "id");
-                                        salesSynced += salesVouchers.Count;
-
-                                        var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
-                                        if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
-                                        AddLog($"   📊 {salesVouchers.Count} sales updated locally");
-                                        
-                                        // TRACK FOR SMART ALERTS
-                                        totalSalesAmountFetched += sales.Sum(s => s.NetAmount);
-                                        foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
-                                        {
-                                            highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
-                                        }
-                                    }
-
-                                    // 2. Map existing vouchers to Purchases
-                                    var purchaseVouchers = finalVouchers.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
-                                    if (purchaseVouchers.Count > 0)
-                                    {
-                                        var purchases = _tallyConnector.MapVouchersToPurchases(purchaseVouchers, company.Name);
-                                        var purchasesFlat = purchases.Select(p => new {
-                                            id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
-                                            invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
-                                            party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
-                                            party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
-                                            discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
-                                            cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
-                                            igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
-                                            round_off = p.RoundOff, net_amount = p.NetAmount,
-                                            is_cancelled = p.IsCancelled, narration = p.Narration,
-                                            master_id = p.MasterId, alter_id = p.AlterId
-                                        }).ToList();
-                                        await UploadListAsync("purchases", purchasesFlat, "id");
-                                        purchasesSynced += purchaseVouchers.Count;
-
-                                        var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
-                                        if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
-                                        AddLog($"   🛒 {purchaseVouchers.Count} purchases updated locally");
-                                    }
-
-                                    // 3. Extract Allocations & Notes (Incremental)
-                                    var billAllocations = _tallyConnector.ExtractBillAllocations(finalVouchers, company.Name);
-                                    if (billAllocations.Count > 0) await UploadListAsync("bill_allocations", billAllocations, "id");
-
-                                    var bankAllocations = _tallyConnector.ExtractBankAllocations(finalVouchers, company.Name);
-                                    if (bankAllocations.Count > 0) await UploadListAsync("bank_allocations", bankAllocations, "id");
-
-                                    var notes = _tallyConnector.ExtractDebitCreditNotes(finalVouchers, company.Name);
-                                    if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
-                                }
+                                var saved = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts,
+                                    runToken, changedIds);
+                                vouchersSynced += saved.VouchersSynced;
+                                salesSynced += saved.SalesSynced;
+                                purchasesSynced += saved.PurchasesSynced;
+                                totalSalesAmountFetched += saved.TotalSalesAmount;
                             }
-                            else
-                            {
-                                AddLog($"✅ No voucher modifications detected - data is up to date!");
-                            }
-                            
+                            else AddLog("✅ No voucher modifications detected.");
+
                             // 3. OPTIMIZATION: Removed redundant "Last 7 Days" re-fetch.
                             // The AlterID logic above already captures ALL new and modified vouchers efficiently.
                             // Re-fetching recent days caused Tally hangs due to heavy XML generation.
@@ -1353,8 +1248,9 @@ namespace TallySyncApp.Services
                         // ===========================================
                         if (!isFirstSync && serverOk && _settings.SyncSettings.UseSafeVoucherReconciliation)
                         {
-                            var (repairVouchers, repairSales, repairSalesAmount) = await ReconcileVoucherIdentitiesAsync(company, hsnCache, highValueAlerts, _cancellationTokenSource?.Token ?? default);
+                            var (repairVouchers, repairSales, repairSalesAmount, repairPurchases) = await ReconcileVoucherIdentitiesAsync(company, hsnCache, highValueAlerts, runToken);
                             vouchersSynced += repairVouchers;
+                            purchasesSynced += repairPurchases;
                             salesSynced += repairSales;
                             totalSalesAmountFetched += repairSalesAmount;
                         }
@@ -1363,13 +1259,23 @@ namespace TallySyncApp.Services
                             var voucherIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                             if (voucherIndex.Count > 0)
                             {
+                                var cloudVoucherCount = await _apiClient!.GetVoucherCountAsync(company.Id);
+                                bool coverageOk = VerifyIndexCoverage(company, voucherIndex, cloudVoucherCount);
+
                                 // P1: delete cloud vouchers that no longer exist in Tally.
                                 // Full index goes up (guid + type/number + alterId) - LK parity.
-                                var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, voucherIndex);
-                                if (purged > 0)
-                                    AddLog($"🗑 P1: removed {purged} voucher(s) deleted in Tally (entries/sales/purchases cleaned too)");
-                                else if (purged < 0)
-                                    AddLog("⚠️ P1 skipped: Tally index looked truncated (safety guard)");
+                                if (coverageOk)
+                                {
+                                    var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, voucherIndex);
+                                    if (purged > 0)
+                                        AddLog($"🗑 P1: removed {purged} voucher(s) deleted in Tally (entries/sales/purchases cleaned too)");
+                                    else if (purged < 0)
+                                        AddLog("⚠️ P1 skipped: Tally index looked truncated (safety guard)");
+                                }
+                                else
+                                {
+                                    AddLog("⚠️ P1 skipped: index coverage not verified (no deletion).");
+                                }
 
                                 // P3: re-fetch vouchers present in Tally but missing in cloud
                                 var missingPairs = await _apiClient!.FindMissingVouchersAsync(company.Id, voucherIndex);
@@ -1382,15 +1288,20 @@ namespace TallySyncApp.Services
                                 // The pair match above cannot see a voucher whose number repeats in
                                 // another year, so also compare row counts: a gap means whole years
                                 // never reached the cloud. Backfill by ALTERID (covers every year).
-                                var cloudVoucherCount = await _apiClient!.GetVoucherCountAsync(company.Id);
+                                // Only on an explicit Full Resync / manual sync - never automatically.
                                 SyncLogger.Log($"[P3] Tally index {voucherIndex.Count}, cloud {cloudVoucherCount}");
-                                if (cloudVoucherCount >= 0 && voucherIndex.Count > cloudVoucherCount + 5)
+                                if (coverageOk && (forceResync || isManual) && cloudVoucherCount >= 0 && voucherIndex.Count > cloudVoucherCount + 5)
                                 {
                                     SyncLogger.Log($"🧩 P3: Tally has {voucherIndex.Count} vouchers, cloud has {cloudVoucherCount} - backfilling by ALTERID...");
-                                    var (bv, bs, ba) = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, _cancellationTokenSource?.Token ?? default);
+                                    var (bv, bs, ba, bp) = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, runToken);
                                     vouchersSynced += bv;
+                                    purchasesSynced += bp;
                                     salesSynced += bs;
                                     totalSalesAmountFetched += ba;
+                                }
+                                else if (!coverageOk && voucherIndex.Count > cloudVoucherCount + 5)
+                                {
+                                    AddLog("⚠️ P3 backfill withheld: full-history index not verified. Run Full Resync to repair.");
                                 }
                             }
                             else
@@ -1423,18 +1334,21 @@ namespace TallySyncApp.Services
                         // ===== UPDATE SYNC HISTORY =====
                         if (!string.IsNullOrEmpty(syncHistoryId))
                         {
+                            string finalStatus = _historicalCoverageError == null ? "completed" : "partial";
                             await _apiClient!.UpdateSyncHistoryAsync(
                                 syncHistoryId,
-                                "completed",
-                                ledgersSynced,
-                                vouchersSynced,
-                                salesSynced,
-                                purchasesSynced,
-                                stockSynced,
-                                Status.TotalRecords,
-                                syncedVoucherIds
+                                finalStatus,
+                                _cloudHistoryProgress?.Ledgers ?? ledgersSynced,
+                                _cloudHistoryProgress?.Vouchers ?? vouchersSynced,
+                                _cloudHistoryProgress?.Sales ?? salesSynced,
+                                _cloudHistoryProgress?.Purchases ?? purchasesSynced,
+                                _cloudHistoryProgress?.Stock ?? stockSynced,
+                                Math.Max(Status.TotalRecords, _cloudHistoryProgress?.Total ?? 0),
+                                syncedVoucherIds,
+                                _historicalCoverageError
                             );
-                            AddLog($"📜 Sync history saved: {syncType} sync completed");
+                            AddLog($"📜 Sync history saved: {syncType} sync {finalStatus}" +
+                                   (_historicalCoverageError != null ? $" - {_historicalCoverageError}" : ""));
                         }
 
                         // ===== PUSH SYNC (Cloud -> Tally) =====
@@ -1523,6 +1437,11 @@ namespace TallySyncApp.Services
                             SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
                         }
                     }
+                    catch (Exception) when (runToken.IsCancellationRequested)
+                    {
+                        await PublishCloudSyncProgressAsync("partial", "Stopped by user; checkpoint retained.");
+                        throw new OperationCanceledException(runToken);
+                    }
                     catch (Exception ex)
                     {
                         failedCompanies.Add(company.Name);
@@ -1548,14 +1467,12 @@ namespace TallySyncApp.Services
                         // Update sync history with error
                         if (!string.IsNullOrEmpty(syncHistoryId))
                         {
-                            await _apiClient!.UpdateSyncHistoryAsync(
-                                syncHistoryId,
-                                "failed",
-                                errorMessage: ex.Message
-                            );
+                            await PublishCloudSyncProgressAsync("failed", ex.Message);
                         }
                     }
                 }
+
+                runToken.ThrowIfCancellationRequested();
 
                 // Update final status to avoid "1 records" confusion
                 Status.NextSyncTime = DateTime.Now.AddMinutes(_settings.SyncSettings.SyncIntervalMinutes);
@@ -1580,6 +1497,11 @@ namespace TallySyncApp.Services
 
                 // Cleanup old queue items
                 await _offlineQueue!.CleanupAsync();
+            }
+            catch (Exception) when (runToken.IsCancellationRequested)
+            {
+                AddLog("⏹ Sync stopped. Pending batches and checkpoint retained.");
+                UpdateStatus(SyncState.Idle, "Sync stopped; pending batches will resume next time.");
             }
             catch (Exception ex)
             {
@@ -1636,13 +1558,14 @@ namespace TallySyncApp.Services
 
                 foreach (var batch in batches)
                 {
-                    if (_cancellationTokenSource?.IsCancellationRequested == true) break;
+                    (_cancellationTokenSource?.Token ?? default).ThrowIfCancellationRequested();
 
                     var result = await _apiClient!.SyncDataAsync(CurrentCompany!.Id, dataType, batch, onConflict);
 
                     if (result.Success)
                     {
                         successCount += batch.Count;
+                        _cloudHistoryProgress?.AddStandalone(dataType, batch.Count);
                     }
                     else
                     {
@@ -1665,7 +1588,13 @@ namespace TallySyncApp.Services
                 }
 
                 stopwatch.Stop();
+                if (failedCount > 0) _historicalCoverageError = $"{dataType}: {failedCount} records remain queued for retry.";
+                await PublishCloudSyncProgressAsync();
                 await _offlineQueue!.LogSyncAsync(dataType, data.Count, failedCount == 0, failedCount > 0 ? $"{failedCount} failed" : null, (int)stopwatch.ElapsedMilliseconds);
+            }
+            catch (OperationCanceledException) when (_cancellationTokenSource?.IsCancellationRequested == true)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -1687,7 +1616,7 @@ namespace TallySyncApp.Services
                 return;
             }
 
-            var pendingItems = await _offlineQueue!.GetPendingItemsAsync();
+            var pendingItems = await _offlineQueue!.GetPendingItemsAsync(companyId: CurrentCompany!.Id);
 
             if (pendingItems.Count == 0) return;
 
@@ -1708,12 +1637,13 @@ namespace TallySyncApp.Services
                     bool success = false;
                     
                     // FIX: Strong Typing to prevent Type Erasure for Vouchers
-                    if (item.DataType.Contains("voucher"))
+                    if (item.DataType == "vouchers")
                     {
                         var data = JsonConvert.DeserializeObject<List<Voucher>>(item.JsonData);
                         if (data != null && data.Count > 0)
                         {
-                            success = await ProcessTypedBatch(item, data, "id");
+                            await PersistVoucherBatchesAsync(CurrentCompany!, data, new List<string>(), _cancellationTokenSource?.Token ?? default);
+                            success = true;
                         }
                     }
                     else if (item.DataType.Contains("ledger"))
@@ -1752,6 +1682,7 @@ namespace TallySyncApp.Services
                 {
                     await _offlineQueue.MarkFailedAsync(item.Id, ex.Message);
                     SyncLogger.Log($"❌ QUEUE ITEM FAILED: {ex.Message}");
+                    if (item.DataType == "vouchers") throw;
                 }
             }
         }
@@ -1973,14 +1904,42 @@ namespace TallySyncApp.Services
             };
         }
 
-        private async Task<(int, int, decimal)> ReconcileVoucherIdentitiesAsync(Company company, Dictionary<string, string> hsnCache, List<string> highValueAlerts, CancellationToken ct)
+        /// <summary>
+        /// Every full index retrieval is logged with its real coverage. A partial index
+        /// (missing dates, or fewer vouchers than the cloud) must not be treated as
+        /// complete history and must never drive deletions.
+        /// </summary>
+        private bool VerifyIndexCoverage(Company company, List<VoucherIndexEntry> index, int cloudCount)
+        {
+            var dated = index.Where(e => e.Date.HasValue).ToList();
+            string minDate = dated.Count > 0 ? dated.Min(e => e.Date)!.Value.ToString("yyyy-MM-dd") : "unknown";
+            string maxDate = dated.Count > 0 ? dated.Max(e => e.Date)!.Value.ToString("yyyy-MM-dd") : "unknown";
+            bool ok = index.Count > 0
+                && (dated.Count == 0 || dated.Count >= index.Count * 9 / 10)
+                // Cloud rows include soft-deleted ones, and Tally deletions are legitimate;
+                // only a material shortfall (missing years) means coverage is unproven.
+                && (cloudCount < 0 || index.Count >= cloudCount - Math.Max(5, cloudCount / 10));
+            string line = $"[Completeness] {company.Name} ({company.Id}) requested=1900-01-01..{DateTime.Today:yyyy-MM-dd} " +
+                          $"index={index.Count} dates={minDate}..{maxDate} cloud={cloudCount} verified={ok}";
+            SyncLogger.Log(line);
+            AddLog(line);
+            if (!ok)
+            {
+                _historicalCoverageError = $"Historical index incomplete: Tally {index.Count} ({minDate}..{maxDate}) vs cloud {cloudCount}.";
+                AddLog("⚠️ Historical coverage not verified - sync will be marked partial and deletion is not allowed.");
+            }
+            return ok;
+        }
+
+        private async Task<(int, int, decimal, int)> ReconcileVoucherIdentitiesAsync(Company company, Dictionary<string, string> hsnCache, List<string> highValueAlerts, CancellationToken ct)
         {
             try
             {
                 var tally = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
-                if (ct.IsCancellationRequested || tally.Count == 0) { AddLog("⚠️ Reconciliation skipped: Tally index unavailable."); return (0, 0, 0); }
+                if (ct.IsCancellationRequested || tally.Count == 0) { AddLog("⚠️ Reconciliation skipped: Tally index unavailable."); return (0, 0, 0, 0); }
                 var cloud = await _apiClient!.GetVoucherIdentitySnapshotAsync(company.Id);
-                if (ct.IsCancellationRequested || cloud == null) { AddLog("⚠️ Reconciliation skipped: cloud identity snapshot incomplete."); return (0, 0, 0); }
+                if (ct.IsCancellationRequested || cloud == null) { AddLog("⚠️ Reconciliation skipped: cloud identity snapshot incomplete."); return (0, 0, 0, 0); }
+                bool coverageOk = VerifyIndexCoverage(company, tally, cloud.Count);
                 var diff = VoucherReconciliation.Compare(tally, cloud);
                 SyncLogger.Log($"[Reconcile] Tally={tally.Count}, cloud={cloud.Count}, repair={diff.MissingAlterIds.Count}, possible_deleted={diff.PossibleDeletedIds.Count}, ambiguous={diff.AmbiguousRows}.");
                 AddLog($"🔎 Reconcile: {diff.MissingAlterIds.Count} missing/changed, {diff.PossibleDeletedIds.Count} possible deleted, {diff.AmbiguousRows} ambiguous.");
@@ -1997,11 +1956,11 @@ namespace TallySyncApp.Services
                     AddLog($"⚠️ Deletion skipped: Tally index has {tally.Count} vouchers vs {cloud.Count} on web — company data may not be fully loaded.");
                     SyncLogger.Log($"[Reconcile] Deletion skipped: mass delete {diff.PossibleDeletedIds.Count}/{cloud.Count}.");
                 }
-                else if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
+                else if (diff.PossibleDeletedIds.Count > 0 && coverageOk && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
                 {
                     var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                     var tallyAlterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);
-                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, tallyAlterIds, cloud, diff, out var safetyReason);
+                    var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, tallyAlterIds, cloud, diff, out var safetyReason, company.Id);
                     if (candidates.Count == 0)
                     {
                         AddLog("⚠️ Deletion skipped: identity or snapshot safety checks did not pass.");
@@ -2023,33 +1982,176 @@ namespace TallySyncApp.Services
                         }
                     }
                 }
-                if (diff.MissingAlterIds.Count == 0 || !_settings.SyncSettings.UseSafeVoucherReconciliation) return (0, 0, 0);
+                if (diff.MissingAlterIds.Count == 0 || !_settings.SyncSettings.UseSafeVoucherReconciliation) return (0, 0, 0, 0);
                 AddLog($"🧩 Repairing {diff.MissingAlterIds.Count} identified voucher(s) by ALTERID.");
                 return await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, ct, diff.MissingAlterIds);
             }
             catch (Exception ex)
             {
                 SyncLogger.Log($"[Reconcile] Aborted safely: {ex.Message}");
-                AddLog("⚠️ Reconciliation skipped; existing cloud vouchers were not deleted.");
-                return (0, 0, 0);
+                AddLog("⚠️ Reconciliation stopped; pending batches will be retried first next cycle.");
+                throw;
             }
         }
 
-        private async Task<(int VouchersSynced, int SalesSynced, decimal TotalSalesAmount)> SyncHistoricalVouchersFastAsync(
+        private string VoucherOwnerId => App.AuthService?.CurrentSession?.UserId
+            ?? throw new InvalidOperationException("Sign in before resuming voucher batches.");
+
+        private async Task PublishCloudSyncProgressAsync(string status = "running", string? error = null)
+        {
+            var progress = _cloudHistoryProgress;
+            if (progress == null) return;
+            var saved = await _apiClient!.UpdateSyncHistoryAsync(progress.HistoryId, status,
+                progress.Ledgers, progress.Vouchers, progress.Sales, progress.Purchases, progress.Stock,
+                Math.Max(Status.TotalRecords, progress.Total), errorMessage: error);
+            if (!saved) SyncLogger.Log("Cloud history progress update failed; voucher checkpoint is unaffected.");
+        }
+
+        private async Task UploadRequiredVoucherDataAsync<T>(string table, List<T> rows, string conflict = "id")
+        {
+            int sent = 0;
+            UpdateStatus(SyncState.Uploading, $"Uploading {table.Replace('_', ' ')}: 0/{rows.Count}", table);
+            foreach (var batch in rows.Chunk(TALLY_BATCH_SIZE))
+            {
+                (_cancellationTokenSource?.Token ?? default).ThrowIfCancellationRequested();
+                var result = await _apiClient!.SyncDataAsync(CurrentCompany!.Id, table, batch.ToList(), conflict);
+                if (!result.Success) throw new IOException($"{table} upload failed: {result.Error}");
+                sent += batch.Length;
+                UpdateStatus(SyncState.Uploading, $"Uploading {table.Replace('_', ' ')}: {sent}/{rows.Count}", table);
+            }
+        }
+
+        private async Task<(int Vouchers, int Sales, decimal SalesAmount, int Purchases)> ReplayVoucherBatchesAsync(
+            Company company, List<string> highValueAlerts, CancellationToken ct)
+        {
+            int voucherCount = 0, salesCount = 0, purchaseCount = 0;
+            decimal salesAmount = 0;
+            int batchVoucherCount = 0, batchSalesCount = 0, batchPurchaseCount = 0;
+            await _voucherJournal!.ReplayAsync(VoucherOwnerId, company.Id, async (json, token) =>
+            {
+                var vouchers = VoucherBatchPayloadCodec.Deserialize(json);
+                batchVoucherCount = vouchers.Count;
+                batchSalesCount = 0;
+                batchPurchaseCount = 0;
+                if (vouchers.Count == 0) throw new InvalidDataException("Saved voucher batch is empty.");
+                token.ThrowIfCancellationRequested();
+                await UploadRequiredVoucherDataAsync("vouchers", vouchers);
+                await _apiClient!.SyncVoucherEntriesAsync(company.Id, vouchers, requireComplete: true,
+                    progress: (stage, done, total) => UpdateStatus(SyncState.Uploading, $"Uploading {stage}: {done}/{total}", stage));
+                const decimal HighValueThreshold = 50000;
+                var salesVouchers = vouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (salesVouchers.Count > 0)
+                {
+                    var sales = _tallyConnector!.MapVouchersToSales(salesVouchers, company.Name);
+                    if (sales.Count > 0)
+                    {
+                        var salesFlat = sales.Select(s => new {
+                            id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
+                            invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
+                            party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
+                            party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
+                            gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
+                            taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
+                            sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
+                            cess_amount = s.CessAmount, round_off = s.RoundOff,
+                            net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
+                            narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
+                        }).ToList();
+                        await UploadRequiredVoucherDataAsync("sales", salesFlat, "id");
+                        salesCount += sales.Count;
+                        batchSalesCount += sales.Count;
+
+                        var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
+                        if (salesItems.Any()) await UploadRequiredVoucherDataAsync("sales_items", salesItems, "id");
+
+                        salesAmount += sales.Sum(s => s.NetAmount);
+                        foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
+                        {
+                            highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
+                        }
+                    }
+                }
+
+                var purchaseVouchers = vouchers.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (purchaseVouchers.Count > 0)
+                {
+                    var purchases = _tallyConnector!.MapVouchersToPurchases(purchaseVouchers, company.Name);
+                    if (purchases.Count > 0)
+                    {
+                        var purchasesFlat = purchases.Select(p => new {
+                            id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
+                            invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
+                            party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
+                            party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
+                            discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
+                            cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
+                            igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
+                            round_off = p.RoundOff, net_amount = p.NetAmount,
+                            is_cancelled = p.IsCancelled, narration = p.Narration,
+                            master_id = p.MasterId, alter_id = p.AlterId
+                        }).ToList();
+                        await UploadRequiredVoucherDataAsync("purchases", purchasesFlat, "id");
+                        purchaseCount += purchases.Count;
+                        batchPurchaseCount += purchases.Count;
+
+                        var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
+                        if (purchaseItems.Any()) await UploadRequiredVoucherDataAsync("purchase_items", purchaseItems, "id");
+                    }
+                }
+
+                var billAlloc = _tallyConnector!.ExtractBillAllocations(vouchers, company.Name);
+                if (billAlloc.Count > 0) await UploadRequiredVoucherDataAsync("bill_allocations", billAlloc, "id");
+
+                var bankAlloc = _tallyConnector!.ExtractBankAllocations(vouchers, company.Name);
+                if (bankAlloc.Count > 0) await UploadRequiredVoucherDataAsync("bank_allocations", bankAlloc, "id");
+
+                var notes = _tallyConnector!.ExtractDebitCreditNotes(vouchers, company.Name);
+                if (notes.Count > 0) await UploadRequiredVoucherDataAsync("debit_credit_notes", notes, "id");
+
+
+                token.ThrowIfCancellationRequested();
+                voucherCount += vouchers.Count;
+            }, ct, async _ =>
+            {
+                // This runs only AFTER the durable batch checkpoint has committed.
+                _cloudHistoryProgress?.AddCompletedVoucherBatch(batchVoucherCount, batchSalesCount, batchPurchaseCount);
+                Status.ProcessedRecords += batchVoucherCount;
+                UpdateStatus(SyncState.Syncing, $"Saved {Status.ProcessedRecords} vouchers with all dependent data.");
+                await PublishCloudSyncProgressAsync();
+            });
+            if (voucherCount > 0) AddLog($"✅ Fully saved {voucherCount} vouchers with all dependent data; checkpoint committed.");
+            return (voucherCount, salesCount, salesAmount, purchaseCount);
+        }
+
+        private async Task<(int Vouchers, int Sales, decimal SalesAmount, int Purchases)> PersistVoucherBatchesAsync(
+            Company company, List<Voucher> vouchers, List<string> highValueAlerts, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            var ordered = vouchers.Select(v => new { Voucher = v, Alter = long.TryParse(v.AlterId, out var id) ? id : 0 })
+                .OrderBy(v => v.Alter).ToList();
+            if (ordered.Any(v => v.Alter <= 0)) throw new InvalidDataException("Cannot checkpoint vouchers without a valid ALTERID.");
+            var batches = ordered.Chunk(TALLY_BATCH_SIZE).Select(batch => new VoucherBatchPayload(
+                VoucherBatchPayloadCodec.Serialize(batch.Select(v => v.Voucher).ToList()), batch.Max(v => v.Alter))).ToList();
+            _voucherJournal!.Enqueue(VoucherOwnerId, company.Id, batches);
+            return await ReplayVoucherBatchesAsync(company, highValueAlerts, ct);
+        }
+
+        private async Task<(int VouchersSynced, int SalesSynced, decimal TotalSalesAmount, int PurchasesSynced)> SyncHistoricalVouchersFastAsync(
             Company company, 
             Dictionary<string, string> hsnCache,
             List<string> highValueAlerts,
             CancellationToken ct,
             IReadOnlyCollection<long>? onlyAlterIds = null)
         {
-            const decimal HighValueThreshold = 50000;
             int totalVouchers = 0;
             int totalSales = 0;
+            int totalPurchases = 0;
             decimal salesAmount = 0;
 
             using var extractor = new TallyFastExtractor($"http://{_settings.TallySettings.Host}:{_settings.TallySettings.Port}", _settings.SyncSettings.BatchSize, 40);
 
             List<long> alterIds;
+            int cloudBefore = -1;
             if (onlyAlterIds != null)
             {
                 alterIds = onlyAlterIds.Where(n => n > 0).Distinct().OrderBy(n => n).ToList();
@@ -2061,12 +2163,15 @@ namespace TallySyncApp.Services
                 var index = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                 alterIds = index.Select(e => long.TryParse((e.AlterId ?? string.Empty).Trim(), out var n) ? n : 0)
                     .Where(n => n > 0).Distinct().OrderBy(n => n).ToList();
+
+                cloudBefore = await _apiClient!.GetVoucherCountAsync(company.Id);
+                VerifyIndexCoverage(company, index, cloudBefore);
             }
 
             if (alterIds.Count == 0)
             {
                 AddLog("⚠️ [FastExtractor] Tally returned no voucher ALTERIDs. Skipping historical voucher sync.");
-                return (0, 0, 0);
+                return (0, 0, 0, 0);
             }
 
             int batchCount = (alterIds.Count + TALLY_BATCH_SIZE - 1) / TALLY_BATCH_SIZE;
@@ -2075,126 +2180,35 @@ namespace TallySyncApp.Services
             Status.TotalRecords = alterIds.Count;
             Status.ProcessedRecords = 0;
 
-            int consecutiveFailures = 0;
             for (int batchNo = 0; batchNo < batchCount; batchNo++)
             {
-                if (ct.IsCancellationRequested || (onlyAlterIds != null && !_settings.SyncSettings.UseSafeVoucherReconciliation)) break;
+                ct.ThrowIfCancellationRequested();
 
                 var batch = alterIds.Skip(batchNo * TALLY_BATCH_SIZE).Take(TALLY_BATCH_SIZE).ToList();
                 string rangeDisplay = $"batch {batchNo + 1}/{batchCount}";
                 try
                 {
-                    var vouchers = await extractor.GetVouchersByAlterIdsAsync(company.Name, batch, hsnCache, ct);
-                    if (vouchers.Count == 0)
-                    {
-                        if (++consecutiveFailures >= 2)
-                        {
-                            AddLog("❌ [FastExtractor] Tally stopped answering - historical sync aborted. Will retry next cycle.");
-                            break;
-                        }
-                        continue;
-                    }
-                    consecutiveFailures = 0;
-
-                    // One network blip here used to fail every child row (stock entries, sales,
-                    // sales_items) on the vouchers FK. Retry, and skip the children if it never
-                    // lands - the offline queue and the next P3 pass pick the batch up again.
-                    bool voucherUploadOk = false;
-                    for (int attempt = 1; attempt <= 3 && !voucherUploadOk; attempt++)
-                    {
-                        var up = await _apiClient!.SyncDataAsync(company.Id, "vouchers", vouchers, "id");
-                        voucherUploadOk = up.Success;
-                        if (!voucherUploadOk)
-                        {
-                            SyncLogger.Log($"⚠️ [FastExtractor] voucher upload attempt {attempt} failed ({rangeDisplay}): {up.Error}");
-                            await Task.Delay(1500 * attempt, ct);
-                        }
-                    }
-                    if (!voucherUploadOk)
-                    {
-                        await _offlineQueue!.EnqueueAsync(company.Id, "vouchers", vouchers);
-                        SyncLogger.Log($"⚠️ [FastExtractor] {rangeDisplay}: voucher upload failed - queued, children skipped");
-                        continue;
-                    }
-                    totalVouchers += vouchers.Count;
-                    var (ledgerEntries, stockEntries) = await _apiClient!.SyncVoucherEntriesAsync(company.Id, vouchers);
-                    if (ledgerEntries > 0 || stockEntries > 0)
-                    {
-                        AddLog($"   📋 [{rangeDisplay}] {ledgerEntries} ledger entries, {stockEntries} stock entries");
-                    }
-
-                    var salesVouchers = vouchers.Where(v => v.VoucherType.Contains("Sales", StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (salesVouchers.Count > 0)
-                    {
-                        var sales = _tallyConnector!.MapVouchersToSales(salesVouchers, company.Name);
-                        if (sales.Count > 0)
-                        {
-                            var salesFlat = sales.Select(s => new {
-                                id = s.Id, voucher_id = s.VoucherId, company_id = s.CompanyId,
-                                invoice_number = s.InvoiceNumber, invoice_date = s.InvoiceDate,
-                                party_ledger_id = s.PartyLedgerId, party_ledger_name = s.PartyLedgerName,
-                                party_gstin = s.PartyGstin, place_of_supply = s.PlaceOfSupply,
-                                gross_amount = s.GrossAmount, discount_amount = s.DiscountAmount,
-                                taxable_amount = s.TaxableAmount, cgst_amount = s.CgstAmount,
-                                sgst_amount = s.SgstAmount, igst_amount = s.IgstAmount,
-                                cess_amount = s.CessAmount, round_off = s.RoundOff,
-                                net_amount = s.NetAmount, is_cancelled = s.IsCancelled,
-                                narration = s.Narration, master_id = s.MasterId, alter_id = s.AlterId
-                            }).ToList();
-                            await UploadListAsync("sales", salesFlat, "id");
-                            totalSales += sales.Count;
-
-                            var salesItems = sales.Where(s => s.Items != null).SelectMany(s => s.Items!).ToList();
-                            if (salesItems.Any()) await UploadListAsync("sales_items", salesItems, "id");
-
-                            salesAmount += sales.Sum(s => s.NetAmount);
-                            foreach (var s in sales.Where(s => s.NetAmount >= HighValueThreshold))
-                            {
-                                highValueAlerts.Add($"💰 High Value Sale: <b>{s.PartyLedgerName}</b> - ₹{s.NetAmount:N0}");
-                            }
-                        }
-                    }
-
-                    var purchaseVouchers = vouchers.Where(v => v.VoucherType.Contains("Purchase", StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (purchaseVouchers.Count > 0)
-                    {
-                        var purchases = _tallyConnector!.MapVouchersToPurchases(purchaseVouchers, company.Name);
-                        if (purchases.Count > 0)
-                        {
-                            var purchasesFlat = purchases.Select(p => new {
-                                id = p.Id, voucher_id = p.VoucherId, company_id = p.CompanyId,
-                                invoice_number = p.InvoiceNumber, invoice_date = p.InvoiceDate,
-                                party_ledger_id = p.PartyLedgerId, party_ledger_name = p.PartyLedgerName,
-                                party_gstin = p.PartyGstin, gross_amount = p.GrossAmount,
-                                discount_amount = p.DiscountAmount, taxable_amount = p.TaxableAmount,
-                                cgst_amount = p.CgstAmount, sgst_amount = p.SgstAmount,
-                                igst_amount = p.IgstAmount, cess_amount = p.CessAmount,
-                                round_off = p.RoundOff, net_amount = p.NetAmount,
-                                is_cancelled = p.IsCancelled, narration = p.Narration,
-                                master_id = p.MasterId, alter_id = p.AlterId
-                            }).ToList();
-                            await UploadListAsync("purchases", purchasesFlat, "id");
-
-                            var purchaseItems = purchases.Where(p => p.Items != null).SelectMany(p => p.Items!).ToList();
-                            if (purchaseItems.Any()) await UploadListAsync("purchase_items", purchaseItems, "id");
-                        }
-                    }
-
-                    var billAlloc = _tallyConnector!.ExtractBillAllocations(vouchers, company.Name);
-                    if (billAlloc.Count > 0) await UploadListAsync("bill_allocations", billAlloc, "id");
-
-                    var bankAlloc = _tallyConnector!.ExtractBankAllocations(vouchers, company.Name);
-                    if (bankAlloc.Count > 0) await UploadListAsync("bank_allocations", bankAlloc, "id");
-
-                    var notes = _tallyConnector!.ExtractDebitCreditNotes(vouchers, company.Name);
-                    if (notes.Count > 0) await UploadListAsync("debit_credit_notes", notes, "id");
+                    UpdateStatus(SyncState.FetchingData, $"Reading vouchers ({rangeDisplay})…", "vouchers");
+                    var vouchers = _settings.SyncSettings.UseFastExtractor
+                        ? await extractor.GetVouchersByAlterIdsAsync(company.Name, batch, hsnCache, ct)
+                        : await _tallyConnector!.GetVouchersByAlterRangeAsync(company.Name, batch.First(), batch.Last(), hsnCache);
+                    ct.ThrowIfCancellationRequested();
+                    if (batch.Except(vouchers.Select(v => long.TryParse(v.AlterId, out var id) ? id : 0)).Any())
+                        throw new IOException($"Tally returned an incomplete {rangeDisplay}; checkpoint retained.");
+                    var saved = await PersistVoucherBatchesAsync(company, vouchers, highValueAlerts, ct);
+                    totalVouchers += saved.Vouchers;
+                    totalSales += saved.Sales;
+                    totalPurchases += saved.Purchases;
+                    salesAmount += saved.SalesAmount;
 
                     Status.ProcessedRecords = totalVouchers;
+                    UpdateStatus(SyncState.Syncing, $"Saved {totalVouchers}/{alterIds.Count} vouchers with all dependent data.");
                     AddLog($"✅ [FastExtractor] {vouchers.Count} vouchers ({rangeDisplay})");
                 }
                 catch (Exception ex)
                 {
                     AddLog($"❌ [FastExtractor] {rangeDisplay}: {ex.Message}");
+                    throw;
                 }
 
                 if (_tallyConnector!.ConsecutiveFailures >= 3)
@@ -2206,9 +2220,94 @@ namespace TallySyncApp.Services
             }
 
             AddLog($"📊 [FastExtractor] Historical sync complete: {totalVouchers} vouchers");
-            return (totalVouchers, totalSales, salesAmount);
+            if (cloudBefore >= 0)
+            {
+                int cloudAfter = await _apiClient!.GetVoucherCountAsync(company.Id);
+                string line = $"[Completeness] {company.Name} ({company.Id}) fetched={totalVouchers} " +
+                              $"inserted={(cloudAfter >= 0 ? Math.Max(0, cloudAfter - cloudBefore) : -1)} cloudBefore={cloudBefore} cloudAfter={cloudAfter}";
+                SyncLogger.Log(line);
+                AddLog(line);
+            }
+            return (totalVouchers, totalSales, salesAmount, totalPurchases);
         }
 
+
+        // ============================================
+        // MAIN PATH SWITCHING: Path conflict detection and transfer
+        // ============================================
+
+        /// <summary>
+        /// Lazily initialize the CompanyMappingStore for the logged-in user.
+        /// Uses the default LocalAppData\Syncora\company_mapping.db path.
+        /// </summary>
+        public async Task EnsureMappingStoreInitializedAsync(string ownerId)
+        {
+            if (_mappingStore != null) return;
+            lock (_mappingStoreLock)
+            {
+                if (_mappingStore != null) return;
+                _mappingStore = new CompanyMappingStore();
+            }
+        }
+
+        /// <summary>
+        /// Generate a stable source ID from machine ID + data path.
+        /// Same PC + same path = same source ID; different path (copy) = different source ID.
+        /// Prevents duplicate identity mappings on re-sync.
+        /// </summary>
+        private static string GenerateSourceId(string dataPath)
+        {
+            var machineId = DeviceIdentityService.Current?.MachineId ?? Environment.MachineName;
+            var input = $"{machineId}|{dataPath}";
+            using var md5 = MD5.Create();
+            var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+            return BitConverter.ToString(hash).Replace("-", "").Substring(0, 16);
+        }
+
+        /// <summary>
+        /// Retry all pending cloud identity mappings for the logged-in user.
+        /// Called after network interruption to confirm previously-registered paths.
+        /// Idempotent: re-registering an already-confirmed mapping returns the existing record.
+        /// </summary>
+        public async Task SyncPendingMappingsAsync(string ownerId)
+        {
+            try
+            {
+                await EnsureMappingStoreInitializedAsync(ownerId);
+                var pending = _mappingStore!.GetPendingMappings(ownerId);
+                if (pending.Count == 0) return;
+
+                AddLog($"🔄 Retrying {pending.Count} pending company identity mapping(s)...");
+
+                foreach (var map in pending)
+                {
+                    var registerResult = await _apiClient!.RegisterCompanyIdentityAsync(
+                        map.SupabaseCompanyId,
+                        map.TallyGuid,
+                        map.DataPath,
+                        map.SourceId,
+                        false  // switch_main_path = false for retry
+                    );
+
+                    if (registerResult.Success)
+                    {
+                        _mappingStore.ConfirmCloudActivation(
+                            ownerId, map.SupabaseCompanyId, map.TallyGuid,
+                            map.DataPath, map.SourceId);
+                        AddLog($"✅ Pending mapping confirmed: {map.TallyGuid} → {map.DataPath}");
+                    }
+                    else
+                    {
+                        AddLog($"⚠️ Pending mapping retry failed: {map.TallyGuid} — {registerResult.Error}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLog($"❌ Sync pending mappings error: {ex.Message}");
+                SyncLogger.Log($"[PendingMappings] Error: {ex.Message}");
+            }
+        }
 
         public void Dispose()
         {
@@ -2216,6 +2315,7 @@ namespace TallySyncApp.Services
             _tallyConnector?.Dispose();
             _apiClient?.Dispose();
             _offlineQueue?.Dispose();
+            _voucherJournal?.Dispose();
             _cancellationTokenSource?.Dispose();
         }
     }

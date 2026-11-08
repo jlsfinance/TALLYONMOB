@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
@@ -6,6 +6,7 @@ import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import TemporaryLicenseAdmin from './TemporaryLicenseAdmin';
 import AdminDirectory from './AdminDirectory';
 import AdminPlansEditor from './AdminPlansEditor';
+import AdminSubscriptionCoupons from './AdminSubscriptionCoupons';
 import toast from 'react-hot-toast';
 import {
     Users, Building2, CreditCard, Tag, Activity, TrendingUp,
@@ -41,6 +42,14 @@ export default function AdminPanelPage() {
     const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
     const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
     const queryClient = useQueryClient();
+    const actionRequests=useRef(new Map<string,string>());
+    const adminAction=async(userId:string,action:'EXTEND'|'REVOKE',days:number|null)=>{
+        const key=JSON.stringify([userId,action,days]);
+        if(!actionRequests.current.has(key)) actionRequests.current.set(key,crypto.randomUUID());
+        const {error}=await supabase.rpc('temporary_license_admin_action',{p_user_id:userId,p_action:action,p_days:days,p_reason:'Admin Users '+action,p_request_id:actionRequests.current.get(key)});
+        if(error) throw error;
+        actionRequests.current.delete(key);
+    };
 
     // ═══ DASHBOARD ═══
     const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useQuery({
@@ -62,8 +71,8 @@ export default function AdminPanelPage() {
                 const now = new Date();
                 const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-                const active = licenses.filter(l => l.status === 'active' && new Date(l.expires_at || l.expiry_date) > now).length;
-                const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expires_at || l.expiry_date) <= now).length;
+                const active = licenses.filter(l => l.status === 'active' && new Date(l.expiry_date || l.expires_at) > now).length;
+                const expired = licenses.filter(l => l.status === 'expired' || new Date(l.expiry_date || l.expires_at) <= now).length;
                 const paidPayments = payments.filter(p => p.status === 'paid' || p.status === 'completed');
                 const paymentAmount = (p: any) => Number(p.total_amount ?? p.final_amount ?? p.amount ?? 0);
                 const totalRevenue = paidPayments.reduce((s, p) => s + paymentAmount(p), 0);
@@ -94,8 +103,8 @@ export default function AdminPanelPage() {
         queryKey: ['admin-users'],
         queryFn: async () => {
             const { data: licenses, error: licErr } = await supabase.from('user_licenses')
-                .select('id, user_id, email, license_key, status, expiry_date, tally_serial, company_gst, plan_id, created_at')
-                .order('created_at', { ascending: false });
+                .select('id, user_id, email, license_key, status, expiry_date, expires_at, tally_serial, company_gst, plan_id, created_at')
+                .order('created_at', { ascending: false }).order('id', { ascending: false });
             if (licErr) throw licErr;
 
             const { data: companyList, error: companyErr } = await supabase.rpc('admin_company_directory', { p_search: '', p_limit: 1000, p_offset: 0 });
@@ -115,7 +124,9 @@ export default function AdminPanelPage() {
                 }
             });
 
-            return (licenses || []).map((lic: any) => ({
+            const currentByUser=new Map();
+            for(const row of licenses || []) if(!currentByUser.has(row.user_id)) currentByUser.set(row.user_id,row);
+            return [...currentByUser.values()].map((lic: any) => ({
                 ...lic,
                 plan: lic.plan_id ? plansMap.get(lic.plan_id) : null,
                 userCompanies: companiesByOwner.get(lic.user_id) || [],
@@ -132,7 +143,7 @@ export default function AdminPanelPage() {
             if (error) throw error;
             return data || [];
         },
-        enabled: activeTab === 'plans' || activeTab === 'users',
+        enabled: activeTab === 'plans' || activeTab === 'users' || activeTab === 'coupons',
     });
 
     // ═══ COUPONS ═══
@@ -236,17 +247,9 @@ export default function AdminPanelPage() {
     // Extend trial mutation
     const extendMutation = useMutation({
         mutationFn: async ({ licenseId, days }: { licenseId: string; days: number }) => {
-            const { data: lic } = await supabase.from('user_licenses').select('expires_at, expiry_date').eq('id', licenseId).single();
-            if (!lic) throw new Error('Not found');
-            const baseDate = lic.expires_at || lic.expiry_date;
-            if (!baseDate) throw new Error('No expiry date found');
-            const newExpiry = new Date(baseDate);
-            newExpiry.setDate(newExpiry.getDate() + days);
-            const { data, error } = await supabase.from('user_licenses')
-                .update({ expires_at: newExpiry.toISOString(), expiry_date: newExpiry.toISOString(), updated_at: new Date().toISOString() })
-                .eq('id', licenseId).select('id').maybeSingle();
-            if (error) throw error;
-            if (!data) throw new Error('No license was updated');
+            const { data: lic, error: lookupError } = await supabase.from('user_licenses').select('user_id').eq('id',licenseId).single();
+            if (lookupError || !lic) throw lookupError || new Error('License not found');
+            await adminAction(lic.user_id,'EXTEND',days);
         },
         onSuccess: () => {
             toast.success('Trial extended');
@@ -254,44 +257,6 @@ export default function AdminPanelPage() {
         },
         onError: (error: any) => toast.error(error.message || 'Failed to extend license'),
     });
-
-    // Create coupon mutation
-    const createCouponMutation = useMutation({
-        mutationFn: async (coupon: any) => {
-            const { error } = await supabase.rpc('admin_create_targeted_coupon', {
-                p_code: coupon.code, p_discount_type: coupon.discount_type, p_discount_value: coupon.discount_value,
-                p_usage_limit: coupon.usage_limit, p_audience: coupon.audience, p_emails: coupon.emails,
-            });
-            if (error) throw error;
-        },
-        onSuccess: () => {
-            toast.success('Coupon created');
-            queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
-        },
-        onError: (error: any) => toast.error(error.message || 'Could not create coupon'),
-    });
-
-    const changeCoupon = async (coupon: any, remove: boolean) => {
-        if (remove && !window.confirm(`Delete coupon ${coupon.code}?`)) return;
-        const query = remove ? supabase.from('coupons').delete() : supabase.from('coupons').update({ is_active: !coupon.is_active });
-        const { data, error } = await query.eq('id', coupon.id).select('id').maybeSingle();
-        if (error || !data) { toast.error(error?.message || 'Coupon was not changed'); return; }
-        toast.success(remove ? 'Coupon deleted' : 'Coupon updated');
-        void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
-    };
-
-    const editCoupon = async (coupon: any) => {
-        const code = window.prompt('Coupon code', coupon.code);
-        if (code === null) return;
-        const input = window.prompt(coupon.discount_type === 'percentage' ? 'Discount percentage' : 'Flat discount amount', String(coupon.discount_value));
-        if (input === null) return;
-        const value = Number(input);
-        if (!code.trim() || !input.trim() || !Number.isFinite(value) || value <= 0 || (coupon.discount_type === 'percentage' && value > 100)) { toast.error('Enter a valid code and discount'); return; }
-        const { data, error } = await supabase.from('coupons').update({ code: code.trim().toUpperCase(), discount_value: value }).eq('id', coupon.id).select('id').maybeSingle();
-        if (error || !data) { toast.error(error?.message || 'Coupon was not updated'); return; }
-        toast.success('Coupon updated');
-        void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
-    };
 
     const reviewManualPayment = async (payment: any, decision: 'APPROVE' | 'REJECT') => {
         const reason = window.prompt(`${decision === 'APPROVE' ? 'Confirm funds received' : 'Reject payment'}: enter a reason`);
@@ -330,11 +295,9 @@ export default function AdminPanelPage() {
     // Revoke license mutation
     const revokeMutation = useMutation({
         mutationFn: async ({ licenseId }: { licenseId: string }) => {
-            const { data, error } = await supabase.from('user_licenses')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-                .eq('id', licenseId).select('id').maybeSingle();
-            if (error) throw error;
-            if (!data) throw new Error('No license was updated');
+            const { data: lic, error: lookupError } = await supabase.from('user_licenses').select('user_id').eq('id',licenseId).single();
+            if (lookupError || !lic) throw lookupError || new Error('License not found');
+            await adminAction(lic.user_id,'REVOKE',null);
         },
         onSuccess: () => {
             toast.success('License revoked');
@@ -395,9 +358,9 @@ export default function AdminPanelPage() {
             {activeTab === 'dashboard' && (
                 <div className="space-y-3 px-[2px]">
                     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-                        <p className="text-sm font-bold">YouPI local gateway</p>
-                        <p className="mt-1 text-xs text-[var(--text-muted)]">Open the gateway on the PC where YouPI is running. Subscription checkout is not connected yet.</p>
-                        <a href="http://127.0.0.1:6001/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white">Open YouPI admin</a>
+                        <p className="text-sm font-bold">Subscription payments and access</p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">New accounts receive a 30-day trial. Razorpay payments activate access after verification. Configure gateway credentials before accepting online payments.</p>
+                        <button type="button" onClick={() => setActiveTab('license-management')} className="mt-2 inline-flex rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white">Manage licences</button>
                     </div>
                     {statsError ? <div role="alert" className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm">Admin data could not be loaded. Check database permissions and connection. <button onClick={() => refetchStats()} className="font-bold underline">Retry</button></div> : statsLoading ? <p className="text-sm text-[var(--text-muted)]">Loading admin data…</p> : <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -452,7 +415,7 @@ export default function AdminPanelPage() {
                     </div>
                     <div className="space-y-1.5">
                         {filteredUsers.map((u: any) => {
-                            const expiryDate = u.expires_at || u.expiry_date;
+                            const expiryDate = u.expiry_date || u.expires_at;
                             const isExpired = u.status === 'expired' || (expiryDate && new Date(expiryDate) < new Date());
                             const daysLeft = expiryDate ? Math.max(0, Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)) : 0;
                             const companyName = u.userCompanies?.[0]?.name || '';
@@ -479,9 +442,9 @@ export default function AdminPanelPage() {
                                         <span>{daysLeft > 0 ? `${daysLeft}d left` : 'Expired'}</span>
                                     </div>
                                     <div className="flex gap-1 mt-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
-                                        <button onClick={() => extendMutation.mutate({ licenseId: u.id, days: 7 })}
+                                        <button disabled={extendMutation.isLoading} onClick={() => extendMutation.mutate({ licenseId: u.id, days: 7 })}
                                             className="text-[9px] font-bold px-2 py-1 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">+7 Days</button>
-                                        <button onClick={() => extendMutation.mutate({ licenseId: u.id, days: 30 })}
+                                        <button disabled={extendMutation.isLoading} onClick={() => extendMutation.mutate({ licenseId: u.id, days: 30 })}
                                             className="text-[9px] font-bold px-2 py-1 rounded bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">+30 Days</button>
                                         {u.status === 'active' && (
                                             <button onClick={() => suspendMutation.mutate({ licenseId: u.id, action: 'suspended' })}
@@ -501,7 +464,7 @@ export default function AdminPanelPage() {
             )}
 
             {/* ═══ PLANS TAB ═══ */}
-            {activeTab === 'plans' && <AdminPlansEditor plans={plans} reload={() => { void queryClient.invalidateQueries({ queryKey: ['admin-plans'] }); }} />}
+            {activeTab === 'plans' && <AdminPlansEditor plans={plans} reload={() => { void queryClient.invalidateQueries({ queryKey: ['admin-plans'] }); void queryClient.invalidateQueries({ queryKey: ['subscription-catalog'] }); void queryClient.invalidateQueries({ queryKey: ['subscription-quote'] }); }} />}
             {false && activeTab === 'plans' && (
                 <div className="space-y-1.5 px-[2px]">
                     {plans.map((p: any) => (
@@ -535,36 +498,7 @@ export default function AdminPanelPage() {
             )}
 
             {/* ═══ COUPONS TAB ═══ */}
-            {activeTab === 'coupons' && (
-                <div className="space-y-1.5 px-[2px]">
-                    <CreateCouponForm onSubmit={(c) => createCouponMutation.mutateAsync(c)} />
-                    {coupons.map((c: any) => (
-                        <div key={c.id} className="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-                            <CouponAudienceEditor coupon={c} onSaved={() => void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] })} />
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Tag size={12} className="text-purple-500" />
-                                    <span className="text-[11px] font-black font-mono">{c.code}</span>
-                                </div>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${c.is_active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                    {c.is_active ? 'ACTIVE' : 'INACTIVE'}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-[9px] text-[var(--text-muted)]">
-                                <span>{c.discount_type === 'flat' ? `₹${c.discount_value}` : `${c.discount_value}%`} off</span>
-                                <span>Used: {c.used_count}/{c.usage_limit || '∞'}</span>
-                                {c.expiry_date && <span>Exp: {new Date(c.expiry_date).toLocaleDateString()}</span>}
-                            </div>
-                            <div className="mt-2 flex gap-2">
-                                <button className="rounded border border-[var(--border)] px-2 py-1 text-xs" onClick={() => void editCoupon(c)}>Edit</button>
-                                <button className="rounded border border-[var(--border)] px-2 py-1 text-xs" onClick={() => void changeCoupon(c, false)}>{c.is_active ? 'Deactivate' : 'Activate'}</button>
-                                <button className="rounded border border-red-300 px-2 py-1 text-xs text-red-600" onClick={() => void changeCoupon(c, true)}>Delete</button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
+            {activeTab === 'coupons' && <AdminSubscriptionCoupons coupons={coupons} plans={plans} reload={() => { void queryClient.invalidateQueries({ queryKey: ['admin-coupons'] }); void queryClient.invalidateQueries({ queryKey: ['subscription-quote'] }); }} />}
             {/* ═══ PAYMENTS TAB ═══ */}
             {activeTab === 'payments' && (
                 <div className="space-y-1.5 px-[2px]">
@@ -664,115 +598,6 @@ export default function AdminPanelPage() {
             {activeTab === 'reports' && (
                 <AdminReportsPanel />
             )}
-        </div>
-    );
-}
-
-function CouponAudienceEditor({ coupon, onSaved }: { coupon: any; onSaved: () => void }) {
-    const [open, setOpen] = useState(false);
-    const [audience, setAudience] = useState<'global' | 'specific'>(coupon.audience === 'specific' ? 'specific' : 'global');
-    const [emails, setEmails] = useState('');
-    const [busy, setBusy] = useState(false);
-    const show = async () => {
-        setAudience(coupon.audience === 'specific' ? 'specific' : 'global');
-        setBusy(true);
-        const { data, error } = await supabase.rpc('admin_get_coupon_target_emails', { p_coupon_id: coupon.id });
-        setBusy(false);
-        if (error) { toast.error(error.message || 'Could not load coupon audience'); return; }
-        setEmails((data || []).map((row: any) => row.email).filter(Boolean).join('\n'));
-        setOpen(true);
-    };
-    const save = async () => {
-        const list = emails.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
-        if (audience === 'specific' && !list.length) { toast.error('Add at least one registered user email'); return; }
-        setBusy(true);
-        const { error } = await supabase.rpc('admin_set_coupon_audience', { p_coupon_id: coupon.id, p_audience: audience, p_emails: list });
-        setBusy(false);
-        if (error) { toast.error(error.message || 'Could not update coupon audience'); return; }
-        toast.success('Coupon audience updated');
-        setOpen(false);
-        onSaved();
-    };
-    return <div className="mb-2 text-xs">
-        <button type="button" className="rounded border border-[var(--border)] px-2 py-1" onClick={() => void show()} disabled={busy}>
-            Audience: {coupon.audience === 'specific' ? 'Specific users' : 'All users'} · Edit
-        </button>
-        {open && <div className="mt-2 space-y-2 rounded border border-[var(--border)] p-2">
-            <label className="block">Eligible users
-                <select className="mt-1 block w-full rounded border border-[var(--border)] bg-[var(--surface)] p-2" value={audience} onChange={event => setAudience(event.target.value as 'global' | 'specific')}>
-                    <option value="global">Global (all users)</option><option value="specific">Specific users</option>
-                </select>
-            </label>
-            {audience === 'specific' && <label className="block">Registered user emails, one per line or comma-separated
-                <textarea className="mt-1 block w-full rounded border border-[var(--border)] bg-[var(--surface)] p-2" rows={3} value={emails} onChange={event => setEmails(event.target.value)} />
-            </label>}
-            <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void save()} className="rounded bg-emerald-700 px-3 py-1 text-white">Save</button><button type="button" onClick={() => setOpen(false)} className="rounded border border-[var(--border)] px-3 py-1">Cancel</button></div>
-        </div>}
-    </div>;
-}
-
-// Inline create coupon form
-function CreateCouponForm({ onSubmit }: { onSubmit: (c: any) => Promise<unknown> }) {
-    const [open, setOpen] = useState(false);
-    const [code, setCode] = useState('');
-    const [type, setType] = useState<'flat' | 'percentage'>('flat');
-    const [value, setValue] = useState('');
-    const [limit, setLimit] = useState('');
-    const [audience, setAudience] = useState<'global' | 'specific'>('global');
-    const [emails, setEmails] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    if (!open) {
-        return (
-            <button onClick={() => setOpen(true)}
-                className="w-full p-2 rounded-lg border border-dashed border-[var(--border)] text-[10px] font-bold text-[var(--primary)] hover:bg-[var(--surface)]">
-                <Plus size={12} className="inline mr-1" /> Create Coupon
-            </button>
-        );
-    }
-
-    return (
-        <div className="p-3 rounded-lg border border-[var(--primary)] bg-[var(--surface)] space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-                <input value={code} onChange={e => setCode(e.target.value)} placeholder="CODE"
-                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded font-mono font-bold uppercase" />
-                <select value={type} onChange={e => setType(e.target.value as any)}
-                    className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded">
-                    <option value="flat">Flat ₹</option>
-                    <option value="percentage">Percentage %</option>
-                </select>
-                <input value={value} onChange={e => setValue(e.target.value)} placeholder={type === 'flat' ? 'Amount' : 'Percent'}
-                    type="number" className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
-                <input value={limit} onChange={e => setLimit(e.target.value)} placeholder="Usage limit"
-                    type="number" className="px-2 py-1.5 text-[11px] bg-[var(--bg)] border border-[var(--border)] rounded" />
-            </div>
-            <label className="block text-xs">Audience
-                <select value={audience} onChange={e => setAudience(e.target.value as 'global' | 'specific')} className="ml-2 rounded border border-[var(--border)] bg-[var(--bg)] p-2">
-                    <option value="global">Global (All Users)</option><option value="specific">Specific Users</option>
-                </select>
-            </label>
-            {audience === 'specific' && <textarea value={emails} onChange={e => setEmails(e.target.value)} placeholder="Registered user emails, one per line" className="w-full rounded border border-[var(--border)] bg-[var(--bg)] p-2 text-xs" rows={3} />}
-            <div className="flex gap-1">
-                <button disabled={saving} onClick={async () => {
-                    if (!code || !value) return toast.error('Fill all fields');
-                    const selectedEmails = emails.split(/[\n,]+/).map(email => email.trim()).filter(Boolean);
-                    if (audience === 'specific' && selectedEmails.length === 0) return toast.error('Enter at least one registered user email');
-                    setSaving(true);
-                    try { await onSubmit({
-                        code: code.toUpperCase(),
-                        discount_type: type,
-                        discount_value: Number(value),
-                        usage_limit: limit ? Number(limit) : null,
-                        audience, emails: selectedEmails,
-                    });
-                    setOpen(false);
-                    setCode(''); setValue(''); setLimit('');
-                    setEmails(''); setAudience('global');
-                    } catch { /* Mutation displays the backend error; preserve form input. */ }
-                    finally { setSaving(false); }
-                }} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--primary)] text-white">Create</button>
-                <button onClick={() => setOpen(false)} className="text-[10px] font-bold px-3 py-1.5 rounded bg-[var(--surface-container)] text-[var(--text-muted)]">Cancel</button>
-            </div>
         </div>
     );
 }
@@ -912,7 +737,7 @@ function UserDetailPanel({ userId, onBack }: { userId: string; onBack: () => voi
     if (loading) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">Loading user data...</div>;
     if (!license) return <div className="p-4 text-center text-[var(--text-muted)] text-xs">No license found</div>;
 
-    const expiryDate = license.expires_at || license.expiry_date;
+    const expiryDate = license.expiry_date || license.expires_at;
     const isExpired = license.status === 'expired' || (expiryDate && new Date(expiryDate) < new Date());
     const daysLeft = expiryDate ? Math.max(0, Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)) : 0;
 

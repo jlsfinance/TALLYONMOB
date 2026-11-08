@@ -182,7 +182,7 @@ namespace TallySyncApp.Services
         /// <summary>
         /// Get pending items from queue
         /// </summary>
-        public async Task<List<SyncQueueItem>> GetPendingItemsAsync(int maxItems = 10)
+        public async Task<List<SyncQueueItem>> GetPendingItemsAsync(int maxItems = 10, string? companyId = null)
         {
             var items = new List<SyncQueueItem>();
 
@@ -193,12 +193,14 @@ namespace TallySyncApp.Services
                     SELECT id, company_id, data_type, json_data, retry_count, 
                            created_at, last_attempt_at, last_error, status
                     FROM sync_queue
-                    WHERE status = 'pending' OR (status = 'failed' AND retry_count < 5)
+                    WHERE (status = 'pending' OR (status = 'failed' AND retry_count < 5))
+                      AND (@companyId IS NULL OR company_id = @companyId)
                     ORDER BY created_at ASC
                     LIMIT @maxItems
                 ";
 
                 command.Parameters.AddWithValue("@maxItems", maxItems);
+                command.Parameters.AddWithValue("@companyId", (object?)companyId ?? DBNull.Value);
 
                 using var reader = await Task.Run(() => command.ExecuteReader());
                 while (reader.Read())

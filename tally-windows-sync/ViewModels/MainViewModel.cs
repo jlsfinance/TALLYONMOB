@@ -1,6 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,7 +12,7 @@ using TallySyncApp.Services;
 
 namespace TallySyncApp.ViewModels
 {
-    public class MainViewModel : INotifyPropertyChanged
+    public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         private readonly SyncManager _syncManager;
         private SyncStatus _status;
@@ -28,8 +30,26 @@ namespace TallySyncApp.ViewModels
         public ICommand RefreshLicenseCommand { get; }
         public ICommand LoadLicenseHistoryCommand { get; }
         public ICommand BuyLicenceCommand { get; }
+        public ICommand RefreshCloudHistoryCommand { get; }
+        private readonly System.Windows.Threading.DispatcherTimer _cloudRefreshTimer;
+        private readonly System.Threading.CancellationTokenSource _windowLifetime = new();
+        private int _cloudLoading;
+        private int _licenseLoading;
+        private bool _disposed;
+        public ObservableCollection<CloudSyncHistoryEntry> CloudSyncHistory { get; } = new();
+        private string _cloudRecordsText = "—";
+        public string CloudRecordsText { get => _cloudRecordsText; private set { _cloudRecordsText = value; OnPropertyChanged(); } }
+        private string _cloudRecordsDetail = "Loading from Supabase…";
+        public string CloudRecordsDetail { get => _cloudRecordsDetail; private set { _cloudRecordsDetail = value; OnPropertyChanged(); } }
+        private string _cloudLastSyncTime = "—";
+        public string CloudLastSyncTime { get => _cloudLastSyncTime; private set { _cloudLastSyncTime = value; OnPropertyChanged(); } }
+        private string _cloudLastSyncDate = "Loading from Supabase…";
+        public string CloudLastSyncDate { get => _cloudLastSyncDate; private set { _cloudLastSyncDate = value; OnPropertyChanged(); } }
+        private string _cloudDataStatus = "Loading cloud sync history…";
+        public string CloudDataStatus { get => _cloudDataStatus; private set { _cloudDataStatus = value; OnPropertyChanged(); } }
 
         public ObservableCollection<LicenseHistoryEntry> LicenseHistory { get; } = new();
+
         public string VoucherReconciliationModeText => Settings.SyncSettings.UseSafeVoucherReconciliation
             ? "Safe reconciliation ON — click to restore previous mode"
             : "Previous mode ON — click to enable safe reconciliation";
@@ -38,8 +58,12 @@ namespace TallySyncApp.ViewModels
         public SyncStatus Status
         {
             get => _status;
-            set { _status = value; OnPropertyChanged(); }
+            set { _status = value; OnPropertyChanged(); OnPropertyChanged(nameof(CompanyDisplayName)); }
         }
+
+        public string CompanyDisplayName => string.IsNullOrWhiteSpace(Status.CompanyName)
+            ? "Company: Waiting for Tally…"
+            : $"Company: {Status.CompanyName}";
 
         public AppSettings Settings => _syncManager.GetSettings();
 
@@ -145,9 +169,10 @@ namespace TallySyncApp.ViewModels
             // Subscribe to status updates
             _syncManager.StatusChanged += (s, status) =>
             {
-                Status = status;
+                if (_disposed) return;
                 Application.Current.Dispatcher.Invoke(() =>
                 {
+                    Status = status;
                     // Force UI update for progress
                     OnPropertyChanged(nameof(Status));
 
@@ -158,8 +183,11 @@ namespace TallySyncApp.ViewModels
                     {
                         ApplyLicenseResult(lic);
                     }
+                    if (status.State == SyncState.Completed || status.State == SyncState.Error || status.State == SyncState.Idle)
+                        _ = LoadCloudSyncOverviewAsync();
                 });
             };
+            _syncManager.SyncLogRequested += (_, message) => { if (!_disposed) Log(message); };
 
             _syncManager.ItemSynced += (s, item) =>
             {
@@ -173,16 +201,20 @@ namespace TallySyncApp.ViewModels
             };
 
             // Initialize Commands
-            StartSyncCommand = new RelayCommand(async () => await StartSync());
-            StopSyncCommand = new RelayCommand(StopSync);
-            ManualSyncCommand = new RelayCommand(async () => await ManualSync());
-            FullResyncCommand = new RelayCommand(async () => await FullResync());
-            SaveSettingsCommand = new RelayCommand(SaveSettings);
-            TestConnectionCommand = new RelayCommand(async () => await TestConnection());
-            RefreshLicenseCommand = new RelayCommand(async () => await RefreshLicenseAsync());
-            LoadLicenseHistoryCommand = new RelayCommand(async () => await LoadLicenseHistoryAsync());
-            BuyLicenceCommand = new RelayCommand(async () => await BuyLicenceAsync());
-            ToggleVoucherReconciliationCommand = new RelayCommand(() => {
+            StartSyncCommand = new RelayCommand(async _ => await StartSync());
+            StopSyncCommand = new RelayCommand(_ => StopSync());
+            ManualSyncCommand = new RelayCommand(async _ => await ManualSync());
+            FullResyncCommand = new RelayCommand(async _ => await FullResync());
+            SaveSettingsCommand = new RelayCommand(_ => SaveSettings());
+            TestConnectionCommand = new RelayCommand(async _ => await TestConnection());
+            RefreshLicenseCommand = new RelayCommand(async _ => await RefreshLicenseAsync());
+            LoadLicenseHistoryCommand = new RelayCommand(async _ => await LoadLicenseHistoryAsync());
+            BuyLicenceCommand = new RelayCommand(async _ => await BuyLicenceAsync());
+            RefreshCloudHistoryCommand = new RelayCommand(async _ => await LoadCloudSyncOverviewAsync());
+            _cloudRefreshTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            _cloudRefreshTimer.Tick += async (_, _) => { await LoadCloudSyncOverviewAsync(); await LoadLicenseAsync(); };
+            _cloudRefreshTimer.Start();
+            ToggleVoucherReconciliationCommand = new RelayCommand(_ => {
                 if (_syncManager.SetSafeVoucherReconciliation(!Settings.SyncSettings.UseSafeVoucherReconciliation))
                 {
                     OnPropertyChanged(nameof(VoucherReconciliationModeText));
@@ -285,16 +317,48 @@ namespace TallySyncApp.ViewModels
 
         private async Task LoadLogs()
         {
-            var logs = await _syncManager.GetSyncLogsAsync();
-            Application.Current.Dispatcher.Invoke(() =>
+            await LoadCloudSyncOverviewAsync();
+        }
+
+        internal async Task LoadCloudSyncOverviewAsync()
+        {
+            if (_disposed || System.Threading.Interlocked.CompareExchange(ref _cloudLoading, 1, 0) != 0) return;
+            var userId = App.AuthService?.CurrentSession?.UserId;
+            if (string.IsNullOrEmpty(userId)) { CloudDataStatus = "Sign in to load Supabase sync history."; System.Threading.Interlocked.Exchange(ref _cloudLoading, 0); return; }
+            try
             {
-                RecentLogs.Clear();
-                foreach (var log in logs) RecentLogs.Add(log);
-            });
+                var overview = await _syncManager.GetApiClient().GetCloudSyncOverviewAsync(_windowLifetime.Token);
+                if (_disposed || App.AuthService?.CurrentSession?.UserId != userId) return;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    CloudRecordsText = overview.RecordsSynced.ToString("N0");
+                    CloudRecordsDetail = $"{overview.VoucherCount:N0} vouchers · {overview.LedgerCount:N0} ledgers · {overview.StockCount:N0} items";
+                    CloudLastSyncTime = overview.LastSuccessfulSync?.LocalDateTime.ToString("HH:mm:ss") ?? "—";
+                    CloudLastSyncDate = overview.LastSuccessfulSync?.LocalDateTime.ToString("dd MMM yyyy") ?? "No successful cloud sync yet";
+                    CloudSyncHistory.Clear();
+                    foreach (var row in overview.History) CloudSyncHistory.Add(row);
+                    CloudDataStatus = $"Supabase · Updated {DateTime.Now:HH:mm:ss} · {overview.History.Count} recent syncs";
+                });
+            }
+            catch (OperationCanceledException) when (_windowLifetime.IsCancellationRequested) { }
+            catch (Exception error)
+            {
+                if (!_disposed) Application.Current.Dispatcher.Invoke(() => CloudDataStatus = "Could not refresh Supabase history. Please retry; previous cloud values are retained.");
+                if (!_disposed) Log($"Cloud sync history refresh failed: {error.Message}");
+            }
+            finally { System.Threading.Interlocked.Exchange(ref _cloudLoading, 0); }
+        }
+
+        public void Dispose()
+        {
+            _disposed = true;
+            _cloudRefreshTimer.Stop();
+            _windowLifetime.Cancel();
         }
 
         private async Task LoadLicenseAsync()
         {
+            if (_disposed || System.Threading.Interlocked.CompareExchange(ref _licenseLoading, 1, 0) != 0) return;
             try
             {
                 var lic = await _syncManager.GetApiClient().GetLicenseValidationAsync();
@@ -313,6 +377,7 @@ namespace TallySyncApp.ViewModels
                     DisplayAction = "Refresh License Status"
                 });
             }
+            finally { System.Threading.Interlocked.Exchange(ref _licenseLoading, 0); }
         }
 
         /// <summary>
@@ -367,13 +432,11 @@ namespace TallySyncApp.ViewModels
             try
             {
                 // Web purchase page URL — configure in appsettings.json under "LicencePurchaseUrl"
-                string url = "https://tallyonmobile.com/buy-licence";
-                try
-                {
-                    var cfg = Settings?.SyncSettings?.LicencePurchaseUrl;
-                    if (!string.IsNullOrWhiteSpace(cfg)) url = cfg;
-                }
-                catch { /* use default */ }
+                bool isDebug = false;
+#if DEBUG
+                isDebug = true;
+#endif
+                string url = LicencePurchaseLink.Resolve(Settings?.SyncSettings?.LicencePurchaseUrl, isDebug);
 
                 Log("Opening licence purchase window...");
                 
@@ -397,14 +460,20 @@ namespace TallySyncApp.ViewModels
         /// </summary>
         private void ApplyLicenseResult(LicenseResult lic)
         {
-            // Avoid redundant work when the status hasn't changed
-            if (_lastAppliedLicenseStatus == lic.Status && _isLicenseBlocked == !lic.Allowed)
-                return;
             _lastAppliedLicenseStatus = lic.Status;
 
             _licenseResult = lic;
             LicenseResult = lic;
-            IsLicenseBlocked = !lic.Allowed;
+            Status.IsServerConnected = !lic.IsNetworkError;
+            OnPropertyChanged(nameof(Status));
+            IsLicenseBlocked = !lic.Allowed && !lic.IsNetworkError;
+            if (lic.IsNetworkError)
+            {
+                LicenseDetail = "Verification pending · sync paused";
+                LicenseStatusText = lic.DisplayMessage;
+                Log("⚠️ Licence verification temporarily unavailable; sync paused, retry available.");
+                return;
+            }
 
             // Existing KPI card (kept for backward compatibility with the dashboard card)
             var planName = lic.PlanName;
@@ -532,6 +601,7 @@ namespace TallySyncApp.ViewModels
 
         public void Log(string message)
         {
+            if (_disposed) return;
             string logMsg = $"[{DateTime.Now:HH:mm:ss}] {message}";
             Application.Current.Dispatcher.Invoke(() =>
             {
@@ -552,13 +622,13 @@ namespace TallySyncApp.ViewModels
     // Simple Command Implementation
     public class RelayCommand : ICommand
     {
-        private readonly Action _execute;
+        private readonly Action<object?> _execute;
         public event EventHandler? CanExecuteChanged;
 
-        public RelayCommand(Action execute) => _execute = execute;
+        public RelayCommand(Action<object?> execute) => _execute = execute;
 
         public bool CanExecute(object? parameter) => true;
-        public void Execute(object? parameter) => _execute();
+        public void Execute(object? parameter) => _execute(parameter);
     }
 
     // Capture Console Output

@@ -23,12 +23,13 @@ import {
     Bot, UserX, MessageCircle, ClipboardList, Truck, MapPin,
     Palette, CreditCard, ScanLine, Database, ShieldCheck,
     Repeat, Globe, FileSpreadsheet, Settings, Search, Crown,
-    Mail, Link, CheckCircle, Command, Clock, Receipt, Briefcase
+    Mail, Link, CheckCircle, Command, Clock, Receipt, Briefcase, Download
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import SafeLink from '../common/SafeLink';
 import { hasAdminAccess, isAdminConsoleEnabled } from '@/lib/adminAccess';
 import { getPendingCount } from '@/lib/offlineQueue';
+import { APP_INFO } from '@/config/appInfo';
 
 const routePrefetchMap: Record<string, () => Promise<any>> = {
     '/dashboard': () => import('../../pages/LiveKeepingsDashboard'),
@@ -61,6 +62,7 @@ const routePrefetchMap: Record<string, () => Promise<any>> = {
     '/payroll': () => import('../../pages/PayrollPage'),
     '/document-scanner': () => import('../../pages/DocumentScannerPage'),
     '/user-analytics': () => import('../../pages/UserAnalyticsPage'),
+    '/subscription': () => import('../../pages/SubscriptionPage'),
 };
 
 const NavItem = memo(({
@@ -102,6 +104,22 @@ const NavItem = memo(({
         </SafeLink>
     );
 });
+
+function SidebarAccountActions({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+    const actionClass = `sidebar-nav-item flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--on-surface-variant)] hover:bg-[var(--surface-container)] transition-colors ${collapsed ? 'justify-center px-0 w-10 h-10 mx-auto' : ''}`;
+    return (
+        <div className="mb-4 space-y-1 border-b border-[var(--border)] pb-3">
+            <SafeLink to="/subscription" onClick={onNavigate} title="Buy Subscription" aria-label="Buy Subscription" className={actionClass}>
+                <Crown size={18} className="shrink-0 text-[var(--primary)]" />
+                {!collapsed && <span>Buy Subscription</span>}
+            </SafeLink>
+            <a href={APP_INFO.pcDownloadUrl} target="_blank" rel="noopener noreferrer" onClick={onNavigate} title="Download PC App · Windows" aria-label="Download PC App" className={actionClass}>
+                <Download size={18} className="shrink-0 text-[var(--primary)]" />
+                {!collapsed && <span>Download PC App</span>}
+            </a>
+        </div>
+    );
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const { user, companies, selectedCompany, selectCompany, signOut, appMode } = useAuth() as any;
@@ -371,6 +389,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
                             {/* Navigation */}
                             <nav className="sidebar-navigation flex-1 px-3 py-3 overflow-y-auto custom-scrollbar">
+                                <SidebarAccountActions onNavigate={() => setShowMobileMenu(false)} />
                                 {navGroups.map((group, idx) => (
                                     <div key={idx} className="mb-4 last:mb-0">
                                         <p className="sidebar-section-label text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)] opacity-50 px-2 mb-1.5">
@@ -493,6 +512,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
 
                 <nav className="sidebar-navigation flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
+                    <SidebarAccountActions collapsed={!sidebarOpen} />
                     {navGroups.map((group, idx) => (
                         <div key={idx} className="mb-4 last:mb-0">
                             {sidebarOpen && (

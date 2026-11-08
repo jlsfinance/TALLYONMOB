@@ -56,7 +56,7 @@ function generateInvoiceMessage(v: any) {
 }
 
 export default memo(function LiveKeepingsDashboard() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, companies } = useAuth() as any;
     const navigate = useNavigate();
     const { selectedFY, setSelectedFY, fyDates, stepFY } = useFY();
 
@@ -527,6 +527,7 @@ export default memo(function LiveKeepingsDashboard() {
                         </button>
                     </div>
                 </div>
+
 
                 {/* 4. LATEST VOUCHERS LIST WITH SEGMENTED TABS */}
                 <div className="space-y-3">

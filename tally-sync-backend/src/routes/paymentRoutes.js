@@ -62,14 +62,18 @@ router.get('/status/:linkId', async (req, res) => {
 router.post('/webhook', async (req, res) => {
     try {
         const signature = req.headers['x-razorpay-signature'];
-        const result = await PaymentService.handleWebhook(req.body, signature);
+        const result = await PaymentService.handleWebhook(req.rawBody, signature);
 
         res.json({ success: true, data: result });
     } catch (error) {
         logger.error('POST /payments/webhook Error:', error);
-        res.status(400).json({ success: false, error: error.message });
+        res.status(error.status || 503).json({ success: false, error: error.message });
     }
 });
+
+// POST /payments/create-license-link - Create Razorpay payment link for licence purchase
+// Called by web dashboard pricing page. Returns short_url to open in browser/WebView2.
+router.post('/create-license-link', (_req,res) => res.status(410).json({success:false,error:'Use /api/v1/subscriptions/checkout with your signed-in session.'}));
 
 // =========================================================================
 // REVERSE SYNC: PENDING TRANSACTIONS (Web/App → Backend → Supabase → Windows)

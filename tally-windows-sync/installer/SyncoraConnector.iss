@@ -3,7 +3,10 @@
 ; Needs:  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish\installer-input
 
 #define AppName "SYNCORA Connector"
-#define AppVersion "3.1.8"
+#define AppVersion "3.1.9"
+#ifndef PublishDir
+  #define PublishDir "..\publish\installer-input"
+#endif
 #define AppExe "SyncoraConnector.exe"
 
 [Setup]
@@ -37,7 +40,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
-Source: "..\publish\installer-input\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb"
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

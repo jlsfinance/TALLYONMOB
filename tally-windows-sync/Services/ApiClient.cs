@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -111,8 +111,14 @@ namespace TallySyncApp.Services
             }
             else
             {
-                // Generate deterministic UUID from company ID or name
-                companyUuid = GenerateDeterministicGuid(company.Id ?? company.Name).ToString();
+                try
+                {
+                    companyUuid = await ResolveCompanyCloudIdAsync(company);
+                }
+                catch (Exception error)
+                {
+                    return new ApiResponse<object> { Success = false, Error = error.Message };
+                }
             }
 
             var companyData = new Dictionary<string, object?>
@@ -150,6 +156,106 @@ namespace TallySyncApp.Services
                     : $"⛔ This company is already synced by another account ({ownerEmail}). Rename it in Tally, or delete it from that account's dashboard.";
             }
             return result;
+        }
+
+        // Keep old cloud rows addressable when upgrading from the path-based ID scheme.
+        // Lookup failures are errors, never interpreted as permission to create another row.
+        private async Task<string> ResolveCompanyCloudIdAsync(Company company)
+        {
+            var generated = CompanyCloudIdentity.Generate(company.Name, company.TallyGuid ?? "");
+            var owner = string.IsNullOrWhiteSpace(company.OwnerId) ? _ownerId : company.OwnerId;
+            if (!Guid.TryParse(owner, out _)) throw new InvalidOperationException("Sign in before registering a company.");
+            AddAuthHeader();
+            var ownerFilter = Uri.EscapeDataString(owner);
+            var rows = await ReadCompanyIdentityRowsAsync($"companies?owner_id=eq.{ownerFilter}&name=eq.{Uri.EscapeDataString(company.Name)}&select=id&limit=1001");
+            if (rows.Count == 0) return generated;
+            if (rows.Count >= 1000) throw new InvalidOperationException("Too many same-name cloud companies; resolve the company mapping before syncing.");
+
+            // Recognition only: never use this old hash to create a new cloud row.
+            var legacyId = GenerateDeterministicGuid($"{company.Name}|{company.TallyGuid ?? ""}|{company.DataPath ?? ""}").ToString();
+            var candidates = rows.Select(row => new ExistingCompanyIdentity(row["id"]?.ToString() ?? "", null)).ToList();
+            if (candidates.Any(row => row.Id == generated || row.Id == legacyId))
+                return CompanyCloudIdentity.Resolve(company.Name, company.TallyGuid!, legacyId, candidates);
+
+            var ids = string.Join(",", candidates.Select(row => Guid.Parse(row.Id).ToString()));
+            var mappings = await ReadCompanyIdentityRowsAsync($"company_identities?owner_id=eq.{ownerFilter}&supabase_company_id=in.({ids})&select=supabase_company_id,tally_guid&limit=1001");
+            if (mappings.Count >= 1000) throw new InvalidOperationException("Company identity mapping is incomplete; no new company was created.");
+            var mappedCandidates = candidates.SelectMany(candidate =>
+            {
+                var matching = mappings.Where(row => string.Equals(row["supabase_company_id"]?.ToString(), candidate.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+                return matching.Count == 0 ? new[] { candidate }.AsEnumerable()
+                    : matching.Select(row => new ExistingCompanyIdentity(candidate.Id, row["tally_guid"]?.ToString()));
+            }).ToList();
+            return CompanyCloudIdentity.Resolve(company.Name, company.TallyGuid!, legacyId, mappedCandidates);
+        }
+
+        private async Task<List<Newtonsoft.Json.Linq.JObject>> ReadCompanyIdentityRowsAsync(string query)
+        {
+            using var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/{query}");
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Could not verify the existing cloud company ({(int)response.StatusCode}); registration stopped to prevent duplicates.");
+            return JsonConvert.DeserializeObject<List<Newtonsoft.Json.Linq.JObject>>(await response.Content.ReadAsStringAsync())
+                ?? throw new InvalidOperationException("Cloud company identity response is invalid; registration stopped.");
+        }
+
+        /// <summary>
+        /// Register company identity (Tally GUID + Data Path + Source ID) via Edge Function.
+        /// Requires authenticated user JWT and company ownership verification server-side.
+        /// </summary>
+        public async Task<ApiResponse<object>> RegisterCompanyIdentityAsync(
+            string companyId,
+            string tallyGuid,
+            string dataPath,
+            string sourceId,
+            bool switchMainPath = false
+        )
+        {
+            try
+            {
+                var requestBody = new Dictionary<string, object?>
+                {
+                    ["company_id"] = companyId,
+                    ["tally_guid"] = tallyGuid,
+                    ["data_path"] = dataPath,
+                    ["source_id"] = sourceId,
+                    ["switch_main_path"] = switchMainPath
+                };
+
+                var content = new StringContent(
+                    JsonConvert.SerializeObject(requestBody),
+                    Encoding.UTF8,
+                    "application/json"
+                );
+
+                var response = await _httpClient.PostAsync(
+                    $"{_supabaseUrl}/functions/v1/sync_company_identity",
+                    content
+                );
+
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new ApiResponse<object>
+                    {
+                        Success = false,
+                        Error = response.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "unauthorized" : response.StatusCode.ToString(),
+                        Message = responseBody
+                    };
+                }
+
+                var result = JsonConvert.DeserializeObject<ApiResponse<object>>(responseBody);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return new ApiResponse<object>
+                {
+                    Success = false,
+                    Error = "network_error",
+                    Message = ex.Message
+                };
+            }
         }
 
         /// <summary>
@@ -414,7 +520,9 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<(int LedgerEntriesSynced, int StockEntriesSynced)> SyncVoucherEntriesAsync(
             string companyId, 
-            List<Voucher> vouchers)
+            List<Voucher> vouchers,
+            bool requireComplete = false,
+            Action<string, int, int>? progress = null)
         {
             int ledgerEntriesSynced = 0;
             int stockEntriesSynced = 0;
@@ -468,12 +576,14 @@ namespace TallySyncApp.Services
                 
                 if (allLedgerEntries.Count > 0)
                 {
+                    progress?.Invoke("voucher ledger entries", 0, allLedgerEntries.Count);
                     SyncLogger.Log($"📝 Syncing {allLedgerEntries.Count} voucher ledger entries...");
                     // ~9k rows in one request blows Supabase's 8s statement timeout (57014), so send 100 at a time.
                     foreach (var batch in allLedgerEntries.Chunk(100))
                     {
                         var ledgerResult = await UpsertAsync<object>("voucher_ledger_entries", batch.ToList(), "id");
-                        if (ledgerResult.Success) ledgerEntriesSynced += batch.Length;
+                        if (ledgerResult.Success) { ledgerEntriesSynced += batch.Length; progress?.Invoke("voucher ledger entries", ledgerEntriesSynced, allLedgerEntries.Count); }
+                        else if (requireComplete) throw new InvalidOperationException($"Ledger entries upload failed: {ledgerResult.Error}");
                         else SyncLogger.Log($"⚠️ Ledger entries sync failed: {ledgerResult.Error}");
                     }
                 }
@@ -515,11 +625,13 @@ namespace TallySyncApp.Services
                 
                 if (allStockEntries.Count > 0)
                 {
+                    progress?.Invoke("voucher stock entries", 0, allStockEntries.Count);
                     SyncLogger.Log($"📦 Syncing {allStockEntries.Count} voucher stock entries...");
                     foreach (var batch in allStockEntries.Chunk(100))
                     {
                         var stockResult = await UpsertAsync<object>("voucher_stock_entries", batch.ToList(), "id");
-                        if (stockResult.Success) stockEntriesSynced += batch.Length;
+                        if (stockResult.Success) { stockEntriesSynced += batch.Length; progress?.Invoke("voucher stock entries", stockEntriesSynced, allStockEntries.Count); }
+                        else if (requireComplete) throw new InvalidOperationException($"Stock entries upload failed: {stockResult.Error}");
                         else SyncLogger.Log($"⚠️ Stock entries sync failed: {stockResult.Error}");
                     }
                 }
@@ -527,6 +639,7 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 SyncLogger.Log($"❌ SyncVoucherEntriesAsync error: {ex.Message}");
+                if (requireComplete) throw;
             }
             
             return (ledgerEntriesSynced, stockEntriesSynced);
@@ -694,8 +807,8 @@ namespace TallySyncApp.Services
                 Status = LicenseStatus.NetworkError,
                 IsNetworkError = true,
                 Message = "License server unreachable",
-                DisplayTitle = "Licence Verification Failed",
-                DisplayMessage = "Unable to verify your licence. Please connect to the internet and try again.",
+                DisplayTitle = "Licence Verification Temporarily Unavailable",
+                DisplayMessage = "Verification could not complete after retries. Sync is paused; your licence has not been marked expired. Please retry.",
                 DisplayAction = "Refresh License Status"
             };
 
@@ -712,16 +825,24 @@ namespace TallySyncApp.Services
                 };
             }
 
+            HttpResponseMessage? response = null;
             try
             {
-                AddAuthHeader();
-                var payload = JsonConvert.SerializeObject(new { p_user_id = _ownerId });
-                var content = new StringContent(payload, Encoding.UTF8, "application/json");
-                using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/validate_user_license")
+                response = await LicenseRequestRetry.SendAsync(PostValidateLicenseAsync);
+
+                // A stored session token is only valid for 60 minutes, so an app left
+                // idle for a day hits 401 on the very first licence check and would
+                // block sync forever. Refresh once and retry.
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized && TokenRefresher != null)
                 {
-                    Content = content
-                };
-                var response = await _httpClient.SendAsync(request);
+                    var fresh = await TokenRefresher();
+                    if (!string.IsNullOrEmpty(fresh))
+                    {
+                        SetUserToken(fresh);
+                        response.Dispose();
+                        response = await LicenseRequestRetry.SendAsync(PostValidateLicenseAsync);
+                    }
+                }
 
                 // Network / transport failure -> distinct from licence expiry
                 if (!response.IsSuccessStatusCode)
@@ -752,10 +873,22 @@ namespace TallySyncApp.Services
             }
             catch (Exception ex)
             {
-                SyncLogger.Log($"[License] validate_user_license exception: {ex.Message}");
+                SyncLogger.Log($"[License] validate_user_license exception: {ex.GetType().Name}: {ex.GetBaseException().Message}");
                 notAvailable.Message = ex.Message;
                 return notAvailable;
             }
+            finally { response?.Dispose(); }
+        }
+
+        private async Task<HttpResponseMessage> PostValidateLicenseAsync(System.Threading.CancellationToken ct)
+        {
+            AddAuthHeader();
+            var payload = JsonConvert.SerializeObject(new { p_user_id = _ownerId });
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_supabaseUrl}/rest/v1/rpc/validate_user_license")
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
+            return await _httpClient.SendAsync(request, ct);
         }
 
         private static LicenseResult MapLicenseResult(LicenseInfo lic)
@@ -773,6 +906,7 @@ namespace TallySyncApp.Services
 
             switch ((lic.Status ?? "").ToLowerInvariant())
             {
+                case "trial":
                 case "active":
                     result.Allowed = true;
                     result.Status = isTrial ? LicenseStatus.TrialActive : LicenseStatus.Active;
@@ -793,6 +927,16 @@ namespace TallySyncApp.Services
                         ? "Your 30-day free trial has ended. Upgrade or contact the administrator to continue syncing your Tally data."
                         : "Your licence has expired. Please renew or contact the administrator to restore synchronisation.";
                     result.DisplayAction = "Refresh License Status";
+                    break;
+
+                case "blocked":
+                case "revoked":
+                case "cancelled":
+                    result.Allowed = false;
+                    result.Status = LicenseStatus.Revoked;
+                    result.Message = "Access revoked";
+                    result.DisplayTitle = "Licence Access Restricted";
+                    result.DisplayMessage = "Access was revoked by the administrator. Contact support to restore it.";
                     break;
 
                 case "suspended":
@@ -832,6 +976,13 @@ namespace TallySyncApp.Services
                     break;
             }
 
+            if (result.Allowed && !lic.Valid)
+            {
+                result.Allowed = false;
+                result.Status = LicenseStatus.Unknown;
+                result.DisplayTitle = "Licence Verification Failed";
+                result.DisplayMessage = "The server did not authorize subscription access. Please retry.";
+            }
             return result;
         }
 
@@ -1657,6 +1808,25 @@ namespace TallySyncApp.Services
         // SYNC HISTORY METHODS
         // ============================================
 
+        public async Task<CloudSyncOverview> GetCloudSyncOverviewAsync(System.Threading.CancellationToken ct = default)
+        {
+            using var timeout = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(25));
+            AddAuthHeader();
+            try
+            {
+                return await new CloudSyncReader(_httpClient, _supabaseUrl, _ownerId ?? "").ReadAsync(timeout.Token);
+            }
+            catch (HttpRequestException error) when (error.StatusCode == System.Net.HttpStatusCode.Unauthorized && TokenRefresher != null)
+            {
+                var token = await TokenRefresher();
+                if (string.IsNullOrWhiteSpace(token)) throw;
+                SetUserToken(token);
+                AddAuthHeader();
+                return await new CloudSyncReader(_httpClient, _supabaseUrl, _ownerId ?? "").ReadAsync(timeout.Token);
+            }
+        }
+
         /// <summary>
         /// Start a new sync history record
         /// </summary>
@@ -1709,12 +1879,12 @@ namespace TallySyncApp.Services
         public async Task<bool> UpdateSyncHistoryAsync(
             string syncHistoryId, 
             string status,
-            int ledgersSynced = 0,
-            int vouchersSynced = 0,
-            int salesSynced = 0,
-            int purchasesSynced = 0,
-            int stockSynced = 0,
-            int totalRecords = 0,
+            int? ledgersSynced = null,
+            int? vouchersSynced = null,
+            int? salesSynced = null,
+            int? purchasesSynced = null,
+            int? stockSynced = null,
+            int? totalRecords = null,
             List<string>? voucherIds = null,
             string? errorMessage = null)
         {
@@ -1724,16 +1894,16 @@ namespace TallySyncApp.Services
                 
                 var updates = new Dictionary<string, object>
                 {
-                    ["status"] = status,
-                    ["ledgers_synced"] = ledgersSynced,
-                    ["vouchers_synced"] = vouchersSynced,
-                    ["sales_synced"] = salesSynced,
-                    ["purchases_synced"] = purchasesSynced,
-                    ["stock_synced"] = stockSynced,
-                    ["total_records"] = totalRecords
+                    ["status"] = status
                 };
+                if (ledgersSynced.HasValue) updates["ledgers_synced"] = ledgersSynced.Value;
+                if (vouchersSynced.HasValue) updates["vouchers_synced"] = vouchersSynced.Value;
+                if (salesSynced.HasValue) updates["sales_synced"] = salesSynced.Value;
+                if (purchasesSynced.HasValue) updates["purchases_synced"] = purchasesSynced.Value;
+                if (stockSynced.HasValue) updates["stock_synced"] = stockSynced.Value;
+                if (totalRecords.HasValue) updates["total_records"] = totalRecords.Value;
                 
-                if (status == "completed" || status == "failed")
+                if (status == "completed" || status == "failed" || status == "partial")
                 {
                     updates["completed_at"] = DateTime.UtcNow.ToString("o");
                 }

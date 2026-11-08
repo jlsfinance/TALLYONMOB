@@ -139,42 +139,26 @@ class PaymentService {
         }
     }
 
-    /**
-     * Handle Razorpay webhook for payment confirmation
-     */
-    static async handleWebhook(payload, signature) {
-        try {
-            // Verify webhook signature
-            const expectedSig = crypto
-                .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || '')
-                .update(JSON.stringify(payload))
-                .digest('hex');
-
-            if (signature !== expectedSig) {
-                throw new Error('Invalid webhook signature');
-            }
-
-            const event = payload.event;
-            const paymentLink = payload.payload?.payment_link?.entity;
-
-            if (event === 'payment_link.paid' && paymentLink) {
-                await supabase
-                    .from('payment_links')
-                    .update({
-                        status: 'paid',
-                        paid_at: new Date().toISOString()
-                    })
-                    .eq('razorpay_link_id', paymentLink.id);
-
-                logger.info(`Payment received for link ${paymentLink.id}`);
-            }
-
-            return { success: true };
-        } catch (error) {
-            logger.error('PaymentService.handleWebhook Error:', error);
-            throw error;
+    /** Handle Razorpay webhook for payment confirmation */
+    static async handleWebhook(rawBody, signature) {
+        const { verifyWebhook } = require('./subscriptionPayments');
+        const payload = verifyWebhook(rawBody, signature, process.env.RAZORPAY_WEBHOOK_SECRET);
+        const link=payload.payload?.payment_link?.entity;
+        if (link?.notes?.subscription_order_id) return require('../routes/subscriptionRoutes').subscriptionPayments.webhook(rawBody,signature);
+        // Legacy unbound licence links cannot activate access. Use persisted subscription orders.
+        if (link?.notes?.plan_slug || link?.notes?.purpose==='licence_purchase') throw new Error('Legacy licence payment requires administrator review');
+        if (payload.event==='payment_link.paid' && link?.status==='paid' && link.amount_paid===link.amount) {
+            const {error}=await supabase.from('payment_links').update({status:'paid',paid_at:new Date().toISOString()}).eq('razorpay_link_id',link.id);
+            if(error) throw error;
         }
+        return {success:true};
+    }
+
+    /**
+     * Create a Razorpay payment link for licence purchase
+     */
+    static async createLicensePaymentLink() {
+        throw new Error('Use the authenticated subscription checkout endpoint');
     }
 }
-
 module.exports = PaymentService;

@@ -15,7 +15,7 @@
     <AssemblyName>SyncoraConnector</AssemblyName>
     <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.1.8</Version>
+    <Version>3.1.9</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA Connector</Product>
@@ -61,9 +61,11 @@
   <!-- Exclude TallySyncApp subfolder to avoid conflicts -->
   <ItemGroup>
     <Compile Remove="TallySyncApp\**" />
+    <Compile Remove="Tests\**" />
     <Page Remove="TallySyncApp\**" />
     <EmbeddedResource Remove="TallySyncApp\**" />
     <None Remove="TallySyncApp\**" />
+    <None Remove="Tests\**" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 import { useLicenseGate } from '@/contexts/LicenseGateContext';
+import { Link } from 'react-router-dom';
 
 const tone: Record<string, string> = {
     active: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
@@ -10,8 +11,9 @@ const tone: Record<string, string> = {
 };
 
 export default function LicenseBadge({ compact = false }: { compact?: boolean }) {
-    const { license, isLoading } = useLicenseGate();
+    const { license, isLoading, licenseError } = useLicenseGate();
     if (isLoading) return null;
+    if (licenseError) return <Link to="/subscription" title={licenseError} className="text-xs text-amber-600">Verification pending</Link>;
 
     const expired = license.status === 'expired' || (license.status === 'active' && license.daysLeft <= 0 && !!license.expiryDate);
     const label = license.status === 'none' ? 'No license'
@@ -31,13 +33,13 @@ export default function LicenseBadge({ compact = false }: { compact?: boolean })
             : expired ? 'Expired'
             : !license.expiryDate ? 'No expiry'
             : `${license.daysLeft}d left`;
-        return <span title={title} className="license-badge-compact" style={{ color }}>{short}</span>;
+        return <Link to="/subscription" title={`${title} · View plans`} className="license-badge-compact" style={{ color }}>{short}</Link>;
     }
 
     return (
-        <span title={title} className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${tone[expired ? 'expired' : license.status] || tone.none}`}>
+        <Link to="/subscription" title={`${title} · View plans`} className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${tone[expired ? 'expired' : license.status] || tone.none}`}>
             <span className="h-1.5 w-1.5 rounded-full bg-current" />
             {label}
-        </span>
+        </Link>
     );
 }

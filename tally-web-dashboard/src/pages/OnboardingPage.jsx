@@ -29,24 +29,11 @@ const OnboardingPage = () => {
     const [currentStep, setCurrentStep] = useState(1);
     const [companies, setCompanies] = useState([]);
     const [isChecking, setIsChecking] = useState(false);
-    const [downloadUrl, setDownloadUrl] = useState(APP_INFO.pcDownloadUrl);
     const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
 
     useEffect(() => {
         checkForCompanies();
-        loadSettings();
     }, []);
-
-    const loadSettings = async () => {
-        try {
-            const { data } = await companyApi.getAppSettings?.() || {};
-            if (data?.windows_app_download_url) {
-                setDownloadUrl(data.windows_app_download_url);
-            }
-        } catch (error) {
-            console.error('Error loading settings:', error);
-        }
-    };
 
     const checkForCompanies = async () => {
         setIsChecking(true);
@@ -84,7 +71,7 @@ const OnboardingPage = () => {
     }, [currentStep, companies, isChecking]);
 
     const handleDownload = () => {
-        window.open(downloadUrl, '_blank');
+        window.open(APP_INFO.pcDownloadUrl, '_blank');
         setTimeout(() => setCurrentStep(2), 500);
     };
 

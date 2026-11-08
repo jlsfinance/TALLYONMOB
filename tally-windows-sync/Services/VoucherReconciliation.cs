@@ -39,7 +39,7 @@ namespace TallySyncApp.Services
         public static List<CloudVoucherIdentity> SafeDeleteCandidates(
             IReadOnlyList<VoucherIndexEntry> first, IReadOnlyList<VoucherIndexEntry> second,
             IReadOnlyList<long> alterIds,
-            IReadOnlyList<CloudVoucherIdentity> cloud, VoucherReconciliationResult diff, out string reason)
+            IReadOnlyList<CloudVoucherIdentity> cloud, VoucherReconciliationResult diff, out string reason, string? companyId = null)
         {
             reason = "";
             if (first.Count < 1 || second.Count != first.Count) { reason = "Tally index count is too small or changed between snapshots"; return new(); }
@@ -80,9 +80,19 @@ namespace TallySyncApp.Services
                 .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
             var candidates = cloud.Where(v => ids.Contains(v.Id) && v.IsDeleted == false && !string.IsNullOrWhiteSpace(v.Guid)
                 && !string.IsNullOrWhiteSpace(v.AlterId) && grouped[v.Guid.Trim()] == 1
-                && string.Equals(v.Id, new Guid(MD5.HashData(Encoding.UTF8.GetBytes(v.Guid.Trim()))).ToString(), StringComparison.OrdinalIgnoreCase)).ToList();
+                && MatchesStoredVoucherId(v, companyId)).ToList();
             if (candidates.Count != ids.Count) { reason = $"Candidate identity check failed (possible={ids.Count}, verified={candidates.Count})"; return new(); }
             return candidates;
+        }
+
+        private static bool MatchesStoredVoucherId(CloudVoucherIdentity voucher, string? companyId)
+        {
+            var raw = voucher.Guid!.Trim();
+            static string RowId(string input) => new Guid(MD5.HashData(Encoding.UTF8.GetBytes(input))).ToString();
+            // Uploads preserve the legacy GUID-only scheme for old companies and use
+            // company|GUID for new ones. Verify either supported scheme, never arbitrary IDs.
+            return string.Equals(voucher.Id, RowId(raw), StringComparison.OrdinalIgnoreCase)
+                || (Guid.TryParse(companyId, out _) && string.Equals(voucher.Id, RowId($"{companyId}|{raw}"), StringComparison.OrdinalIgnoreCase));
         }
 
         public static VoucherReconciliationResult Compare(IReadOnlyList<VoucherIndexEntry> tally, IReadOnlyList<CloudVoucherIdentity> cloud)
