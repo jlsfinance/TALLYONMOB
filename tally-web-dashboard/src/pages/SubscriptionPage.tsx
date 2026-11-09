@@ -13,7 +13,7 @@ export default function SubscriptionPage() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { license, isLoading, licenseError, refresh } = useLicenseGate();
-    const { user } = useAuth() as any;
+    const { user, loading: authLoading } = useAuth() as any;
     const catalog = useSubscriptionCatalog();
     const plans = catalog.data || [];
     const [couponInput, setCouponInput] = useState('');
@@ -81,7 +81,7 @@ export default function SubscriptionPage() {
     const validQuote = quote.data?.valid && !quote.isFetching && !quote.isError ? quote.data : null;
 
     useEffect(() => { setCouponInput(''); setAppliedCode(''); }, [selectedSlug, user?.id]);
-    const active = license.status === 'active' || license.status === 'trial';
+    const active = Boolean(user?.id) && (license.status === 'active' || license.status === 'trial');
 
     useEffect(() => {
         const dialog = dialogRef.current;
@@ -116,12 +116,13 @@ export default function SubscriptionPage() {
                     <div className="subscription-status-icon"><ShieldCheck size={22} /></div>
                     <div className="subscription-status-copy">
                         <h1>My subscription</h1>
-                        <p>{isLoading ? 'Checking subscription…' : licenseError || (active ? license.planName || (license.status === 'trial' ? 'Trial' : 'Active subscription') : license.status === 'expired' ? 'Your subscription has expired' : license.status === 'blocked' ? 'Account blocked — contact support' : license.status === 'suspended' ? 'Account suspended — contact support' : license.status === 'unknown' ? 'Status unavailable' : license.status === 'revoked' ? 'Subscription revoked' : 'No active plan')}</p>
-                        {!isLoading && active && license.expiryDate
-                            ? <span>{license.status === 'trial' ? 'Trial' : 'Active'} · Valid until {new Date(license.expiryDate).toLocaleDateString('en-IN')} · {Math.max(0, license.daysLeft)} days left</span>
-                            : <span>{isLoading ? 'Loading your current plan…' : licenseError ? 'Refresh to check your current access.' : 'Choose a plan below to activate or renew access.'}</span>}
+                        <p>{authLoading || isLoading ? 'Checking subscription…' : !user?.id ? 'Sign in to view your plan' : licenseError || (active ? license.planName || (license.status === 'trial' ? 'Trial' : 'Active subscription') : license.status === 'expired' ? 'Your subscription has expired' : license.status === 'blocked' ? 'Account blocked — contact support' : license.status === 'suspended' ? 'Account suspended — contact support' : license.status === 'unknown' ? 'Status unavailable' : license.status === 'revoked' ? 'Subscription revoked' : 'No active plan')}</p>
+                        {!authLoading && !isLoading && active && license.expiryDate
+                            ? <div className="subscription-status-meta"><span className="subscription-active-pill">{license.status === 'trial' ? 'Trial' : 'Active'}</span><span>Until {new Date(license.expiryDate).toLocaleDateString('en-IN')}</span><span>{Math.max(0, license.daysLeft).toLocaleString('en-IN')} days left</span></div>
+                            : <span>{authLoading || isLoading ? 'Loading your current plan…' : !user?.id ? 'Your subscription is linked to your account.' : licenseError ? 'Refresh to check your current access.' : 'Choose a plan below to activate or renew access.'}</span>}
+                        {!authLoading && !user?.id && <Link to="/login" className="subscription-sign-in">Sign in →</Link>}
                     </div>
-                    <button type="button" onClick={checkStatus} disabled={refreshing || isLoading} aria-label="Refresh subscription" className="subscription-refresh"><RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} /></button>
+                    <button type="button" onClick={checkStatus} disabled={refreshing || isLoading || !user?.id} aria-label="Refresh subscription" className="subscription-refresh"><RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} /></button>
                 </section>
                 {refreshError && <p role="alert">{refreshError}</p>}
                 {checkoutError && <p role="status" className="subscription-catalog-message">{checkoutError}</p>}
@@ -140,15 +141,16 @@ export default function SubscriptionPage() {
                     setVisiblePlan(index);
                 }}>
                     {plans.map(plan => (
-                        <article key={plan.id} className={`subscription-card ${plan.id === 'half_yearly' ? 'subscription-card-featured' : ''}`}>
+                        <article key={plan.id} data-plan={plan.id} className={`subscription-card ${plan.id === 'half_yearly' ? 'subscription-card-featured' : ''}`}>
                             <div className="subscription-card-top">
                                 <span className="subscription-plan-icon">{plan.id === 'yearly' ? <Sparkles size={21} /> : <Clock size={21} />}</span>
                                 {plan.badge && <span className="subscription-badge">{plan.badge}</span>}
                             </div>
                             <h2>{plan.title}</h2>
+                            {active && license.planSlug === plan.id && <span className="subscription-current-plan">✓ Your current plan</span>}
                             <p className="subscription-description">Stay connected for {plan.period}.</p>
                             <div className="subscription-price">{formatPlanPrice(plan.price)}<span> / {plan.period}</span></div>
-                            <p className="subscription-billing">One payment for {plan.period}</p>
+                            <p className="subscription-billing"><ShieldCheck size={12} /> Billed once · {plan.period} access</p>
                             <div className="subscription-divider" />
                             <ul>
                                 <li><Check size={16} /> {plan.period} of subscription access</li>
