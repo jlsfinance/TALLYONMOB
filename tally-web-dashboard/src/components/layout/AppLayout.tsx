@@ -694,15 +694,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                                 else if (path === '/sales') prefetchSales(selectedCompany.id, fyDates.from, fyDates.to);
                             };
                             return (
-                                <SafeLink key={item.to} to={item.to} onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} onTouchStart={prefetchOnHover} className="flex-1 relative group">
+                                <SafeLink key={item.to} to={item.to} aria-current={isActive ? 'page' : undefined} data-native-feedback onMouseEnter={prefetchOnHover} onFocus={prefetchOnHover} onTouchStart={prefetchOnHover} className="flex-1 relative group">
                                     <div className={`
-                                        flex flex-col items-center justify-center gap-0.5 py-1 transition-all duration-150
+                                        native-nav-item flex flex-col items-center justify-center gap-0.5 py-1 transition-all duration-150
                                         ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}
                                     `}>
-                                        <div className={`p-1.5 rounded-[var(--radius-md)] transition-all ${isActive ? 'bg-[var(--primary)]/10' : ''}`}>
+                                        <div className={`native-nav-icon p-1.5 rounded-[var(--radius-md)] transition-all ${isActive ? 'bg-[var(--primary)]/10' : ''}`}>
                                             {item.icon}
                                         </div>
-                                        <span className={`text-[10px] transition-all ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                                        <span className={`native-nav-label text-[10px] transition-all ${isActive ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
                                     </div>
                                 </SafeLink>
                             );

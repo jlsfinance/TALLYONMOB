@@ -1,4 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const NativeAppearance = registerPlugin<{ setTheme(options: { dark: boolean }): Promise<void> }>('NativeAppearance');
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -46,6 +49,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             root.classList.remove('dark');
         }
     }, [theme, effectiveTheme]);
+
+    useEffect(() => {
+        if (Capacitor.getPlatform() !== 'android') return;
+        let current = true;
+        void import('@capacitor/status-bar').then(async ({ StatusBar, Style }) => {
+            if (!current) return;
+            await StatusBar.setStyle({ style: effectiveTheme === 'dark' ? Style.Dark : Style.Light });
+            if (current) await StatusBar.setBackgroundColor({ color: effectiveTheme === 'dark' ? '#10141c' : '#f8f9ff' });
+            if (current) await NativeAppearance.setTheme({ dark: effectiveTheme === 'dark' });
+        }).catch(() => {});
+        return () => { current = false; };
+    }, [effectiveTheme]);
 
     const toggleTheme = () => {
         setTheme(effectiveTheme === 'dark' ? 'light' : 'dark');

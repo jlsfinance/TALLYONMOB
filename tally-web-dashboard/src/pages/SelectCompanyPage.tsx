@@ -98,7 +98,7 @@ export default function SelectCompanyPage() {
     const iconC = isDark ? 'text-slate-300' : 'text-slate-600';
 
     return (
-        <div className={`min-h-screen flex flex-col ${bg} transition-colors duration-300`}>
+        <div className={`company-picker min-h-screen flex flex-col ${bg} transition-colors duration-300`}>
             {/* Top bar: back | centered title | search */}
             <div className={`sticky top-0 z-40 ${isDark ? 'bg-[#070D1A]/90' : 'bg-[#F7F9FB]/90'} backdrop-blur border-b ${isDark ? 'border-white/5' : 'border-slate-200'}`}>
                 <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
@@ -190,7 +190,8 @@ export default function SelectCompanyPage() {
                                         tabIndex={0}
                                         onClick={() => handleSelect(company)}
                                         onKeyDown={(e) => { if (e.key === 'Enter') handleSelect(company); }}
-                                        className={`group flex items-center gap-3 py-4 pr-1 cursor-pointer ${hoverRow} focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 transition-colors rounded-md px-1`}
+                                        data-native-feedback
+                                        className={`company-picker-row group flex items-center gap-3 py-4 pr-1 cursor-pointer ${hoverRow} focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 transition-colors rounded-md px-1`}
                                     >
                                         <div className="min-w-0 flex-1">
                                             <p className={`text-[15px] font-semibold ${nameC} truncate`}>{company.name}</p>

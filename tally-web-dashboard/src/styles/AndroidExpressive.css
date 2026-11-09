@@ -1,0 +1,131 @@
+/* Android-only M3 Expressive system. Print/PDF output retains its document styles. */
+@media screen {
+html[data-platform="android"] {
+  --primary: #2457a7 !important; --primary-hover: #174584; --on-primary: #fff; --primary-foreground: #fff;
+  --primary-container: #d7e3ff !important; --on-primary-container: #102e64;
+  --secondary: #566079; --secondary-container: #dce2f9; --on-secondary-container: #19223a;
+  --tertiary: #775479; --tertiary-container: #ffd6ff; --on-tertiary-container: #2e1133;
+  --background: #f8f9ff !important; --surface: #f8f9ff !important; --surface-container: #edf0fa !important;
+  --surface-variant: #e1e7f5 !important; --surface-hover: #e5eaf7; --surface-active: #dce5f8;
+  --surface-elevated: #fff; --on-background: #191c24; --on-surface: #191c24 !important;
+  --on-surface-variant: #424754 !important; --text-muted: #596171 !important;
+  --border: #dce1ed !important; --outline: #747b8b; --outline-variant: #c5cbd8;
+  --success: #176b4b; --success-bg: #c8f5dc; --error: #a92c38; --error-bg: #ffdadf;
+  --warning: #805600; --warning-bg: #ffedc2;
+  --bg-primary: var(--background); --bg-secondary: var(--surface-container); --text-primary: var(--on-surface); --text-secondary: var(--on-surface-variant);
+  --radius-sm: 12px; --radius-md: 20px; --radius-lg: 28px; --radius-xl: 32px;
+  --m3-duration: 260ms; --m3-spring: cubic-bezier(.2,.8,.2,1);
+  --md-sys-color-primary: var(--primary); --md-sys-color-on-primary: var(--on-primary);
+  --md-sys-color-primary-container: var(--primary-container); --md-sys-color-on-primary-container: var(--on-primary-container);
+  --md-sys-color-surface: var(--surface); --md-sys-color-on-surface: var(--on-surface);
+  --md-sys-color-surface-container: var(--surface-container); --md-sys-color-secondary-container: var(--secondary-container);
+  color-scheme: light; background: var(--background); -webkit-tap-highlight-color: transparent;
+}
+html.dark[data-platform="android"] {
+  --primary: #abc7ff !important; --primary-hover: #c6d9ff; --on-primary: #002f65; --primary-foreground: #002f65;
+  --primary-container: #244574 !important; --on-primary-container: #d7e3ff;
+  --secondary: #bfc6e0; --secondary-container: #3e475e; --on-secondary-container: #dce2f9;
+  --tertiary: #e6b9e6; --tertiary-container: #5c385e; --on-tertiary-container: #ffd6ff;
+  --background: #10141c !important; --surface: #10141c !important; --surface-container: #1d2330 !important;
+  --surface-variant: #2a3140 !important; --surface-hover: #30394c; --surface-active: #354762;
+  --surface-elevated: #252c3a; --on-background: #e3e5ee; --on-surface: #e3e5ee !important;
+  --on-surface-variant: #c3c7d3 !important; --text-muted: #afb7c8 !important;
+  --border: #364051 !important; --outline: #8e97a9; --outline-variant: #444c5c;
+  --success: #8ddbb1; --success-bg: #173e2c; --error: #ffb2bc; --error-bg: #5b202b;
+  --warning: #f7d28a; --warning-bg: #453719; color-scheme: dark;
+}
+html[data-platform="android"] body { background: var(--background); color: var(--on-surface); font-family: Roboto, 'Noto Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+html[data-platform="android"] .app-shell { --primary: #2457a7; --primary-container: #d7e3ff; background: var(--background); }
+html.dark[data-platform="android"] .app-shell { --primary: #abc7ff; --primary-container: #244574; }
+html[data-platform="android"] :is(button, a, input, select, textarea) { touch-action: manipulation; }
+html[data-platform="android"] :is(button, a):focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+html[data-platform="android"] :is(.standard-mobile-header,.dashboard-mobile-header) { background: var(--background) !important; color: var(--on-surface); border: 0; box-shadow: none; padding-top: env(safe-area-inset-top); }
+html[data-platform="android"] .standard-mobile-header { min-height: 64px; gap: 10px; padding-inline: 12px; }
+html[data-platform="android"] .standard-mobile-header button, html[data-platform="android"] .dashboard-menu-button { min-width: 44px; min-height: 44px; border-radius: 50%; background: var(--surface-container); color: var(--on-surface); }
+html[data-platform="android"] .dashboard-header-main { padding: 10px 16px 4px; }
+html[data-platform="android"] .dashboard-company-details h2 { font-size: 20px !important; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
+html[data-platform="android"] .dashboard-header-meta { padding: 6px 16px 12px; }
+html[data-platform="android"] .dashboard-fy-selector { border: 0; border-radius: 24px; background: var(--surface-container); }
+html[data-platform="android"] .dashboard-fy-selector button { min-height: 36px; min-width: 36px; }
+html[data-platform="android"] .app-content-standard { padding: 12px 16px 112px; }
+html[data-platform="android"] .page-m3__title { font-size: 28px; font-weight: 650; letter-spacing: -.035em; }
+html[data-platform="android"] :is(.page-m3__card,.page-m3__list-item,.vouchers-3d__header) { border: 0 !important; border-radius: 24px !important; background: var(--surface-container); box-shadow: none; padding: 16px; }
+html[data-platform="android"] :is(.page-m3__stats,.vouchers-3d__stats) { border: 0; border-radius: 24px; gap: 3px; background: var(--background); }
+html[data-platform="android"] :is(.page-m3__stat-card,.vouchers-3d__stat-card) { background: var(--surface-container); box-shadow: none !important; padding: 16px; }
+html[data-platform="android"] :is(.page-m3__chip,.page-m3__tab) { min-height: 42px; padding-inline: 18px; border-radius: 24px !important; font-size: 13px; font-weight: 600; }
+html[data-platform="android"] :is(.page-m3__input,.page-m3__select,.page-m3__textarea,.page-m3__search-input) { min-height: 52px; border-radius: 16px !important; border-color: var(--outline-variant); background: var(--surface-container); font-size: 16px; }
+html[data-platform="android"] .page-m3__btn { min-height: 48px; padding-inline: 24px; border-radius: 28px; font-size: 14px; font-weight: 650; }
+html[data-platform="android"] .page-m3__btn-primary { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+html[data-platform="android"] .app-bottom-nav { background: var(--surface-container) !important; border: 0; box-shadow: none !important; padding: 4px 8px max(8px, env(safe-area-inset-bottom)); }
+html[data-platform="android"] .app-bottom-nav > div { height: 70px; padding: 0; }
+html[data-platform="android"] .app-bottom-nav a { min-width: 0; min-height: 64px; border-radius: 24px; color: var(--on-surface-variant); }
+html[data-platform="android"] .native-nav-item { gap: 4px; padding: 3px 0; color: var(--on-surface-variant); }
+html[data-platform="android"] .native-nav-icon { display: grid; place-items: center; width: 58px; height: 32px; padding: 4px; border-radius: 20px; transition: background var(--m3-duration) var(--m3-spring), border-radius var(--m3-duration) var(--m3-spring); }
+html[data-platform="android"] .app-bottom-nav a[aria-current="page"] .native-nav-icon { background: var(--primary-container); color: var(--on-primary-container); }
+html[data-platform="android"] .app-bottom-nav a[aria-current="page"] .native-nav-label { color: var(--on-surface); font-weight: 750; }
+html[data-platform="android"] .native-nav-label { font-size: 11px; line-height: 16px; letter-spacing: .01em; }
+html[data-platform="android"] .app-bottom-nav a:active .native-nav-icon { border-radius: 12px; background: var(--secondary-container); }
+html[data-platform="android"] .app-sidebar { background: var(--surface-container) !important; border: 0; border-radius: 0 28px 28px 0; }
+html[data-platform="android"] .sidebar-nav-item { min-height: 48px !important; border-radius: 28px !important; font-size: 14px !important; }
+html[data-platform="android"] .sidebar-nav-item-active { background: var(--secondary-container) !important; color: var(--on-secondary-container) !important; }
+html[data-platform="android"] .sidebar-nav-item-active > span:first-child { color: var(--on-secondary-container) !important; }
+html[data-platform="android"] .voucher-fab { bottom: calc(96px + env(safe-area-inset-bottom)); right: 20px; }
+html[data-platform="android"] .voucher-fab-trigger { width: auto; min-width: 64px; height: 58px; padding: 0 22px; gap: 10px; border-radius: 22px; background: var(--primary-container); color: var(--on-primary-container); box-shadow: 0 3px 10px #101b3024; transition: border-radius var(--m3-duration) var(--m3-spring), transform var(--m3-duration) var(--m3-spring); }
+html[data-platform="android"] .voucher-fab-trigger:active { border-radius: 16px; transform: scale(.96); }
+html[data-platform="android"] .voucher-fab-label { display: inline; font-size: 15px; font-weight: 650; }
+html[data-platform="android"] .voucher-fab-backdrop { background: #10152570; backdrop-filter: blur(3px); }
+html[data-platform="android"] .voucher-fab-menu { border-radius: 28px; background: var(--surface-elevated); padding: 16px; width: min(352px, calc(100vw - 32px)); gap: 8px; box-shadow: 0 12px 40px #09132924; animation: m3-sheet-in 260ms var(--m3-spring) both; }
+html[data-platform="android"] .voucher-fab-option { min-height: 58px; border: 0; border-radius: 18px; background: var(--surface-container); color: var(--on-surface); box-shadow: none; font-size: 13px; padding: 10px; gap: 8px; }
+html[data-platform="android"] .voucher-fab-option > span { width: 32px; height: 32px; border: 0; border-radius: 12px; }
+html[data-platform="android"] .dashboard-metrics { gap: 6px !important; border: 0 !important; border-radius: 26px; padding: 0 10px; overflow: visible; }
+html[data-platform="android"] .dashboard-metrics > :is(div,button) { border-radius: 22px !important; border: 0 !important; box-shadow: none !important; padding: 16px !important; background: var(--primary-container) !important; color: var(--on-primary-container); }
+html[data-platform="android"] .dashboard-metrics > :nth-child(4n + 2) { background: var(--tertiary-container) !important; }
+html[data-platform="android"] .dashboard-metrics > :nth-child(4n + 3) { background: var(--surface-container) !important; }
+html[data-platform="android"] .dashboard-metrics :is(p,span) { color: var(--on-surface) !important; }
+html[data-platform="android"] .dashboard-metrics p.font-black { font-size: 25px; font-weight: 650; letter-spacing: -.04em; }
+html[data-platform="android"] .dashboard-voucher-list { border: 0; border-radius: 24px; background: var(--surface-container); }
+html[data-platform="android"] .dashboard-voucher-row { background: var(--surface-container); padding: 16px; }
+html[data-platform="android"] .dashboard-voucher-row + .dashboard-voucher-row { border-top: 2px solid var(--background); }
+html[data-platform="android"] .dashboard-voucher-actions button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--secondary-container); color: var(--on-secondary-container); }
+html[data-platform="android"] .dashboard-app [class~="bg-[#121B24]"] { background: var(--surface-container) !important; border-color: var(--border); box-shadow: none; }
+html[data-platform="android"] .dashboard-app [class~="text-white"], html[data-platform="android"] .dashboard-app [class~="text-slate-300"] { color: var(--on-surface); }
+html[data-platform="android"] .dashboard-app [class~="text-slate-400"] { color: var(--text-muted); }
+html[data-platform="android"] .native-intro { background: var(--background); color: var(--on-surface); }
+html[data-platform="android"] .native-intro__mock { border-radius: 32px; background: var(--surface-container); border: 0; box-shadow: none; }
+html[data-platform="android"] .native-intro__next { border-radius: 32px; background: var(--primary); color: var(--on-primary); box-shadow: none; }
+html[data-platform="android"] .native-intro__orbit { border-color: var(--outline-variant); border-radius: 35%; transform: rotate(15deg); background: var(--primary-container); opacity: .35; }
+html[data-platform="android"] .native-intro__orbit--two { border-radius: 46% 54% 30% 70%; background: var(--tertiary-container); transform: rotate(-15deg); }
+html[data-platform="android"] .native-intro__content p { color: var(--on-surface-variant); }
+html[data-platform="android"] .native-intro :is(.native-intro__eyebrow,.native-intro__skip,.native-intro__mock-row,.native-intro__mock-top) { color: var(--on-surface); }
+html[data-platform="android"] .native-intro :is(.native-intro__mini-grid>div,.native-intro__mock-footer) { background: var(--secondary-container); color: var(--on-secondary-container); }
+html[data-platform="android"] .native-intro :is(.native-intro__mini-grid b,.native-intro__mini-grid small,.native-intro__mini-grid i) { color: var(--on-secondary-container); }
+html[data-platform="android"] .login-screen { background: var(--background); color: var(--on-surface); }
+html[data-platform="android"] .login-card { background: var(--surface-container); border-radius: 32px; border: 0; box-shadow: none; }
+html[data-platform="android"] .login-card .login-field { min-height: 56px; border-radius: 16px; background: var(--surface); border: 1px solid var(--outline-variant); color: var(--on-surface-variant); }
+html[data-platform="android"] .login-card input { min-height: 54px; border-radius: 0; font-size: 16px; background: transparent; color: var(--on-surface); }
+html[data-platform="android"] .login-card .login-field:focus-within { border: 2px solid var(--primary); }
+html[data-platform="android"] .login-card .login-field input::placeholder { color: var(--text-muted); }
+html[data-platform="android"] .login-screen .entry-topbar { background: var(--background); border: 0; }
+html[data-platform="android"] .login-card :is(.login-card-header p,.login-switch,.login-switch button,.login-back) { color: var(--on-surface-variant); }
+html[data-platform="android"] .login-card button[type="submit"] { min-height: 52px; border-radius: 28px; background: var(--primary); color: var(--on-primary); }
+html[data-platform="android"] .company-picker { background: var(--background) !important; color: var(--on-surface); }
+html[data-platform="android"] .company-picker > .sticky { background: var(--background) !important; border: 0; backdrop-filter: none; }
+html[data-platform="android"] .company-picker h1 { color: var(--on-surface); font-weight: 650; font-size: 22px; }
+html[data-platform="android"] .company-picker input { min-height: 50px; border-radius: 28px; background: var(--surface-container); color: var(--on-surface); }
+html[data-platform="android"] .company-picker ul { border: 0; display: grid; gap: 4px; }
+html[data-platform="android"] .company-picker ul > li { border: 0; }
+html[data-platform="android"] .company-picker-row { padding: 18px 16px; background: var(--surface-container); border-radius: 20px; min-height: 80px; }
+html[data-platform="android"] .company-picker-row > div > p:first-child { color: var(--on-surface); font-size: 17px; font-weight: 600; }
+html[data-platform="android"] .company-picker-row button { min-width: 44px; min-height: 44px; border-radius: 24px; }
+html[data-platform="android"] .subscription-page { --sub-bg: var(--background); --sub-surface: var(--surface-container); --sub-text: var(--on-surface); --sub-muted: var(--on-surface-variant); --sub-border: var(--outline-variant); --sub-accent: var(--primary); --sub-tint: var(--surface-variant); }
+html[data-platform="android"] .subscription-status { border-radius: 28px; }
+html[data-platform="android"] .subscription-card { border-radius: 28px; box-shadow: none; }
+html[data-platform="android"] .subscription-card .subscription-buy { border-radius: 28px; background: var(--primary); color: var(--on-primary); border: 0; }
+html[data-platform="android"] .subscription-dialog { border-radius: 32px; }
+html[data-platform="android"] .native-route-skeleton { background: var(--background); }
+html[data-platform="android"] .native-route-skeleton__grid { border-radius: 28px; gap: 6px; background: var(--background); }
+html[data-platform="android"] .native-route-skeleton__row { border-radius: 20px; background: var(--surface-container); margin-top: 6px; }
+html[data-platform="android"] .native-route-skeleton :is(i,span,b,.native-route-skeleton__heading,.native-route-skeleton__grid div) { background: linear-gradient(100deg,var(--surface-container) 20%,var(--surface-variant) 45%,var(--surface-container) 70%); background-size: 220% 100%; }
+@keyframes m3-sheet-in { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { html[data-platform="android"] * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+}

@@ -4,6 +4,10 @@ import { Capacitor } from '@capacitor/core'
 import App from './App'
 import AppErrorBoundary from './components/common/AppErrorBoundary'
 import './index.css'
+import './styles/AndroidExpressive.css'
+import { initializeAndroidExperience } from './lib/androidExperience'
+
+initializeAndroidExperience()
 
 if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
     window.addEventListener('load', () => {
@@ -47,14 +51,17 @@ window.addEventListener('unhandledrejection', (event) => {
 if (Capacitor.isNativePlatform()) {
     void (async () => {
         try {
-            const [{ StatusBar, Style }, { SplashScreen }, { App: CapApp }] = await Promise.all([
-                import('@capacitor/status-bar'),
+            const [{ SplashScreen }, { App: CapApp }] = await Promise.all([
                 import('@capacitor/splash-screen'),
                 import('@capacitor/app')
             ])
 
-            StatusBar.setStyle({ style: Style.Dark }).catch(() => { })
-            StatusBar.setBackgroundColor({ color: '#030712' }).catch(() => { })
+            if (Capacitor.getPlatform() !== 'android') {
+                const { StatusBar, Style } = await import('@capacitor/status-bar')
+                StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
+                StatusBar.setBackgroundColor({ color: '#030712' }).catch(() => {})
+            }
+
             SplashScreen.hide().catch(() => { })
 
             CapApp.addListener('backButton', ({ canGoBack }) => {
