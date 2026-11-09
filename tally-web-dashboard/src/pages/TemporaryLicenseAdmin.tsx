@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/insforge';
+import { applyLicenseAdminAction } from '@/lib/licenseAdmin.mjs';
 
 type LicenseRow = { user_id: string; email: string; full_name: string; phone: string; registered_at: string; last_active_at: string | null; account_status: string; company_names: string; company_count: number; license_type: string | null; status: string; expiry: string | null };
 
@@ -37,14 +38,14 @@ export default function TemporaryLicenseAdmin() {
             pendingRequest.current = { key: requestKey, id: crypto.randomUUID() };
         }
         setBusy(true);
-        const { error: actionError } = await supabase.rpc('temporary_license_admin_action', {
-            p_user_id: row.user_id, p_action: action, p_days: action === 'REVOKE' ? null : duration,
-            p_reason: reason.trim() || null, p_request_id: pendingRequest.current.id,
-        });
-        setBusy(false);
-        if (actionError) { setError(actionError.message || 'License action failed.'); return; }
-        pendingRequest.current = null;
-        await load();
+        try {
+            await applyLicenseAdminAction(supabase, { userId: row.user_id, action, days: duration,
+                reason: reason.trim(), requestId: pendingRequest.current.id });
+            pendingRequest.current = null;
+            await load();
+        } catch (actionError) {
+            setError(actionError instanceof Error ? actionError.message : 'License action failed.');
+        } finally { setBusy(false); }
     };
 
     return <section className="space-y-3 p-2">

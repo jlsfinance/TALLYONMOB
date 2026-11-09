@@ -8,6 +8,7 @@ import AdminDirectory from './AdminDirectory';
 import AdminPlansEditor from './AdminPlansEditor';
 import AdminSubscriptionCoupons from './AdminSubscriptionCoupons';
 import toast from 'react-hot-toast';
+import { applyLicenseAdminAction } from '@/lib/licenseAdmin.mjs';
 import {
     Users, Building2, CreditCard, Tag, Activity, TrendingUp,
     Search, Plus, Ban, CheckCircle, XCircle, Clock, DollarSign,
@@ -46,8 +47,7 @@ export default function AdminPanelPage() {
     const adminAction=async(userId:string,action:'EXTEND'|'REVOKE',days:number|null)=>{
         const key=JSON.stringify([userId,action,days]);
         if(!actionRequests.current.has(key)) actionRequests.current.set(key,crypto.randomUUID());
-        const {error}=await supabase.rpc('temporary_license_admin_action',{p_user_id:userId,p_action:action,p_days:days,p_reason:'Admin Users '+action,p_request_id:actionRequests.current.get(key)});
-        if(error) throw error;
+        await applyLicenseAdminAction(supabase, {userId,action,days,reason:'Admin Users '+action,requestId:actionRequests.current.get(key)});
         actionRequests.current.delete(key);
     };
 
@@ -302,6 +302,7 @@ export default function AdminPanelPage() {
         onSuccess: () => {
             toast.success('License revoked');
             queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+            queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
         },
         onError: (error: any) => toast.error(error.message || 'Failed to revoke license'),
     });
@@ -417,6 +418,7 @@ export default function AdminPanelPage() {
                         {filteredUsers.map((u: any) => {
                             const expiryDate = u.expiry_date || u.expires_at;
                             const isExpired = u.status === 'expired' || (expiryDate && new Date(expiryDate) < new Date());
+                            const isRevoked = u.status === 'cancelled' || u.status === 'revoked';
                             const daysLeft = expiryDate ? Math.max(0, Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)) : 0;
                             const companyName = u.userCompanies?.[0]?.name || '';
                             return (
@@ -431,15 +433,15 @@ export default function AdminPanelPage() {
                                             </div>
                                         </div>
                                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                                            isExpired ? 'bg-red-500/10 text-red-500' : u.status === 'suspended' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
-                                        }`}>{u.status.toUpperCase()}</span>
+                                            isExpired || isRevoked ? 'bg-red-500/10 text-red-500' : u.status === 'suspended' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
+                                        }`}>{isRevoked ? 'REVOKED' : u.status.toUpperCase()}</span>
                                     </div>
                                     <div className="flex items-center gap-3 text-[9px] text-[var(--text-muted)]">
                                         <span className="font-mono">{u.license_key}</span>
                                         {u.tally_serial && <span>SN: {u.tally_serial}</span>}
                                         {u.company_gst && <span>GST: {u.company_gst}</span>}
                                         {u.plan && <span>Plan: {u.plan.name}</span>}
-                                        <span>{daysLeft > 0 ? `${daysLeft}d left` : 'Expired'}</span>
+                                        <span>{isRevoked ? 'Access revoked' : daysLeft > 0 ? `${daysLeft}d left` : 'Expired'}</span>
                                     </div>
                                     <div className="flex gap-1 mt-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
                                         <button disabled={extendMutation.isLoading} onClick={() => extendMutation.mutate({ licenseId: u.id, days: 7 })}

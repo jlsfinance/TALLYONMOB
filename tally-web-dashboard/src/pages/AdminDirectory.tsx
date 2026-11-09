@@ -26,6 +26,11 @@ export default function AdminDirectory({ mode, onOpenCompany }: { mode: 'users' 
         else setRows(data || []);
     }, [search, offset, mode, filter, isCompanies]);
     useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 250); return () => window.clearTimeout(timer); }, [load]);
+    useEffect(() => {
+        const refresh = () => { void load(); };
+        window.addEventListener('syncora-license-changed', refresh);
+        return () => window.removeEventListener('syncora-license-changed', refresh);
+    }, [load]);
 
     const visible = isCompanies
         ? companies.filter(c => filter === 'all' || (filter === 'inactive' ? !c.is_active : c.is_active))

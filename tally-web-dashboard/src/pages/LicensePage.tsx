@@ -4,19 +4,22 @@ import { supabase } from '../lib/insforge';
 import { Lock, Shield, Clock, Crown, Mail, Phone } from 'lucide-react';
 import SEO from '../components/common/SEO';
 import { useNavigate } from 'react-router-dom';
+import { useLicenseGate } from '@/contexts/LicenseGateContext';
+import { licensePresentation } from '@/lib/licensePresentation.mjs';
 
 export default function LicensePage() {
     const navigate = useNavigate();
     const { user } = useAuth() as any;
+    const { license: access, licenseError, isLoading: accessLoading } = useLicenseGate();
     const [license, setLicense] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         fetchLicense();
-    }, [user]);
+    }, [user?.id, access.status, access.expiryDate]);
 
     async function fetchLicense() {
-        if (!user?.id) return;
+        if (!user?.id) { setLicense(null); setLoading(false); return; }
         try {
             const { data, error } = await supabase
                 .from('user_licenses')
@@ -68,10 +71,8 @@ export default function LicensePage() {
         );
     }
 
-    const daysLeft = license.expiry_date
-        ? Math.max(0, Math.ceil((new Date(license.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-        : 0;
-    const isExpired = license.expiry_date ? new Date(license.expiry_date) < new Date() : false;
+    const { active: isActive, daysLeft, label: statusLabel } = licensePresentation(access,licenseError,accessLoading);
+    const isExpired = !isActive;
 
     return (
         <main className="min-h-screen bg-[var(--surface)]">
@@ -82,7 +83,7 @@ export default function LicensePage() {
                         <h1 className="text-2xl font-bold text-[var(--on-surface)]">License</h1>
                         <p className="text-[var(--on-surface)]/60 mt-1">Your current license status</p>
                     </div>
-                    {license.status === 'active' && !isExpired && (
+                    {isActive && (
                         <button
                             className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors"
                         >
@@ -99,8 +100,8 @@ export default function LicensePage() {
                                 <Shield size={20} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-[var(--on-surface)]">{isExpired ? 'Expired' : 'Active'}</h3>
-                                <p className="text-sm text-[var(--on-surface)]/60">{daysLeft} days remaining</p>
+                                <h3 className="text-lg font-bold text-[var(--on-surface)]">{statusLabel}</h3>
+                                <p className="text-sm text-[var(--on-surface)]/60">{isActive ? `${daysLeft} days remaining` : 'Subscription access is restricted'}</p>
                             </div>
                         </div>
                         <div className="w-full h-2 bg-[var(--border)] rounded-full mt-4">

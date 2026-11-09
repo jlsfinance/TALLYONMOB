@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/insforge';
+import { useLocation } from 'react-router-dom';
 
 type LicenseStatus = 'active' | 'trial' | 'expired' | 'suspended' | 'blocked' | 'none' | 'revoked' | 'unknown';
 type UserRole = 'super_admin' | 'admin' | 'sales_manager' | 'support_agent' | 'account_manager' | 'user';
@@ -91,14 +92,18 @@ const PLAN_LIMITS: Record<string, number> = {
 
 export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const { user, selectedCompany } = useAuth() as any;
+    const { pathname } = useLocation();
     const [license, setLicense] = useState<LicenseInfo>(defaultLicense);
     const [isLoading, setIsLoading] = useState(true);
     const [licenseError, setLicenseError] = useState<string | null>(null);
 
     const requestVersion = useRef(0);
-    const checkLicense = useCallback(async () => {
+    const inFlight = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+    const checkLicense = useCallback((): Promise<void> => {
+        if (!user?.id) { setLicense(defaultLicense); setIsLoading(false); return Promise.resolve(); }
+        if (inFlight.current?.userId === user.id) return inFlight.current.promise;
         const version = ++requestVersion.current;
-        if (!user?.id) { setLicense(defaultLicense); setIsLoading(false); return; }
+        const request = (async () => {
         try {
             let result;
             for (let attempt=0; attempt<3; attempt++) {
@@ -121,16 +126,33 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
             // Keep the last server result visible; availability errors never become expiry.
             setLicenseError('Subscription verification is temporarily unavailable. Retrying automatically.');
         } finally { if (version === requestVersion.current) setIsLoading(false); }
+        })();
+        inFlight.current = { userId: user.id, promise: request };
+        void request.finally(() => { if (inFlight.current?.promise === request) inFlight.current = null; });
+        return request;
     }, [user?.id]);
 
     useEffect(() => {
         setLicense(defaultLicense); setLicenseError(null); setIsLoading(true);
         void checkLicense();
-        const timer=window.setInterval(() => void checkLicense(),30000);
+        const timer=window.setInterval(() => { if (document.visibilityState !== 'hidden') void checkLicense(); },10000);
         const focus=() => void checkLicense();
+        const visible=() => { if (document.visibilityState === 'visible') void checkLicense(); };
+        const changed=(event: Event) => { if ((event as CustomEvent).detail?.userId === user?.id) void checkLicense(); };
+        const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('syncora-license-changes');
+        if (channel) channel.onmessage = event => { if (event.data?.userId === user?.id) void checkLicense(); };
         window.addEventListener('focus',focus);
-        return () => { requestVersion.current++; window.clearInterval(timer); window.removeEventListener('focus',focus); };
+        window.addEventListener('online',focus);
+        window.addEventListener('syncora-license-changed',changed);
+        document.addEventListener('visibilitychange',visible);
+        return () => {
+            requestVersion.current++; inFlight.current = null;
+            window.clearInterval(timer); window.removeEventListener('focus',focus);
+            window.removeEventListener('online',focus); window.removeEventListener('syncora-license-changed',changed);
+            document.removeEventListener('visibilitychange',visible); channel?.close();
+        };
     }, [checkLicense]);
+    useEffect(() => { void checkLicense(); }, [pathname,checkLicense]);
     const expiryReached = !!license.expiryDate && new Date(license.expiryDate).getTime()<=Date.now();
     const verifiedActive = !licenseError && !expiryReached && ['active','trial'].includes(license.status);
 
