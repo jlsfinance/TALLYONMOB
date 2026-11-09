@@ -157,6 +157,7 @@ const DataBackupRestorePage = lazyPage('DataBackupRestorePage', () => import('./
 const PushNotificationsPage = lazyPage('PushNotificationsPage', () => import('./pages/PushNotificationsPage'));
 const BiometricLoginPage = lazyPage('BiometricLoginPage', () => import('./pages/BiometricLoginPage'));
 const DayBookPage = lazyPage('DayBookPage', () => import('./pages/DayBookPage'));
+const SubscriptionPaymentResultPage = lazyPage('SubscriptionPaymentResultPage', () => import('./pages/SubscriptionPaymentResultPage'));
 const SubscriptionPage = lazyPage('SubscriptionPage', () => import('./pages/SubscriptionPage'));
 let mobileRouteChunksWarm = false;
 
@@ -321,6 +322,7 @@ function AppContent() {
                 <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
                 <Route path="/admin-panel" element={<AdminRoute><AdminPanel /></AdminRoute>} />
                 <Route path="/saas-admin" element={<AdminRoute><AdminPanelPage /></AdminRoute>} />
+                <Route path="/subscription/payment-result" element={<SubscriptionPaymentResultPage />} />
                 <Route path="/subscription" element={<SubscriptionPage />} />
 
                 <Route path="/select-mode" element={<Navigate to="/dashboard" replace />} />

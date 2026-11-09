@@ -12,6 +12,13 @@
 .subscription-status { display: flex; align-items: center; gap: 12px; max-width: 630px; margin: 0 auto 32px; padding: 15px 18px; border: 1px solid var(--border, #dbe5e1); border-radius: 16px; background: var(--surface, white); }
 .subscription-status-icon { padding: 10px; border-radius: 12px; background: #109a8112; color: #109a81; }
 .subscription-status-copy { flex: 1; min-width: 0; }
+.subscription-status-copy h1 { margin: 0 0 6px; font-size: 11px; font-weight: 650; color: var(--text-muted, #657d77); }
+.subscription-status { max-width: none; margin-top: 24px; margin-bottom: 28px; }
+.subscription-status.has-active-plan { border-color: #109a8150; background: linear-gradient(110deg, #109a8110, var(--surface, white)); }
+.subscription-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 18px; }
+.subscription-section-heading h2 { font-size: 22px; font-weight: 800; margin: 0 0 5px; }
+.subscription-section-heading p { margin: 0; font-size: 12px; color: var(--text-muted, #657d77); }
+.subscription-swipe-hint, .subscription-carousel-controls { display: none; }
 .subscription-status-copy p { font-size: 12px; font-weight: 750; margin: 0 0 4px; overflow-wrap: anywhere; }
 .subscription-status-copy span { display: block; color: var(--text-muted, #657d77); font-size: 11px; line-height: 1.5; }
 .subscription-refresh { border: 0; background: transparent; padding: 8px; color: var(--text-muted, #657d77); cursor: pointer; }
@@ -70,11 +77,24 @@
     .subscription-heading { padding-top: 36px; }
     .subscription-heading h1 { font-size: 39px; }
     .subscription-heading > p { font-size: 12px; }
-    .subscription-plans { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-    .subscription-card { padding: 24px; }
-    .subscription-card-featured { padding: 23px; }
-    .subscription-card-top { margin-bottom: 14px; }
-    .subscription-price { margin-top: 20px; }
+    .subscription-plans { position: relative; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 0; overscroll-behavior-x: contain; padding: 3px 0 12px; scrollbar-width: none; }
+    .subscription-plans::-webkit-scrollbar { display: none; }
+    .subscription-card { flex: 0 0 88%; min-width: 0; padding: 20px; border-radius: 20px; scroll-snap-align: start; }
+    .subscription-card-featured { padding: 19px; }
+    .subscription-card-top { min-height: 30px; margin-bottom: 12px; }
+    .subscription-plan-icon { padding: 7px; }
+    .subscription-price { font-size: 32px; margin-top: 16px; }
+    .subscription-divider { margin: 18px 0; }
+    .subscription-card ul { gap: 10px; margin-bottom: 20px; }
+    .subscription-section-heading h2 { font-size: 19px; }
+    .subscription-swipe-hint { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-muted, #657d77); }
+    .subscription-carousel-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0 12px; }
+    .subscription-carousel-controls > button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--border, #dbe5e1); border-radius: 50%; background: var(--surface, white); }
+    .subscription-carousel-controls > button:disabled { opacity: .3; }
+    .subscription-carousel-controls > div { display: flex; align-items: center; gap: 3px; }
+    .subscription-carousel-controls > div button { display: grid; place-items: center; width: 30px; height: 32px; background: transparent; border: 0; }
+    .subscription-carousel-controls > div button::after { content: ''; width: 7px; height: 7px; border-radius: 10px; background: var(--border, #dbe5e1); }
+    .subscription-carousel-controls > div button.is-current::after { width: 21px; background: #109a81; }
     .subscription-status { padding: 13px; }
     .subscription-note { align-items: flex-start; }
     .subscription-note svg { margin-top: 3px; }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Clock, CreditCard, RefreshCw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, ChevronRight, Clock, CreditCard, RefreshCw, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { useLicenseGate } from '@/contexts/LicenseGateContext';
 import { formatPlanPrice } from '@/config/subscriptionPlans';
 import { useSubscriptionCatalog } from '@/hooks/useSubscriptionCatalog';
@@ -17,6 +17,8 @@ export default function SubscriptionPage() {
     const catalog = useSubscriptionCatalog();
     const plans = catalog.data || [];
     const [couponInput, setCouponInput] = useState('');
+    const carouselRef = useRef<HTMLElement>(null);
+    const [visiblePlan, setVisiblePlan] = useState(0);
     const [appliedCode, setAppliedCode] = useState('');
     const [refreshing, setRefreshing] = useState(false);
     const [refreshError, setRefreshError] = useState('');
@@ -46,7 +48,7 @@ export default function SubscriptionPage() {
             const key=JSON.stringify([user?.id,selectedSlug,appliedCode]);
             if(checkoutRequest.current?.key!==key) checkoutRequest.current={key,id:crypto.randomUUID()};
             const result=await subscriptionRequest('/checkout',{planSlug:selectedSlug,couponCode:appliedCode || null,requestId:checkoutRequest.current.id});
-            if(result.status==='paid') { await refresh();return; }
+            if(result.status==='paid') { navigate('/subscription/payment-result?checkout='+encodeURIComponent(result.orderId));return; }
             const url=new URL(result.checkoutUrl);
             if(url.protocol!=='https:' || url.hostname!=='rzp.io') throw new Error('Invalid payment destination');
             window.localStorage.setItem('syncora-pending-checkout:'+user.id,result.orderId);
@@ -56,20 +58,10 @@ export default function SubscriptionPage() {
     };
     useEffect(()=>{
         if(!user?.id) return;
-        const order=searchParams.get('checkout') || window.localStorage.getItem('syncora-pending-checkout:'+user.id);
+        const order=searchParams.get('checkout');
         if(!order) return;
-        let disposed=false;let inFlight=false;let timer:number|undefined;
-        const verify=async()=>{if(inFlight)return;inFlight=true;try {
-            const result=await subscriptionRequest('/checkout/'+encodeURIComponent(order));
-            if(disposed) return;
-            if(result.status==='paid') { window.clearInterval(timer);window.localStorage.removeItem('syncora-pending-checkout:'+user.id);setCheckoutError('');await refresh(); }
-            else { setCheckoutError(result.status==='pending'?'Payment is awaiting confirmation. It will be checked again automatically.':'This checkout has ended. Please choose a plan again.');
-                if(result.status!=='pending'){window.clearInterval(timer);window.localStorage.removeItem('syncora-pending-checkout:'+user.id);checkoutRequest.current=null;}
-            }
-        } catch(error) {if(!disposed)setCheckoutError(error instanceof Error?error.message:'Could not verify payment');}finally{inFlight=false;}};
-        void verify();timer=window.setInterval(()=>void verify(),10000);
-        return()=>{disposed=true;window.clearInterval(timer);};
-    },[user?.id,searchParams.get('checkout')]);
+        navigate('/subscription/payment-result?checkout='+encodeURIComponent(order), { replace: true });
+    },[user?.id,searchParams,navigate]);
     const dialogRef = useRef<HTMLDialogElement>(null);
     const selectedSlug = searchParams.get('plan');
     const selectedPlan = plans.find(plan => plan.id === selectedSlug);
@@ -120,30 +112,33 @@ export default function SubscriptionPage() {
                     <span className="subscription-brand">SYNCORA<span> / PLANS</span></span>
                 </header>
 
-                <section className="subscription-heading">
-                    <span className="subscription-eyebrow"><Sparkles size={14} /> YOUR BUSINESS, CONNECTED</span>
-                    <h1>Your Tally.<br /><span>Always within reach.</span></h1>
-                    <p>Choose how long you want to stay connected.<br className="hidden sm:block" /> Three simple plans. One place to manage your subscription.</p>
-                </section>
-
-                <section aria-label="Current subscription" className="subscription-status">
+                <section aria-label="My subscription" className={`subscription-status ${active ? 'has-active-plan' : ''}`}>
                     <div className="subscription-status-icon"><ShieldCheck size={22} /></div>
                     <div className="subscription-status-copy">
-                        <p>{isLoading ? 'Checking subscription…' : licenseError || (active ? license.planName || 'Active subscription' : license.status === 'expired' ? 'Your subscription has expired' : license.status === 'blocked' ? 'Account blocked — contact support' : license.status === 'suspended' ? 'Account suspended — contact support' : 'Find the right plan for your business')}</p>
+                        <h1>My subscription</h1>
+                        <p>{isLoading ? 'Checking subscription…' : licenseError || (active ? license.planName || (license.status === 'trial' ? 'Trial' : 'Active subscription') : license.status === 'expired' ? 'Your subscription has expired' : license.status === 'blocked' ? 'Account blocked — contact support' : license.status === 'suspended' ? 'Account suspended — contact support' : license.status === 'unknown' ? 'Status unavailable' : license.status === 'revoked' ? 'Subscription revoked' : 'No active plan')}</p>
                         {!isLoading && active && license.expiryDate
-                            ? <span>Valid until {new Date(license.expiryDate).toLocaleDateString('en-IN')}</span>
-                            : <span>Monthly, six months or a full year — the choice is yours.</span>}
+                            ? <span>{license.status === 'trial' ? 'Trial' : 'Active'} · Valid until {new Date(license.expiryDate).toLocaleDateString('en-IN')} · {Math.max(0, license.daysLeft)} days left</span>
+                            : <span>{isLoading ? 'Loading your current plan…' : licenseError ? 'Refresh to check your current access.' : 'Choose a plan below to activate or renew access.'}</span>}
                     </div>
                     <button type="button" onClick={checkStatus} disabled={refreshing || isLoading} aria-label="Refresh subscription" className="subscription-refresh"><RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} /></button>
                 </section>
                 {refreshError && <p role="alert">{refreshError}</p>}
                 {checkoutError && <p role="status" className="subscription-catalog-message">{checkoutError}</p>}
+                {user?.id && window.localStorage.getItem('syncora-pending-checkout:'+user.id) && <p className="subscription-catalog-message"><Link to={'/subscription/payment-result?checkout='+encodeURIComponent(window.localStorage.getItem('syncora-pending-checkout:'+user.id)!)}>Check your recent payment →</Link></p>}
 
                 {catalog.isLoading && <p role="status" className="subscription-catalog-message">Loading current plans…</p>}
                 {catalog.isError && <p role="alert" className="subscription-catalog-message">Current prices could not be loaded. <button type="button" onClick={() => void catalog.refetch()}>Try again</button></p>}
                 {!catalog.isLoading && !catalog.isError && plans.length === 0 && <p role="status" className="subscription-catalog-message">No plans are available right now. Please check again later.</p>}
                 {!catalog.isLoading && selectedSlug && !selectedPlan && <p role="status" className="subscription-catalog-message">The selected plan is no longer available. Please choose another plan.</p>}
-                <section className="subscription-plans" aria-label="Subscription plans">
+                <div className="subscription-section-heading"><div><h2>{active ? 'Renew or upgrade' : 'Choose your plan'}</h2><p>One payment. Stay connected.</p></div><span className="subscription-swipe-hint">Swipe to explore <ArrowRight size={14} /></span></div>
+                <section ref={carouselRef} className="subscription-plans" aria-label="Subscription plans" tabIndex={0} onScroll={() => {
+                    const container = carouselRef.current;
+                    if (!container) return;
+                    const children = Array.from(container.children) as HTMLElement[];
+                    const index = children.reduce((best, child, i) => Math.abs(child.offsetLeft - children[0].offsetLeft - container.scrollLeft) < Math.abs(children[best].offsetLeft - children[0].offsetLeft - container.scrollLeft) ? i : best, 0);
+                    setVisiblePlan(index);
+                }}>
                     {plans.map(plan => (
                         <article key={plan.id} className={`subscription-card ${plan.id === 'half_yearly' ? 'subscription-card-featured' : ''}`}>
                             <div className="subscription-card-top">
@@ -170,6 +165,11 @@ export default function SubscriptionPage() {
                     ))}
                 </section>
 
+                {plans.length > 1 && <nav className="subscription-carousel-controls" aria-label="Choose a plan card">
+                    <button type="button" aria-label="Previous plan" disabled={visiblePlan === 0} onClick={() => carouselRef.current?.children[visiblePlan - 1]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })}><ChevronLeft size={18} /></button>
+                    <div>{plans.map((plan, index) => <button key={plan.id} type="button" className={visiblePlan === index ? 'is-current' : ''} aria-label={`Show ${plan.title}`} aria-current={visiblePlan === index ? 'true' : undefined} onClick={() => carouselRef.current?.children[index]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })} />)}</div>
+                    <button type="button" aria-label="Next plan" disabled={visiblePlan === plans.length - 1} onClick={() => carouselRef.current?.children[visiblePlan + 1]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' })}><ChevronRight size={18} /></button>
+                </nav>}
                 <aside className="subscription-note"><CreditCard size={18} /><p><strong>{availability.data?.enabled ? 'Secure online payment.' : 'Online payments are being configured.'}</strong> Your subscription activates only after payment is verified.</p></aside>
                 <footer className="subscription-footer"><span>Need a hand choosing?</span><Link to="/support">Get in touch <ArrowRight size={14} /></Link></footer>
             </div>

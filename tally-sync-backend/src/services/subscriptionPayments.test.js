@@ -51,6 +51,25 @@ test('database activation failure is retryable and never acknowledged as success
     const {service,db}=fixture();db.rpc.mockResolvedValue({error:{message:'transaction failed'}});
     await expect(service.reconcile(order)).rejects.toMatchObject({status:503});
 });
+
+test.each(['expired','cancelled'])('ended checkout reports %s without activating a license',async status=>{
+    const {service,db}=fixture({status});
+    expect(await service.reconcile(order)).toEqual({status,orderId:order.id});
+    expect(db.rpc).not.toHaveBeenCalled();
+});
+
+test.each([
+    [[{status:'failed',order_id:'order_test'}],'failed'],
+    [[{status:'failed',order_id:'order_test'},{status:'authorized',order_id:'order_test'}],'pending'],
+    [[{status:'failed',order_id:'different_order'}],'pending'],
+    [[], 'pending'],
+])('failed attempt is checked against gateway evidence (%j)',async(items,status)=>{
+    const db={rpc:jest.fn()};
+    const fetchImpl=jest.fn(async url=>({ok:true,json:async()=>url.includes('/payment_links/')?{...link,status:'created'}:{items}}));
+    const service=new SubscriptionPayments({db,fetchImpl,env});
+    expect(await service.reconcile(order)).toEqual({status,orderId:order.id});
+    expect(db.rpc).not.toHaveBeenCalled();
+});
 test('placeholder credentials fail closed before creating any checkout',async()=>{
     const userClient=jest.fn();const service=new SubscriptionPayments({db:{},userClient,env:{...env,RAZORPAY_KEY_SECRET:'your_secret_here'}});
     await expect(service.create({id:'user-a'},'token',{planSlug:'monthly',requestId:order.id,amount:1})).rejects.toMatchObject({status:503});

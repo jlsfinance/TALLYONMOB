@@ -80,7 +80,17 @@ class SubscriptionPayments {
         await this.assertPaymentMode(order.user_id);
         if (!order.gateway_link_id) return { status: 'pending', orderId: order.id };
         const link = await this.api('/payment_links/' + encodeURIComponent(order.gateway_link_id));
-        if (link.status !== 'paid') return { status: ['expired', 'cancelled'].includes(link.status) ? link.status : 'pending', orderId: order.id };
+        if (link.status !== 'paid') {
+            if (['expired', 'cancelled'].includes(link.status)) return { status: link.status, orderId: order.id };
+            // A failed attempt can be retried on the same link. Never finalize it or
+            // trust a browser callback's status; ask the gateway about its attempts.
+            if (link.order_id) {
+                const attempts = await this.api('/orders/' + encodeURIComponent(link.order_id) + '/payments');
+                const payments = (attempts.items || []).filter(p => p.order_id === link.order_id);
+                if (payments.length && payments.every(p => p.status === 'failed')) return { status: 'failed', orderId: order.id };
+            }
+            return { status: 'pending', orderId: order.id };
+        }
         if (link.id !== order.gateway_link_id || link.notes?.subscription_order_id !== order.id || link.reference_id !== order.id
             || link.amount !== Number(order.amount_paise) || link.amount_paid !== Number(order.amount_paise) || link.currency !== 'INR') throw new PaymentError('Payment amount or order did not match', 409);
         let paymentId = link.payments?.find(p => p.status === 'captured')?.payment_id;
