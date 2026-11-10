@@ -3,6 +3,6 @@
     <color name="colorPrimary">#ABC7FF</color>
     <color name="colorPrimaryDark">#10141C</color>
     <color name="colorAccent">#E6B9E6</color>
-    <color name="splash_bg">#10141C</color>
+    <color name="splash_bg">#0B1730</color>
     <bool name="light_system_bars">false</bool>
 </resources>

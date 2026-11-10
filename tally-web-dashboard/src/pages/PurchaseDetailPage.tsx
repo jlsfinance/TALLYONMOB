@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Printer, MessageCircle, Calendar, User, FileText } from 'lucide-react';
 import { GlassCard } from '@/components/ui/GlassUI';
 import { format } from 'date-fns';
+import { resolveHsn } from '../lib/invoiceMasterFields.mjs';
 
 export default function PurchaseDetailPage() {
     const { id } = useParams();
@@ -66,12 +67,8 @@ export default function PurchaseDetailPage() {
                     ...item,
                     stock_item_id: stockLookup[item.item_name || item.stock_item_name]?.id,
                     stock_item_name: item.item_name || item.stock_item_name || 'Unknown',
-                    hsn_code: (() => {
-                        const raw = item.hsn_code || '';
-                        const isValid = (v: string) => v && v !== 'NIL' && v !== 'NA' && v !== '-' && v.trim() !== '' && v.trim().length >= 4;
-                        return isValid(raw) ? raw : (stockLookup[item.item_name]?.hsn_code || '-');
-                    })(),
-                    unit: item.unit || stockLookup[item.item_name]?.unit || '',
+                    hsn_code: resolveHsn(item.hsn_code, stockLookup[item.item_name || item.stock_item_name]?.hsn_code) || '-',
+                    unit: item.unit || stockLookup[item.item_name || item.stock_item_name]?.unit || '',
                     quantity: item.quantity || item.billed_qty || 0,
                     rate: item.rate || item.unit_price || 0,
                     amount: item.amount || (item.quantity * item.rate) || 0
@@ -81,11 +78,14 @@ export default function PurchaseDetailPage() {
                 if (!purchaseData.party_ledger_id && purchaseData.party_ledger_name) {
                     const { data: pData } = await supabase
                         .from('ledgers')
-                        .select('id')
+                        .select('id, gstin')
                         .eq('company_id', voucherData.company_id)
                         .ilike('name', purchaseData.party_ledger_name.trim())
                         .maybeSingle();
-                    if (pData) purchaseData.party_ledger_id = pData.id;
+                    if (pData) {
+                        purchaseData.party_ledger_id = pData.id;
+                        purchaseData.party_gstin ||= pData.gstin || '';
+                    }
                 }
 
                 setPurchase(purchaseData);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { effectiveGstRate } from '../lib/effectiveGst.mjs';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ledgerApi, masterApi, pendingTransactionApi } from '@/lib/supabase';
@@ -198,7 +199,7 @@ export default function CreateInvoicePage() {
                 item.productId = stock.id;
                 item.description = stock.name;
                 item.rate = stock.last_sale_rate || stock.rate || 0;
-                item.gstRate = stock.gst_rate || 0;
+                item.gstRate = effectiveGstRate(stock, date);
                 item.hsn = stock.hsn_code || '';
                 item.unit = stock.base_unit || stock.unit || stock.uom || 'PC';
             }
@@ -219,6 +220,18 @@ export default function CreateInvoicePage() {
         newItems[index] = item;
         setItems(newItems);
     };
+
+    useEffect(() => {
+        const customer = ledgers.find(l => l.id === selectedCustomerId);
+        const interState = Boolean(customer?.state && selectedCompany?.state && customer.state !== selectedCompany.state);
+        setItems(rows => rows.map(row => {
+            const stock = stockItems.find(s => s.id === row.productId);
+            const updated = { ...row };
+            if (stock?.gst_details?.effective_rates?.length) updated.gstRate = effectiveGstRate(stock, date);
+            calculateTaxes(updated, interState);
+            return updated;
+        }));
+    }, [date, stockItems, selectedCustomerId]);
 
     const handleAddItem = () => {
         const newItem: InvoiceItem = {
@@ -388,7 +401,7 @@ export default function CreateInvoicePage() {
                     quantity: qty,
                     rate: stock.last_sale_rate || stock.rate || 0,
                     baseAmount: 0,
-                    gstRate: stock.gst_rate || 0,
+                    gstRate: effectiveGstRate(stock, date),
                     cgstAmount: 0,
                     sgstAmount: 0,
                     igstAmount: 0,

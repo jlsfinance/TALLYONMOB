@@ -7,6 +7,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { VOUCHER_TYPES, type VoucherType } from '../lib/voucherTypes';
+import { effectiveGstRate } from '../lib/effectiveGst.mjs';
 
 interface LedgerEntry {
     ledger_name: string;
@@ -127,6 +128,14 @@ export default function CreateVoucherPage() {
         setAmount('');
     };
 
+    useEffect(() => {
+        setStockEntries(rows => rows.map(row => {
+            const stock = allStockItems.find(s => s.name === row.item_name);
+            return stock?.gst_details?.effective_rates?.length
+                ? { ...row, gst_rate: effectiveGstRate(stock, voucherDate) } : row;
+        }));
+    }, [voucherDate, allStockItems]);
+
     const addStockEntry = () => {
         setStockEntries([...stockEntries, { item_name: '', quantity: 1, rate: 0, amount: 0, unit: '', gst_rate: 0 }]);
     };
@@ -148,7 +157,7 @@ export default function CreateVoucherPage() {
             item_name: item.name,
             rate: itemRate,
             unit: item.base_unit || item.unit || item.uom || 'PC',
-            gst_rate: Number(item.gst_rate) || 0,
+            gst_rate: effectiveGstRate(item, voucherDate),
             amount: (updated[index].quantity || 1) * itemRate
         };
         setStockEntries(updated);

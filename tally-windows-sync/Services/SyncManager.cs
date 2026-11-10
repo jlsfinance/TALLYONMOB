@@ -809,7 +809,8 @@ namespace TallySyncApp.Services
                             AddLog($"📦 HSN Cache: {_hsnCache.Count} valid codes found in {stockItems.Count} items");
                             
                             // Sync Stock Items (Only if needed or force/first)
-                            if (stockItems.Any() && (isFirstSync || forceResync || stockItems.Count != stockSynced)) // Simplified condition
+                            // GST and group changes do not change the item count.
+                            if (stockItems.Any())
                             {
                                  await UploadListAsync("stock_items", stockItems, "id");
                                  stockSynced = stockItems.Count;

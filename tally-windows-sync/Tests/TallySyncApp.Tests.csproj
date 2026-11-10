@@ -34,6 +34,7 @@
     <Compile Include="..\Services\TallyFastExtractor.cs" />
     <Compile Include="..\Services\VoucherReconciliation.cs" />
     <Compile Include="..\Services\LicenseRequestRetry.cs" />
+    <Compile Include="..\Services\EffectiveStockGst.cs" />
   </ItemGroup>
 
 </Project>

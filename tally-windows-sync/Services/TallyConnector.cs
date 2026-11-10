@@ -1915,6 +1915,17 @@ namespace TallySyncApp.Services
                 }
             }
 
+            if (items.Count > 0)
+            {
+                var gstGroups = await GetStockGroupsWithGstAsync(companyName);
+                foreach (var item in items)
+                {
+                    var history = EffectiveStockGst.Resolve(item, gstGroups);
+                    item.GstDetails = new { effective_rates = history.Select(s => new { from = s.From.ToString("yyyy-MM-dd"), rate = s.Rate }).ToArray() };
+                    var current = history.Where(s => s.From.Date <= DateTime.Today).OrderByDescending(s => s.From).FirstOrDefault();
+                    if (current != null) item.GstRate = current.Rate;
+                }
+            }
             return items;
         }
 

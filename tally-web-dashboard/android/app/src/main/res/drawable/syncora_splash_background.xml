@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy launch-window styling. Android 12+ uses its single-colour system splash. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="315" android:startColor="#08162B" android:centerColor="#142341" android:endColor="#282356" />
+        </shape>
+    </item>
+    <item android:width="320dp" android:height="320dp" android:gravity="center">
+        <shape android:shape="oval">
+            <gradient android:type="radial" android:gradientRadius="160dp" android:startColor="#4A6676C8" android:endColor="#006676C8" />
+        </shape>
+    </item>
+    <item android:width="176dp" android:height="176dp" android:gravity="center">
+        <bitmap android:src="@mipmap/ic_launcher_foreground" android:gravity="fill" android:filter="true" />
+    </item>
+    <item android:width="200dp" android:height="64dp" android:gravity="bottom|center_horizontal" android:bottom="48dp" android:drawable="@drawable/syncora_splash_wordmark" />
+</layer-list>

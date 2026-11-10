@@ -563,6 +563,9 @@ namespace TallySyncApp.Models
         [JsonProperty("master_id")]
         public string? MasterId { get; set; }
 
+        [JsonProperty("gst_details")]
+        public object GstDetails { get; set; } = new { };
+
         [JsonProperty("alter_id")]
         public string? AlterId { get; set; }
 

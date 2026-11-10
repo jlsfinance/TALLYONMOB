@@ -9,6 +9,7 @@ import { shareVoucherOnWhatsApp, formatFullWhatsAppMessage } from '../lib/whatsa
 import { Capacitor } from '@capacitor/core';
 import toast from 'react-hot-toast';
 import { removeMirroredStockEntries } from '../lib/invoiceStockEntries';
+import { masterNameKey, resolveHsn, summaryHsn } from '../lib/invoiceMasterFields.mjs';
 import {
     ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
 } from 'lucide-react';
@@ -226,6 +227,7 @@ export default function InvoicePDFPage() {
                             .from('ledgers')
                             .select(fields)
                             .eq('id', voucherData.party_ledger_id)
+                            .eq('company_id', voucherData.company_id)
                             .maybeSingle(),
                         'id, address, gstin, state, email, phone',
                         'id, address, gstin, email, phone'
@@ -275,7 +277,17 @@ export default function InvoicePDFPage() {
                 ]);
 
                 const companyData = companyResult.data;
-                const partyDetails = partyResult.data || {};
+                let partyDetails = partyResult.data || {};
+                const partyName = voucherData.party_name || voucherData.party_ledger_name || '';
+                if (!partyDetails.gstin && partyName) {
+                    const { data: candidates, error } = await supabase.from('ledgers').select('*')
+                        .eq('company_id', voucherData.company_id).eq('is_deleted', false)
+                        .ilike('name', partyName.trim().replace(/[\\%_]/g, '\\$&')).limit(20);
+                    if (error) throw error;
+                    const exact = (candidates || []).filter(l => masterNameKey(l.name) === masterNameKey(partyName));
+                    const matched = exact.find(l => String(l.gstin || '').trim()) || exact[0];
+                    if (matched) partyDetails = { ...partyDetails, ...matched };
+                }
                 const cLedger = companyLedgerResult.data;
                 const bLedger = bankResult.data;
                 let resolvedCompanyInfo = companyData
@@ -312,10 +324,21 @@ export default function InvoicePDFPage() {
                 const voucherLookupIds = Array.from(new Set([voucherData.id, voucherData.voucher_id, decodedId].filter(Boolean)));
 
                 // Fetch stock entries, ledger entries, and stock items in PARALLEL
+                const loadStockMasters = async () => {
+                    const rows = [];
+                    for (let start = 0; ; start += 1000) {
+                        const { data, error } = await supabase.from('stock_items')
+                            .select('id, name, hsn_code, unit, gst_rate').eq('company_id', voucherData.company_id)
+                            .order('id').range(start, start + 999);
+                        if (error) throw error;
+                        rows.push(...(data || []));
+                        if (!data || data.length < 1000) return { data: rows };
+                    }
+                };
                 const [stockResult, ledgerResult, stockItemsResult] = await Promise.all([
                     supabase.from('voucher_stock_entries').select('*').eq('is_deleted', false).eq('is_deleted', false).in('voucher_id', voucherLookupIds),
                     supabase.from('voucher_ledger_entries').select('*').eq('is_deleted', false).eq('is_deleted', false).in('voucher_id', voucherLookupIds),
-                    supabase.from('stock_items').select('id, name, hsn_code, unit, gst_rate').eq('company_id', voucherData.company_id)
+                    loadStockMasters()
                 ]);
 
                 const stockEntries = stockResult.data;
@@ -426,7 +449,7 @@ export default function InvoicePDFPage() {
                 // Enrich items with GST info and handle various field name conventions
                 const enrichedItems = inventoryItems.map((item, itemIdx) => {
                     const itemName = item.item_name || item.stock_item_name || item.item_label || item.StockItemName || 'Item';
-                    const master = stockLookup[itemName] || stockLookup[String(itemName).toLowerCase()] || {};
+                    const master = stockLookup[itemName] || stockLookup[masterNameKey(itemName)] || {};
 
                     // --- GST RATE DETECTION ---
                     // tax_rate from voucher_stock_entries = Tally's RATEOFTAXCALCULATION
@@ -549,13 +572,7 @@ export default function InvoicePDFPage() {
                         ...item,
                         stock_item_id: master.id,
                         stock_item_name: itemName,
-                        hsn_code: (() => {
-                            const raw = item.hsn_code || item.hsn || item.HsnCode || '';
-                            const isValidHsn = (v) => v && v !== 'NIL' && v !== 'NA' && v !== '-' && v.trim() !== '' && v.trim().length >= 4;
-                            // Known-bad HSN from Tally (e.g. 6292 for footwear) -> prefer master stock item HSN
-                            const isKnownBad = (v) => String(v || '').trim() === '6292';
-                            return (isValidHsn(raw) && !isKnownBad(raw)) ? raw : (master.hsn_code || raw || '');
-                        })(),
+                        hsn_code: resolveHsn(item.hsn_code, item.hsn, item.HsnCode, master.hsn_code),
                         unit: item.unit || item.Unit || master.unit || 'pcs',
                         gst_rate: gstRate,
                         quantity: quantity,
@@ -768,7 +785,7 @@ export default function InvoicePDFPage() {
     const columnVisibility = useMemo(() => {
         if (!items || !invoice) return {};
 
-        const hasHSN = items.some(i => i.hsn_code && i.hsn_code !== '-' && i.hsn_code !== 'NIL' && i.hsn_code.trim() !== '' && i.hsn_code.trim().length >= 4);
+        const hasHSN = items.some(i => resolveHsn(i.hsn_code));
         const hasGST = items.some(i => Number(i.gst_rate) > 0) || Number(invoice?.cgst_amount) > 0 || Number(invoice?.igst_amount) > 0;
         // Discount column is only shown when this invoice actually has a discount
         // (line or ledger level). The live vouchers table lacks `discount_amount`
@@ -805,7 +822,7 @@ export default function InvoicePDFPage() {
 
         // First pass: taxable amounts grouped by HSN
         items.forEach(item => {
-            const hsn = (item.hsn_code && item.hsn_code !== 'NIL' && item.hsn_code.trim().length >= 4) ? item.hsn_code : 'NIL';
+            const hsn = summaryHsn(item.hsn_code);
             const gstRate = item.gst_rate || 0;
             const key = `${hsn}_${gstRate}`;
             if (!summary[key]) {
@@ -1172,7 +1189,7 @@ export default function InvoicePDFPage() {
             if (Number(item.gst_rate) > 0) {
                 displayGst = Number(item.gst_rate);
             } else {
-                const hsnMatch = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
+                const hsnMatch = hsnSummary.find(h => h.hsn === summaryHsn(item.hsn_code));
                 if (hsnMatch && hsnMatch.gst_rate > 0) displayGst = hsnMatch.gst_rate;
             }
 
@@ -1820,7 +1837,7 @@ export default function InvoicePDFPage() {
                                     {/* Table Body - Rows */}
                                     <div className={`flex-grow text-[8px] md:text-[10px] relative ${isMobile ? '' : 'min-w-[400px]'}`}>
                                         {items.map((item, idx) => {
-                                            const hsnData = hsnSummary.find(h => h.hsn === (item.hsn_code || 'NIL'));
+                                            const hsnData = hsnSummary.find(h => h.hsn === summaryHsn(item.hsn_code));
                                             const displayGstRate = item.gst_rate > 0 ? item.gst_rate : (hsnData?.gst_rate || 0);
 
                                             return (

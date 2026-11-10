@@ -1,0 +1,120 @@
+/* Deliberately scoped: shared entry/reset/onboarding screens keep their design. */
+.syncora-login.login-screen.entry-screen {
+  --entry-bg: #f6f8fc; --entry-surface: #fff; --entry-text: #10213c;
+  --entry-muted: #55657c; --entry-border: #dbe3f0; --entry-primary: #4149b8;
+  --login-field: #f8faff; --login-tint: #eef1ff; --login-button: #3544a7;
+  --login-focus: #c6cefa; --login-shadow: 0 16px 56px #1d31540a;
+  background: radial-gradient(ellipse at 88% 10%, #e6ecff 0, transparent 46%),
+    radial-gradient(ellipse at 8% 86%, #e9f6f3 0, transparent 38%), var(--entry-bg);
+  color: var(--entry-text);
+}
+.dark .syncora-login.login-screen.entry-screen {
+  --entry-bg: #0c1526; --entry-surface: #142039; --entry-text: #eef3ff;
+  --entry-muted: #b2c1d9; --entry-border: #30405c; --entry-primary: #b9c8ff;
+  --login-field: #101c32; --login-tint: #233050; --login-button: #b9c8ff;
+  --login-focus: #3a4b80; --login-shadow: 0 18px 56px #0000001a;
+  background: radial-gradient(ellipse at 90% 5%, #252653 0, transparent 48%), var(--entry-bg);
+}
+.syncora-login.login-screen .entry-topbar {
+  background: transparent; border-bottom-color: transparent;
+  padding-inline: clamp(20px, 5vw, 64px);
+}
+.syncora-login.login-screen .entry-brand { gap: 12px; color: var(--entry-text); }
+.syncora-login.login-screen .entry-brand-mark {
+  width: 40px; height: 40px; flex: none; border-radius: 13px;
+  background: linear-gradient(145deg, #172c53, #454caa); color: #fff;
+  box-shadow: 0 5px 14px #263c6f1a;
+}
+.syncora-login.login-screen .entry-brand strong { font-size: 19px; font-weight: 750; letter-spacing: -.035em; }
+.syncora-login.login-screen .entry-brand small { font-size: 8px; letter-spacing: .13em; color: var(--entry-muted); }
+.syncora-login.login-screen .entry-theme {
+  background: var(--entry-surface); border: 1px solid var(--entry-border);
+  color: var(--entry-muted); border-radius: 13px; width: 38px; height: 38px;
+}
+.syncora-login.login-screen .login-intro h1 { color: var(--entry-text); line-height: 1.12; font-weight: 700; letter-spacing: -.045em; }
+.syncora-login.login-screen .login-intro > p { max-width: 370px; color: var(--entry-muted); }
+.syncora-login.login-screen .login-features { gap: 16px; font-weight: 500; }
+.syncora-login.login-screen .login-features svg { color: #16806b; }
+.dark .syncora-login.login-screen .login-features svg { color: #7ed7bb; }
+.syncora-login.login-screen .login-card {
+  position: relative; background: var(--entry-surface); color: var(--entry-text);
+  border: 1px solid var(--entry-border); border-radius: 28px;
+  padding: 30px; box-shadow: var(--login-shadow);
+  animation: syncora-login-reveal 280ms ease-out both;
+}
+.syncora-login.login-screen .login-card::before {
+  content: ''; position: absolute; top: -1px; left: 28px; right: 28px; height: 3px;
+  border-radius: 0 0 4px 4px; background: linear-gradient(90deg, #4053b8, #8d9aef, #65bca7);
+}
+.syncora-login.login-screen .entry-eyebrow { color: var(--entry-primary); letter-spacing: .12em; font-size: 9px; font-weight: 750; }
+.syncora-login.login-screen .login-card-header { margin-bottom: 22px; }
+.syncora-login.login-screen .login-card-header h2 {
+  font-size: 29px; line-height: 1.18; font-weight: 700; letter-spacing: -.035em;
+  color: var(--entry-text); margin: 9px 0 8px;
+}
+.syncora-login.login-screen .login-card-header p { color: var(--entry-muted); font-size: 13px; line-height: 1.6; }
+.syncora-login.login-screen .login-google {
+  min-height: 48px; background: var(--entry-surface); color: var(--entry-text);
+  border: 1px solid var(--entry-border); border-radius: 14px; font-size: 13px; font-weight: 650;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.syncora-login.login-screen .login-google:hover:not(:disabled) { background: var(--login-field); border-color: #9baed4; }
+.syncora-login.login-screen .login-divider { color: var(--entry-muted); margin-block: 20px; font-size: 11px; }
+.syncora-login.login-screen .login-divider::before, .syncora-login.login-screen .login-divider::after { background: var(--entry-border); }
+.syncora-login.login-screen .login-form { gap: 16px; }
+.syncora-login.login-screen .login-form label { font-size: 12px; color: var(--entry-text); font-weight: 600; gap: 7px; }
+.syncora-login.login-screen .login-card .login-field {
+  background: var(--login-field); color: var(--entry-muted); min-height: 50px;
+  border: 1px solid var(--entry-border); border-radius: 14px; padding-inline: 13px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.syncora-login.login-screen .login-card .login-field > svg { flex: none; width: 17px; height: 17px; }
+.syncora-login.login-screen .login-card .login-field:focus-within { border: 1px solid #616fc6; box-shadow: 0 0 0 3px var(--login-focus); color: var(--entry-primary); }
+.syncora-login.login-screen .login-card input {
+  background: transparent; color: var(--entry-text); border: 0; outline: 0;
+  min-height: 48px; border-radius: 0; font-size: 16px; line-height: 1.4; padding-block: 11px;
+}
+.syncora-login.login-screen .login-card input::placeholder { color: var(--entry-muted); opacity: .75; }
+.syncora-login.login-screen .login-field:has(input:user-invalid) { border-color: #b34455; box-shadow: 0 0 0 2px #b3445510; }
+.syncora-login.login-screen .login-hint { font-size: 12px; line-height: 1.55; color: var(--entry-muted); }
+.syncora-login.login-screen .reset-sent { padding: 12px; border-radius: 12px; color: #17654e; background: #e9f7ef; }
+.dark .syncora-login.login-screen .reset-sent { background: #1e3b37; color: #a5e4ca; }
+.syncora-login.login-screen .login-card button.login-submit {
+  min-height: 50px; border-radius: 14px; border: 1px solid transparent;
+  background: linear-gradient(115deg, #193761, #4652b4); color: #fff;
+  font-size: 14px; font-weight: 650; box-shadow: 0 6px 15px #3544a71a;
+  transition: box-shadow 150ms ease, filter 150ms ease;
+}
+.dark .syncora-login.login-screen .login-card button.login-submit { background: linear-gradient(110deg, #bfd0ff, #adbdf4); color: #14234b; }
+.syncora-login.login-screen .login-card button.login-submit:hover:not(:disabled) { background: linear-gradient(115deg, #18325a, #3b47a0); box-shadow: 0 7px 18px #3544a72b; }
+.dark .syncora-login.login-screen .login-card button.login-submit:hover:not(:disabled) { background: #c9d6ff; }
+.syncora-login.login-screen :is(.login-google,.login-submit):disabled { opacity: .58; cursor: wait; box-shadow: none; }
+.syncora-login.login-screen .login-switch { color: var(--entry-muted); font-size: 12px; line-height: 1.5; margin-top: 16px; }
+.syncora-login.login-screen .login-switch button { color: var(--entry-muted); border-radius: 7px; }
+.syncora-login.login-screen .login-switch strong { color: var(--entry-primary); font-weight: 700; }
+.syncora-login.login-screen .login-back { color: var(--entry-muted); font-size: 11px; margin-top: 14px; border-radius: 7px; }
+.syncora-login.login-screen button:focus-visible { outline: 3px solid var(--entry-primary); outline-offset: 3px; }
+@keyframes syncora-login-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 767px) {
+  .syncora-login.login-screen .entry-topbar { padding-inline: 18px; }
+  .syncora-login.login-screen .entry-brand-mark { width: 36px; height: 36px; border-radius: 12px; }
+  .syncora-login.login-screen .entry-brand strong { font-size: 18px; }
+  .syncora-login.login-screen .login-card { padding: 24px 22px; border-radius: 24px; }
+  .syncora-login.login-screen .login-card-header { margin-bottom: 18px; }
+  .syncora-login.login-screen .login-card-header h2 { font-size: 27px; }
+  .syncora-login.login-screen .login-form { gap: 14px; }
+  .syncora-login.login-screen .login-divider { margin-block: 17px; }
+}
+@media (max-width: 767px) and (max-height: 650px) {
+  .syncora-login.login-screen .login-card { padding: 17px 18px; }
+  .syncora-login.login-screen .login-card-header { margin-bottom: 12px; }
+  .syncora-login.login-screen .login-card-header h2 { font-size: 23px; margin-block: 5px; }
+  .syncora-login.login-screen .login-card-header p { font-size: 12px; }
+  .syncora-login.login-screen .login-divider { margin-block: 12px; }
+  .syncora-login.login-screen .login-form { gap: 10px; }
+  .syncora-login.login-screen .login-switch { margin-top: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .syncora-login.login-screen .login-card { animation: none; }
+  .syncora-login.login-screen :is(.login-google,.login-field,.login-submit) { transition: none; }
+}

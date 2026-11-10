@@ -1,4 +1,5 @@
 import './EntryScreens.css';
+import './LoginVisual.css';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -161,9 +162,9 @@ export default function LoginPage() {
     };
 
     return (
-        <main className="entry-screen login-screen">
+        <main className="entry-screen login-screen syncora-login">
             <SEO title={isLogin ? 'Sign In | SYNCORA — Free Tally Community & Cloud' : 'Create Account | SYNCORA — Free Tally Community & Cloud'} description="Sign in to SYNCORA TallyOnMobile. Access your Tally data on mobile and web." canonical="https://tallyonmob.vercel.app/login" />
-            <div className="entry-topbar"><div className="entry-brand"><span className="entry-brand-mark"><Building2 size={20}/></span><span><strong>SYNCORA</strong><small>TALLY ON MOBILE</small></span></div><button type="button" className="entry-theme" onClick={toggleTheme} aria-label="Toggle theme">{isDark ? <Sun size={18}/> : <Moon size={18}/>}</button></div>
+            <div className="entry-topbar"><div className="entry-brand"><span className="entry-brand-mark"><Building2 size={20}/></span><span><strong>Syncora</strong><small>TALLY ON MOBILE</small></span></div><button type="button" className="entry-theme" onClick={toggleTheme} aria-label="Toggle theme">{isDark ? <Sun size={18}/> : <Moon size={18}/>}</button></div>
             <div className="login-layout">
                 <section className="login-intro"><span className="entry-eyebrow">YOUR BUSINESS, CONNECTED</span><h1>Your Tally, wherever you work.</h1><p>Access your Tally data, reports and business insights from one place.</p><div className="login-features"><span><CheckCircle2 size={16}/> Real-time Tally sync</span><span><CheckCircle2 size={16}/> Reports and GST insights</span><span><CheckCircle2 size={16}/> Mobile and desktop access</span></div></section>
                 <section className="login-card">
