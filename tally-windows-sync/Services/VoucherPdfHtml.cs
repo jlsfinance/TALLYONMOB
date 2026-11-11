@@ -1,4 +1,7 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Text;
 using TallySyncApp.Models;
@@ -7,66 +10,213 @@ namespace TallySyncApp.Services
 {
     /// <summary>
     /// Voucher → printable HTML. Kept free of WPF/WebView2 so it stays testable.
+    /// Sales/Purchase print as a GST invoice; every other voucher type prints as a voucher.
     /// </summary>
     public static class VoucherPdfHtml
     {
+        private static readonly string[] TaxKeywords = { "cgst", "sgst", "igst", "cess", "vat", "gst" };
+
         private static string Esc(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+        private static bool IsInvoice(Voucher v) =>
+            v.VoucherType.Contains("sales", StringComparison.OrdinalIgnoreCase) ||
+            v.VoucherType.Contains("purchase", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsTaxLine(string ledger) =>
+            TaxKeywords.Any(k => ledger.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+        private static bool IsRoundOffLine(string ledger) =>
+            ledger.Contains("round", StringComparison.OrdinalIgnoreCase);
 
         public static string Build(Company company, Voucher v)
         {
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'><style>");
-            sb.Append("body{font-family:Segoe UI,Arial,sans-serif;color:#111;margin:24px;font-size:12px}");
-            sb.Append("h1{font-size:18px;margin:0 0 2px}.muted{color:#666;font-size:11px}");
-            sb.Append("table{width:100%;border-collapse:collapse;margin-top:10px}");
-            sb.Append("th,td{border-bottom:1px solid #ddd;padding:5px 4px;text-align:left}");
-            sb.Append("th{background:#f2f5f7;font-size:11px;text-transform:uppercase;letter-spacing:.03em}");
-            sb.Append("td.num,th.num{text-align:right}");
-            sb.Append("h2{font-size:12px;margin:16px 0 0;text-transform:uppercase;color:#0B7A5A}");
-            sb.Append(".total{margin-top:12px;text-align:right;font-size:14px;font-weight:600}");
-            sb.Append("</style></head><body>");
+            sb.Append("@page{size:A4;margin:10mm}");
+            sb.Append("body{font-family:Segoe UI,Arial,sans-serif;color:#111;margin:0;font-size:11.5px}");
+            sb.Append(".cname{font-size:19px;font-weight:700;letter-spacing:.01em}");
+            sb.Append(".muted{color:#555;font-size:10.5px;line-height:1.45}");
+            sb.Append(".title{font-size:14px;font-weight:700;letter-spacing:.12em;text-align:right;color:#0B7A5A}");
+            sb.Append("table{width:100%;border-collapse:collapse;table-layout:fixed}");
+            sb.Append(".head{border-bottom:2px solid #0B7A5A;padding-bottom:8px}");
+            sb.Append(".head td{vertical-align:top}");
+            sb.Append(".meta{margin-top:10px}.meta td{vertical-align:top}");
+            sb.Append(".lbl{color:#666;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em}");
+            sb.Append(".party{font-size:12.5px;font-weight:700}");
+            sb.Append(".items{margin-top:12px;border:1px solid #cfd8dc}");
+            sb.Append(".items th{background:#eef3f5;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;");
+            sb.Append("padding:5px 4px;text-align:left;border-bottom:1px solid #cfd8dc}");
+            sb.Append(".items td{padding:5px 4px;border-bottom:1px solid #eceff1}");
+            sb.Append(".num{text-align:right;white-space:nowrap}");
+            sb.Append(".totals{margin-top:8px}");
+            sb.Append(".totals td{padding:3px 4px}");
+            sb.Append(".totals .row{border-top:1px solid #eceff1}");
+            sb.Append(".totals .grand{border-top:2px solid #0B7A5A;font-size:13px;font-weight:700}");
+            sb.Append(".words{margin-top:10px;font-size:10px;color:#333}");
+            sb.Append(".foot{margin-top:16px;color:#888;font-size:9px;border-top:1px solid #eceff1;padding-top:6px}");
+            sb.Append("</style></head><body data-syncora-voucher='1'>");
 
-            sb.Append($"<h1>{Esc(company.Name)}</h1>");
-            sb.Append($"<div class='muted'>{Esc(v.VoucherType)} #{Esc(v.VoucherNumber)} &nbsp;·&nbsp; {v.VoucherDate:dd-MM-yyyy}</div>");
-            if (!string.IsNullOrWhiteSpace(v.PartyName))
-                sb.Append($"<div class='muted'>Party: {Esc(v.PartyName)}</div>");
-            if (!string.IsNullOrWhiteSpace(v.Narration))
-                sb.Append($"<div class='muted'>Narration: {Esc(v.Narration)}</div>");
+            AppendHeader(sb, company, v);
 
-            if (v.InventoryEntries.Count > 0)
-            {
-                sb.Append("<h2>Items</h2><table><tr><th>Item</th><th>HSN</th><th class='num'>Qty</th><th class='num'>Rate</th><th class='num'>Amount</th></tr>");
-                foreach (var item in v.InventoryEntries)
-                {
-                    sb.Append("<tr>");
-                    sb.Append($"<td>{Esc(item.StockItemName)}</td>");
-                    sb.Append($"<td>{Esc(item.HsnCode)}</td>");
-                    sb.Append($"<td class='num'>{item.Quantity:N2} {Esc(item.Unit)}</td>");
-                    sb.Append($"<td class='num'>{item.Rate:N2}</td>");
-                    sb.Append($"<td class='num'>{item.Amount:N2}</td>");
-                    sb.Append("</tr>");
-                }
-                sb.Append("</table>");
-            }
+            if (IsInvoice(v))
+                AppendInvoiceBody(sb, company, v);
+            else
+                AppendVoucherBody(sb, v);
 
-            if (v.LedgerEntries.Count > 0)
-            {
-                sb.Append("<h2>Ledger Entries</h2><table><tr><th>Ledger</th><th class='num'>Debit</th><th class='num'>Credit</th></tr>");
-                foreach (var entry in v.LedgerEntries)
-                {
-                    sb.Append("<tr>");
-                    sb.Append($"<td>{Esc(entry.LedgerName)}</td>");
-                    sb.Append($"<td class='num'>{(entry.IsDebit ? entry.Amount.ToString("N2") : string.Empty)}</td>");
-                    sb.Append($"<td class='num'>{(entry.IsDebit ? string.Empty : entry.Amount.ToString("N2"))}</td>");
-                    sb.Append("</tr>");
-                }
-                sb.Append("</table>");
-            }
-
-            sb.Append($"<div class='total'>Total: ₹{v.TotalAmount:N2}</div>");
-            sb.Append($"<div class='muted' style='margin-top:18px'>SYNCORA · {DateTime.Now:dd-MM-yyyy HH:mm}</div>");
+            sb.Append($"<div class='foot'>Generated by SYNCORA · {DateTime.Now:dd-MM-yyyy HH:mm} · {Esc(v.VoucherType)} {Esc(v.VoucherNumber)}</div>");
             sb.Append("</body></html>");
             return sb.ToString();
         }
+
+        private static void AppendHeader(StringBuilder sb, Company company, Voucher v)
+        {
+            sb.Append("<table class='head'><tr><td style='width:64%'>");
+            sb.Append($"<div class='cname'>{Esc(company.Name)}</div>");
+            if (!string.IsNullOrWhiteSpace(company.Address))
+                sb.Append($"<div class='muted'>{Esc(company.Address)}</div>");
+
+            var details = new List<string>();
+            if (!string.IsNullOrWhiteSpace(company.Gstin)) details.Add($"GSTIN: {Esc(company.Gstin)}");
+            if (!string.IsNullOrWhiteSpace(company.State)) details.Add($"State: {Esc(company.State)}");
+            if (!string.IsNullOrWhiteSpace(company.Phone)) details.Add($"Ph: {Esc(company.Phone)}");
+            if (!string.IsNullOrWhiteSpace(company.Email)) details.Add(Esc(company.Email));
+            if (details.Count > 0) sb.Append($"<div class='muted'>{string.Join(" &nbsp;|&nbsp; ", details)}</div>");
+
+            sb.Append("</td><td style='width:36%;text-align:right'>");
+            sb.Append($"<div class='title'>{(IsInvoice(v) ? "TAX INVOICE" : v.VoucherType.ToUpperInvariant())}</div>");
+            sb.Append("</td></tr></table>");
+        }
+
+        private static void AppendInvoiceBody(StringBuilder sb, Company company, Voucher v)
+        {
+            sb.Append("<table class='meta'><tr>");
+            sb.Append("<td style='width:62%'>");
+            sb.Append("<div class='lbl'>Bill To</div>");
+            sb.Append($"<div class='party'>{Esc(v.PartyName ?? "-")}</div>");
+            if (!string.IsNullOrWhiteSpace(v.Narration)) sb.Append($"<div class='muted'>{Esc(v.Narration)}</div>");
+            sb.Append("</td>");
+            sb.Append("<td style='width:38%;text-align:right'>");
+            sb.Append($"<div class='muted'>Invoice No: <b>{Esc(v.VoucherType)} / {Esc(v.VoucherNumber)}</b></div>");
+            sb.Append($"<div class='muted'>Date: <b>{v.VoucherDate:dd-MM-yyyy}</b></div>");
+            sb.Append("</td>");
+            sb.Append("</tr></table>");
+
+            var items = v.InventoryEntries;
+            bool showTax = items.Any(i => i.TaxRate.HasValue && i.TaxRate.Value > 0);
+
+            sb.Append("<table class='items'><colgroup><col style='width:5%'><col><col style='width:12%'>");
+            sb.Append("<col style='width:12%'><col style='width:12%'>");
+            if (showTax) sb.Append("<col style='width:8%'>");
+            sb.Append("<col style='width:15%'></colgroup><tr><th>#</th><th>Description of Goods</th>");
+            sb.Append("<th>HSN/SAC</th><th class='num'>Qty</th><th class='num'>Rate</th>");
+            if (showTax) sb.Append("<th class='num'>GST%</th>");
+            sb.Append("<th class='num'>Amount</th></tr>");
+
+            if (items.Count == 0)
+            {
+                sb.Append($"<tr><td>-</td><td>{Esc(v.Narration ?? "Voucher amount")}</td><td></td><td></td><td></td>");
+                if (showTax) sb.Append("<td></td>");
+                sb.Append($"<td class='num'>{v.TotalAmount:N2}</td></tr>");
+            }
+            else
+            {
+                int row = 1;
+                foreach (var item in items)
+                {
+                    sb.Append("<tr>");
+                    sb.Append($"<td>{row++}</td>");
+                    sb.Append($"<td>{Esc(item.StockItemName)}</td>");
+                    sb.Append($"<td>{Esc(item.HsnCode)}</td>");
+                    sb.Append($"<td class='num'>{item.Quantity:N2}{(string.IsNullOrWhiteSpace(item.Unit) ? "" : " " + Esc(item.Unit))}</td>");
+                    sb.Append($"<td class='num'>{item.Rate:N2}</td>");
+                    if (showTax) sb.Append($"<td class='num'>{(item.TaxRate.HasValue ? item.TaxRate.Value.ToString("0.##") : "-")}</td>");
+                    sb.Append($"<td class='num'>{item.Amount:N2}</td>");
+                    sb.Append("</tr>");
+                }
+            }
+            sb.Append("</table>");
+
+            var taxLines = v.LedgerEntries
+                .Where(e => IsTaxLine(e.LedgerName) && !IsRoundOffLine(e.LedgerName))
+                .ToList();
+            decimal taxTotal = taxLines.Sum(e => e.Amount);
+            decimal roundOff = v.LedgerEntries.Where(e => IsRoundOffLine(e.LedgerName)).Sum(e => e.Amount);
+            decimal taxable = items.Count > 0 ? items.Sum(i => i.Amount) : v.TotalAmount - taxTotal - roundOff;
+
+            sb.Append("<table class='totals' style='width:46%;margin-left:auto'><colgroup><col><col style='width:40%'></colgroup>");
+            sb.Append($"<tr class='row'><td>Taxable Value</td><td class='num'>{taxable:N2}</td></tr>");
+            foreach (var line in taxLines)
+                sb.Append($"<tr class='row'><td>{Esc(line.LedgerName)}</td><td class='num'>{line.Amount:N2}</td></tr>");
+            if (roundOff != 0)
+                sb.Append($"<tr class='row'><td>Round Off</td><td class='num'>{roundOff:N2}</td></tr>");
+            sb.Append($"<tr class='grand'><td>Total</td><td class='num'>₹{v.TotalAmount:N2}</td></tr>");
+            sb.Append("</table>");
+
+            sb.Append($"<div class='words'><b>Amount in Words:</b> {Esc(AmountInWords(v.TotalAmount))}</div>");
+        }
+
+        private static void AppendVoucherBody(StringBuilder sb, Voucher v)
+        {
+            sb.Append("<table class='meta'><tr>");
+            sb.Append("<td style='width:62%'><div class='lbl'>Party</div>");
+            sb.Append($"<div class='party'>{Esc(string.IsNullOrWhiteSpace(v.PartyName) ? "-" : v.PartyName)}</div></td>");
+            sb.Append("<td style='width:38%;text-align:right'>");
+            sb.Append($"<div class='muted'>No: <b>{Esc(v.VoucherNumber)}</b></div>");
+            sb.Append($"<div class='muted'>Date: <b>{v.VoucherDate:dd-MM-yyyy}</b></div>");
+            sb.Append("</td></tr></table>");
+
+            if (!string.IsNullOrWhiteSpace(v.Narration))
+                sb.Append($"<div class='muted' style='margin-top:8px'>Narration: {Esc(v.Narration)}</div>");
+
+            sb.Append("<table class='items'><colgroup><col><col style='width:14%'><col style='width:14%'></colgroup>");
+            sb.Append("<tr><th>Ledger</th><th class='num'>Debit</th>");
+            sb.Append("<th class='num'>Credit</th></tr>");
+            foreach (var entry in v.LedgerEntries)
+            {
+                sb.Append("<tr>");
+                sb.Append($"<td>{Esc(entry.LedgerName)}</td>");
+                sb.Append($"<td class='num'>{(entry.IsDebit ? entry.Amount.ToString("N2") : string.Empty)}</td>");
+                sb.Append($"<td class='num'>{(entry.IsDebit ? string.Empty : entry.Amount.ToString("N2"))}</td>");
+                sb.Append("</tr>");
+            }
+            sb.Append("</table>");
+
+            sb.Append("<table class='totals' style='width:46%;margin-left:auto'><colgroup><col><col style='width:40%'></colgroup>");
+            sb.Append($"<tr class='grand'><td>Total</td><td class='num'>₹{v.TotalAmount:N2}</td></tr></table>");
+            sb.Append($"<div class='words'><b>Amount in Words:</b> {Esc(AmountInWords(v.TotalAmount))}</div>");
+        }
+
+        private static readonly string[] Ones =
+        {
+            "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+            "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"
+        };
+
+        private static readonly string[] Tens =
+        {
+            "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"
+        };
+
+        internal static string AmountInWords(decimal amount)
+        {
+            long rupees = (long)Math.Floor(Math.Abs(amount));
+            int paise = (int)Math.Round((Math.Abs(amount) - rupees) * 100);
+
+            string words = rupees == 0 ? "Zero" : GroupWords(rupees);
+            var result = new StringBuilder(words).Append(" Rupees");
+            if (paise > 0) result.Append(" and ").Append(GroupWords(paise)).Append(" Paise");
+            if (amount < 0) result.Insert(0, "Minus ");
+            return result.Append(" Only").ToString();
+        }
+
+        private static string GroupWords(long number) => number switch
+        {
+            < 20 => Ones[number],
+            < 100 => Tens[number / 10] + (number % 10 > 0 ? " " + Ones[number % 10] : ""),
+            < 1000 => Ones[number / 100] + " Hundred" + (number % 100 > 0 ? " " + GroupWords(number % 100) : ""),
+            < 100000 => GroupWords(number / 1000) + " Thousand" + (number % 1000 > 0 ? " " + GroupWords(number % 1000) : ""),
+            < 10000000 => GroupWords(number / 100000) + " Lakh" + (number % 100000 > 0 ? " " + GroupWords(number % 100000) : ""),
+            _ => GroupWords(number / 10000000) + " Crore" + (number % 10000000 > 0 ? " " + GroupWords(number % 10000000) : "")
+        };
     }
 }

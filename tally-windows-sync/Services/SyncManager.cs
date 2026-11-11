@@ -1153,7 +1153,7 @@ namespace TallySyncApp.Services
                             if (changedIds.Count > 0)
                             {
                                 var saved = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts,
-                                    runToken, changedIds);
+                                    runToken, changedIds, pdfForEachVoucher: true);
                                 vouchersSynced += saved.VouchersSynced;
                                 salesSynced += saved.SalesSynced;
                                 purchasesSynced += saved.PurchasesSynced;
@@ -2159,7 +2159,8 @@ namespace TallySyncApp.Services
             Dictionary<string, string> hsnCache,
             List<string> highValueAlerts,
             CancellationToken ct,
-            IReadOnlyCollection<long>? onlyAlterIds = null)
+            IReadOnlyCollection<long>? onlyAlterIds = null,
+            bool pdfForEachVoucher = false)
         {
             int totalVouchers = 0;
             int totalSales = 0;
@@ -2219,8 +2220,9 @@ namespace TallySyncApp.Services
                     totalPurchases += saved.Purchases;
                     salesAmount += saved.SalesAmount;
 
-                    // Incremental scans (onlyAlterIds) are the "new vouchers" that get a PDF.
-                    if (onlyAlterIds != null) _vouchersToPdf.AddRange(vouchers);
+                    // Only the incremental scan's changed vouchers get a PDF; repairs/backfills
+                    // are vouchers the cloud already has and must not be re-sent.
+                    if (pdfForEachVoucher) _vouchersToPdf.AddRange(vouchers);
 
                     Status.ProcessedRecords = totalVouchers;
                     UpdateStatus(SyncState.Syncing, $"Saved {totalVouchers}/{alterIds.Count} vouchers with all dependent data.");
