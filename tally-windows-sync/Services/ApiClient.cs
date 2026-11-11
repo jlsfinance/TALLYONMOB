@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -2129,6 +2130,50 @@ namespace TallySyncApp.Services
                 SyncLogger.Log($"⚠️ Failed to send Telegram notification: {ex.Message}");
             }
             return false;
+        }
+
+        /// <summary>
+        /// Send a generated PDF to the user's linked Telegram chat through the edge function.
+        /// The file is uploaded as multipart by the function; the caller deletes the local copy.
+        /// </summary>
+        public async Task<bool> SendTelegramDocumentAsync(string chatId, string filePath, string caption)
+        {
+            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                return false;
+            if (string.IsNullOrWhiteSpace(_userToken))
+                return false;
+
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(filePath);
+                var payload = JsonConvert.SerializeObject(new
+                {
+                    chat_id = chatId,
+                    document_base64 = Convert.ToBase64String(bytes),
+                    filename = Path.GetFileName(filePath),
+                    caption
+                });
+
+                AddAuthHeader();
+                using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var response = await _httpClient.PostAsync(
+                    $"{_supabaseUrl}/functions/v1/desktop-telegram-notify", content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ Telegram document service returned HTTP {(int)response.StatusCode}");
+                    return false;
+                }
+
+                var body = await response.Content.ReadAsStringAsync();
+                var result = JsonConvert.DeserializeObject<Dictionary<string, bool>>(body);
+                return result != null && result.TryGetValue("sent", out var sent) && sent;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Failed to send Telegram document: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>

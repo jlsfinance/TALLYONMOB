@@ -36,6 +36,9 @@ namespace TallySyncApp.Services
         private readonly object _syncLock = new object();
         private Dictionary<string, string> _hsnCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        // Vouchers created by the current incremental scan; each one gets a PDF sent to Telegram.
+        private readonly List<Voucher> _vouchersToPdf = new List<Voucher>();
+
         // Local SQLite store for company identity mappings (GUID + path + source -> company_id).
         // Lazy-initialized on first use with the logged-in user's owner_id.
         private CompanyMappingStore? _mappingStore;
@@ -769,6 +772,7 @@ namespace TallySyncApp.Services
                         */
                         // FIX 1: HSN Cache MUST be scoped per company to avoid cross-contamination
                         _hsnCache.Clear();
+                        _vouchersToPdf.Clear();
 
                         // FIX 2: Status.TotalRecords logic - Reset properly at start of company sync
                         Status.TotalRecords = 0; 
@@ -1436,6 +1440,19 @@ namespace TallySyncApp.Services
                         catch (Exception tgEx)
                         {
                             SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
+                        }
+
+                        // ===== NEW VOUCHER PDFs → TELEGRAM =====
+                        if (!isFirstSync)
+                        {
+                            try
+                            {
+                                await SendNewVoucherPdfsAsync(company);
+                            }
+                            catch (Exception pdfEx)
+                            {
+                                SyncLogger.Log($"📄 Voucher PDF batch failed: {pdfEx.Message}");
+                            }
                         }
                     }
                     catch (Exception) when (runToken.IsCancellationRequested)
@@ -2202,6 +2219,9 @@ namespace TallySyncApp.Services
                     totalPurchases += saved.Purchases;
                     salesAmount += saved.SalesAmount;
 
+                    // Incremental scans (onlyAlterIds) are the "new vouchers" that get a PDF.
+                    if (onlyAlterIds != null) _vouchersToPdf.AddRange(vouchers);
+
                     Status.ProcessedRecords = totalVouchers;
                     UpdateStatus(SyncState.Syncing, $"Saved {totalVouchers}/{alterIds.Count} vouchers with all dependent data.");
                     AddLog($"✅ [FastExtractor] {vouchers.Count} vouchers ({rangeDisplay})");
@@ -2230,6 +2250,71 @@ namespace TallySyncApp.Services
                 AddLog(line);
             }
             return (totalVouchers, totalSales, salesAmount, totalPurchases);
+        }
+
+        /// <summary>
+        /// Renders every voucher created by this incremental scan, sends it to the linked Telegram
+        /// chat, and deletes the temp PDF the moment the send finishes (success or failure).
+        /// </summary>
+        private async Task SendNewVoucherPdfsAsync(Company company)
+        {
+            if (_vouchersToPdf.Count == 0) return;
+
+            var userId = App.AuthService?.CurrentSession?.UserId;
+            if (string.IsNullOrEmpty(userId))
+            {
+                AddLog("📄 Voucher PDFs skipped: not signed in.");
+                _vouchersToPdf.Clear();
+                return;
+            }
+
+            var chatId = await _apiClient!.GetTelegramChatIdAsync(userId);
+            if (string.IsNullOrWhiteSpace(chatId))
+            {
+                AddLog("📄 Voucher PDFs skipped: Telegram is not linked to this account.");
+                _vouchersToPdf.Clear();
+                return;
+            }
+
+            int sent = 0, failed = 0;
+            AddLog($"📄 Sending {_vouchersToPdf.Count} new voucher PDF(s) to Telegram...");
+
+            foreach (var voucher in _vouchersToPdf)
+            {
+                string? pdfPath = null;
+                try
+                {
+                    pdfPath = await VoucherPdfRenderer.RenderAsync(company, voucher, CancellationToken.None);
+                    var caption = $"{company.Name}\n{voucher.VoucherType} #{voucher.VoucherNumber} · {voucher.VoucherDate:dd-MM-yyyy}" +
+                                  (string.IsNullOrWhiteSpace(voucher.PartyName) ? string.Empty : $"\n{voucher.PartyName}") +
+                                  $"\n₹{voucher.TotalAmount:N2}";
+
+                    if (await _apiClient.SendTelegramDocumentAsync(chatId, pdfPath, caption)) sent++;
+                    else failed++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    SyncLogger.Log($"📄 PDF failed for {voucher.VoucherType} #{voucher.VoucherNumber}: {ex.Message}");
+                    // If nothing has gone through yet the renderer itself is broken - stop instead of
+                    // grinding through every voucher.
+                    if (sent == 0 && failed >= 3)
+                    {
+                        SyncLogger.Log("📄 Voucher PDF rendering failed 3 times — aborting this batch.");
+                        break;
+                    }
+                }
+                finally
+                {
+                    if (pdfPath != null)
+                    {
+                        try { File.Delete(pdfPath); } catch { /* temp file */ }
+                    }
+                }
+            }
+
+            _vouchersToPdf.Clear();
+            AddLog($"📄 Voucher PDFs → Telegram: {sent} sent, {failed} failed.");
         }
 
 

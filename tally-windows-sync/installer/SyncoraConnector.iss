@@ -3,7 +3,7 @@
 ; Needs:  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish\installer-input
 
 #define AppName "SYNCORA Connector"
-#define AppVersion "3.1.9"
+#define AppVersion "3.2.0"
 #ifndef PublishDir
   #define PublishDir "..\publish\installer-input"
 #endif

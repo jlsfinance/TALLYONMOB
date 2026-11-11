@@ -4,6 +4,8 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '';
 
+const MAX_DOCUMENT_BASE64 = 14_000_000; // ~10 MB PDF
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
@@ -49,14 +51,17 @@ Deno.serve(async (req: Request) => {
     const user = userResult?.user;
     if (authError || !user) return jsonResponse(401, { error: 'Session is invalid or expired' });
 
-    const declaredLength = Number(req.headers.get('content-length') ?? 0);
-    if (declaredLength > 12_000) return jsonResponse(413, { error: 'Message is too large' });
+    const body = await req.json().catch(() => null) as {
+      chat_id?: unknown;
+      message?: unknown;
+      document_base64?: unknown;
+      filename?: unknown;
+      caption?: unknown;
+    } | null;
 
-    const body = await req.json().catch(() => null) as { chat_id?: unknown; message?: unknown } | null;
     const chatId = typeof body?.chat_id === 'string' ? body.chat_id.trim() : '';
-    const message = typeof body?.message === 'string' ? body.message.trim() : '';
-    if (!chatId || chatId.length > 128 || !message || message.length > 4096) {
-      return jsonResponse(400, { error: 'A valid linked chat and message are required' });
+    if (!chatId || chatId.length > 128) {
+      return jsonResponse(400, { error: 'A valid linked chat is required' });
     }
 
     // Read through the caller's JWT/RLS; never trust a client-supplied recipient.
@@ -68,6 +73,53 @@ Deno.serve(async (req: Request) => {
     if (profileError) return jsonResponse(500, { error: 'Could not verify the linked Telegram account' });
     if (!profile?.telegram_chat_id || String(profile.telegram_chat_id) !== chatId) {
       return jsonResponse(403, { error: 'Telegram chat is not linked to this signed-in account' });
+    }
+
+    // ---- Document mode: voucher PDF ----
+    const documentBase64 = typeof body?.document_base64 === 'string' ? body.document_base64 : '';
+    if (documentBase64) {
+      if (documentBase64.length > MAX_DOCUMENT_BASE64) {
+        return jsonResponse(413, { error: 'Document is too large' });
+      }
+
+      const filename = (typeof body?.filename === 'string' ? body.filename : 'voucher.pdf')
+        .replace(/[^\w.\- ]+/g, '_')
+        .slice(0, 64) || 'voucher.pdf';
+      const caption = typeof body?.caption === 'string' ? body.caption.trim().slice(0, 1024) : '';
+
+      let bytes: Uint8Array;
+      try {
+        bytes = Uint8Array.from(atob(documentBase64), (c) => c.charCodeAt(0));
+      } catch {
+        return jsonResponse(400, { error: 'Document is not valid base64' });
+      }
+
+      const form = new FormData();
+      form.set('chat_id', profile.telegram_chat_id);
+      form.set('document', new Blob([bytes], { type: 'application/pdf' }), filename);
+      if (caption) form.set('caption', caption);
+
+      const telegramResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!telegramResponse.ok) {
+        const detail = await telegramResponse.text().catch(() => '');
+        return jsonResponse(502, {
+          error: `Telegram document delivery failed (HTTP ${telegramResponse.status}) ${detail.slice(0, 200)}`,
+        });
+      }
+      return jsonResponse(200, { sent: true });
+    }
+
+    // ---- Message mode ----
+    const declaredLength = Number(req.headers.get('content-length') ?? 0);
+    if (declaredLength > 12_000) return jsonResponse(413, { error: 'Message is too large' });
+
+    const message = typeof body?.message === 'string' ? body.message.trim() : '';
+    if (!message || message.length > 4096) {
+      return jsonResponse(400, { error: 'A valid message is required' });
     }
 
     const telegramResponse = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {

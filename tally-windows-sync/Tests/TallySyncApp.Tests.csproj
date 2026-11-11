@@ -35,6 +35,7 @@
     <Compile Include="..\Services\VoucherReconciliation.cs" />
     <Compile Include="..\Services\LicenseRequestRetry.cs" />
     <Compile Include="..\Services\EffectiveStockGst.cs" />
+    <Compile Include="..\Services\VoucherPdfHtml.cs" />
   </ItemGroup>
 
 </Project>
