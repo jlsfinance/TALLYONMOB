@@ -1247,6 +1247,50 @@ namespace TallySyncApp.Services
         /// cloud voucher absent from the index by any identity. Returns purged count, -1 = safety skip.
         /// </summary>
         /// <summary>
+        /// Which of these vouchers already exist in the cloud. Used to tell a genuinely new
+        /// voucher (send its PDF) from a re-synced one (stay quiet).
+        /// </summary>
+        public async Task<HashSet<string>> GetExistingVoucherIdsAsync(string companyId, IReadOnlyCollection<Voucher> vouchers)
+        {
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (vouchers.Count == 0) return existing;
+
+            try
+            {
+                bool companyScoped = await CompanyScopedVoucherIdsAsync(companyId);
+                var byRowId = new Dictionary<Guid, string>();
+                foreach (var voucher in vouchers)
+                    byRowId[Guid.Parse(VoucherRowId(companyId, voucher.VoucherId, companyScoped))] = voucher.VoucherId;
+
+                AddAuthHeader();
+                var list = string.Join(",", byRowId.Keys.Select(id => id.ToString()));
+                var response = await _httpClient.GetAsync(
+                    $"{_supabaseUrl}/rest/v1/vouchers?company_id=eq.{companyId}&id=in.({list})&select=id");
+                if (!response.IsSuccessStatusCode)
+                {
+                    SyncLogger.Log($"⚠️ GetExistingVoucherIds: HTTP {(int)response.StatusCode}");
+                    return existing;
+                }
+
+                var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(
+                    await response.Content.ReadAsStringAsync()) ?? new();
+                foreach (var row in rows)
+                {
+                    if (row.TryGetValue("id", out var id) && id != null &&
+                        Guid.TryParse(id.ToString(), out var rowId) && byRowId.TryGetValue(rowId, out var raw))
+                    {
+                        existing.Add(raw);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ GetExistingVoucherIds error: {ex.Message}");
+            }
+            return existing;
+        }
+
+        /// <summary>
         /// Voucher row count for a company. One request; PostgREST returns the total in Content-Range.
         /// </summary>
         public async Task<int> GetVoucherCountAsync(string companyId)
@@ -2161,7 +2205,8 @@ namespace TallySyncApp.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    SyncLogger.Log($"⚠️ Telegram document service returned HTTP {(int)response.StatusCode}");
+                    var detail = await response.Content.ReadAsStringAsync();
+                    SyncLogger.Log($"⚠️ Telegram document service returned HTTP {(int)response.StatusCode}: {detail}");
                     return false;
                 }
 

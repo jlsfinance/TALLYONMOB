@@ -2002,7 +2002,8 @@ namespace TallySyncApp.Services
                 }
                 if (diff.MissingAlterIds.Count == 0 || !_settings.SyncSettings.UseSafeVoucherReconciliation) return (0, 0, 0, 0);
                 AddLog($"🧩 Repairing {diff.MissingAlterIds.Count} identified voucher(s) by ALTERID.");
-                return await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, ct, diff.MissingAlterIds);
+                return await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, ct,
+                    diff.MissingAlterIds, pdfForEachVoucher: true);
             }
             catch (Exception ex)
             {
@@ -2214,15 +2215,22 @@ namespace TallySyncApp.Services
                     ct.ThrowIfCancellationRequested();
                     if (batch.Except(vouchers.Select(v => long.TryParse(v.AlterId, out var id) ? id : 0)).Any())
                         throw new IOException($"Tally returned an incomplete {rangeDisplay}; checkpoint retained.");
+                    // A voucher is "new" only if the cloud did not have its id before this upload;
+                    // re-synced (repaired) rows must not be sent to Telegram again.
+                    List<Voucher>? newVouchers = null;
+                    if (pdfForEachVoucher)
+                    {
+                        var existingIds = await _apiClient!.GetExistingVoucherIdsAsync(company.Id, vouchers);
+                        newVouchers = vouchers.Where(v => !existingIds.Contains(v.Id)).ToList();
+                    }
+
                     var saved = await PersistVoucherBatchesAsync(company, vouchers, highValueAlerts, ct);
                     totalVouchers += saved.Vouchers;
                     totalSales += saved.Sales;
                     totalPurchases += saved.Purchases;
                     salesAmount += saved.SalesAmount;
 
-                    // Only the incremental scan's changed vouchers get a PDF; repairs/backfills
-                    // are vouchers the cloud already has and must not be re-sent.
-                    if (pdfForEachVoucher) _vouchersToPdf.AddRange(vouchers);
+                    if (newVouchers != null && newVouchers.Count > 0) _vouchersToPdf.AddRange(newVouchers);
 
                     Status.ProcessedRecords = totalVouchers;
                     UpdateStatus(SyncState.Syncing, $"Saved {totalVouchers}/{alterIds.Count} vouchers with all dependent data.");
