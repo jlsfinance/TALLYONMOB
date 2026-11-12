@@ -1431,6 +1431,12 @@ namespace TallySyncApp.Services
                             });
                         }
 
+                        // Tally repeats the same ledger line; keep one copy so every consumer
+                        // (cloud upload, voucher PDF) sees it once.
+                        if (ledgerEntries.Any(e => e.LedgerName == entry.LedgerName &&
+                                                   e.Amount == entry.Amount && e.IsDebit == entry.IsDebit))
+                            continue;
+
                         ledgerEntries.Add(entry);
                     }
 

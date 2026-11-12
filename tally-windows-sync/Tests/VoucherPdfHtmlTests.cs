@@ -90,6 +90,51 @@ public class VoucherPdfHtmlTests
         Assert.Contains("Five Hundred Rupees Only", html);
     }
 
+    [Fact]
+    public void RepeatedTallyLedgerLineIsPrintedOnlyOnce()
+    {
+        // Tally hands the same ledger line twice; the cloud stores one copy, so the PDF must too.
+        var voucher = new Voucher
+        {
+            VoucherType = "Sales",
+            VoucherNumber = "95",
+            VoucherDate = new DateTime(2026, 12, 1),
+            PartyName = "BAIRATHI SHOE COMPANY PVT. LTD.",
+            TotalAmount = 9975m,
+            InventoryEntries = new()
+            {
+                new() { StockItemName = "5star", Quantity = 100, Rate = 100, Amount = 9500 }
+            },
+            LedgerEntries = new()
+            {
+                new() { LedgerName = "BAIRATHI SHOE COMPANY PVT. LTD.", Amount = 9975m, IsDebit = true },
+                new() { LedgerName = "CGST", Amount = 237.50m, IsDebit = false },
+                new() { LedgerName = "SGST", Amount = 237.50m, IsDebit = false },
+                new() { LedgerName = "BAIRATHI SHOE COMPANY PVT. LTD.", Amount = 9975m, IsDebit = true },
+                new() { LedgerName = "SALE", Amount = 9500m, IsDebit = false },
+                new() { LedgerName = "CGST", Amount = 237.50m, IsDebit = false },
+                new() { LedgerName = "SGST", Amount = 237.50m, IsDebit = false },
+            }
+        };
+
+        string html = VoucherPdfHtml.Build(new Company { Name = "MGS" }, voucher);
+
+        Assert.Equal(1, CountOccurrences(html, "CGST"));
+        Assert.Equal(1, CountOccurrences(html, "SGST"));
+        Assert.Contains("237.50", html);
+    }
+
+    private static int CountOccurrences(string text, string needle)
+    {
+        int count = 0, index = 0;
+        while ((index = text.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+        return count;
+    }
+
     [Theory]
     [InlineData(0, "Zero Rupees Only")]
     [InlineData(20498.11, "Twenty Thousand Four Hundred Ninety Eight Rupees and Eleven Paise Only")]

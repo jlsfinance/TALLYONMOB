@@ -505,10 +505,16 @@ namespace TallySyncApp.Services
                         var isDeemedStr = lNode.Element("ISDEEMEDPOSITIVE")?.Value?.Trim() ?? "No";
                         bool isDeemed = isDeemedStr.Equals("Yes", StringComparison.OrdinalIgnoreCase);
 
+                        decimal amount = Math.Abs(lAmt);
+                        // Tally repeats the same ledger line in the collection XML. Keep one copy,
+                        // otherwise totals, uploads and the voucher PDF all count it twice.
+                        if (v.LedgerEntries.Any(e => e.LedgerName == ledgerName && e.Amount == amount && e.IsDebit == isDeemed))
+                            continue;
+
                         v.LedgerEntries.Add(new VoucherLedgerEntry
                         {
                             LedgerName = ledgerName,
-                            Amount = Math.Abs(lAmt),
+                            Amount = amount,
                             IsDebit = isDeemed
                         });
                     }
