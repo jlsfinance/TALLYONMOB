@@ -56,7 +56,7 @@ function generateInvoiceMessage(v: any) {
 }
 
 export default memo(function LiveKeepingsDashboard() {
-    const { selectedCompany, companies } = useAuth() as any;
+    const { selectedCompany, companies, refreshCompanies } = useAuth() as any;
     const navigate = useNavigate();
     const { selectedFY, setSelectedFY, fyDates, stepFY } = useFY();
 
@@ -81,10 +81,27 @@ export default memo(function LiveKeepingsDashboard() {
             return data?.[0]?.completed_at || null;
         },
     });
-    const syncDate = lastSuccessfulSync ? new Date(lastSuccessfulSync) : null;
+    // The connector stamps companies.last_sync_at on every finished cycle; sync_history only
+    // has rows for coverage-verified runs, so it lags (or never appears) on partial syncs.
+    const lastSyncedAt = [lastSuccessfulSync, selectedCompany?.last_sync_at]
+        .filter((t: string | null | undefined): t is string => Boolean(t))
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+    const syncDate = lastSyncedAt ? new Date(lastSyncedAt) : null;
     const syncAgeDays = syncDate && !Number.isNaN(syncDate.getTime())
         ? Math.floor((Date.now() - syncDate.getTime()) / 86_400_000) : null;
-    const warningKey = `${selectedCompany?.id}:${lastSuccessfulSync}`;
+    const warningKey = `${selectedCompany?.id}:${lastSyncedAt}`;
+
+    // Realtime: when the desktop app stamps last_sync_at, drop the stale warning immediately.
+    useEffect(() => {
+        if (!selectedCompany?.id) return;
+        const channel = supabase
+            .channel(`company-sync:${selectedCompany.id}`)
+            .on('postgres_changes' as any,
+                { event: 'UPDATE', schema: 'public', table: 'companies', filter: `id=eq.${selectedCompany.id}` },
+                () => { void refreshCompanies(); })
+            .subscribe();
+        return () => { void supabase.removeChannel(channel); };
+    }, [selectedCompany?.id]);
 
     // Mobile Voucher Segment Filter
     const [mobileVoucherFilter, setMobileVoucherFilter] = useState<'all' | 'customers' | 'suppliers'>('all');

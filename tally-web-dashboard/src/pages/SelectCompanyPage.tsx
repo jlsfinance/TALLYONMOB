@@ -50,6 +50,18 @@ export default function SelectCompanyPage() {
         return () => { cancelled = true; };
     }, [companies]);
 
+    // The desktop connector stamps companies.last_sync_at when a cycle finishes; refresh the
+    // list on that event so "last synced" changes without a reload.
+    useEffect(() => {
+        const channel = supabase
+            .channel('select-company-sync-status')
+            .on('postgres_changes' as any, { event: 'UPDATE', schema: 'public', table: 'companies' }, () => {
+                void checkCompanies();
+            })
+            .subscribe();
+        return () => { void supabase.removeChannel(channel); };
+    }, []);
+
     // close row menu on outside click
     useEffect(() => {
         if (!menuFor) return;
@@ -172,7 +184,10 @@ export default function SelectCompanyPage() {
                     <ul className={`divide-y ${hairline}`}>
                         <AnimatePresence initial={false}>
                             {visible.map((company: any) => {
-                                const timestamp = syncTimes[company.id] || company.last_sync_at;
+                                const stamps = [syncTimes[company.id], company.last_sync_at]
+                                    .filter((t: string | null | undefined): t is string => Boolean(t))
+                                    .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime());
+                                const timestamp = stamps[0];
                                 const date = timestamp ? new Date(timestamp) : null;
                                 const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
                                 const overdue = validDate && Date.now() - validDate.getTime() > 3 * 24 * 60 * 60 * 1000;

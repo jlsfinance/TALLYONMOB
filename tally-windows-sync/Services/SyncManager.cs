@@ -1355,6 +1355,8 @@ namespace TallySyncApp.Services
                             AddLog($"📜 Sync history saved: {syncType} sync {finalStatus}" +
                                    (_historicalCoverageError != null ? $" - {_historicalCoverageError}" : ""));
                         }
+                        // Web dashboard reads companies.last_sync_at for "last synced N ago".
+                        await _apiClient!.MarkCompanySyncedAsync(company.Id);
 
                         // ===== PUSH SYNC (Cloud -> Tally) =====
                         await ProcessPendingTransactionsAsync(company);

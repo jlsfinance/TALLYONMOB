@@ -3,7 +3,7 @@
 ; Needs:  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish\installer-input
 
 #define AppName "SYNCORA Connector"
-#define AppVersion "3.2.3"
+#define AppVersion "3.2.4"
 #ifndef PublishDir
   #define PublishDir "..\publish\installer-input"
 #endif
@@ -49,3 +49,4 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+

@@ -159,6 +159,31 @@ namespace TallySyncApp.Services
             return result;
         }
 
+        /// <summary>
+        /// Stamp companies.last_sync_at after a finished cycle. The web dashboard shows
+        /// "last synced N ago" from this column, so a null here looks like a dead connector.
+        /// </summary>
+        public async Task MarkCompanySyncedAsync(string companyId)
+        {
+            try
+            {
+                AddAuthHeader();
+                using var request = new HttpRequestMessage(HttpMethod.Patch,
+                    $"{_supabaseUrl}/rest/v1/companies?id=eq.{companyId}");
+                request.Headers.Add("Prefer", "return=minimal");
+                request.Content = new StringContent(
+                    JsonConvert.SerializeObject(new { last_sync_at = DateTime.UtcNow.ToString("o") }),
+                    Encoding.UTF8, "application/json");
+                using var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                    SyncLogger.Log($"⚠️ last_sync_at update: HTTP {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ last_sync_at update error: {ex.Message}");
+            }
+        }
+
         // Keep old cloud rows addressable when upgrading from the path-based ID scheme.
         // Lookup failures are errors, never interpreted as permission to create another row.
         private async Task<string> ResolveCompanyCloudIdAsync(Company company)
