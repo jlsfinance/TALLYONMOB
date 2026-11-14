@@ -1,9 +1,9 @@
-﻿; SYNCORA Connector installer (Inno Setup 6)
+; SYNCORA Connector installer (Inno Setup 6)
 ; Build:  ISCC.exe installer\SyncoraConnector.iss
 ; Needs:  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish\installer-input
 
 #define AppName "SYNCORA Connector"
-#define AppVersion "3.2.4"
+#define AppVersion "3.2.5"
 #ifndef PublishDir
   #define PublishDir "..\publish\installer-input"
 #endif

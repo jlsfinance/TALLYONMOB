@@ -1424,7 +1424,11 @@ namespace TallySyncApp.Services
 
             if (entries.List.Count >= 2)
             {
-                foreach (var entry in entries.List)
+                // Tally takes the first line as the voucher's party, so a Receipt's party line must lead.
+                var lines = voucherType == "Receipt"
+                    ? entries.List.OrderByDescending(e => string.Equals(e.Ledger, party, StringComparison.OrdinalIgnoreCase)).ToList()
+                    : entries.List;
+                foreach (var entry in lines)
                 {
                     xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
                     xml.AppendLine($"              <LEDGERNAME>{EscapeXml(entry.Ledger)}</LEDGERNAME>");
@@ -1441,19 +1445,21 @@ namespace TallySyncApp.Services
             }
             else if (voucherType == "Receipt")
             {
-                // Cash/Bank (Debit), Party (Credit) — Tally's own export shape.
-                xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
-                xml.AppendLine($"              <LEDGERNAME>{EscapeXml(cashBankLedger)}</LEDGERNAME>");
-                xml.AppendLine("              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>");
-                xml.AppendLine("              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>");
-                xml.AppendLine($"              <AMOUNT>-{amount}</AMOUNT>");
-                xml.AppendLine("            </ALLLEDGERENTRIES.LIST>");
-
+                // Party (Credit) first: Tally marks the first ledger line as the voucher's party ledger,
+                // so cash/bank first made Tally show the receipt against the bank (verified on TallyPrime).
                 xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
                 xml.AppendLine($"              <LEDGERNAME>{EscapeXml(party)}</LEDGERNAME>");
                 xml.AppendLine("              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>");
                 xml.AppendLine("              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>");
                 xml.AppendLine($"              <AMOUNT>{amount}</AMOUNT>");
+                xml.AppendLine("            </ALLLEDGERENTRIES.LIST>");
+
+                // Cash/Bank (Debit).
+                xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
+                xml.AppendLine($"              <LEDGERNAME>{EscapeXml(cashBankLedger)}</LEDGERNAME>");
+                xml.AppendLine("              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>");
+                xml.AppendLine("              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>");
+                xml.AppendLine($"              <AMOUNT>-{amount}</AMOUNT>");
                 xml.AppendLine("            </ALLLEDGERENTRIES.LIST>");
             }
             else
