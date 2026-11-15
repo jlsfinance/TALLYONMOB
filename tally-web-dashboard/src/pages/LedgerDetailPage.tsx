@@ -464,24 +464,29 @@ export default function LedgerDetailPage() {
                 }
             }
             const debit: any[] = [], credit: any[] = [], unknown: any[] = [];
+            let debitTotal = 0, creditTotal = 0;
             for (const voucher of vouchers) {
                 const entries = entryMap.get(voucher.id) || [];
                 if (!entries.length) { unknown.push(voucher); continue; }
                 for (const entry of entries) {
                     const line = [String(voucher.voucher_date || '').slice(0, 10), `${voucher.voucher_type || 'Voucher'} #${voucher.voucher_number || '—'}`, amount(entry.amount)];
-                    if (entry.is_debit === true) debit.push(line);
-                    else if (entry.is_debit === false) credit.push(line);
+                    if (entry.is_debit === true) { debit.push(line); debitTotal += Math.abs(Number(entry.amount) || 0); }
+                    else if (entry.is_debit === false) { credit.push(line); creditTotal += Math.abs(Number(entry.amount) || 0); }
                     else unknown.push(voucher);
                 }
             }
+            const openingBal = Number(ledger?.opening_balance) || 0;
+            const closingBal = openingBal + debitTotal - creditTotal;
+            const balanceLabel = (value: number) => `${amount(value)} ${value >= 0 ? '(Dr)' : '(Cr)'}`;
             doc.setFontSize(15);
             doc.text('Ledger Statement', 14, 16);
             doc.setFontSize(9);
             doc.text(doc.splitTextToSize((selectedCompany?.name || 'Company') + '  |  ' + partyName, 180), 14, 23);
             doc.text('Period: ' + exportFrom + ' to ' + exportTo, 14, 31);
-            doc.text('Opening and closing balances not calculated for this period.', 14, 37);
+            doc.text(`Opening Balance: ${balanceLabel(openingBal)}`, 14, 37);
+            doc.text(`Closing Balance: ${balanceLabel(closingBal)}`, 14, 43);
             autoTable(doc, {
-                startY: 42,
+                startY: 48,
                 head: [[{ content: 'Debit (Dr)', colSpan: 3 }, { content: 'Credit (Cr)', colSpan: 3 }], ['Date', 'Particulars', 'Amount', 'Date', 'Particulars', 'Amount']],
                 body: Array.from({ length: Math.max(debit.length, credit.length) }, (_, i) => [...(debit[i] || ['', '', '']), ...(credit[i] || ['', '', ''])]),
                 styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
