@@ -1262,60 +1262,9 @@ namespace TallySyncApp.Services
                         }
                         else if (!isFirstSync && serverOk)
                         {
-                            var voucherIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
-                            if (voucherIndex.Count > 0)
-                            {
-                                var cloudVoucherCount = await _apiClient!.GetVoucherCountAsync(company.Id);
-                                bool coverageOk = VerifyIndexCoverage(company, voucherIndex, cloudVoucherCount);
-
-                                // P1: delete cloud vouchers that no longer exist in Tally.
-                                // Full index goes up (guid + type/number + alterId) - LK parity.
-                                if (coverageOk)
-                                {
-                                    var purged = await _apiClient!.PurgeDeletedVouchersAsync(company.Id, voucherIndex);
-                                    if (purged > 0)
-                                        AddLog($"🗑 P1: removed {purged} voucher(s) deleted in Tally (entries/sales/purchases cleaned too)");
-                                    else if (purged < 0)
-                                        AddLog("⚠️ P1 skipped: Tally index looked truncated (safety guard)");
-                                }
-                                else
-                                {
-                                    AddLog("⚠️ P1 skipped: index coverage not verified (no deletion).");
-                                }
-
-                                // P3: re-fetch vouchers present in Tally but missing in cloud
-                                var missingPairs = await _apiClient!.FindMissingVouchersAsync(company.Id, voucherIndex);
-                                if (missingPairs.Count > 0 && _settings?.SyncSettings?.UseFastExtractor != true)
-                                {
-                                    AddLog($"🧩 P3: repairing {missingPairs.Count} missing voucher(s)...");
-                                    await RepairMissingVouchersAsync(company, missingPairs, hsnCache);
-                                }
-
-                                // The pair match above cannot see a voucher whose number repeats in
-                                // another year, so also compare row counts: a gap means whole years
-                                // never reached the cloud. Backfill by ALTERID (covers every year).
-                                // Only on an explicit Full Resync / manual sync - never automatically.
-                                SyncLogger.Log($"[P3] Tally index {voucherIndex.Count}, cloud {cloudVoucherCount}");
-                                if (coverageOk && (forceResync || isManual) && cloudVoucherCount >= 0 && voucherIndex.Count > cloudVoucherCount + 5)
-                                {
-                                    SyncLogger.Log($"🧩 P3: Tally has {voucherIndex.Count} vouchers, cloud has {cloudVoucherCount} - backfilling by ALTERID...");
-                                    var (bv, bs, ba, bp) = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, runToken);
-                                    vouchersSynced += bv;
-                                    purchasesSynced += bp;
-                                    salesSynced += bs;
-                                    totalSalesAmountFetched += ba;
-                                }
-                                else if (!coverageOk && voucherIndex.Count > cloudVoucherCount + 5)
-                                {
-                                    AddLog("⚠️ P3 backfill withheld: full-history index not verified. Run Full Resync to repair.");
-                                }
-                            }
-                            else
-                            {
-                                AddLog("⚠️ Voucher index empty - purge/repair skipped (safety)");
-                            }
+                            AddLog("Voucher reconciliation paused; no deletion or repair will run.");
                         }
-                                    
+
                         /* Orphaned code removed */
 
                         // LK parity: company synced OK - clear its notification ledger rows.
@@ -1950,7 +1899,7 @@ namespace TallySyncApp.Services
                 // Cloud rows include soft-deleted ones, and Tally deletions are legitimate;
                 // only a material shortfall (missing years) means coverage is unproven.
                 && (cloudCount < 0 || index.Count >= cloudCount - Math.Max(5, cloudCount / 10));
-            string line = $"[Completeness] {company.Name} ({company.Id}) requested=1900-01-01..{DateTime.Today:yyyy-MM-dd} " +
+            string line = $"[Completeness] {company.Name} ({company.Id}) requested=company-books-start..including-future " +
                           $"index={index.Count} dates={minDate}..{maxDate} cloud={cloudCount} verified={ok}";
             SyncLogger.Log(line);
             AddLog(line);

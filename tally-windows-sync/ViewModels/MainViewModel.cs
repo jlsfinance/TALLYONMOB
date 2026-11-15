@@ -51,8 +51,8 @@ namespace TallySyncApp.ViewModels
         public ObservableCollection<LicenseHistoryEntry> LicenseHistory { get; } = new();
 
         public string VoucherReconciliationModeText => Settings.SyncSettings.UseSafeVoucherReconciliation
-            ? "Safe reconciliation ON — click to restore previous mode"
-            : "Previous mode ON — click to enable safe reconciliation";
+            ? "Safe reconciliation ON — click to pause"
+            : "Reconciliation paused — click to enable safe reconciliation";
 
         // Properties
         public SyncStatus Status

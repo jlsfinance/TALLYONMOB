@@ -22,6 +22,7 @@ namespace TallySyncApp.Services
         private readonly HttpClient _httpClient;
         private readonly string _tallyUrl;
         private readonly int _timeout;
+        private readonly TallyHistoryPeriod _historyPeriod = new();
 
         public event EventHandler<string>? LogReceived;
 
@@ -99,11 +100,11 @@ namespace TallySyncApp.Services
         {
             try
             {
-                SyncLogger.Log($">>> Tally Request [{companyName ?? "Global"}]: XML Length {xmlRequest.Length}");
-                SyncLogger.SaveFile("last_tally_request.xml", xmlRequest);
-
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(customTimeout ?? _timeout)))
                 {
+                    xmlRequest = await _historyPeriod.PrepareAsync(xmlRequest, _httpClient, _tallyUrl, cts.Token);
+                    SyncLogger.Log($">>> Tally Request [{companyName ?? "Global"}]: XML Length {xmlRequest.Length}");
+                    SyncLogger.SaveFile("last_tally_request.xml", xmlRequest);
                     var content = new StringContent(xmlRequest, Encoding.UTF8, "text/xml");
                     var response = await _httpClient.PostAsync(_tallyUrl, content, cts.Token);
 
@@ -985,13 +986,9 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Live-verified on TallyPrime: collection exports ignore SVFROMDATE/SVTODATE
-        /// (three different ranges returned the identical set), so the full-history period
-        /// is enforced inside the TDL formula instead. "&gt;=" works, "&lt;" / "&lt;=" return
-        /// nothing, and a date literal past the company's last voucher date makes Tally
-        /// return an EMPTY collection - so the range is lower-bounded only. Nothing real is
-        /// lost: a voucher cannot exist before the books start, and future-dated ones are
-        /// still genuine Tally data.
+        /// The transport replaces the 1900 full-history marker with the company's
+        /// actual books start; Tally may otherwise retain its UI period. Keep this
+        /// supplementary filter lower-bounded so future-dated vouchers remain visible.
         /// </summary>
         private static string FullHistoryDateFilter()
         {
@@ -1212,7 +1209,7 @@ namespace TallySyncApp.Services
   </BODY>
 </ENVELOPE>";
 
-            SyncLogger.Log($"Fetching full voucher index for {companyName} (19000101..{DateTime.Today:yyyyMMdd})");
+            SyncLogger.Log($"Fetching full voucher index for {companyName} (company books start, including future-dated vouchers)");
 
             var doc = await SendRequestAsync(request, companyName, 60);
             var result = new List<VoucherIndexEntry>();

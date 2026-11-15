@@ -31,6 +31,7 @@ namespace TallySyncApp.Services
         private readonly string _tallyUrl;
         private readonly int _batchSize;
         private readonly int _throttleMs;
+        private readonly TallyHistoryPeriod _historyPeriod = new();
         private bool _disposed;
 
         /// <summary>
@@ -216,9 +217,8 @@ namespace TallySyncApp.Services
             if (afterAlterId <= 0) return new List<long>();
 
             // ALTERID alone bounds the scan (Tally increments it on every edit, even for an
-            // old-dated voucher). The previous 12-month date window was a no-op anyway
-            // because collection exports ignore SVFROMDATE/SVTODATE (verified live), and it
-            // would permanently miss edits made to vouchers dated over a year ago.
+            // old-dated voucher). The transport resolves the full-history marker to the
+            // company's real books start, independently of Tally's active UI period.
             string fromStr = "19000101";
             string toStr = DateTime.Today.ToString("yyyyMMdd");
 
@@ -342,9 +342,8 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Live-verified on TallyPrime: collection exports ignore SVFROMDATE/SVTODATE,
-        /// so the full-history period is enforced in the TDL formula instead (lower bound only -
-        /// "&lt;"/"&lt;=" return nothing and a literal past the last voucher date empties the result).
+        /// Supplement the books-start period resolved by the transport. Keep the
+        /// filter lower-bounded so genuine future-dated vouchers remain included.
         /// </summary>
         private static string FullHistoryDateFilter()
         {
@@ -412,6 +411,7 @@ namespace TallySyncApp.Services
             ct.ThrowIfCancellationRequested();
             try
             {
+                requestXml = await _historyPeriod.PrepareAsync(requestXml, _httpClient, _tallyUrl, ct);
                 SyncLogger.Log($"[FastExtractor] >>> Tally Request: XML Length {requestXml.Length}");
                 using var content = new StringContent(requestXml, Encoding.UTF8, "text/xml");
                 using var response = await _httpClient.PostAsync(_tallyUrl, content, ct);

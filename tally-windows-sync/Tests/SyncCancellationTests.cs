@@ -1,4 +1,5 @@
 using System.Net;
+using System.Xml.Linq;
 using TallySyncApp.Services;
 
 namespace TallySyncApp.Tests;
@@ -8,10 +9,20 @@ public class SyncCancellationTests
     private sealed class FakeTallyHandler(Func<CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         public int Requests { get; private set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        public int MetadataRequests { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            var xml = XDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            if (xml.Descendants("ID").FirstOrDefault()?.Value == "SyncoraHistoryCompany")
+            {
+                MetadataRequests++;
+                var company = xml.Descendants("SVCURRENTCOMPANY").Single().Value;
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                    new XElement("ENVELOPE", new XElement("COMPANY", new XAttribute("NAME", company),
+                        new XElement("STARTINGFROM", "20240401"))).ToString()) };
+            }
             Requests++;
-            return send(cancellationToken);
+            return await send(cancellationToken);
         }
     }
 
@@ -32,6 +43,7 @@ public class SyncCancellationTests
         using var extractor = new TallyFastExtractor(handler: handler);
         Assert.Equal(new long[] { 101217 }, await extractor.GetModifiedVoucherAlterIdsAsync("Test1.2", 101216, retry.Token));
         Assert.Equal(1, handler.Requests);
+        Assert.Equal(1, handler.MetadataRequests);
     }
 
     [Fact]
@@ -66,6 +78,7 @@ public class SyncCancellationTests
         using var extractor = new TallyFastExtractor(handler: handler);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => extractor.GetModifiedVoucherAlterIdsAsync("Test", 100, cancelled.Token));
         Assert.Equal(0, handler.Requests);
+        Assert.Equal(0, handler.MetadataRequests);
     }
 
     [Fact]

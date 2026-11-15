@@ -32,6 +32,7 @@
     <Compile Include="..\Services\CloudSyncReader.cs" />
     <Compile Include="..\Services\LicencePurchaseLink.cs" />
     <Compile Include="..\Services\TallyFastExtractor.cs" />
+    <Compile Include="..\Services\TallyHistoryPeriod.cs" />
     <Compile Include="..\Services\VoucherReconciliation.cs" />
     <Compile Include="..\Services\LicenseRequestRetry.cs" />
     <Compile Include="..\Services\EffectiveStockGst.cs" />

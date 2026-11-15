@@ -211,10 +211,15 @@ namespace TallySyncApp
             // 13. Auto-sync must survive a restart: StartSync() used to be reachable only
             // from the tray "Sync Now", the UI button, or a SignalR force_sync push which
             // meant a relaunched app silently did nothing until the user clicked something.
-            if (_authService!.IsLoggedIn)
+            if (_authService!.IsLoggedIn && !cmd.IsPostInstall)
             {
                 try { GetSyncManager().StartSync(); }
                 catch (Exception ex) { _logger?.LogWarning(ex, "Auto-sync start failed"); }
+            }
+            else if (_authService!.IsLoggedIn && cmd.IsPostInstall)
+            {
+                GetSyncManager().StopSync();
+                _logger?.LogInformation("Post-install verification: auto-sync paused. Use Auto-Sync to resume.");
             }
         }
 
