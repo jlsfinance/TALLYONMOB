@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, ArrowRight, RefreshCw, ArrowLeft, Search, MoreVertical, X, MonitorDown, Building2 } from 'lucide-react';
+import { Plus, Trash2, ArrowRight, RefreshCw, ArrowLeft, Search, MoreVertical, X, MonitorDown, Building2, LogOut } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AuthContextType } from '@/contexts/types';
 import { supabase } from '@/lib/insforge';
@@ -14,7 +14,7 @@ import { APP_INFO } from '@/config/appInfo';
 // Selection, delete and refresh logic unchanged.
 
 export default function SelectCompanyPage() {
-    const { companies, selectCompany, deleteCompany, refreshCompanies, appMode } = useAuth() as AuthContextType;
+    const { companies, selectCompany, deleteCompany, refreshCompanies, appMode, signOut } = useAuth() as AuthContextType;
     const { navigate } = useSafeNavigate();
     const { isDark } = useTheme();
     const [searchOpen, setSearchOpen] = useState(false);
@@ -119,13 +119,22 @@ export default function SelectCompanyPage() {
                             <ArrowLeft size={22} />
                         </button>
                         <h1 className={`text-center text-lg sm:text-xl font-bold ${titleC} truncate`}>Select Company</h1>
-                        <button
-                            onClick={() => { setSearchOpen(o => !o); if (searchOpen) setSearchQ(''); }}
-                            aria-label={searchOpen ? 'Close search' : 'Search companies'}
-                            className={`p-2 -mr-2 rounded-lg ${iconC} hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 transition-colors`}
-                        >
-                            {searchOpen ? <X size={22} /> : <Search size={21} />}
-                        </button>
+                        <div className="flex items-center -mr-2">
+                            <button
+                                onClick={() => { setSearchOpen(o => !o); if (searchOpen) setSearchQ(''); }}
+                                aria-label={searchOpen ? 'Close search' : 'Search companies'}
+                                className={`p-2 rounded-lg ${iconC} hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 transition-colors`}
+                            >
+                                {searchOpen ? <X size={22} /> : <Search size={21} />}
+                            </button>
+                            <button
+                                onClick={() => { void signOut(); navigate('/login'); }}
+                                aria-label="Log out"
+                                className={`p-2 rounded-lg ${iconC} hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500 transition-colors`}
+                            >
+                                <LogOut size={21} />
+                            </button>
+                        </div>
                     </div>
                     <AnimatePresence>
                         {searchOpen && (

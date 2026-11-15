@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { removeMirroredStockEntries } from '../lib/invoiceStockEntries';
 import { masterNameKey, resolveHsn, summaryHsn } from '../lib/invoiceMasterFields.mjs';
 import {
-    ArrowLeft, Edit, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
+    ArrowLeft, Edit, Trash2, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
 } from 'lucide-react';
 import '../styles/Material3.css';
 import './InvoicePreview.css';
@@ -1487,6 +1487,38 @@ export default function InvoicePDFPage() {
         });
     };
 
+    const handleDeleteVoucher = async () => {
+        if (!invoice) return;
+        if (!invoice.guid) {
+            toast.error('Ye voucher Tally me sync nahi hua, delete queue nahi ho sakta.');
+            return;
+        }
+        if (!window.confirm(`Voucher #${invoice.invoice_number || ''} delete karein? Tally se bhi delete hoga.`)) return;
+
+        const toastId = toast.loading('Delete queue ho raha hai...');
+        try {
+            // Cloud row yahin delete nahi karte; Tally delete ke baad sync reconcile karega.
+            const { error } = await supabase.from('pending_transactions').insert([{
+                company_id: selectedCompany.id,
+                transaction_type: 'VOUCHER_DELETE',
+                status: 'pending',
+                voucher_data: {
+                    voucher_type_name: invoice.voucher_type,
+                    voucher_number: invoice.voucher_number,
+                    voucher_date: String(invoice.invoice_date || invoice.voucher_date || '').slice(0, 10),
+                    tally_guid: invoice.guid,
+                    tally_master_id: invoice.master_id,
+                    party_name: invoice.party_ledger_name
+                }
+            }]);
+            if (error) throw error;
+            toast.success('Delete queued. Connector next sync par Tally se voucher delete karega.', { id: toastId });
+            navigate(backTarget);
+        } catch (err) {
+            toast.error('Delete failed: ' + (err?.message || 'Unknown error'), { id: toastId });
+        }
+    };
+
     const handleWhatsAppShare = () => {
         if (!invoice) return;
         if (Capacitor.getPlatform() === 'android') { handleSharePDF(); return; }
@@ -1604,6 +1636,24 @@ export default function InvoicePDFPage() {
                     >
                         <Download size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
+                    </button>
+                    <button
+                        onClick={() => navigate(`/edit-invoice/${id}`)}
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Edit voucher"
+                        aria-label="Edit voucher"
+                    >
+                        <Edit size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
+                    </button>
+                    <button
+                        onClick={handleDeleteVoucher}
+                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
+                        title="Delete voucher (Tally se bhi)"
+                        aria-label="Delete voucher"
+                    >
+                        <Trash2 size={16} />
+                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Delete</span>
                     </button>
                     <button
                         onClick={() => setTemplateSettingsOpen(true)}
