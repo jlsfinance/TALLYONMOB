@@ -288,7 +288,7 @@ export default function CreateVoucherPage() {
 
     // Step 2: Voucher Form
     return (
-        <div className="voucher-dark min-h-screen bg-[var(--background)] pb-24 font-sans">
+        <div className={`voucher-dark ${voucherType === 'Sales' ? 'voucher-sales' : ''} min-h-screen bg-[var(--background)] pb-24 font-sans`}>
           <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3 sm:px-6 py-2.5 shadow-sm">
             <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
                 <button
@@ -322,7 +322,7 @@ export default function CreateVoucherPage() {
             )}
 
             {/* Date & Number */}
-            <div className="grid grid-cols-2 gap-3 mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="voucher-meta grid grid-cols-2 gap-3 mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <div>
                     <label className="text-xs text-[var(--text-muted)] mb-1 block">Date</label>
                     <input
@@ -382,7 +382,7 @@ export default function CreateVoucherPage() {
             )}
 
             {/* Party Selection */}
-            <div className="mb-4 relative">
+            <div className="voucher-party mb-4 relative">
                 <label className="text-xs text-[var(--text-muted)] mb-1 block">Party Name</label>
                 <div className="relative">
                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
@@ -419,7 +419,7 @@ export default function CreateVoucherPage() {
 
             {/* Stock Items (for Sales/Purchase types) */}
             {hasStockEntries && (
-                <div className="mb-4 space-y-3">
+                <div className="voucher-items mb-4 space-y-3">
                     {masterError && <p role="alert" className="text-sm text-red-400">{masterError}</p>}
 
                     <div className="flex items-center justify-between px-1">
@@ -440,7 +440,7 @@ export default function CreateVoucherPage() {
                                 <div className="w-10 h-10 rounded-xl bg-[#16202C] border border-[#22334C] flex items-center justify-center text-[#00E599] shrink-0">
                                     <Package size={18} />
                                 </div>
-                                <div className="relative flex-1 min-w-0">
+                                <div className="voucher-item-search relative flex-1 min-w-0">
                                     <input
                                         type="text"
                                         value={entry.item_name}
@@ -478,7 +478,7 @@ export default function CreateVoucherPage() {
                                     <X size={16} />
                                 </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            <div className="voucher-item-fields grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 <div>
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Qty</label>
                                     <input
@@ -533,7 +533,7 @@ export default function CreateVoucherPage() {
             )}
 
             {/* Narration */}
-            <div className="mb-4">
+            <div className="voucher-notes mb-4">
                 <label className="text-xs text-[var(--text-muted)] mb-1 block">Narration</label>
                 <textarea
                     value={narration}
@@ -546,7 +546,7 @@ export default function CreateVoucherPage() {
 
             {/* Total Summary */}
             {hasStockEntries && stockEntries.length > 0 && (
-                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 mb-6">
+                <div className="voucher-totals bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 mb-6">
                     <div className="flex justify-between text-sm mb-1">
                         <span className="text-[var(--text-muted)]">Subtotal</span>
                         <span className="text-[var(--on-surface)]">{formatCurrency(totalAmount)}</span>

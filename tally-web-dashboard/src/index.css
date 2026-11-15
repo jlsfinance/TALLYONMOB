@@ -561,3 +561,155 @@ body, button, input, select, textarea { font-family: "Google Sans Flex", "Inter"
   --primary: #00E599;
   color-scheme: dark;
 }
+
+/* Sales uses the invoice card styling without changing its inline editing flow. */
+.voucher-sales {
+  color: #f1f5f9;
+}
+
+.voucher-sales .voucher-meta {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.voucher-sales .voucher-meta > div,
+.voucher-sales .voucher-party,
+.voucher-sales .voucher-notes {
+  padding: 1rem;
+  border: 1px solid #1e2b38;
+  border-radius: 1rem;
+  background: #121b24;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.voucher-sales :is(.voucher-meta, .voucher-party, .voucher-notes) label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.5;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.voucher-sales :is(.voucher-meta, .voucher-party, .voucher-notes) :is(input, textarea) {
+  min-width: 0;
+  border-color: #22334c;
+  border-radius: 0.75rem;
+  background: #16202c;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+
+.voucher-sales :is(.voucher-meta, .voucher-notes) :is(input, textarea):focus {
+  border-color: #00e599;
+}
+
+.voucher-sales .voucher-party > .absolute {
+  left: 1rem;
+  right: 1rem;
+  width: auto;
+}
+
+.voucher-sales :is(.voucher-party input, .voucher-item-search > input) {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  border: 2px solid transparent;
+  border-radius: 1rem;
+  background: #16202c;
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.voucher-sales :is(.voucher-party input, .voucher-item-search > input):focus {
+  border-color: rgb(59 130 246 / 50%);
+  box-shadow: 0 0 0 4px rgb(59 130 246 / 10%);
+}
+
+.voucher-sales :is(.voucher-party > .absolute, .voucher-item-search > .absolute) {
+  z-index: 30;
+  max-height: 280px;
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid #22334c;
+  border-radius: 1.5rem;
+  background: #16202c;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 50%);
+}
+
+.voucher-sales :is(.voucher-party > .absolute, .voucher-item-search > .absolute) button {
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 0;
+  border-radius: 1rem;
+  color: #e6edf3;
+  font-weight: 700;
+  transition: background-color 150ms;
+}
+
+.voucher-sales :is(.voucher-party > .absolute, .voucher-item-search > .absolute) button:hover {
+  background: #22334c;
+}
+
+.voucher-sales .voucher-item-fields > div {
+  min-width: 0;
+  padding: 0.875rem;
+  border: 1px solid #22334c;
+  border-radius: 1rem;
+  background: #0b1118;
+}
+
+.voucher-sales .voucher-item-fields input {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 2rem;
+}
+
+.voucher-sales .voucher-item-fields > div:first-child input {
+  color: #00e599;
+}
+
+.voucher-sales .voucher-item-fields input:focus-visible {
+  outline: 2px solid #00e599;
+  outline-offset: 4px;
+  border-radius: 0.25rem;
+}
+
+.voucher-sales .voucher-item-fields > div:last-child {
+  border-color: rgb(0 229 153 / 30%);
+  background: linear-gradient(to right, #122b22, #121b24);
+}
+
+.voucher-sales .voucher-item-fields > div:last-child p {
+  overflow-wrap: anywhere;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.voucher-sales .voucher-totals {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+@media (min-width: 640px) {
+  .voucher-sales :is(.voucher-party, .voucher-notes) {
+    padding: 1.25rem;
+  }
+
+  .voucher-sales .voucher-party > .absolute {
+    left: 1.25rem;
+    right: 1.25rem;
+  }
+}
