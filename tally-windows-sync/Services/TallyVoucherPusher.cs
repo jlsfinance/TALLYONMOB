@@ -283,6 +283,11 @@ namespace TallySyncApp.Services
 
                         // Generate Tally XML
                         var (tallyXml, generateError) = await GenerateTallyVoucherXmlAsync(transaction, companyName, context);
+
+                        if (!string.IsNullOrEmpty(tallyXml) && IsVoucherEdit(transaction))
+                        {
+                            tallyXml = ApplyEditIdentity(transaction, tallyXml);
+                        }
                         
                         if (string.IsNullOrEmpty(tallyXml))
                         {
@@ -410,6 +415,13 @@ namespace TallySyncApp.Services
                 // rejection, so it must never be treated as proof of success.
                 var created = doc.Descendants("CREATED").FirstOrDefault()?.Value;
                 var altered = doc.Descendants("ALTERED").FirstOrDefault()?.Value;
+                var deleted = doc.Descendants("DELETED").FirstOrDefault()?.Value;
+
+                // Delete import answers DELETED=1 only.
+                if (deleted == "1")
+                {
+                    return (true, "DELETED", null);
+                }
 
                 if (created == "1" || altered == "1")
                 {
@@ -435,10 +447,14 @@ namespace TallySyncApp.Services
             try
             {
                 var voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
-                if (string.Equals(transaction.TransactionType, "VOUCHER_EDIT", StringComparison.OrdinalIgnoreCase) || voucherData.Value<bool?>("is_modification") == true)
+                var isVoucherEdit = string.Equals(transaction.TransactionType, "VOUCHER_EDIT", StringComparison.OrdinalIgnoreCase) || voucherData.Value<bool?>("is_modification") == true;
+                if (string.Equals(transaction.TransactionType, "VOUCHER_DELETE", StringComparison.OrdinalIgnoreCase))
                 {
-                    SyncLogger.Log("⚠️ Voucher modification is not imported until an existing Tally identity can be verified.");
-                    return ("", "Voucher edit is not supported yet; create the voucher again instead.");
+                    return await GenerateDeleteVoucherXmlAsync(transaction, companyName, voucherData);
+                }
+                if (isVoucherEdit && string.IsNullOrWhiteSpace(VoucherTallyGuid(voucherData)))
+                {
+                    SyncLogger.Log("⚠️ VOUCHER_EDIT without a Tally GUID; voucher is created instead.");
                 }
                 
                 // Log raw data for debugging
@@ -1354,6 +1370,129 @@ namespace TallySyncApp.Services
                 Rate("CGST", itemGstRate / 2);
                 Rate("SGST/UTGST", itemGstRate / 2);
             }
+        }
+
+        // ---------------------------------------------------------------- edit / delete
+
+        private static bool IsVoucherEdit(PendingTransaction transaction)
+        {
+            var data = transaction.VoucherData as JObject;
+            return string.Equals(transaction.TransactionType, "VOUCHER_EDIT", StringComparison.OrdinalIgnoreCase)
+                   || data?.Value<bool?>("is_modification") == true;
+        }
+
+        private static string? VoucherTallyGuid(JObject data)
+        {
+            foreach (var key in new[] { "tally_guid", "original_guid", "guid" })
+            {
+                var value = data[key]?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
+            return null;
+        }
+
+        private static DateTime? ParseVoucherDate(JObject data)
+        {
+            var raw = data["voucher_date"]?.ToString() ?? data["date"]?.ToString();
+            return DateTime.TryParse(raw, out var parsed) ? parsed : null;
+        }
+
+        /// <summary>
+        /// Turns the freshly generated create XML into an alter of the existing Tally voucher.
+        /// </summary>
+        private static string ApplyEditIdentity(PendingTransaction transaction, string xml)
+        {
+            var data = transaction.VoucherData as JObject ?? new JObject();
+            var masterId = data["tally_master_id"]?.ToString() ?? data["master_id"]?.ToString();
+            return VoucherEditXml.Apply(xml, VoucherTallyGuid(data), masterId, ParseVoucherDate(data));
+        }
+
+        /// <summary>
+        /// Web delete → Tally. The delete import needs the voucher's VCHKEY, which the cloud row does
+        /// not store, so it is read live from Tally for the voucher's date.
+        /// </summary>
+        private async Task<(string Xml, string? Error)> GenerateDeleteVoucherXmlAsync(
+            PendingTransaction transaction, string companyName, JObject data)
+        {
+            var guid = VoucherTallyGuid(data);
+            if (string.IsNullOrWhiteSpace(guid))
+                return ("", "Delete ke liye Tally GUID nahi mila. Voucher pehle Tally se sync hone do.");
+
+            var date = ParseVoucherDate(data) ?? DateTime.Today;
+            var voucherType = data["voucher_type_name"]?.ToString() ?? data["voucher_type"]?.ToString()
+                              ?? transaction.TransactionType ?? "Voucher";
+            var voucherNumber = data["voucher_number"]?.ToString() ?? "";
+
+            var vchKey = await LookupVchKeyAsync(companyName, date, guid);
+            if (string.IsNullOrWhiteSpace(vchKey))
+                return ("", $"Tally me ye voucher (GUID {guid}) nahi mila; delete nahi kiya.");
+
+            var xml = new StringBuilder();
+            xml.AppendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
+            xml.AppendLine("<ENVELOPE>");
+            xml.AppendLine("  <HEADER>");
+            xml.AppendLine("    <TALLYREQUEST>Import Data</TALLYREQUEST>");
+            xml.AppendLine("  </HEADER>");
+            xml.AppendLine("  <BODY>");
+            xml.AppendLine("    <IMPORTDATA>");
+            xml.AppendLine("      <REQUESTDESC>");
+            xml.AppendLine("        <REPORTNAME>Vouchers</REPORTNAME>");
+            xml.AppendLine("        <STATICVARIABLES>");
+            xml.AppendLine($"          <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>");
+            xml.AppendLine("        </STATICVARIABLES>");
+            xml.AppendLine("      </REQUESTDESC>");
+            xml.AppendLine("      <REQUESTDATA>");
+            xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
+            xml.AppendLine($"          <VOUCHER VCHTYPE=\"{EscapeXml(voucherType)}\" ACTION=\"Delete\" REMOTEID=\"{EscapeXml(guid)}\" VCHKEY=\"{EscapeXml(vchKey)}\">");
+            xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
+            xml.AppendLine($"            <VOUCHERTYPENAME>{EscapeXml(voucherType)}</VOUCHERTYPENAME>");
+            if (!string.IsNullOrWhiteSpace(voucherNumber))
+                xml.AppendLine($"            <VOUCHERNUMBER>{EscapeXml(voucherNumber)}</VOUCHERNUMBER>");
+            xml.AppendLine($"            <GUID>{EscapeXml(guid)}</GUID>");
+            AppendEnvelopeEnd(xml);
+            return (xml.ToString(), null);
+        }
+
+        private async Task<string?> LookupVchKeyAsync(string companyName, DateTime date, string guid)
+        {
+            var request = $@"<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>SyncoraVchKey</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{date:yyyyMMdd}</SVFROMDATE>
+        <SVTODATE>{date:yyyyMMdd}</SVTODATE>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME=""SyncoraVchKey"" ISMODIFY=""No"">
+            <TYPE>Voucher</TYPE>
+            <FETCH>GUID, VCHKEY</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>";
+
+            var (doc, _, _) = await PostXmlToTallyAsync(request);
+            if (doc == null) return null;
+
+            foreach (var voucher in doc.Descendants("VOUCHER"))
+            {
+                var voucherGuid = voucher.Element("GUID")?.Value?.Trim() ?? voucher.Attribute("REMOTEID")?.Value?.Trim();
+                var key = voucher.Attribute("VCHKEY")?.Value ?? voucher.Element("VCHKEY")?.Value;
+                if (string.Equals(voucherGuid, guid, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(key))
+                    return key.Trim();
+            }
+            return null;
         }
 
         /// <summary>

@@ -348,6 +348,38 @@ export default function VoucherDetailPage() {
         }
     };
 
+    const handleDelete = async () => {
+        if (!voucher) return;
+        if (!voucher.guid) {
+            toast.error('Ye voucher Tally me sync nahi hua, delete queue nahi ho sakta.');
+            return;
+        }
+        if (!window.confirm(`Voucher #${voucher.voucher_number || ''} delete karein? Tally se bhi delete hoga.`)) return;
+
+        const toastId = toast.loading('Delete queue ho raha hai...');
+        try {
+            // Cloud row ko yahin delete nahi karte; Tally delete hone ke baad sync reconcile karega.
+            const { error } = await supabase.from('pending_transactions').insert([{
+                company_id: selectedCompany.id,
+                transaction_type: 'VOUCHER_DELETE',
+                status: 'pending',
+                voucher_data: {
+                    voucher_type_name: voucher.voucher_type,
+                    voucher_number: voucher.voucher_number,
+                    voucher_date: voucher.voucher_date,
+                    tally_guid: voucher.guid,
+                    tally_master_id: voucher.master_id,
+                    party_name: voucher.party_name
+                }
+            }]);
+            if (error) throw error;
+            toast.success('Delete queued. Connector next sync par Tally se voucher delete karega.', { id: toastId });
+            navigate(-1);
+        } catch (err: any) {
+            toast.error('Delete failed: ' + (err.message || 'Unknown error'), { id: toastId });
+        }
+    };
+
     if (loading) return (
         <div className="min-h-screen flex flex-col items-center justify-center space-y-4 bg-[var(--background)]">
             <RefreshCw className="w-8 h-8 text-[var(--primary)] animate-spin" />
@@ -402,6 +434,13 @@ export default function VoucherDetailPage() {
                         title="Edit Invoice"
                     >
                         <Edit size={18} />
+                    </button>
+                    <button
+                        onClick={handleDelete}
+                        className="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-all"
+                        title="Delete voucher (Tally se bhi)"
+                    >
+                        <Trash2 size={18} />
                     </button>
                     <button
                         onClick={handleSyncToTally}

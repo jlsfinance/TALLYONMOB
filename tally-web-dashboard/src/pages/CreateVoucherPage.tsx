@@ -94,8 +94,9 @@ export default function CreateVoucherPage() {
     };
 
     const partyLedgers = useMemo(() => {
-        const partyGroups = ['Sundry Debtors', 'Sundry Creditors', 'sundry debtors', 'sundry creditors'];
-        return allLedgers.filter(l => partyGroups.includes(l.parent));
+        // Tally sub-groups (e.g. "DEBTOR BAGODA") ke ledgers bhi party hain, sirf "Sundry Debtors" nahi.
+        const isPartyGroup = (value: unknown) => /^(sundry\s+debtors?|sundry\s+creditors?|debtors?|creditors?)\b/i.test(String(value || '').trim());
+        return allLedgers.filter(l => isPartyGroup(l.parent) || isPartyGroup(l.ledger_type));
     }, [allLedgers]);
 
     const cashBankLedgers = useMemo(() => allLedgers.filter(l =>
@@ -106,8 +107,8 @@ export default function CreateVoucherPage() {
     ), [allLedgers]);
 
     const filteredParties = useMemo(() => {
-        if (!partySearch) return partyLedgers.slice(0, 20);
-        return partyLedgers.filter(p => p.name.toLowerCase().includes(partySearch.toLowerCase())).slice(0, 20);
+        if (!partySearch) return partyLedgers;
+        return partyLedgers.filter(p => p.name.toLowerCase().includes(partySearch.toLowerCase()));
     }, [partyLedgers, partySearch]);
 
     const hasStockEntries = ['Sales', 'Purchase', 'Debit Note', 'Credit Note'].includes(voucherType);

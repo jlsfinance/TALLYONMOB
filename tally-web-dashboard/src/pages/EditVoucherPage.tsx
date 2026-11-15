@@ -44,6 +44,9 @@ export default function EditVoucherPage() {
     const [voucherType, setVoucherType] = useState('Sales');
     const [narration, setNarration] = useState('');
     const [items, setItems] = useState<LineItem[]>([]);
+    // Receipt/Payment/Journal etc. ka amount + cash/bank ledger (inventory nahi hota)
+    const [amount, setAmount] = useState(0);
+    const [cashBankLedger, setCashBankLedger] = useState('');
 
     // Ledger suggestions for autocomplete
     const [ledgerSuggestions, setLedgerSuggestions] = useState<string[]>([]);
@@ -59,12 +62,12 @@ export default function EditVoucherPage() {
     }, [id, selectedCompany]);
 
     const loadSuggestions = async () => {
-        // Load party ledgers
+        // Load party ledgers (Tally sub-groups jaise "DEBTOR BAGODA" ke ledgers bhi party hain)
         const { data: ledgers } = await supabase
             .from('ledgers')
             .select('name')
             .eq('company_id', selectedCompany.id)
-            .in('parent', ['Sundry Debtors', 'Sundry Creditors'])
+            .or('parent.ilike.*debtor*,parent.ilike.*creditor*,ledger_type.ilike.*debtor*,ledger_type.ilike.*creditor*')
             .order('name')
             .limit(500);
         setLedgerSuggestions((ledgers || []).map(l => l.name));
@@ -98,6 +101,18 @@ export default function EditVoucherPage() {
                 setVoucherDate(vData.voucher_date || format(new Date(), 'yyyy-MM-dd'));
                 setVoucherType(vData.voucher_type || 'Sales');
                 setNarration(vData.narration || '');
+                setAmount(Number(vData.total_amount || vData.grand_total || vData.amount) || 0);
+
+                // Accounting voucher ka cash/bank side: party ke alawa doosri ledger line.
+                const { data: ledgerEntries } = await supabase
+                    .from('voucher_ledger_entries')
+                    .select('ledger_name')
+                    .eq('is_deleted', false)
+                    .eq('voucher_id', vData.id);
+                const otherLedger = (ledgerEntries || [])
+                    .map((e: any) => e.ledger_name)
+                    .find((name: string) => name && name.toLowerCase() !== String(vData.party_name || '').toLowerCase());
+                setCashBankLedger(otherLedger || '');
 
                 // Load stock entries
                 const { data: stockEntries } = await supabase
@@ -140,6 +155,8 @@ export default function EditVoucherPage() {
                     setVoucherDate(vd.voucher_date || vd.date || format(new Date(), 'yyyy-MM-dd'));
                     setVoucherType(pData.transaction_type || vd.voucher_type_name || 'Sales');
                     setNarration(vd.narration || '');
+                    setAmount(Number(vd.total_amount || vd.grand_total || vd.amount) || 0);
+                    setCashBankLedger(vd.cash_bank_ledger || '');
 
                     const rawItems = vd.inventory_entries || vd.items || vd.sales_items || [];
                     setItems(rawItems.map((item: any) => ({
@@ -225,15 +242,36 @@ export default function EditVoucherPage() {
             .slice(0, 8);
     }, [partyName, ledgerSuggestions]);
 
+    const isItemVoucher = voucherType === 'Sales' || voucherType === 'Purchase';
+
     const handleSave = async () => {
         if (!partyName.trim()) {
             toast.error('Party name is required');
             return;
         }
-        if (items.length === 0) {
+        if (isItemVoucher && items.length === 0) {
             toast.error('At least one item is required');
             return;
         }
+        if (!isItemVoucher && amount <= 0) {
+            toast.error('Amount is required');
+            return;
+        }
+
+        const amountFields = isItemVoucher
+            ? { total_amount: totalAmount, grand_total: totalAmount }
+            : { amount, total_amount: amount, grand_total: amount, cash_bank_ledger: cashBankLedger || undefined };
+        const lineItems = isItemVoucher
+            ? items.map(i => ({
+                stock_item: i.stock_item_name,
+                quantity: i.quantity,
+                rate: i.rate,
+                amount: i.amount,
+                hsn_code: i.hsn_code,
+                unit: i.unit,
+                discount: i.discount
+            }))
+            : [];
 
         setSaving(true);
         try {
@@ -244,17 +282,8 @@ export default function EditVoucherPage() {
                     party_name: partyName,
                     voucher_date: voucherDate,
                     narration: narration,
-                    total_amount: totalAmount,
-                    grand_total: totalAmount,
-                    inventory_entries: items.map(i => ({
-                        stock_item: i.stock_item_name,
-                        quantity: i.quantity,
-                        rate: i.rate,
-                        amount: i.amount,
-                        hsn_code: i.hsn_code,
-                        unit: i.unit,
-                        discount: i.discount
-                    }))
+                    ...amountFields,
+                    inventory_entries: lineItems
                 };
 
                 const { error } = await supabase
@@ -269,28 +298,19 @@ export default function EditVoucherPage() {
                 if (error) throw error;
                 toast.success('Pending entry updated!');
             } else {
-                // For synced vouchers: create a modification entry in pending_transactions
-                // The sync app will pick this up and update Tally
+                // Synced voucher: queue a VOUCHER_EDIT; connector Tally me existing voucher alter karta hai.
                 const modificationData = {
                     voucher_type_name: voucherType,
                     party_name: partyName,
                     voucher_date: voucherDate,
                     narration: narration,
-                    total_amount: totalAmount,
-                    grand_total: totalAmount,
+                    ...amountFields,
                     original_voucher_id: voucher.id,
-                    original_voucher_number: voucher.voucher_number,
-                    tally_master_id: voucher.tally_master_id,
+                    voucher_number: voucher.voucher_number,
+                    tally_guid: voucher.guid,
+                    tally_master_id: voucher.master_id,
                     is_modification: true,
-                    inventory_entries: items.map(i => ({
-                        stock_item: i.stock_item_name,
-                        quantity: i.quantity,
-                        rate: i.rate,
-                        amount: i.amount,
-                        hsn_code: i.hsn_code,
-                        unit: i.unit,
-                        discount: i.discount
-                    }))
+                    inventory_entries: lineItems
                 };
 
                 const { error } = await supabase
@@ -305,7 +325,7 @@ export default function EditVoucherPage() {
 
                 if (error) throw error;
 
-                toast.success('Edit request saved. The Tally voucher stays unchanged until the connector supports verified edits.');
+                toast.success('Edit request queued. Connector next sync par Tally me voucher alter karega.');
             }
 
             navigate(-1);
@@ -474,7 +494,7 @@ export default function EditVoucherPage() {
                 </div>
 
                 {/* Line Items */}
-                {(voucherType === 'Sales' || voucherType === 'Purchase') && (
+                {isItemVoucher && (
                     <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
                         <div className="flex items-center justify-between mb-4">
                             <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
@@ -589,6 +609,27 @@ export default function EditVoucherPage() {
                     </div>
                 )}
 
+                {/* Amount (accounting vouchers) */}
+                {!isItemVoucher && (
+                    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
+                        <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3 block">
+                            <IndianRupee size={12} className="inline mr-1" /> Amount
+                        </label>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <input
+                                type="number"
+                                value={amount}
+                                onChange={e => setAmount(parseFloat(e.target.value) || 0)}
+                                className="w-full bg-[var(--surface-variant)] border border-[var(--border)] rounded-xl py-3 px-4 text-sm text-[var(--on-surface)] focus:outline-none focus:border-[var(--primary)]"
+                                placeholder="Amount"
+                            />
+                            <div className="text-xs text-[var(--text-muted)] self-center">
+                                {cashBankLedger ? `Cash/Bank: ${cashBankLedger}` : 'Cash/Bank Tally se liya jayega'}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Total Summary */}
                 <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
                     <div className="flex items-center justify-between">
@@ -598,7 +639,7 @@ export default function EditVoucherPage() {
                         </div>
                         <div className="text-right">
                             <p className="text-3xl font-black text-[var(--on-surface)] tracking-tight">
-                                {formatCurrency(totalAmount)}
+                                {formatCurrency(isItemVoucher ? totalAmount : amount)}
                             </p>
                         </div>
                     </div>

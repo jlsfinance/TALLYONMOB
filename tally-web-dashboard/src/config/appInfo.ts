@@ -16,8 +16,8 @@
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.5/SyncoraConnector-Setup-3.2.5.exe',
-    pcVersion: '3.2.5',
+    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.6/SyncoraConnector-Setup-3.2.6.exe',
+    pcVersion: '3.2.6',
     androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 

@@ -398,11 +398,11 @@ namespace TallySyncApp.Services
                             dict.Remove("ledger_group");
                         }
                         
-                        // Map closing_balance -> current_balance
+                        // Tally ka closing balance dono columns me bhejo: web ke kuch screens
+                        // current_balance padhte hain, kuch closing_balance (jo pehle 0 reh jaata tha).
                         if (dict.ContainsKey("closing_balance"))
                         {
                             dict["current_balance"] = dict["closing_balance"];
-                            dict.Remove("closing_balance");
                         }
                         
                         // Ensure ID is a valid UUID (Tally GUIDs may not be valid UUIDs)
