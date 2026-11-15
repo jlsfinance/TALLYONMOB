@@ -16,6 +16,7 @@ import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import toast from 'react-hot-toast';
 import { shareVoucherOnWhatsApp } from '@/lib/whatsappInvoice';
 import { generateTallyVoucherXml, sendToTally } from '@/services/tallyExportService';
+import { VoucherEditHistory } from '@/components/vouchers/VoucherEditHistory';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -605,6 +606,7 @@ export default function VoucherDetailPage() {
                 </div>
 
                 {/* 4. Notes Section */}
+                <VoucherEditHistory companyId={selectedCompany?.id} voucherId={voucher.id} voucherGuid={voucher.guid || voucher.tally_guid} />
                 {voucher.narration && (
                     <div className="px-2">
                         <div className="bg-[var(--surface-variant)]/30 rounded-2xl p-5 border border-[var(--border)]">

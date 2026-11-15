@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase, pendingTransactionApi } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,12 +10,14 @@ import {
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { effectiveGstRate } from '@/lib/effectiveGst.mjs';
+import { calculateVoucherEdit, roundMoney } from '@/lib/voucherEditTotals.mjs';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+    maximumFractionDigits: 2
 }).format(Math.abs(Number(amount)) || 0);
 
 interface LineItem {
@@ -26,8 +28,10 @@ interface LineItem {
     rate: number;
     discount: number;
     amount: number;
+    gst_rate: number | '';
 }
 
+import { makeEditAudit, revisePendingVoucher } from '@/lib/voucherEditAudit.mjs';
 export default function EditVoucherPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -37,6 +41,11 @@ export default function EditVoucherPage() {
     const [saving, setSaving] = useState(false);
     const [voucher, setVoucher] = useState<any>(null);
     const [isPending, setIsPending] = useState(false); // from pending_transactions
+    const [originalSnapshot, setOriginalSnapshot] = useState<any>(null);
+    const [taxMode, setTaxMode] = useState('intra');
+    const [roundOff, setRoundOff] = useState(0);
+    const [billDiscount, setBillDiscount] = useState(0);
+    const [autoRound, setAutoRound] = useState(false);
 
     // Editable fields
     const [partyName, setPartyName] = useState('');
@@ -47,12 +56,26 @@ export default function EditVoucherPage() {
     // Receipt/Payment/Journal etc. ka amount + cash/bank ledger (inventory nahi hota)
     const [amount, setAmount] = useState(0);
     const [cashBankLedger, setCashBankLedger] = useState('');
+    const [accountingEntries, setAccountingEntries] = useState<any[]>([]);
 
     // Ledger suggestions for autocomplete
     const [ledgerSuggestions, setLedgerSuggestions] = useState<string[]>([]);
+    const [partyMasters, setPartyMasters] = useState<any[]>([]);
     const [stockSuggestions, setStockSuggestions] = useState<any[]>([]);
     const [showPartySuggestions, setShowPartySuggestions] = useState(false);
     const [activeStockIdx, setActiveStockIdx] = useState<number | null>(null);
+    useEffect(() => {
+        setItems(current => current.map(item => {
+            const stock = stockSuggestions.find(s => String(s.name).toLowerCase() === item.stock_item_name.toLowerCase());
+            return stock?.gst_details?.effective_rates?.length ? { ...item, gst_rate: effectiveGstRate(stock, voucherDate) } : item;
+        }));
+    }, [voucherDate, stockSuggestions]);
+    useEffect(() => {
+        const party = partyMasters.find(p => String(p.name).toLowerCase() === partyName.toLowerCase());
+        const stateKey = (record: any) => String(record?.gstin || record?.gst_number || '').slice(0, 2).match(/^\d{2}$/)?.[0] || String(record?.state || '').trim().toLowerCase();
+        const from = stateKey(selectedCompany), to = stateKey(party);
+        if (from && to) setTaxMode(from === to ? 'intra' : 'inter');
+    }, [partyName, partyMasters, selectedCompany?.id]);
 
     useEffect(() => {
         if (id && selectedCompany) {
@@ -65,17 +88,18 @@ export default function EditVoucherPage() {
         // Load party ledgers (Tally sub-groups jaise "DEBTOR BAGODA" ke ledgers bhi party hain)
         const { data: ledgers } = await supabase
             .from('ledgers')
-            .select('name')
+            .select('*')
             .eq('company_id', selectedCompany.id)
             .or('parent.ilike.*debtor*,parent.ilike.*creditor*,ledger_type.ilike.*debtor*,ledger_type.ilike.*creditor*')
             .order('name')
             .limit(500);
         setLedgerSuggestions((ledgers || []).map(l => l.name));
+        setPartyMasters(ledgers || []);
 
         // Load stock items for autocomplete
         const { data: stocks } = await supabase
             .from('stock_items')
-            .select('name, hsn_code, unit, rate')
+            .select('*')
             .eq('company_id', selectedCompany.id)
             .order('name')
             .limit(500);
@@ -106,13 +130,14 @@ export default function EditVoucherPage() {
                 // Accounting voucher ka cash/bank side: party ke alawa doosri ledger line.
                 const { data: ledgerEntries } = await supabase
                     .from('voucher_ledger_entries')
-                    .select('ledger_name')
+                    .select('ledger_name,amount')
                     .eq('is_deleted', false)
                     .eq('voucher_id', vData.id);
                 const otherLedger = (ledgerEntries || [])
                     .map((e: any) => e.ledger_name)
                     .find((name: string) => name && name.toLowerCase() !== String(vData.party_name || '').toLowerCase());
                 setCashBankLedger(otherLedger || '');
+                setAccountingEntries((ledgerEntries || []).map((e: any) => ({ ledger_name: e.ledger_name, is_debit: Number(e.amount) < 0, amount: Math.abs(Number(e.amount) || 0) })));
 
                 // Load stock entries
                 const { data: stockEntries } = await supabase
@@ -130,15 +155,38 @@ export default function EditVoucherPage() {
                     inventoryItems = vData.inventory_entries;
                 }
 
-                setItems(inventoryItems.map((item: any) => ({
+                const { data: masters, error: mastersError } = await supabase.from('stock_items').select('*').eq('company_id', selectedCompany.id);
+                if (mastersError) throw mastersError;
+                const tax = (name: string) => Math.abs((ledgerEntries || []).filter((e: any) => String(e.ledger_name).toUpperCase().includes(name)).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0));
+                const cgst = tax('CGST') || Number(vData.cgst_amount) || 0;
+                const sgst = tax('SGST') || Number(vData.sgst_amount) || 0;
+                const igst = tax('IGST') || Number(vData.igst_amount) || 0;
+                const allTax = cgst + sgst + igst;
+                const net = inventoryItems.reduce((sum: number, i: any) => sum + Math.abs(Number(i.amount) || Number(i.quantity) * Number(i.rate) || 0), 0);
+                const normalized = inventoryItems.map((item: any) => {
+                    const stock = (masters || []).find((s: any) => String(s.name).trim().toLowerCase() === String(item.stock_item_name || item.item_name || item.name).trim().toLowerCase());
+                    const knownRate = stock && (stock.gst_rate != null || stock.gst_details?.effective_rates?.length);
+                    const gstRate = item.gst_rate ?? (knownRate ? effectiveGstRate(stock, vData.voucher_date) : allTax === 0 ? 0 : inventoryItems.length === 1 && net > 0 ? roundMoney(allTax * 100 / net) : '');
+                    return {
                     stock_item_name: item.stock_item_name || item.item_name || item.name || '',
-                    hsn_code: item.hsn_code || '',
-                    unit: item.unit || 'pcs',
+                    hsn_code: item.hsn_code || stock?.hsn_code || '',
+                    unit: item.unit || stock?.unit || '',
                     quantity: Number(item.quantity) || 0,
                     rate: Number(item.rate) || 0,
-                    discount: Number(item.discount_percent || item.discount) || 0,
-                    amount: Number(item.amount) || ((Number(item.quantity) || 0) * (Number(item.rate) || 0))
-                })));
+                    discount: Number(item.discount_percent ?? item.discount ?? (Number(item.quantity) * Number(item.rate) > 0 ? Math.max(0, 100 * (1 - Math.abs(Number(item.amount)) / (Number(item.quantity) * Number(item.rate)))) : 0)) || 0,
+                    amount: Math.abs(Number(item.amount)) || ((Number(item.quantity) || 0) * (Number(item.rate) || 0)),
+                    gst_rate: gstRate
+                }; });
+                const side = ['Purchase', 'Credit Note'].includes(vData.voucher_type) ? -1 : 1;
+                const signedLedger = (name: string) => (ledgerEntries || []).filter((e: any) => String(e.ledger_name).toLowerCase().includes(name)).reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
+                const rounding = Number(vData.round_off ?? side * signedLedger('round'));
+                const discount = Math.abs(Number(vData.discount_amount ?? signedLedger('discount')));
+                setTaxMode(igst > 0 ? 'inter' : 'intra'); setRoundOff(rounding); setBillDiscount(discount);
+                setAutoRound(rounding !== 0 && Math.abs(rounding) <= 0.5 && Number.isInteger(Number(vData.total_amount)));
+                setOriginalSnapshot({ ...vData, taxable_amount: net, cgst_amount: cgst, sgst_amount: sgst, igst_amount: igst,
+                    round_off: rounding, discount_amount: discount, cash_bank_ledger: otherLedger || '', inventory_entries: normalized,
+                    ledger_entries: (ledgerEntries || []).map((e: any) => ({ ledger_name: e.ledger_name, is_debit: Number(e.amount) < 0, amount: Math.abs(Number(e.amount) || 0) })) });
+                setItems(normalized);
             } else {
                 // Try pending_transactions
                 const { data: pData, error: pError } = await supabase
@@ -153,20 +201,24 @@ export default function EditVoucherPage() {
                     setIsPending(true);
                     setPartyName(vd.party_name || vd.customerName || '');
                     setVoucherDate(vd.voucher_date || vd.date || format(new Date(), 'yyyy-MM-dd'));
-                    setVoucherType(pData.transaction_type || vd.voucher_type_name || 'Sales');
+                    setVoucherType(vd.voucher_type_name || pData.transaction_type || 'Sales');
                     setNarration(vd.narration || '');
                     setAmount(Number(vd.total_amount || vd.grand_total || vd.amount) || 0);
                     setCashBankLedger(vd.cash_bank_ledger || '');
+                    setAccountingEntries(vd.ledger_entries || vd.entries || []);
+                    setTaxMode(vd.tax_mode || (Number(vd.igst_amount) > 0 ? 'inter' : 'intra'));
+                    setRoundOff(Number(vd.round_off) || 0); setBillDiscount(Number(vd.discount_amount) || 0); setAutoRound(vd.auto_round === true);
 
                     const rawItems = vd.inventory_entries || vd.items || vd.sales_items || [];
                     setItems(rawItems.map((item: any) => ({
                         stock_item_name: item.stock_item || item.stock_item_name || item.name || '',
                         hsn_code: item.hsn_code || '',
-                        unit: item.unit || 'pcs',
+                        unit: item.unit || '',
                         quantity: Number(item.quantity) || 0,
                         rate: Number(item.rate) || 0,
                         discount: Number(item.discount) || 0,
-                        amount: Number(item.amount) || ((Number(item.quantity) || 0) * (Number(item.rate) || 0))
+                        amount: Number(item.amount) || ((Number(item.quantity) || 0) * (Number(item.rate) || 0)),
+                        gst_rate: item.gst_rate ?? 0
                     })));
                 } else {
                     toast.error('Voucher not found');
@@ -198,11 +250,12 @@ export default function EditVoucherPage() {
         setItems([...items, {
             stock_item_name: '',
             hsn_code: '',
-            unit: 'pcs',
+            unit: '',
             quantity: 1,
             rate: 0,
             discount: 0,
             amount: 0
+            , gst_rate: 0
         }]);
     };
 
@@ -216,7 +269,8 @@ export default function EditVoucherPage() {
             ...newItems[idx],
             stock_item_name: stock.name,
             hsn_code: stock.hsn_code || '',
-            unit: stock.unit || 'pcs',
+            unit: stock.unit || '',
+            gst_rate: effectiveGstRate(stock, voucherDate),
             rate: Number(stock.rate) || newItems[idx].rate,
             amount: (Number(newItems[idx].quantity) || 1) * (Number(stock.rate) || newItems[idx].rate)
         };
@@ -231,9 +285,11 @@ export default function EditVoucherPage() {
             .slice(0, 10);
     };
 
-    const totalAmount = useMemo(() => {
-        return items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-    }, [items]);
+    const calculation = useMemo(() => {
+        try { return { totals: calculateVoucherEdit(items, { taxMode, roundOff, billDiscount, autoRound }), error: '' }; }
+        catch (error: any) { return { totals: null, error: error.message }; }
+    }, [items, taxMode, roundOff, billDiscount, autoRound]);
+    const totalAmount = calculation.totals?.grand_total || 0;
 
     const filteredParties = useMemo(() => {
         if (!partyName || partyName.length < 2) return [];
@@ -242,10 +298,13 @@ export default function EditVoucherPage() {
             .slice(0, 8);
     }, [partyName, ledgerSuggestions]);
 
-    const isItemVoucher = voucherType === 'Sales' || voucherType === 'Purchase';
+    const isItemVoucher = ['Sales', 'Purchase', 'Credit Note', 'Debit Note'].includes(voucherType);
+    const needsLedgerEntries = ['Journal', 'Contra'].includes(voucherType);
+    const accountingDebit = roundMoney(accountingEntries.filter(e => e.is_debit).reduce((sum, e) => sum + Number(e.amount || 0), 0));
+    const accountingCredit = roundMoney(accountingEntries.filter(e => !e.is_debit).reduce((sum, e) => sum + Number(e.amount || 0), 0));
 
     const handleSave = async () => {
-        if (!partyName.trim()) {
+        if (!needsLedgerEntries && !partyName.trim()) {
             toast.error('Party name is required');
             return;
         }
@@ -253,16 +312,22 @@ export default function EditVoucherPage() {
             toast.error('At least one item is required');
             return;
         }
-        if (!isItemVoucher && amount <= 0) {
+        if (isItemVoucher && calculation.error) { toast.error(calculation.error); return; }
+        if (needsLedgerEntries && (accountingEntries.length < 2 || accountingEntries.some(e => !e.ledger_name?.trim() || Number(e.amount) <= 0) || accountingDebit !== accountingCredit)) {
+            toast.error('Enter balanced debit and credit ledger entries.'); return;
+        }
+        if (!isItemVoucher && !needsLedgerEntries && amount <= 0) {
             toast.error('Amount is required');
             return;
         }
 
         const amountFields = isItemVoucher
-            ? { total_amount: totalAmount, grand_total: totalAmount }
+            ? { ...calculation.totals, lines: undefined, auto_round: autoRound }
+            : needsLedgerEntries ? { amount: accountingDebit, total_amount: accountingDebit, grand_total: accountingDebit, ledger_entries: accountingEntries }
             : { amount, total_amount: amount, grand_total: amount, cash_bank_ledger: cashBankLedger || undefined };
         const lineItems = isItemVoucher
-            ? items.map(i => ({
+            ? (calculation.totals?.lines || []).map(i => ({
+                ...i,
                 stock_item: i.stock_item_name,
                 quantity: i.quantity,
                 rate: i.rate,
@@ -277,23 +342,24 @@ export default function EditVoucherPage() {
         try {
             if (isPending) {
                 // Update pending_transaction
-                const voucherData = {
+                if (voucher.status !== 'pending') throw new Error('Only an unsynced pending request can be changed. Open the synced voucher to edit it.');
+                const voucherData = revisePendingVoucher(voucher.voucher_data || {}, {
                     voucher_type_name: voucherType,
                     party_name: partyName,
                     voucher_date: voucherDate,
                     narration: narration,
                     ...amountFields,
                     inventory_entries: lineItems
-                };
+                }, user?.email);
 
                 const { error } = await supabase
                     .from('pending_transactions')
                     .update({
-                        transaction_type: voucherType,
+                        transaction_type: voucherData.is_modification ? 'VOUCHER_EDIT' : voucherType,
                         voucher_data: voucherData,
                         updated_at: new Date().toISOString()
                     })
-                    .eq('id', voucher.id);
+                    .eq('id', voucher.id).eq('status', 'pending').select('id').single();
 
                 if (error) throw error;
                 toast.success('Pending entry updated!');
@@ -309,19 +375,31 @@ export default function EditVoucherPage() {
                     voucher_number: voucher.voucher_number,
                     tally_guid: voucher.guid,
                     tally_master_id: voucher.master_id,
+                    original_voucher_date: voucher.voucher_date,
                     is_modification: true,
                     inventory_entries: lineItems
                 };
 
-                const { error } = await supabase
-                    .from('pending_transactions')
-                    .insert([{
+                if (!voucher.guid) throw new Error('Original Tally identity is missing. Sync the voucher before editing.');
+                const { data: queued, error: queueError } = await supabase.from('pending_transactions')
+                    .select('id,status,voucher_data').eq('company_id', selectedCompany.id)
+                    .eq('transaction_type', 'VOUCHER_EDIT').eq('voucher_data->>original_voucher_id', voucher.id)
+                    .in('status', ['pending', 'processing']).order('created_at', { ascending: false }).limit(1);
+                if (queueError) throw queueError;
+                const previous = queued?.[0];
+                if (previous?.status === 'processing') throw new Error('This edit is currently syncing. Wait for it to finish before editing again.');
+                const auditedData = { ...modificationData, edit_audit: makeEditAudit(originalSnapshot || voucher, modificationData, user?.email, previous?.voucher_data?.edit_audit) };
+                if (!auditedData.edit_audit.changes.length) throw new Error('No changes to save.');
+                const request = previous
+                    ? supabase.from('pending_transactions').update({ voucher_data: auditedData, updated_at: new Date().toISOString() }).eq('id', previous.id).eq('status', 'pending').select('id').single()
+                    : supabase.from('pending_transactions').insert([{
                         company_id: selectedCompany.id,
                         transaction_type: 'VOUCHER_EDIT',
-                        voucher_data: modificationData,
+                        voucher_data: auditedData,
                         status: 'pending',
                         created_by: user?.id
                     }]);
+                const { error } = await request;
 
                 if (error) throw error;
 
@@ -412,7 +490,7 @@ export default function EditVoucherPage() {
                 <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
                     <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3 block">Voucher Type</label>
                     <div className="flex gap-2 flex-wrap">
-                        {['Sales', 'Purchase', 'Receipt', 'Payment', 'Journal'].map(type => (
+                        {['Sales', 'Purchase', 'Receipt', 'Payment', 'Contra', 'Journal', 'Credit Note', 'Debit Note'].map(type => (
                             <button
                                 key={type}
                                 onClick={() => setVoucherType(type)}
@@ -559,7 +637,7 @@ export default function EditVoucherPage() {
                                         </button>
                                     </div>
 
-                                    <div className="grid grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                                         <div>
                                             <label className="text-[8px] font-bold text-[var(--text-muted)] uppercase">HSN</label>
                                             <input
@@ -597,7 +675,14 @@ export default function EditVoucherPage() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Amount</label>
+                                            <label className="text-[8px] font-bold text-[var(--text-muted)] uppercase">GST %</label>
+                                            <input type="number" min="0" max="100" step="0.01" value={item.gst_rate}
+                                                aria-label={`GST rate for item ${idx + 1}`}
+                                                onChange={e => updateItem(idx, 'gst_rate', e.target.value === '' ? '' : Number(e.target.value))}
+                                                className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg py-1.5 px-2 text-xs text-[var(--on-surface)]" />
+                                        </div>
+                                        <div>
+                                            <label className="text-[8px] font-bold text-[var(--text-muted)] uppercase">Taxable</label>
                                             <div className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg py-1.5 px-2 text-xs font-bold text-[var(--on-surface)] text-right font-mono">
                                                 â‚¹{Number(item.amount).toLocaleString('en-IN')}
                                             </div>
@@ -610,7 +695,18 @@ export default function EditVoucherPage() {
                 )}
 
                 {/* Amount (accounting vouchers) */}
-                {!isItemVoucher && (
+                {needsLedgerEntries && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
+                    <h2 className="font-bold">Debit / credit entries</h2>
+                    {accountingEntries.map((entry, index) => <div key={index} className="grid grid-cols-[1fr_5rem_6rem_auto] gap-2">
+                        <input aria-label={`Ledger ${index + 1}`} value={entry.ledger_name} onChange={e => setAccountingEntries(rows => rows.map((row, i) => i === index ? { ...row, ledger_name: e.target.value } : row))} className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2" />
+                        <select aria-label={`Side ${index + 1}`} value={entry.is_debit ? 'Dr' : 'Cr'} onChange={e => setAccountingEntries(rows => rows.map((row, i) => i === index ? { ...row, is_debit: e.target.value === 'Dr' } : row))} className="rounded-lg bg-[var(--surface)] border border-[var(--border)]"><option>Dr</option><option>Cr</option></select>
+                        <input aria-label={`Amount ${index + 1}`} type="number" min="0" step="0.01" value={entry.amount} onChange={e => setAccountingEntries(rows => rows.map((row, i) => i === index ? { ...row, amount: Number(e.target.value) } : row))} className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2" />
+                        <button type="button" aria-label={`Remove entry ${index + 1}`} onClick={() => setAccountingEntries(rows => rows.filter((_, i) => i !== index))}>×</button>
+                    </div>)}
+                    <button type="button" onClick={() => setAccountingEntries(rows => [...rows, { ledger_name: '', is_debit: true, amount: 0 }])}>+ Add ledger entry</button>
+                    <p className={accountingDebit === accountingCredit ? 'text-emerald-600' : 'text-red-500'}>Dr {formatCurrency(accountingDebit)} · Cr {formatCurrency(accountingCredit)}</p>
+                </div>}
+                {!isItemVoucher && !needsLedgerEntries && (
                     <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
                         <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-3 block">
                             <IndianRupee size={12} className="inline mr-1" /> Amount
@@ -632,6 +728,22 @@ export default function EditVoucherPage() {
 
                 {/* Total Summary */}
                 <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5">
+                    {isItemVoucher && <div className="space-y-3 mb-4 text-sm">
+                        <label className="block">GST treatment
+                            <select value={taxMode} onChange={e => setTaxMode(e.target.value)} className="block w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 mt-1">
+                                <option value="intra">Within state — CGST + SGST</option><option value="inter">Interstate — IGST</option>
+                            </select>
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label>Bill discount (₹)<input type="number" min="0" step="0.01" value={billDiscount} onChange={e => setBillDiscount(Number(e.target.value))} className="block w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2" /></label>
+                            <label>Round off (₹)<input type="number" step="0.01" disabled={autoRound} value={autoRound ? calculation.totals?.round_off || 0 : roundOff} onChange={e => setRoundOff(Number(e.target.value))} className="block w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2" /></label>
+                        </div>
+                        <label className="flex items-center gap-2"><input type="checkbox" checked={autoRound} onChange={e => setAutoRound(e.target.checked)} />Automatically round total to nearest rupee</label>
+                        {calculation.error ? <p role="alert" className="text-red-500">{calculation.error}</p> : <dl className="grid grid-cols-2 gap-2">
+                            <dt>Taxable value</dt><dd className="text-right">{formatCurrency(calculation.totals?.taxable_amount || 0)}</dd>
+                            {taxMode === 'intra' ? <><dt>CGST</dt><dd className="text-right">{formatCurrency(calculation.totals?.cgst_amount || 0)}</dd><dt>SGST</dt><dd className="text-right">{formatCurrency(calculation.totals?.sgst_amount || 0)}</dd></> : <><dt>IGST</dt><dd className="text-right">{formatCurrency(calculation.totals?.igst_amount || 0)}</dd></>}
+                        </dl>}
+                    </div>}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Grand Total</p>
@@ -639,7 +751,7 @@ export default function EditVoucherPage() {
                         </div>
                         <div className="text-right">
                             <p className="text-3xl font-black text-[var(--on-surface)] tracking-tight">
-                                {formatCurrency(isItemVoucher ? totalAmount : amount)}
+                                {formatCurrency(isItemVoucher ? totalAmount : needsLedgerEntries ? accountingDebit : amount)}
                             </p>
                         </div>
                     </div>
@@ -681,5 +793,3 @@ export default function EditVoucherPage() {
         </div>
     );
 }
-
-

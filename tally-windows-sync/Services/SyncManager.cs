@@ -613,6 +613,7 @@ namespace TallySyncApp.Services
                 // Pending uploads survive application restarts and manual syncs.
 
                 var failedCompanies = new List<string>();
+                var partialCompanies = new List<string>();
                 string? lastCompanyError = null;
                 foreach (var company in companies)
                 {
@@ -1337,6 +1338,8 @@ namespace TallySyncApp.Services
                         AddLog($"");
 
                         // ===== UPDATE SYNC HISTORY =====
+                        if (_historicalCoverageError != null)
+                            partialCompanies.Add($"{company.Name}: {_historicalCoverageError}");
                         if (!string.IsNullOrEmpty(syncHistoryId))
                         {
                             string finalStatus = _historicalCoverageError == null ? "completed" : "partial";
@@ -1356,7 +1359,8 @@ namespace TallySyncApp.Services
                                    (_historicalCoverageError != null ? $" - {_historicalCoverageError}" : ""));
                         }
                         // Web dashboard reads companies.last_sync_at for "last synced N ago".
-                        await _apiClient!.MarkCompanySyncedAsync(company.Id);
+                        if (_historicalCoverageError == null)
+                            await _apiClient!.MarkCompanySyncedAsync(company.Id);
 
                         // ===== PUSH SYNC (Cloud -> Tally) =====
                         await ProcessPendingTransactionsAsync(company);
@@ -1502,6 +1506,13 @@ namespace TallySyncApp.Services
                     var failedNames = string.Join(", ", failedCompanies.Distinct());
                     AddLog($"❌ Sync failed for: {failedNames}");
                     UpdateStatus(SyncState.Error, $"Sync failed: {failedNames}", lastCompanyError);
+                    return;
+                }
+                if (partialCompanies.Count > 0)
+                {
+                    var detail = string.Join("; ", partialCompanies);
+                    AddLog($"⚠️ Sync incomplete: {detail}");
+                    UpdateStatus(SyncState.Error, "Sync incomplete: voucher reconciliation needs attention", detail);
                     return;
                 }
                 Status.LastSyncTime = DateTime.Now;
@@ -1956,10 +1967,11 @@ namespace TallySyncApp.Services
             try
             {
                 var tally = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
-                if (ct.IsCancellationRequested || tally.Count == 0) { AddLog("⚠️ Reconciliation skipped: Tally index unavailable."); return (0, 0, 0, 0); }
+                if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+                if (tally.Count == 0) { _historicalCoverageError = "Tally index empty; deletion could not be verified."; AddLog("⚠️ Reconciliation skipped: Tally index unavailable."); return (0, 0, 0, 0); }
                 var cloud = await _apiClient!.GetVoucherIdentitySnapshotAsync(company.Id);
-                if (ct.IsCancellationRequested || cloud == null) { AddLog("⚠️ Reconciliation skipped: cloud identity snapshot incomplete."); return (0, 0, 0, 0); }
-                bool coverageOk = VerifyIndexCoverage(company, tally, cloud.Count);
+                if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+                if (cloud == null) { _historicalCoverageError = "Cloud identity snapshot incomplete; deletion could not be verified."; AddLog("⚠️ Reconciliation skipped: cloud identity snapshot incomplete."); return (0, 0, 0, 0); }
                 var diff = VoucherReconciliation.Compare(tally, cloud);
                 SyncLogger.Log($"[Reconcile] Tally={tally.Count}, cloud={cloud.Count}, repair={diff.MissingAlterIds.Count}, possible_deleted={diff.PossibleDeletedIds.Count}, ambiguous={diff.AmbiguousRows}.");
                 AddLog($"🔎 Reconcile: {diff.MissingAlterIds.Count} missing/changed, {diff.PossibleDeletedIds.Count} possible deleted, {diff.AmbiguousRows} ambiguous.");
@@ -1968,21 +1980,17 @@ namespace TallySyncApp.Services
                     var description = $"{suspect.PartyName ?? "Unknown party"} | {suspect.VoucherType ?? "Voucher"} #{suspect.VoucherNumber ?? "?"} | id {suspect.Id}".Replace("\r", " ").Replace("\n", " ");
                     SyncLogger.Log($"[Reconcile] Possible deleted (not yet confirmed): {description}");
                 }
-                // A half-loaded company (wrong data folder, restore in progress) answers with a tiny
-                // index; deleting on that basis hides real vouchers on the web. Trust deletions only
-                // when Tally still sees at least half of what the cloud has.
-                if (diff.PossibleDeletedIds.Count > cloud.Count / 2)
-                {
-                    AddLog($"⚠️ Deletion skipped: Tally index has {tally.Count} vouchers vs {cloud.Count} on web — company data may not be fully loaded.");
-                    SyncLogger.Log($"[Reconcile] Deletion skipped: mass delete {diff.PossibleDeletedIds.Count}/{cloud.Count}.");
-                }
-                else if (diff.PossibleDeletedIds.Count > 0 && coverageOk && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
+                // A smaller index is expected after deletions. Prove completeness using
+                // two stable identity snapshots and the independent ALTERID export instead
+                // of comparing counts with stale cloud records.
+                if (diff.PossibleDeletedIds.Count > 0 && _settings.SyncSettings.UseSafeVoucherReconciliation && !ct.IsCancellationRequested)
                 {
                     var secondIndex = await _tallyConnector!.GetVoucherIndexFullAsync(company.Name);
                     var tallyAlterIds = await _tallyConnector!.GetVoucherAlterIdsAsync(company.Name);
                     var candidates = VoucherReconciliation.SafeDeleteCandidates(tally, secondIndex, tallyAlterIds, cloud, diff, out var safetyReason, company.Id);
                     if (candidates.Count == 0)
                     {
+                        _historicalCoverageError = $"Voucher deletion not verified: {safetyReason}";
                         AddLog("⚠️ Deletion skipped: identity or snapshot safety checks did not pass.");
                         SyncLogger.Log($"[Reconcile] Deletion skipped: {safetyReason}.");
                     }
@@ -1997,6 +2005,7 @@ namespace TallySyncApp.Services
                         }
                         else
                         {
+                            _historicalCoverageError = $"Web deletion not confirmed: {label}";
                             AddLog($"⚠️ Could not verify web deletion: {label}");
                             SyncLogger.Log($"[Reconcile] Delete not confirmed: {label}");
                         }

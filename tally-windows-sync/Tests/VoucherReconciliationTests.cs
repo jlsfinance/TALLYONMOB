@@ -51,4 +51,28 @@ public class VoucherReconciliationTests
         Assert.Empty(VoucherReconciliation.SafeDeleteCandidates(index, second, alters, cloud, diff, out var reason, company));
         Assert.NotEmpty(reason);
     }
+
+    [Theory]
+    [InlineData(15, 14)]
+    [InlineData(5, 24)]
+    [InlineData(25, 100)]
+    public void VerifiedDeletionsAreNotLimitedByCompanySizeOrPercentage(int remaining, int deleted)
+    {
+        var index = Index().Take(remaining).ToList();
+        var cloud = index.Select(v => new CloudVoucherIdentity
+        {
+            Id = Id($"{Company}|{v.Guid}"), Guid = v.Guid, AlterId = v.AlterId, IsDeleted = false
+        }).Concat(Enumerable.Range(1, deleted).Select(n => new CloudVoucherIdentity
+        {
+            Guid = $"deleted-{n}", Id = Id($"{Company}|deleted-{n}"), AlterId = (1000 + n).ToString(), IsDeleted = false
+        })).ToList();
+        var diff = VoucherReconciliation.Compare(index, cloud);
+        var alters = index.Select(v => long.Parse(v.AlterId!)).ToList();
+        Assert.Equal(deleted, VoucherReconciliation.SafeDeleteCandidates(index, index, alters, cloud, diff, out var reason, Company).Count);
+        Assert.Equal("", reason);
+        // The same number of missing cloud rows must not authorize a truncated index.
+        alters.Add(99999);
+        Assert.Empty(VoucherReconciliation.SafeDeleteCandidates(index, index, alters, cloud, diff, out reason, Company));
+        Assert.Contains("Independent Tally ALTERID", reason);
+    }
 }

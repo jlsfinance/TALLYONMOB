@@ -69,9 +69,9 @@ namespace TallySyncApp.Services
                 {
                     var items = await _tallyConnector.GetStockItemsAsync(companyName) ?? new List<StockItem>();
                     ctx.StockUnits = items
-                        .Where(i => !string.IsNullOrWhiteSpace(i.Name) && !string.IsNullOrWhiteSpace(i.BaseUnit))
+                        .Where(i => !string.IsNullOrWhiteSpace(i.Name))
                         .GroupBy(i => i.Name!.Trim(), StringComparer.OrdinalIgnoreCase)
-                        .ToDictionary(g => g.Key, g => g.First().BaseUnit!.Trim(), StringComparer.OrdinalIgnoreCase);
+                        .ToDictionary(g => g.Key, g => g.First().BaseUnit?.Trim() ?? "", StringComparer.OrdinalIgnoreCase);
 
                     // Only items with GST details in the master — their rate (even 0 = exempt) wins
                     // over whatever the web form sent. Rates are date-wise, so the whole history
@@ -283,10 +283,30 @@ namespace TallySyncApp.Services
 
                         // Generate Tally XML
                         var (tallyXml, generateError) = await GenerateTallyVoucherXmlAsync(transaction, companyName, context);
+                        string? expectedEditGuid = null;
+                        string? expectedEditMasterId = null;
 
                         if (!string.IsNullOrEmpty(tallyXml) && IsVoucherEdit(transaction))
                         {
-                            tallyXml = ApplyEditIdentity(transaction, tallyXml);
+                            var editData = transaction.VoucherData as JObject ?? new JObject();
+                            var editGuid = VoucherTallyGuid(editData);
+                            var identity = editGuid == null
+                                ? default
+                                : await LookupVoucherIdentityAsync(companyName, ParseVoucherDate(editData) ?? DateTime.Today, editGuid);
+
+                            // Alter without MASTERID/ALTERID silently creates a duplicate voucher, so stop here.
+                            if (string.IsNullOrWhiteSpace(identity.MasterId) || string.IsNullOrWhiteSpace(identity.AlterId) || string.IsNullOrWhiteSpace(identity.VchKey))
+                            {
+                                await _apiClient.UpdatePendingTransactionStatusAsync(
+                                    transaction.Id, "failed", null,
+                                    $"Tally me ye voucher (GUID {editGuid}) nahi mila; edit nahi kiya.");
+                                failed++;
+                                continue;
+                            }
+
+                            tallyXml = VoucherEditXml.Apply(tallyXml, editGuid, identity.MasterId, identity.AlterId, identity.VchKey, "Alter", identity.Date);
+                            expectedEditGuid = editGuid;
+                            expectedEditMasterId = identity.MasterId;
                         }
                         
                         if (string.IsNullOrEmpty(tallyXml))
@@ -300,6 +320,15 @@ namespace TallySyncApp.Services
 
                         // Push to Tally
                         var (success, voucherNumber, errorMessage) = await PushVoucherToTallyAsync(tallyXml);
+                        if (success && expectedEditGuid != null)
+                        {
+                            var afterEdit = await LookupVoucherIdentityAsync(companyName, DateTime.Today, expectedEditGuid);
+                            if (afterEdit.MasterId != expectedEditMasterId)
+                            {
+                                success = false;
+                                errorMessage = "Tally alteration response received, but original GUID/Master ID could not be verified afterwards. Check Tally before retrying.";
+                            }
+                        }
 
                         if (success)
                         {
@@ -417,6 +446,14 @@ namespace TallySyncApp.Services
                 var altered = doc.Descendants("ALTERED").FirstOrDefault()?.Value;
                 var deleted = doc.Descendants("DELETED").FirstOrDefault()?.Value;
 
+                if (XDocument.Parse(xmlRequest).Descendants("VOUCHER").Any(v => v.Attributes().Any(a =>
+                    a.Name.LocalName.Equals("Action", StringComparison.OrdinalIgnoreCase) && a.Value.Equals("Alter", StringComparison.OrdinalIgnoreCase))))
+                {
+                    if (!VoucherEditXml.IsConfirmedAlter(doc))
+                        return (false, null, $"Edit not confirmed by Tally (created={created}, altered={altered}). Do not retry before checking the original voucher.");
+                    return (true, doc.Descendants("LASTVCHID").FirstOrDefault()?.Value ?? "OK", null);
+                }
+
                 // Delete import answers DELETED=1 only.
                 if (deleted == "1")
                 {
@@ -446,7 +483,7 @@ namespace TallySyncApp.Services
         {
             try
             {
-                var voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
+                JObject voucherData = transaction.VoucherData as JObject ?? JObject.Parse(transaction.VoucherData?.ToString() ?? "{}");
                 var isVoucherEdit = string.Equals(transaction.TransactionType, "VOUCHER_EDIT", StringComparison.OrdinalIgnoreCase) || voucherData.Value<bool?>("is_modification") == true;
                 if (string.Equals(transaction.TransactionType, "VOUCHER_DELETE", StringComparison.OrdinalIgnoreCase))
                 {
@@ -454,7 +491,15 @@ namespace TallySyncApp.Services
                 }
                 if (isVoucherEdit && string.IsNullOrWhiteSpace(VoucherTallyGuid(voucherData)))
                 {
-                    SyncLogger.Log("⚠️ VOUCHER_EDIT without a Tally GUID; voucher is created instead.");
+                    return ("", "Original Tally GUID is missing; edit blocked to prevent creating a duplicate.");
+                }
+                if (isVoucherEdit)
+                {
+                    var inventory = VoucherInventoryPayload.Read(voucherData);
+                    foreach (var item in inventory.OfType<JObject>())
+                        if (ctx.StockUnits.TryGetValue(item.Value<string>("stock_item_name") ?? "", out var masterUnit))
+                            item["unit"] = IsUsableUnit(masterUnit) ? masterUnit : "";
+                    voucherData["inventory_entries"] = inventory;
                 }
                 
                 // Log raw data for debugging
@@ -476,7 +521,7 @@ namespace TallySyncApp.Services
                 
                 var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
                 var partyName = TallyLedgerName(ctx, voucherData["party_name"]?.ToString() ?? "");
-                var narration = voucherData["narration"]?.ToString() ?? "";
+                var narration = isVoucherEdit ? VoucherEditXml.AuditNarration(voucherData) : voucherData["narration"]?.ToString() ?? "";
                 var guid = ResolveVoucherGuid(transaction);
 
                 SyncLogger.Log($"    Resolved Type: {rawType}, Party: {partyName}, Date: {voucherDate:yyyy-MM-dd}");
@@ -550,7 +595,7 @@ namespace TallySyncApp.Services
                     case "TRANSACTION":
                     case "ENTRY":
                         // Generic type - try to infer from data
-                        if (voucherData["items"] != null || voucherData["stock_entries"] != null)
+                        if (VoucherInventoryPayload.Read(voucherData).Count > 0)
                         {
                             var salesLedger = FindLedger(ctx, voucherData["sales_ledger"]?.ToString(), "Sales Accounts");
                             if (salesLedger == null)
@@ -653,7 +698,7 @@ namespace TallySyncApp.Services
         private (string Xml, string? Error) GenerateSalesVoucherXml(string companyName, JObject data, DateTime date,
             string partyName, string narration, string salesLedger, CompanyContext ctx, string guid)
         {
-            var items = data["items"] as JArray ?? data["stock_entries"] as JArray ?? new JArray();
+            var items = VoucherInventoryPayload.Read(data);
             var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
             var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
             var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
@@ -873,7 +918,7 @@ namespace TallySyncApp.Services
         private (string Xml, string? Error) GeneratePurchaseVoucherXml(string companyName, JObject data, DateTime date,
             string partyName, string narration, string purchaseLedger, CompanyContext ctx, string guid)
         {
-            var items = data["items"] as JArray ?? data["stock_entries"] as JArray ?? new JArray();
+            var items = VoucherInventoryPayload.Read(data);
             var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
             var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
             var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
@@ -947,6 +992,7 @@ namespace TallySyncApp.Services
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
                 xml.AppendLine("              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>");
                 xml.AppendLine($"              <RATE>{Rate(rate, unit)}</RATE>");
+                if ((item.Value<decimal?>("discount_value") ?? 0) > 0) xml.AppendLine($"<DISCOUNT>{item.Value<decimal>("discount_value")}</DISCOUNT>");
                 xml.AppendLine($"              <AMOUNT>-{taxable}</AMOUNT>");
                 xml.AppendLine($"              <ACTUALQTY>{Qty(qty, unit)}</ACTUALQTY>");
                 xml.AppendLine($"              <BILLEDQTY>{Qty(qty, unit)}</BILLEDQTY>");
@@ -986,6 +1032,8 @@ namespace TallySyncApp.Services
 
             AppendTaxEntries(xml, tax, debit: true, cgst, sgst, igst);
 
+            var adjustmentError = AppendVoucherAdjustments(xml, ctx, data, true);
+            if (adjustmentError != null) return ("", adjustmentError);
             AppendEnvelopeEnd(xml);
             return (xml.ToString(), null);
         }
@@ -996,7 +1044,7 @@ namespace TallySyncApp.Services
         private (string Xml, string? Error) GenerateCreditNoteVoucherXml(string companyName, JObject data, DateTime date,
             string partyName, string narration, string salesLedger, CompanyContext ctx, string guid)
         {
-            var items = data["items"] as JArray ?? data["stock_entries"] as JArray ?? new JArray();
+            var items = VoucherInventoryPayload.Read(data);
             var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
             var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
             var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
@@ -1051,6 +1099,7 @@ namespace TallySyncApp.Services
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
                 xml.AppendLine("              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>");
                 xml.AppendLine($"              <RATE>{Rate(rate, unit)}</RATE>");
+                if ((item.Value<decimal?>("discount_value") ?? 0) > 0) xml.AppendLine($"<DISCOUNT>{item.Value<decimal>("discount_value")}</DISCOUNT>");
                 xml.AppendLine($"              <AMOUNT>-{taxable}</AMOUNT>");
                 xml.AppendLine($"              <ACTUALQTY>{Qty(qty, unit)}</ACTUALQTY>");
                 xml.AppendLine($"              <BILLEDQTY>{Qty(qty, unit)}</BILLEDQTY>");
@@ -1090,6 +1139,8 @@ namespace TallySyncApp.Services
             // Output tax reversal (Debit)
             AppendTaxEntries(xml, tax, debit: true, cgst, sgst, igst);
 
+            var adjustmentError = AppendVoucherAdjustments(xml, ctx, data, true);
+            if (adjustmentError != null) return ("", adjustmentError);
             AppendEnvelopeEnd(xml);
             return (xml.ToString(), null);
         }
@@ -1100,7 +1151,7 @@ namespace TallySyncApp.Services
         private (string Xml, string? Error) GenerateDebitNoteVoucherXml(string companyName, JObject data, DateTime date,
             string partyName, string narration, string purchaseLedger, CompanyContext ctx, string guid)
         {
-            var items = data["items"] as JArray ?? data["stock_entries"] as JArray ?? new JArray();
+            var items = VoucherInventoryPayload.Read(data);
             var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
             var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
             var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
@@ -1155,6 +1206,7 @@ namespace TallySyncApp.Services
                 xml.AppendLine($"              <STOCKITEMNAME>{EscapeXml(itemName)}</STOCKITEMNAME>");
                 xml.AppendLine("              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>");
                 xml.AppendLine($"              <RATE>{Rate(rate, unit)}</RATE>");
+                if ((item.Value<decimal?>("discount_value") ?? 0) > 0) xml.AppendLine($"<DISCOUNT>{item.Value<decimal>("discount_value")}</DISCOUNT>");
                 xml.AppendLine($"              <AMOUNT>{taxable}</AMOUNT>");
                 xml.AppendLine($"              <ACTUALQTY>{Qty(qty, unit)}</ACTUALQTY>");
                 xml.AppendLine($"              <BILLEDQTY>{Qty(qty, unit)}</BILLEDQTY>");
@@ -1194,6 +1246,8 @@ namespace TallySyncApp.Services
             // Input tax reversal (Credit)
             AppendTaxEntries(xml, tax, debit: false, cgst, sgst, igst);
 
+            var adjustmentError = AppendVoucherAdjustments(xml, ctx, data, false);
+            if (adjustmentError != null) return ("", adjustmentError);
             AppendEnvelopeEnd(xml);
             return (xml.ToString(), null);
         }
@@ -1398,18 +1452,8 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
-        /// Turns the freshly generated create XML into an alter of the existing Tally voucher.
-        /// </summary>
-        private static string ApplyEditIdentity(PendingTransaction transaction, string xml)
-        {
-            var data = transaction.VoucherData as JObject ?? new JObject();
-            var masterId = data["tally_master_id"]?.ToString() ?? data["master_id"]?.ToString();
-            return VoucherEditXml.Apply(xml, VoucherTallyGuid(data), masterId, ParseVoucherDate(data));
-        }
-
-        /// <summary>
-        /// Web delete → Tally. The delete import needs the voucher's VCHKEY, which the cloud row does
-        /// not store, so it is read live from Tally for the voucher's date.
+        /// Web delete → Tally. This import needs VCHKEY + MASTERID + ALTERID + OBJVIEW, none of which
+        /// the cloud row stores, so they are read live from Tally for the voucher's date.
         /// </summary>
         private async Task<(string Xml, string? Error)> GenerateDeleteVoucherXmlAsync(
             PendingTransaction transaction, string companyName, JObject data)
@@ -1423,8 +1467,9 @@ namespace TallySyncApp.Services
                               ?? transaction.TransactionType ?? "Voucher";
             var voucherNumber = data["voucher_number"]?.ToString() ?? "";
 
-            var vchKey = await LookupVchKeyAsync(companyName, date, guid);
-            if (string.IsNullOrWhiteSpace(vchKey))
+            var identity = await LookupVoucherIdentityAsync(companyName, date, guid);
+            if (string.IsNullOrWhiteSpace(identity.VchKey) || string.IsNullOrWhiteSpace(identity.MasterId)
+                || string.IsNullOrWhiteSpace(identity.AlterId))
                 return ("", $"Tally me ye voucher (GUID {guid}) nahi mila; delete nahi kiya.");
 
             var xml = new StringBuilder();
@@ -1443,39 +1488,47 @@ namespace TallySyncApp.Services
             xml.AppendLine("      </REQUESTDESC>");
             xml.AppendLine("      <REQUESTDATA>");
             xml.AppendLine("        <TALLYMESSAGE xmlns:UDF=\"TallyUDF\">");
-            xml.AppendLine($"          <VOUCHER VCHTYPE=\"{EscapeXml(voucherType)}\" ACTION=\"Delete\" REMOTEID=\"{EscapeXml(guid)}\" VCHKEY=\"{EscapeXml(vchKey)}\">");
+            xml.AppendLine($"          <VOUCHER VCHTYPE=\"{EscapeXml(voucherType)}\" ACTION=\"Delete\" REMOTEID=\"{EscapeXml(guid)}\" VCHKEY=\"{EscapeXml(identity.VchKey)}\" OBJVIEW=\"Accounting Voucher View\"><MASTERID>{EscapeXml(identity.MasterId)}</MASTERID><ALTERID>{EscapeXml(identity.AlterId)}</ALTERID>");
             xml.AppendLine($"            <DATE>{date:yyyyMMdd}</DATE>");
             xml.AppendLine($"            <VOUCHERTYPENAME>{EscapeXml(voucherType)}</VOUCHERTYPENAME>");
             if (!string.IsNullOrWhiteSpace(voucherNumber))
                 xml.AppendLine($"            <VOUCHERNUMBER>{EscapeXml(voucherNumber)}</VOUCHERNUMBER>");
             xml.AppendLine($"            <GUID>{EscapeXml(guid)}</GUID>");
             AppendEnvelopeEnd(xml);
-            return (xml.ToString(), null);
+            return (VoucherEditXml.Apply(xml.ToString(), guid, identity.MasterId, identity.AlterId, identity.VchKey, "Delete", identity.Date), null);
         }
 
-        private async Task<string?> LookupVchKeyAsync(string companyName, DateTime date, string guid)
+        /// <summary>
+        /// Tally's alter and delete imports both address the voucher by VCHKEY + MASTERID + ALTERID,
+        /// none of which the cloud stores — so they are read live from Tally for the voucher's date.
+        /// </summary>
+        private async Task<(string? VchKey, string? MasterId, string? AlterId, string? Date)> LookupVoucherIdentityAsync(
+            string companyName, DateTime date, string guid)
         {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(guid, @"\A[0-9a-fA-F-]+\z")) return default;
             var request = $@"<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
     <TYPE>Collection</TYPE>
-    <ID>SyncoraVchKey</ID>
+    <ID>SyncoraVoucherIdentity</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVFROMDATE>{date:yyyyMMdd}</SVFROMDATE>
-        <SVTODATE>{date:yyyyMMdd}</SVTODATE>
+        <SVFROMDATE>19000101</SVFROMDATE>
+        <SVTODATE>20991231</SVTODATE>
         <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
-          <COLLECTION NAME=""SyncoraVchKey"" ISMODIFY=""No"">
+          <COLLECTION NAME=""SyncoraVoucherIdentity"" ISMODIFY=""No"">
             <TYPE>Voucher</TYPE>
-            <FETCH>GUID, VCHKEY</FETCH>
+            <FETCH>GUID, VCHKEY, MASTERID, ALTERID, DATE</FETCH>
+            <FILTER>SyncoraIdentityGuid</FILTER>
           </COLLECTION>
+          <SYSTEM TYPE=""Formulae"" NAME=""SyncoraIdentityGuid"">$GUID = ""{EscapeXml(guid)}""</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1483,16 +1536,17 @@ namespace TallySyncApp.Services
 </ENVELOPE>";
 
             var (doc, _, _) = await PostXmlToTallyAsync(request);
-            if (doc == null) return null;
+            if (doc == null) return default;
 
-            foreach (var voucher in doc.Descendants("VOUCHER"))
-            {
-                var voucherGuid = voucher.Element("GUID")?.Value?.Trim() ?? voucher.Attribute("REMOTEID")?.Value?.Trim();
-                var key = voucher.Attribute("VCHKEY")?.Value ?? voucher.Element("VCHKEY")?.Value;
-                if (string.Equals(voucherGuid, guid, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(key))
-                    return key.Trim();
-            }
-            return null;
+            var matches = doc.Descendants("VOUCHER").Where(v => string.Equals(
+                v.Element("GUID")?.Value?.Trim() ?? v.Attribute("REMOTEID")?.Value?.Trim(), guid, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count != 1) return default;
+            var voucher = matches[0];
+            return (
+                (voucher.Attribute("VCHKEY")?.Value ?? voucher.Element("VCHKEY")?.Value)?.Trim(),
+                voucher.Element("MASTERID")?.Value?.Trim(),
+                voucher.Element("ALTERID")?.Value?.Trim(),
+                voucher.Element("DATE")?.Value?.Trim());
         }
 
         /// <summary>
@@ -1621,6 +1675,24 @@ namespace TallySyncApp.Services
 
             AppendEnvelopeEnd(xml);
             return (xml.ToString(), null);
+        }
+
+        private static string? AppendVoucherAdjustments(StringBuilder xml, CompanyContext ctx, JObject data, bool debit)
+        {
+            var discount = data.Value<decimal?>("discount_amount") ?? 0;
+            var rounding = data.Value<decimal?>("round_off") ?? 0;
+            foreach (var adjustment in new[] { (Amount: discount, Discount: true), (Amount: rounding, Discount: false) })
+            {
+                if (adjustment.Amount == 0) continue;
+                var ledger = FindLedger(ctx, data.Value<string>(adjustment.Discount ? "discount_ledger" : "round_off_ledger"), null,
+                    new[] { adjustment.Discount ? "Discount" : "Round" });
+                if (ledger == null) return "Tally adjustment ledger missing: " + (adjustment.Discount ? "Discount" : "Round off");
+                var signed = adjustment.Amount * (adjustment.Discount ? (debit ? 1 : -1) : (debit ? -1 : 1));
+                xml.AppendLine("<ALLLEDGERENTRIES.LIST>");
+                xml.AppendLine($"<LEDGERNAME>{EscapeXml(ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>{(signed < 0 ? "Yes" : "No")}</ISDEEMEDPOSITIVE><AMOUNT>{signed}</AMOUNT>");
+                xml.AppendLine("</ALLLEDGERENTRIES.LIST>");
+            }
+            return null;
         }
 
         private sealed class MoneyEntry

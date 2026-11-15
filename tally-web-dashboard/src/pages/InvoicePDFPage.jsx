@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { VoucherEditHistory } from '@/components/vouchers/VoucherEditHistory';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
@@ -11,7 +12,7 @@ import toast from 'react-hot-toast';
 import { removeMirroredStockEntries } from '../lib/invoiceStockEntries';
 import { masterNameKey, resolveHsn, summaryHsn } from '../lib/invoiceMasterFields.mjs';
 import {
-    ArrowLeft, Edit, Trash2, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
+    ArrowLeft, Edit, Trash2, MoreVertical, Pencil, MessageCircle, Share2, Download, Printer, Share, Settings2, X, Check
 } from 'lucide-react';
 import '../styles/Material3.css';
 import './InvoicePreview.css';
@@ -147,6 +148,7 @@ export default function InvoicePDFPage() {
     const [loading, setLoading] = useState(!navigationVoucher);
     const [template, setTemplate] = useState('classic');
     const [templateSettingsOpen, setTemplateSettingsOpen] = useState(false);
+    const [actionsOpen, setActionsOpen] = useState(false);
     const activeTemplate = INVOICE_STYLES.find(item => item.id === template) || INVOICE_STYLES[0];
     const [upiId, setUpiId] = useState('');
     const [scale, setScale] = useState(1);
@@ -1638,24 +1640,6 @@ export default function InvoicePDFPage() {
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Download</span>
                     </button>
                     <button
-                        onClick={() => navigate(`/edit-invoice/${id}`)}
-                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
-                        title="Edit voucher"
-                        aria-label="Edit voucher"
-                    >
-                        <Edit size={16} />
-                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Edit</span>
-                    </button>
-                    <button
-                        onClick={handleDeleteVoucher}
-                        className="p-1.5 md:p-2 md:px-3 md:py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
-                        title="Delete voucher (Tally se bhi)"
-                        aria-label="Delete voucher"
-                    >
-                        <Trash2 size={16} />
-                        <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Delete</span>
-                    </button>
-                    <button
                         onClick={() => setTemplateSettingsOpen(true)}
                         className="p-1.5 md:p-2 md:px-3 md:py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg md:rounded-xl flex items-center gap-1.5 transition-all active:scale-95"
                         title="Invoice settings"
@@ -1664,10 +1648,51 @@ export default function InvoicePDFPage() {
                         <Settings2 size={16} />
                         <span className="hidden md:inline text-[10px] font-bold uppercase tracking-wider">Settings</span>
                     </button>
+                    <button
+                        onClick={() => setActionsOpen(o => !o)}
+                        className="hidden md:flex p-1.5 md:p-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg md:rounded-xl items-center transition-all active:scale-95"
+                        title="Edit / delete voucher"
+                        aria-label="Edit or delete voucher"
+                    >
+                        <MoreVertical size={16} />
+                    </button>
                 </div>
             </HeaderPortal>
 
+            {/* Edit / delete menu: desktop ⋮ in header, mobile pencil FAB */}
+            {actionsOpen && (
+                <>
+                    <div className="fixed inset-0 z-[70] bg-black/20" onClick={() => setActionsOpen(false)} />
+                    <div className="fixed z-[71] right-3 top-3 md:top-16 w-44 rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl overflow-hidden">
+                        <button
+                            type="button"
+                            onClick={() => { setActionsOpen(false); navigate(`/edit-invoice/${id}`); }}
+                            className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--on-surface)] hover:bg-[var(--surface-variant)]"
+                        >
+                            <Edit size={16} /> Edit voucher
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setActionsOpen(false); void handleDeleteVoucher(); }}
+                            className="w-full flex items-center gap-2 px-4 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-500/10"
+                        >
+                            <Trash2 size={16} /> Delete voucher
+                        </button>
+                    </div>
+                </>
+            )}
+
+            <button
+                type="button"
+                onClick={() => setActionsOpen(o => !o)}
+                aria-label="Edit or delete voucher"
+                className="md:hidden fixed bottom-24 right-4 z-[60] h-14 w-14 rounded-full bg-slate-700 text-white shadow-xl flex items-center justify-center active:scale-95"
+            >
+                <Pencil size={22} />
+            </button>
+
             {/* Universal Document Preview (Scales for Mobile) */}
+            <VoucherEditHistory companyId={selectedCompany?.id} voucherId={invoice?.id || id} voucherGuid={invoice?.guid} />
             <div className="invoice-preview-label md:hidden"><span>INVOICE PREVIEW</span><span>#{invoice?.invoice_number || '—'}</span></div>
             <div className="invoice-preview-document w-full flex justify-center items-start overflow-hidden">
                 <div className="relative w-full">

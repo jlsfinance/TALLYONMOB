@@ -37,6 +37,7 @@
     <Compile Include="..\Services\EffectiveStockGst.cs" />
     <Compile Include="..\Services\VoucherPdfHtml.cs" />
     <Compile Include="..\Services\VoucherEditXml.cs" />
+    <Compile Include="..\Services\VoucherInventoryPayload.cs" />
   </ItemGroup>
 
 </Project>
