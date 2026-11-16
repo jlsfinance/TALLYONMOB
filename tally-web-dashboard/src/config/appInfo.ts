@@ -16,8 +16,8 @@ export const APP_INFO = {
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.10/SyncoraConnector-Setup-3.2.10.exe',
-    pcVersion: '3.2.10',
+    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.11/SyncoraConnector-Setup-3.2.11.exe',
+    pcVersion: '3.2.11',
     androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 

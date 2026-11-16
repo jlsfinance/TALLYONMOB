@@ -162,6 +162,8 @@ namespace TallySyncApp.Services
         /// <summary>
         /// Stamp companies.last_sync_at after a finished cycle. The web dashboard shows
         /// "last synced N ago" from this column, so a null here looks like a dead connector.
+        /// connector_version travels with it so the web "update available" card only nags
+        /// users whose last sync really came from an older build.
         /// </summary>
         public async Task MarkCompanySyncedAsync(string companyId)
         {
@@ -172,7 +174,11 @@ namespace TallySyncApp.Services
                     $"{_supabaseUrl}/rest/v1/companies?id=eq.{companyId}");
                 request.Headers.Add("Prefer", "return=minimal");
                 request.Content = new StringContent(
-                    JsonConvert.SerializeObject(new { last_sync_at = DateTime.UtcNow.ToString("o") }),
+                    JsonConvert.SerializeObject(new
+                    {
+                        last_sync_at = DateTime.UtcNow.ToString("o"),
+                        connector_version = typeof(ApiClient).Assembly.GetName().Version?.ToString(3),
+                    }),
                     Encoding.UTF8, "application/json");
                 using var response = await _httpClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode)

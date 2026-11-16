@@ -10,6 +10,7 @@ export interface Company {
     id: string;
     name: string;
     last_sync_at?: string;
+    connector_version?: string | null;
     subscription_plan?: string;
 }
 

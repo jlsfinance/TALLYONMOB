@@ -1,6 +1,4 @@
-const GITHUB_API = 'https://api.github.com/repos/jlsfinance/TALLYONMOB/releases/latest';
-const GITHUB_RELEASES_PAGE = 'https://github.com/jlsfinance/TALLYONMOB/releases/latest';
-const CURRENT_VERSION = '2.10.9';
+import { APP_INFO } from '@/config/appInfo';
 
 export interface UpdateInfo {
     available: boolean;
@@ -11,46 +9,48 @@ export interface UpdateInfo {
     publishedAt: string;
 }
 
-let cachedUpdate: UpdateInfo | null = null;
-let lastCheck = 0;
-const CHECK_INTERVAL = 60 * 60 * 1000;
-
-export async function checkForUpdate(): Promise<UpdateInfo | null> {
-    const now = Date.now();
-    if (cachedUpdate && (now - lastCheck) < CHECK_INTERVAL) {
-        return cachedUpdate;
-    }
-
-    try {
-        const res = await fetch(GITHUB_API, {
-            headers: { 'Accept': 'application/vnd.github.v3+json' },
-        });
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        const tagName = data.tag_name || '';
-        const latestVersion = tagName.replace(/^v/i, '');
-
-        const downloadUrl = data.html_url || GITHUB_RELEASES_PAGE;
-
-        const available = latestVersion !== CURRENT_VERSION && latestVersion !== '';
-
-        cachedUpdate = {
-            available,
-            latestVersion: latestVersion || CURRENT_VERSION,
-            currentVersion: CURRENT_VERSION,
-            downloadUrl,
-            releaseNotes: data.body || '',
-            publishedAt: data.published_at || '',
-        };
-        lastCheck = now;
-
-        return cachedUpdate;
-    } catch {
-        return null;
-    }
+export interface SyncedCompany {
+    connector_version?: string | null;
+    last_sync_at?: string | null;
 }
 
-export function getCurrentVersion(): string {
-    return CURRENT_VERSION;
+const parts = (version: string) =>
+    version.replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+
+/** True when `version` is strictly older than `than` (numeric compare, "3.2.9" < "3.2.10"). */
+export function isOlderVersion(version: string, than: string): boolean {
+    const a = parts(version);
+    const b = parts(than);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const x = a[i] || 0;
+        const y = b[i] || 0;
+        if (x !== y) return x < y;
+    }
+    return false;
+}
+
+/**
+ * The connector stamps companies.connector_version on every finished sync, so the card
+ * shows only to users whose last sync came from a build older than APP_INFO.pcVersion.
+ * A sync without a version means a connector older than the first one that reports it,
+ * so it counts as older too. A user with no completed sync has nothing to upgrade.
+ */
+export function checkForUpdate(companies: SyncedCompany[]): UpdateInfo | null {
+    const synced = (companies || []).filter(c => c.last_sync_at);
+    if (synced.length === 0) return null;
+
+    const unknown = '0.0.0';
+    const versions = synced.map(c =>
+        c.connector_version ? String(c.connector_version).replace(/^v/i, '') : unknown);
+    const oldest = versions.reduce((min, v) => (isOlderVersion(v, min) ? v : min), versions[0]);
+    if (!isOlderVersion(oldest, APP_INFO.pcVersion)) return null;
+
+    return {
+        available: true,
+        latestVersion: APP_INFO.pcVersion,
+        currentVersion: oldest === unknown ? 'an older connector' : `v${oldest}`,
+        downloadUrl: APP_INFO.pcDownloadUrl,
+        releaseNotes: '',
+        publishedAt: '',
+    };
 }

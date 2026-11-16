@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react';
 import { X, Download, ExternalLink } from 'lucide-react';
 import { checkForUpdate, type UpdateInfo } from '@/lib/updateChecker';
+import { useAuth } from '@/contexts/AuthContext';
+import type { AuthContextType } from '@/contexts/types';
 
 export default function UpdateBanner() {
+    const { companies } = useAuth() as AuthContextType;
     const [update, setUpdate] = useState<UpdateInfo | null>(null);
     const [dismissed, setDismissed] = useState(false);
 
     useEffect(() => {
-        checkForUpdate().then(info => {
-            if (info?.available) {
-                const dismissedVersion = localStorage.getItem('dismissed_update_version');
-                if (dismissedVersion !== info.latestVersion) {
-                    setUpdate(info);
-                }
-            }
-        });
-    }, []);
+        const info = checkForUpdate(companies);
+        if (!info?.available) {
+            setUpdate(null);
+            return;
+        }
+        const dismissedVersion = localStorage.getItem('dismissed_update_version');
+        setUpdate(dismissedVersion === info.latestVersion ? null : info);
+    }, [companies]);
 
     if (!update || dismissed) return null;
 
@@ -33,7 +35,7 @@ export default function UpdateBanner() {
                         <div>
                             <p className="text-[11px] font-bold text-[var(--on-surface)]">Update Available</p>
                             <p className="text-[9px] text-[var(--text-muted)]">
-                                v{update.latestVersion} (current: v{update.currentVersion})
+                                v{update.latestVersion} available (you have {update.currentVersion})
                             </p>
                         </div>
                     </div>
