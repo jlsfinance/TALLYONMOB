@@ -130,11 +130,13 @@ namespace TallySyncApp.Services
 
             // Tally me jo field khaali hai wo bhejna hi nahi, warna web app se daali hui
             // GSTIN/address next sync pe null ho jati hai (Tally me GST number set hi nahi hota).
-            if (!string.IsNullOrWhiteSpace(company.Gstin)) companyData["gstin"] = company.Gstin.Trim();
-            if (!string.IsNullOrWhiteSpace(company.Address)) companyData["address"] = company.Address.Trim();
-            if (!string.IsNullOrWhiteSpace(company.State)) companyData["state"] = company.State.Trim();
-            if (!string.IsNullOrWhiteSpace(company.Phone)) companyData["phone"] = company.Phone.Trim();
-            if (!string.IsNullOrWhiteSpace(company.Email)) companyData["email"] = company.Email.Trim();
+            // Lekin Tally ke control characters (&#4;) ko saaf karne ke liye empty hone par
+            // explicitly null bhejte hain, taki purana garbage overwrite ho sake.
+            companyData["gstin"] = string.IsNullOrWhiteSpace(company.Gstin) ? null : company.Gstin.Trim();
+            companyData["address"] = string.IsNullOrWhiteSpace(company.Address) ? null : company.Address.Trim();
+            companyData["state"] = string.IsNullOrWhiteSpace(company.State) ? null : company.State.Trim();
+            companyData["phone"] = string.IsNullOrWhiteSpace(company.Phone) ? null : company.Phone.Trim();
+            companyData["email"] = string.IsNullOrWhiteSpace(company.Email) ? null : company.Email.Trim();
 
             // RLS on companies is `owner_id = auth.uid()`; without it the insert is rejected (42501)
             var owner = !string.IsNullOrEmpty(company.OwnerId) ? company.OwnerId : _ownerId;

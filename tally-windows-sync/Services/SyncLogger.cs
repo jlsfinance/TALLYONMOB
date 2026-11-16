@@ -26,14 +26,21 @@ namespace TallySyncApp.Services
             catch { /* Ignore logging directory creation errors */ }
         }
 
+        private static readonly object LogLock = new();
+
         public static void Log(string message)
         {
             try
             {
-                File.AppendAllText(
-                    Path.Combine(LogDir, "sync.log"),
-                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}\n"
-                );
+                // Concurrent appends made File.AppendAllText throw, and the swallow below then
+                // dropped real errors from the log. Serialise them instead.
+                lock (LogLock)
+                {
+                    File.AppendAllText(
+                        Path.Combine(LogDir, "sync.log"),
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}\n"
+                    );
+                }
             }
             catch { }
         }

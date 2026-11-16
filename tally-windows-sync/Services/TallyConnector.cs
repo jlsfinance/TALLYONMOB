@@ -264,9 +264,8 @@ namespace TallySyncApp.Services
                 var doc = await SendRequestAsync(request);
                 if (doc == null) return new List<Company>();
 
-                // Save for debugging if needed
-                SyncLogger.SaveFile("tally_response.xml", doc.ToString());
-                // Using Log method if available, otherwise fallback to Console
+                // No doc.ToString() debug save here: Tally sends characters like &#4; in STATENAME,
+                // which parse fine but throw ("invalid character") when re-serialised.
                 Log("🔍 Tally Response received. Checking for companies...");
 
                 var companies = new List<Company>();
@@ -276,6 +275,7 @@ namespace TallySyncApp.Services
                 var companyElements = doc.Descendants().Where(x => x.Name.LocalName.Equals("COMPANY", StringComparison.OrdinalIgnoreCase)).ToList();
                 
                 Log($"🔍 Found {companyElements.Count} potential company elements in XML.");
+                SyncLogger.Log($"[Companies] {companyElements.Count} COMPANY elements in Tally response");
 
                 foreach (var comp in companyElements)
                 {
@@ -284,18 +284,21 @@ namespace TallySyncApp.Services
                     if (string.IsNullOrEmpty(name)) 
                     {
                         Log("   ⚠️ Skipping empty company name element");
+                        SyncLogger.Log("[Companies] skipped: empty name");
                         continue;
                     }
 
                     if (name.Length < 2)
                     {
                          Log($"   ⚠️ Skipping too short name: '{name}'");
+                         SyncLogger.Log($"[Companies] skipped: short name '{name}'");
                          continue;
                     }
 
                     if (name.Contains("Report") || name.Contains("Error") || name.Contains("\n")) 
                     {
                         Log($"   ⚠️ Skipping reserved keyword/invalid char in: '{name}'");
+                        SyncLogger.Log($"[Companies] skipped: reserved name '{name}'");
                         continue;
                     }
 
@@ -329,16 +332,16 @@ namespace TallySyncApp.Services
                         var addressList = comp.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
                         if (addressList != null)
                         {
-                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         }
                         // Fallback: direct ADDRESS descendants
                         if (addressParts.Count == 0)
                         {
-                            addressParts.AddRange(comp.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(comp.Descendants("ADDRESS").Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         }
                         // Extract state (Tally company master me STATENAME hota hai; STATE/LEDSTATENAME ledger ke field hain)
                         var compState = new[] { "STATENAME", "STATE", "LEDSTATENAME", "COUNTRYOFRESIDENCE" }
-                            .Select(t => GetElementValue(comp, t))
+                            .Select(t => CleanTallyText(GetElementValue(comp, t)))
                             .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
                         if (!string.IsNullOrWhiteSpace(compState) && !addressParts.Any(p => p.Contains(compState, StringComparison.OrdinalIgnoreCase)))
                         {
@@ -380,6 +383,7 @@ namespace TallySyncApp.Services
                 }
 
                 Log($"🔍 Returning {companies.Count} valid companies to SyncManager.");
+                SyncLogger.Log($"[Companies] parsed {companies.Count} companies");
 
                 // If collection query failed, try the old active company method as fallback
                 if (companies.Count == 0)
@@ -393,6 +397,7 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 Log($"Company list error: {ex.Message}");
+                SyncLogger.Log($"[Companies] error: {ex}");
                 return new List<Company>();
             }
         }
@@ -653,9 +658,9 @@ namespace TallySyncApp.Services
                         var addressParts = new List<string>();
                         var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
                         if (addressList != null)
-                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         if (addressParts.Count == 0)
-                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
                         if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
                             addressParts.Add(state);
@@ -764,9 +769,9 @@ namespace TallySyncApp.Services
                         var addressParts = new List<string>();
                         var addressList = ledgerElement.Descendants().Where(e => e.Name.LocalName.Equals("ADDRESS.LIST", StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
                         if (addressList != null)
-                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(addressList.Elements().Where(e => e.Name.LocalName.Equals("ADDRESS", StringComparison.OrdinalIgnoreCase)).Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         if (addressParts.Count == 0)
-                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => a.Value.Trim()).Where(v => !string.IsNullOrWhiteSpace(v)));
+                            addressParts.AddRange(ledgerElement.Descendants("ADDRESS").Select(a => CleanTallyText(a.Value) ?? "").Where(v => !string.IsNullOrWhiteSpace(v)));
                         var state = GetElementValue(ledgerElement, "LEDSTATENAME") ?? GetElementValue(ledgerElement, "COUNTRYOFRESIDENCE");
                         if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
                             addressParts.Add(state);
@@ -2007,6 +2012,17 @@ namespace TallySyncApp.Services
 
         #region Helper Methods
 
+        /// <summary>
+        /// Tally marks "not set" fields with control characters like &#4; ("&#4; Not Applicable").
+        /// Those parse fine but pollute what we upload, so drop them here.
+        /// </summary>
+        private static string? CleanTallyText(string? value)
+        {
+            if (string.IsNullOrEmpty(value)) return value?.Trim();
+            var cleaned = new string(value.Where(c => c >= ' ' || c == '\t').ToArray()).Trim();
+            return cleaned.Equals("Not Applicable", StringComparison.OrdinalIgnoreCase) ? null : cleaned;
+        }
+
         private static string? GetElementValue(XElement element, string name)
         {
             // First try direct child
@@ -2247,9 +2263,7 @@ namespace TallySyncApp.Services
                 }
 
                 // Check for success in response
-                var responseText = doc.ToString();
-                
-                // Look for CREATED element (successful creation)
+                // (no doc.ToString() here: Tally can echo characters like &#4; that throw when re-serialised)
                 var created = doc.Descendants("CREATED").FirstOrDefault()?.Value;
                 if (created == "1")
                 {
