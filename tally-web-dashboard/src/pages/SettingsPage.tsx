@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
     CreditCard, Users, Database, Save, KeyRound, Trash2, BrainCircuit,
-    ShieldCheck, LifeBuoy, FileText, Building2
+    ShieldCheck, LifeBuoy, FileText, Building2, MessageCircle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '@/lib/insforge';
@@ -203,6 +203,12 @@ export default function SettingsPage() {
     };
 
     const sections = [
+        {
+            title: 'WhatsApp Bot',
+            desc: 'Link your WhatsApp number or remove its access',
+            path: '/settings/whatsapp',
+            icon: <MessageCircle size={20} className="text-emerald-500" />,
+        },
         {
             title: t('settings.team_management'),
             icon: <Users className="text-blue-500" />,
