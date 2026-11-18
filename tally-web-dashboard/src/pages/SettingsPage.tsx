@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
     CreditCard, Users, Database, Save, KeyRound, Trash2, BrainCircuit,
-    ShieldCheck, LifeBuoy, FileText, Building2
+    ShieldCheck, LifeBuoy, FileText, Building2, Send
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '@/lib/insforge';
@@ -203,6 +203,12 @@ export default function SettingsPage() {
     };
 
     const sections = [
+        {
+            title: 'Telegram Bot',
+            desc: 'Connect your Telegram account for company reports',
+            path: '/settings/telegram',
+            icon: <Send size={20} className="text-sky-500" />,
+        },
         {
             title: t('settings.team_management'),
             icon: <Users className="text-blue-500" />,

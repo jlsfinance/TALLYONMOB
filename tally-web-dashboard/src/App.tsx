@@ -141,6 +141,7 @@ const ReportBuilderPage = lazyPage('ReportBuilderPage', () => import('./pages/Re
 const InvoiceViewPage = lazyPage('InvoiceViewPage', () => import('./pages/InvoiceViewPage'));
 const LegalTemplatePage = lazyPage('LegalTemplatePage', () => import('./pages/LegalTemplatePage'));
 const SettingsPage = lazyPage('SettingsPage', () => import('./pages/SettingsPage'));
+const TelegramSettingsPage = lazyPage('TelegramSettingsPage', () => import('./pages/TelegramSettingsPage'));
 const MappingMasterPage = lazyPage('MappingMasterPage', () => import('./pages/MappingMasterPage'));
 const StockItemDetailPage = lazyPage('StockItemDetailPage', () => import('./pages/StockItemDetailPage'));
 const BankAutomationPage = lazyPage('BankAutomationPage', () => import('./pages/BankAutomationPage'));
@@ -205,6 +206,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (!selectedCompany &&
         location.pathname !== '/select-company' &&
         location.pathname !== '/subscription' &&
+        location.pathname !== '/settings/telegram' &&
         location.pathname !== '/onboarding' &&
         location.pathname !== '/admin' &&
         location.pathname !== '/') {
@@ -413,6 +415,7 @@ function AppContent() {
                                     <Route path="/clients/:clientId/invoice-import" element={<Navigate to="/" replace />} />
                                     <Route path="/clients/:clientId/gst" element={<Navigate to="/" replace />} />
                                     <Route path="/settings" element={<SettingsPage />} />
+                                    <Route path="/settings/telegram" element={<TelegramSettingsPage />} />
                                     <Route path="/mapping-master" element={<MappingMasterPage />} />
                                     <Route path="/activity-logs" element={<ActivityLogsPage />} />
                                     <Route path="/budget-vs-actual" element={<Navigate to="/" replace />} />
