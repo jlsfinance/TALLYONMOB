@@ -8,6 +8,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { VOUCHER_TYPES, type VoucherType } from '../lib/voucherTypes';
 import { effectiveGstRate } from '../lib/effectiveGst.mjs';
+import './CreateVoucherLayout.css';
 
 interface LedgerEntry {
     ledger_name: string;
@@ -288,7 +289,7 @@ export default function CreateVoucherPage() {
 
     // Step 2: Voucher Form
     return (
-        <div className={`voucher-dark ${voucherType === 'Sales' ? 'voucher-sales' : ''} min-h-screen bg-[var(--background)] pb-24 font-sans`}>
+        <div className={`voucher-dark ${isMoneyVoucher ? 'voucher-money' : ''} ${voucherType === 'Sales' ? 'voucher-sales' : ''} min-h-screen bg-[var(--background)] pb-24 font-sans`}>
           <header className="sticky top-0 z-40 bg-[#0B1118]/95 backdrop-blur-md border-b border-[#1E2B38] px-3 sm:px-6 py-2.5 shadow-sm">
             <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
                 <button
@@ -344,43 +345,6 @@ export default function CreateVoucherPage() {
                 </div>
             </div>
 
-            {isMoneyVoucher && (
-                <div className="mb-4 grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-2">
-                    <label className="text-sm font-semibold text-[var(--on-surface)]">Amount (₹)
-                        <input type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]" />
-                    </label>
-                    <label className="text-sm font-semibold text-[var(--on-surface)]">Cash / bank ledger
-                        <select value={cashBankLedger} onChange={e => setCashBankLedger(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]">
-                            <option value="">Select cash or bank ledger</option>
-                            {cashBankLedgers.map(l => <option key={l.id} value={l.name}>{l.name} ({l.parent})</option>)}
-                        </select>
-                        <span className="mt-1 block text-xs font-normal text-[var(--text-muted)]">{ledgerError || (!cashBankLedgers.length ? 'Cash/Bank ledger nahi mila. Tally se masters sync karein.' : 'Tally se synced cash aur bank accounts')}</span>
-                    </label>
-                </div>
-            )}
-            {voucherType === 'Purchase' && (
-                <label className="mb-4 block rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm font-semibold text-[var(--on-surface)]">Purchase ledger
-                    <select value={purchaseLedger} onChange={e => setPurchaseLedger(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]">
-                        <option value="">Select purchase ledger</option>
-                        {purchaseLedgers.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
-                    </select>
-                    <span className="mt-1 block text-xs font-normal text-[var(--text-muted)]">{ledgerError || (!purchaseLedgers.length ? 'Purchase ledger nahi mila. Tally se masters sync karein.' : 'Wahi purchase account chunein jo Tally mein use hota hai.')}</span>
-                </label>
-            )}
-            {isLedgerVoucher && (
-                <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                    <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-[var(--on-surface)]">Ledger entries</h2><button type="button" onClick={() => setLedgerEntries([...ledgerEntries, { ledger_name: '', amount: 0, type: ledgerEntries.length ? 'Cr' : 'Dr' }])} className="text-sm font-semibold text-[var(--primary)]">+ Add ledger</button></div>
-                    {ledgerEntries.map((entry, index) => <div key={index} className="mb-2 grid grid-cols-[1fr_80px_100px_auto] gap-2">
-                        <input list="voucher-ledger-options" value={entry.ledger_name} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, ledger_name: e.target.value } : row))} placeholder="Ledger name" className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm text-[var(--on-surface)]" />
-                        <select value={entry.type} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, type: e.target.value as 'Dr' | 'Cr' } : row))} className="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--on-surface)]"><option>Dr</option><option>Cr</option></select>
-                        <input type="number" min="0" step="0.01" value={entry.amount || ''} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, amount: Number(e.target.value) } : row))} placeholder="Amount" className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--on-surface)]" />
-                        <button type="button" aria-label="Remove ledger" onClick={() => setLedgerEntries(ledgerEntries.filter((_, i) => i !== index))}><X className="h-4 w-4 text-red-500" /></button>
-                    </div>)}
-                    <datalist id="voucher-ledger-options">{allLedgers.map(l => <option key={l.id} value={l.name} />)}</datalist>
-                    {!ledgerEntries.length && <p className="text-sm text-[var(--text-muted)]">Add debit and credit entries.</p>}
-                </div>
-            )}
-
             {/* Party Selection */}
             <div className="voucher-party mb-4 relative">
                 <label className="text-xs text-[var(--text-muted)] mb-1 block">Party Name</label>
@@ -416,6 +380,44 @@ export default function CreateVoucherPage() {
                     </div>
                 )}
             </div>
+
+            {isMoneyVoucher && (
+                <div className="voucher-money-fields mb-4 grid gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:grid-cols-2">
+
+                    <label className="text-sm font-semibold text-[var(--on-surface)]">Cash / bank ledger
+                        <select value={cashBankLedger} onChange={e => setCashBankLedger(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]">
+                            <option value="">Select cash or bank ledger</option>
+                            {cashBankLedgers.map(l => <option key={l.id} value={l.name}>{l.name} ({l.parent})</option>)}
+                        </select>
+                        <span className="mt-1 block text-xs font-normal text-[var(--text-muted)]">{ledgerError || (!cashBankLedgers.length ? 'Cash/Bank ledger nahi mila. Tally se masters sync karein.' : 'Tally se synced cash aur bank accounts')}</span>
+                    </label>
+                    <label className="text-sm font-semibold text-[var(--on-surface)]">Amount (₹)
+                        <input type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]" />
+                    </label>
+                </div>
+            )}
+            {voucherType === 'Purchase' && (
+                <label className="mb-4 block rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm font-semibold text-[var(--on-surface)]">Purchase ledger
+                    <select value={purchaseLedger} onChange={e => setPurchaseLedger(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-base text-[var(--on-surface)]">
+                        <option value="">Select purchase ledger</option>
+                        {purchaseLedgers.map(l => <option key={l.id} value={l.name}>{l.name}</option>)}
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-[var(--text-muted)]">{ledgerError || (!purchaseLedgers.length ? 'Purchase ledger nahi mila. Tally se masters sync karein.' : 'Wahi purchase account chunein jo Tally mein use hota hai.')}</span>
+                </label>
+            )}
+            {isLedgerVoucher && (
+                <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                    <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold text-[var(--on-surface)]">Ledger entries</h2><button type="button" onClick={() => setLedgerEntries([...ledgerEntries, { ledger_name: '', amount: 0, type: ledgerEntries.length ? 'Cr' : 'Dr' }])} className="text-sm font-semibold text-[var(--primary)]">+ Add ledger</button></div>
+                    {ledgerEntries.map((entry, index) => <div key={index} className="mb-2 grid grid-cols-[1fr_80px_100px_auto] gap-2">
+                        <input list="voucher-ledger-options" value={entry.ledger_name} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, ledger_name: e.target.value } : row))} placeholder="Ledger name" className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-2 text-sm text-[var(--on-surface)]" />
+                        <select value={entry.type} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, type: e.target.value as 'Dr' | 'Cr' } : row))} className="rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--on-surface)]"><option>Dr</option><option>Cr</option></select>
+                        <input type="number" min="0" step="0.01" value={entry.amount || ''} onChange={e => setLedgerEntries(ledgerEntries.map((row, i) => i === index ? { ...row, amount: Number(e.target.value) } : row))} placeholder="Amount" className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 text-sm text-[var(--on-surface)]" />
+                        <button type="button" aria-label="Remove ledger" onClick={() => setLedgerEntries(ledgerEntries.filter((_, i) => i !== index))}><X className="h-4 w-4 text-red-500" /></button>
+                    </div>)}
+                    <datalist id="voucher-ledger-options">{allLedgers.map(l => <option key={l.id} value={l.name} />)}</datalist>
+                    {!ledgerEntries.length && <p className="text-sm text-[var(--text-muted)]">Add debit and credit entries.</p>}
+                </div>
+            )}
 
             {/* Stock Items (for Sales/Purchase types) */}
             {hasStockEntries && (

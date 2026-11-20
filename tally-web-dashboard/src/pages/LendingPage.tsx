@@ -43,7 +43,7 @@ const statusMap: Record<string, { label: string; icon: any; badge: string }> = {
 const statusOrder: string[] = ['active', 'partially_settled', 'overdue', 'written_off', 'settled'];
 
 // ---------- row windowing ----------
-import { ListChildComponentProps } from 'react-window';
+
 
 interface Props { rows: any[]; onRowClick: (r: any) => void; }
 

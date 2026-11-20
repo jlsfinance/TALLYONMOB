@@ -1,0 +1,23 @@
+{
+  "slug": "customer-ledger-month-end-checklist",
+  "title": "Month-end checklist before sharing a Tally customer ledger",
+  "description": "Set a clear date range, verify opening and closing balances, and check recent vouchers before sending a ledger PDF.",
+  "sections": [
+    {
+      "heading": "Agree on the statement dates",
+      "body": "Choose the correct company and customer ledger, then set the statement dates. For a monthly statement, the opening balance should reflect the account position at the start of the selected period. If the customer has similarly named ledgers, confirm the exact party before export."
+    },
+    {
+      "heading": "Tie out the closing balance",
+      "body": "Check the opening balance and the debit and credit movements against the closing balance shown in TallyPrime. Pay special attention to receipts, credit notes and entries near the cutoff date. Compare the ending balance with TallyPrime if a sync is pending or the balance is marked unverified."
+    },
+    {
+      "heading": "Review the PDF before sending it",
+      "body": "Open the exported statement and confirm the displayed company, party name, date range and opening and closing balances. Compare a recent voucher by number and date. Share only the statement for the intended customer and the agreed period."
+    }
+  ],
+  "relatedPaths": [
+    "/guides/tally-ledger-on-mobile",
+    "/for-accountants"
+  ]
+}

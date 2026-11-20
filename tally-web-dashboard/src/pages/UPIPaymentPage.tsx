@@ -1,3 +1,4 @@
+import type { AuthContextType } from '@/contexts/types';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -86,7 +87,7 @@ const itemVariants = {
 };
 
 const UPIPaymentPage: React.FC = () => {
-  const { selectedCompany } = useAuth();
+  const { selectedCompany } = useAuth() as AuthContextType;
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);

@@ -392,6 +392,15 @@ namespace TallySyncApp.Services
                     // =============================================
                     else if (tableName == "ledgers")
                     {
+                        // Also protect retries of corrupt batches queued by older connectors.
+                        string? Field(string key) => dict.TryGetValue(key, out var value) ? value?.ToString() : null;
+                        if (!LedgerMasterXml.ValidIdentity(Field("name"), Field("id"),
+                                Field("parent_group") ?? Field("parent"), Field("master_id"), Field("alter_id")))
+                            return new ApiResponse<SyncResultDetails>
+                            {
+                                Success = false,
+                                Error = "Incomplete ledger master blocked; refresh masters from Tally instead of uploading placeholders."
+                            };
                         // Map parent_group -> parent (C# model uses ParentGroup, table uses parent)
                         if (dict.ContainsKey("parent_group"))
                         {
@@ -775,6 +784,34 @@ namespace TallySyncApp.Services
                 SyncLogger.Log($"⚠️ GetMaxAlterIdAsync error: {ex.Message}");
                 return 0;
             }
+        }
+
+        // Older parsers uploaded CMPINFO/LEDGER counters as random Unknown/zero rows.
+        // Such rows prove the master snapshot is incomplete, even if one newer ledger
+        // already advanced ALTERID. Recover masters independently of voucher history.
+        private static string LedgerPlaceholderFilter(string companyId) =>
+            $"company_id=eq.{Uri.EscapeDataString(companyId)}&name=eq.Unknown&parent=is.null" +
+            "&master_id=is.null&alter_id=is.null&opening_balance=eq.0&current_balance=eq.0&is_deleted=eq.false";
+
+        public async Task<bool> LedgerMasterRepairRequiredAsync(string companyId)
+        {
+            AddAuthHeader();
+            using var response = await _httpClient.GetAsync($"{_supabaseUrl}/rest/v1/ledgers?{LedgerPlaceholderFilter(companyId)}&select=id&limit=1");
+            response.EnsureSuccessStatusCode();
+            return Newtonsoft.Json.Linq.JArray.Parse(await response.Content.ReadAsStringAsync()).Count > 0;
+        }
+
+        /// <summary>Call only after a complete validated master snapshot was uploaded.</summary>
+        public async Task RetireLedgerPlaceholdersAsync(string companyId)
+        {
+            AddAuthHeader();
+            using var request = new HttpRequestMessage(HttpMethod.Patch,
+                $"{_supabaseUrl}/rest/v1/ledgers?{LedgerPlaceholderFilter(companyId)}")
+            {
+                Content = new StringContent("{\"is_deleted\":true}", Encoding.UTF8, "application/json")
+            };
+            using var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
         }
 
         /// <summary>
@@ -1756,15 +1793,18 @@ namespace TallySyncApp.Services
                 var json = JsonConvert.SerializeObject(updates);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 
-                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{transactionId}";
+                var url = $"{_supabaseUrl}/rest/v1/pending_transactions?id=eq.{Uri.EscapeDataString(transactionId)}&select=id";
                 
                 var request = new HttpRequestMessage(HttpMethod.Patch, url)
                 {
                     Content = content
                 };
+                request.Headers.Add("Prefer", "return=representation");
                 
-                var response = await _httpClient.SendAsync(request);
-                return response.IsSuccessStatusCode;
+                using var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode) return false;
+                var rows = Newtonsoft.Json.Linq.JArray.Parse(await response.Content.ReadAsStringAsync());
+                return rows.Count == 1 && string.Equals(rows[0]?["id"]?.ToString(), transactionId, StringComparison.Ordinal);
             }
             catch (Exception ex)
             {

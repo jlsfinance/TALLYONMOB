@@ -393,7 +393,7 @@ export default function PaymentRemindersPage() {
                         <div className="py-20 flex justify-center"><Loader2 size={24} className="animate-spin text-amber-500" /></div>
                     ) : filteredParties.length === 0 ? (
                         <div className="py-16 text-center text-[var(--text-muted)] border border-[var(--border)] rounded-2xl bg-[var(--surface)]">
-                            <CheckCircle2 size={36} className="mx-auto mb-2 text-emerald-500 opacity-60" />
+                            <CheckCircle size={36} className="mx-auto mb-2 text-emerald-500 opacity-60" />
                             <p className="text-sm font-bold">No outstanding payments found</p>
                             <p className="text-xs mt-1">All your sundry debtors have clear accounts or match filters.</p>
                         </div>
@@ -503,7 +503,7 @@ export default function PaymentRemindersPage() {
                                         </td>
                                         <td className="px-4 py-3 text-center">
                                             <span className="text-emerald-600 font-bold text-[10px] flex items-center justify-center gap-1">
-                                                <CheckCircle2 size={12} /> Delivered
+                                                <CheckCircle size={12} /> Delivered
                                             </span>
                                         </td>
                                     </tr>

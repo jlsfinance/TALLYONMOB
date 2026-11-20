@@ -1,4 +1,5 @@
 {
+    "buildCommand": "npm run build:web",
     "rewrites": [
         {
             "source": "/api/v1/subscriptions/:path*",
@@ -9,8 +10,28 @@
             "destination": "/api/$1"
         },
         {
-            "source": "/(.*)",
+            "source": "/",
             "destination": "/index.html"
+        },
+        {
+            "source": "/:page(syncora|product-overview|pricing|for-accountants|about|support|contact|privacy|terms|refund|security|trust-center|account-deletion)",
+            "destination": "/search-pages/:page.html"
+        },
+        {
+            "source": "/guides/:page(tallyprime-setup|tally-ledger-on-mobile|tally-sync-troubleshooting)",
+            "destination": "/search-pages/guides/:page.html"
+        },
+        {
+            "source": "/resources",
+            "destination": "/search-pages/resources.html"
+        },
+        {
+            "source": "/resources/:slug([a-z0-9-]+)",
+            "destination": "/search-pages/resources/:slug.html"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/app-shell.html"
         }
     ]
 }

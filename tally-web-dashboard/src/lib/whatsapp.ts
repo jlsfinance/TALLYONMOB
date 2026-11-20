@@ -22,7 +22,7 @@ export async function sendEodReport(companyId: string, phone: string, companyNam
 
     const topParty = (vouchers || [])
         .filter((v: any) => v.voucher_type === 'Sales' && v.party_name)
-        .reduce((acc: any, v: any) => {
+        .reduce<Record<string, number>>((acc, v) => {
             acc[v.party_name] = (acc[v.party_name] || 0) + Math.abs(Number(v.grand_total) || 0);
             return acc;
         }, {} as Record<string, number>);

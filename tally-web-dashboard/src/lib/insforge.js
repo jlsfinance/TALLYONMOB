@@ -1,3 +1,4 @@
+import { readAllPages } from './readAllPages.mjs';
 ﻿import { createClient } from "@supabase/supabase-js";
 import { Capacitor } from "@capacitor/core";
 
@@ -256,10 +257,11 @@ const companyApi = {
   getSummary: async (companyId) => {
     try {
       const [l, v, s] = await Promise.all([
-        db.from("ledgers").select("*", { head: true, count: "exact" }).eq("company_id", companyId),
-        db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).limit(50000),
+        db.from("ledgers").select("*", { head: true, count: "exact" }).eq("company_id", companyId).eq("is_deleted", false),
+        readAllPages(() => db.from("vouchers").select("id,voucher_type,grand_total,total_amount").eq("company_id", companyId).eq("is_deleted", false).order("id")),
         db.from("stock_items").select("*", { head: true, count: "exact" }).eq("company_id", companyId),
       ]);
+      if (l.error || v.error || s.error) throw l.error || v.error || s.error;
       let totalSales = 0, totalPurchases = 0;
       if (v.data) {
         v.data.forEach((vd) => {
@@ -270,7 +272,7 @@ const companyApi = {
       }
       return { ledgerCount: l.count || 0, voucherCount: v.data?.length || 0, stockCount: s.count || 0, totalSales, totalPurchases };
     } catch (e) {
-      return { ledgerCount: 0, voucherCount: 0, stockCount: 0, totalSales: 0, totalPurchases: 0 };
+      throw e;
     }
   },
   deleteCompanyData: async (companyId) => {
@@ -288,21 +290,23 @@ const companyApi = {
 // â”€â”€â”€ Ledger API â”€â”€â”€
 const ledgerApi = {
   list: async (companyId, parentGroup = null) => {
-    let q = db.from("ledgers").select("*").eq("company_id", companyId).order("name");
+    let q = db.from("ledgers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("name");
     if (parentGroup) q = q.eq("parent", parentGroup);
     return await q;
   },
   getById: async (id) => db.from("ledgers").select("*").eq("id", id).single(),
   getGroups: async (companyId) => {
-    const { data, error } = await db.from("ledgers").select("parent").eq("company_id", companyId);
+    const { data, error } = await db.from("ledgers").select("parent").eq("company_id", companyId).eq("is_deleted", false);
     if (error) return { data: [], error };
     return { data: [...new Set(data.map((l) => l.parent).filter(Boolean))], error: null };
   },
   getTransactions: async (ledgerId, fromDate, toDate) => {
-    let q = db.from("vouchers").select("*").eq("party_name", ledgerId).order("voucher_date", { ascending: false }).limit(50000);
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    return await q;
+    return readAllPages(() => {
+      let q = db.from("vouchers").select("*").eq("party_name", ledgerId).order("voucher_date", { ascending: false }).order("id");
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      return q;
+    });
   },
   getItemHistory: async (companyId, ledgerName, itemName, { fromDate, toDate, voucherTypes, sort = "desc", limit = 1e3 } = {}) => {
     try {
@@ -341,12 +345,14 @@ const ledgerApi = {
 // â”€â”€â”€ Voucher API â”€â”€â”€
 const voucherApi = {
   list: async (companyId, { fromDate, toDate, type, party } = {}) => {
-    let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("voucher_date", { ascending: false }).limit(50000);
-    if (type) q = q.eq("voucher_type", type);
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    if (party) q = q.ilike("party_name", "%" + party + "%");
-    return await q;
+    return readAllPages(() => {
+      let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("voucher_date", { ascending: false }).order("id");
+      if (type) q = q.eq("voucher_type", type);
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      if (party) q = q.ilike("party_name", "%" + party + "%");
+      return q;
+    });
   },
   getById: async (id) => {
     let q = await db.from("vouchers").select("*").eq("id", id).maybeSingle();
@@ -374,7 +380,7 @@ const voucherApi = {
       // calculation hi chalega. RPC banega to yahan call wapas laga do.
       const [ledgerRes, vouchersRes] = await Promise.all([
         db.from("ledgers").select("id, name, opening_balance").eq("company_id", companyId).ilike("name", party).maybeSingle(),
-        db.from("vouchers").select("id, voucher_type, voucher_date, total_amount, grand_total, is_deleted").eq("company_id", companyId).eq("party_name", party).lte("voucher_date", voucher.voucher_date).eq("is_deleted", false).limit(50000),
+        readAllPages(() => db.from("vouchers").select("id, voucher_type, voucher_date, total_amount, grand_total, is_deleted").eq("company_id", companyId).eq("party_name", party).lte("voucher_date", voucher.voucher_date).eq("is_deleted", false).order("id")),
       ]);
       const openingBalance = Number(ledgerRes?.data?.opening_balance) || 0;
       const ordered = (vouchersRes.data || []).sort(compareByVoucherDate);
@@ -392,7 +398,7 @@ const voucherApi = {
     }
   },
   getTypes: async (companyId) => {
-    const { data, error } = await db.from("vouchers").select("voucher_type").eq("company_id", companyId).limit(50000);
+    const { data, error } = await readAllPages(() => db.from("vouchers").select("voucher_type").eq("company_id", companyId).eq("is_deleted", false).order("id"));
     if (error) return { data: [], error };
     return { data: [...new Set(data.map((v) => v.voucher_type).filter(Boolean))], error: null };
   },
@@ -400,7 +406,7 @@ const voucherApi = {
 
 // â”€â”€â”€ Master API â”€â”€â”€
 const masterApi = {
-  getLedgers: async (companyId) => db.from("ledgers").select("*").eq("company_id", companyId).order("name"),
+  getLedgers: async (companyId) => db.from("ledgers").select("*").eq("company_id", companyId).eq("is_deleted", false).order("name"),
   getStockItems: async (companyId) => db.from("stock_items").select("*").eq("company_id", companyId).order("name"),
 };
 
@@ -494,10 +500,12 @@ const stockApi = {
 // â”€â”€â”€ Reports API â”€â”€â”€
 const reportsApi = {
   getLedgerStatement: async (companyId, ledgerName, fromDate, toDate) => {
-    let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("party_name", ledgerName).order("voucher_date", { ascending: true }).limit(50000);
-    if (fromDate) q = q.gte("voucher_date", fromDate);
-    if (toDate) q = q.lte("voucher_date", toDate);
-    return await q;
+    return readAllPages(() => {
+      let q = db.from("vouchers").select("*").eq("company_id", companyId).eq("party_name", ledgerName).eq("is_deleted", false).order("voucher_date", { ascending: true }).order("id");
+      if (fromDate) q = q.gte("voucher_date", fromDate);
+      if (toDate) q = q.lte("voucher_date", toDate);
+      return q;
+    });
   },
   getSalesSummary: async (companyId, fromDate, toDate) => salesApi.list(companyId, { fromDate, toDate }),
   getPurchaseSummary: async (companyId, fromDate, toDate) => purchasesApi.list(companyId, { fromDate, toDate }),

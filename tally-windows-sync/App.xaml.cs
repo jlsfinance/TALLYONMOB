@@ -77,7 +77,7 @@ namespace TallySyncApp
                 Shutdown();
                 return;
             }
-            _singleInstance.ActivationRequested += (s, ev) => ShowMainWindow();
+            _singleInstance.ActivationRequested += (s, ev) => Dispatcher.BeginInvoke(ShowMainWindow);
             _singleInstance.StartActivationPump();
 
             _logger?.LogInformation("═══════════════════════════════════════════════════════");
@@ -119,7 +119,7 @@ namespace TallySyncApp
                     HideWindow = HideMainWindow,
                     SyncNow = () =>
                     {
-                        try { App.GetSyncManager().StartSync(); } catch (Exception ex) { _logger?.LogWarning(ex, "SyncNow failed"); }
+                        try { TriggerImmediateSync(); } catch (Exception ex) { _logger?.LogWarning(ex, "SyncNow failed"); }
                     },
                     OpenLogFolder = () =>
                     {
@@ -160,7 +160,7 @@ namespace TallySyncApp
                     _realtime.StateChanged += (s, ev) => _logger?.LogInformation("Realtime: {0} -> {1}", ev.OldState, ev.NewState);
                     _realtime.RegisterHandler("force_sync", () =>
                     {
-                        try { App.GetSyncManager().StartSync(); } catch (Exception ex) { _logger?.LogWarning(ex, "force_sync failed"); }
+                        try { TriggerImmediateSync(); } catch (Exception ex) { _logger?.LogWarning(ex, "force_sync failed"); }
                     });
                     _realtime.RegisterHandler<string>("show_message", (msg) =>
                     {
@@ -438,6 +438,13 @@ private async Task CheckForUpdates()
         {
             _syncManager ??= new SyncManager();
             return _syncManager;
+        }
+
+        private static void TriggerImmediateSync()
+        {
+            var mgr = GetSyncManager();
+            if (mgr.IsAutoSyncRunning) _ = mgr.RunManualSyncAsync();
+            else mgr.StartSync();
         }
 
         /// <summary>

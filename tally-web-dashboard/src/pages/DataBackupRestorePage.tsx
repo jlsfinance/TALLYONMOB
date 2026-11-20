@@ -772,8 +772,8 @@ export default function DataBackupRestorePage() {
     const backup = backups.find((b) => b.id === backupId);
     if (!backup) return;
 
-    toast.success(`Restore started (${mode} mode). Data will be restored from backup ${backup.id}.`);
-    // In a real app, this would trigger the restore process
+    toast.error('Use Backup & Restore to restore a saved company backup.');
+
   }, [backups]);
 
   // ── Delete Handler ──
@@ -811,7 +811,7 @@ export default function DataBackupRestorePage() {
           <BackupDashboardSection backups={backups} autoConfig={autoConfig} />
           <ManualBackupSection onBackupStart={handleBackupStart} isBackingUp={isBackingUp} backupProgress={backupProgress} />
           <AutoBackupSettingsSection config={autoConfig} onChange={setAutoConfig} />
-          <BackupHistorySection backups={backups} onDownload={handleDownload} onRestore={handleRestore} onDelete={handleDelete} onViewDetails={handleViewDetails} />
+          <BackupHistorySection backups={backups} onDownload={handleDownload} onRestore={id => setSelectedRestoreBackupId(id)} onDelete={handleDelete} onViewDetails={handleViewDetails} />
           <RestoreOptionsSection backups={backups} onRestore={handleRestore} selectedBackupId={selectedRestoreBackupId} onSelectBackup={setSelectedRestoreBackupId} />
           <ImportExportSection />
         </div>

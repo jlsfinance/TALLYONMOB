@@ -1,0 +1,23 @@
+{
+  "slug": "check-tally-voucher-after-sync",
+  "title": "Check a Tally voucher after syncing it to your phone",
+  "description": "Use the company name, financial year, voucher type and voucher number to verify that the entry on your phone matches TallyPrime.",
+  "sections": [
+    {
+      "heading": "Write down the entry in TallyPrime",
+      "body": "Open the company and voucher in TallyPrime. Note the date, voucher type, voucher number, party and amount. Voucher numbers can repeat across types, companies and periods. Use the full set of details to confirm that both screens show the same transaction."
+    },
+    {
+      "heading": "Check the company, period and last sync",
+      "body": "Select the same company in Syncora and set the financial year and date range. Open the Day Book or Vouchers and find the entry by type and number. Check the latest successful sync before comparing amounts. An edit made after that sync may still be pending."
+    },
+    {
+      "heading": "Compare the amount and party before following up",
+      "body": "If your results show more than one entry, compare the date and party name. If the voucher is missing or an amount differs after a successful sync, note the connector version, last successful run time and voucher details. Ask support to check the mismatch before using the figure to follow up with a customer."
+    }
+  ],
+  "relatedPaths": [
+    "/guides/tally-sync-troubleshooting",
+    "/guides/tallyprime-setup"
+  ]
+}

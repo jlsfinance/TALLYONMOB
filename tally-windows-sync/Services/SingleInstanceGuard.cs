@@ -73,7 +73,7 @@ namespace TallySyncApp.Services
             bool createdNew = false;
             try
             {
-                _mutex = new Mutex(false, MutexName, out createdNew);
+                _mutex = new Mutex(true, MutexName, out createdNew);
             }
             catch (UnauthorizedAccessException)
             {

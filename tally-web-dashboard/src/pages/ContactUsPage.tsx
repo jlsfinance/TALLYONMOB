@@ -60,7 +60,7 @@ export default function ContactUsPage() {
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-[var(--on-surface)] mb-4">Get in Touch</h2>
             {CONTACT_INFO.map((c, i) => (
-              <motion.div key={i} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
+              <motion.div key={i} initial={false} transition={{ delay: i * 0.1 }}
                 className="flex items-start gap-4 p-4 rounded-xl bg-[var(--surface)] border border-[var(--border)]">
                 <div className={`${c.color} mt-0.5`}>{c.icon}</div>
                 <div>

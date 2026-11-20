@@ -113,7 +113,7 @@ export default function LicensePage() {
                     <div className="bg-[var(--surface-secondary)] rounded-xl p-6 border border-[var(--border)]">
                         <h3 className="text-sm font-medium text-[var(--on-surface)]/50 mb-3 uppercase tracking-wider">Plan</h3>
                         <p className="text-xl font-bold text-[var(--on-surface)]">{license.plan?.name || 'Unknown'}</p>
-                        <p className="text-sm text-[var(--on-surface)]/50 mt-2">{sp?.duration_days} days plan</p>
+                        <p className="text-sm text-[var(--on-surface)]/50 mt-2">{license.plan?.duration_days ? license.plan.duration_days + " days plan" : "Custom duration"}</p>
                     </div>
 
                     {/* Expiry Card */}

@@ -1,0 +1,104 @@
+name: Syncora SEO publishing
+
+on:
+  schedule:
+    - cron: '23 3 1,16 * *'
+  workflow_dispatch:
+    inputs:
+      plan_only:
+        description: List this batch without generating or publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: syncora-seo-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || vars.SEO_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      SEO_RELEASE_REF: ${{ vars.SEO_RELEASE_REF }}
+      SEO_MONTHLY_ARTICLES: ${{ vars.SEO_MONTHLY_ARTICLES || '15' }}
+      PLAN_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.plan_only }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check configuration
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SEO_RELEASE_REF" || { echo 'Set SEO_RELEASE_REF to the maintained Syncora release branch.'; exit 1; }
+          git check-ref-format --branch "$SEO_RELEASE_REF" > /dev/null
+          if [ "$PLAN_ONLY" != 'true' ]; then
+            for key in GEMINI_API_KEY VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+              test -n "$(printenv "$key")" || { echo "Missing $key"; exit 1; }
+            done
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.SEO_RELEASE_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Plan batch
+        working-directory: tally-web-dashboard
+        run: node scripts/seo-automation.mjs --plan
+      - name: Generate, review and build
+        if: env.PLAN_ONLY != 'true'
+        working-directory: tally-web-dashboard
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          npm ci
+          node scripts/seo-automation.mjs
+          npm run build:web
+      - name: Save reviewed snapshots
+        if: env.PLAN_ONLY != 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- tally-web-dashboard/content/seo/approved)" ]; then exit 0; fi
+          git add -- tally-web-dashboard/content/seo/approved
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Publish reviewed Syncora help articles'
+          git push origin "HEAD:refs/heads/$SEO_RELEASE_REF"
+      - name: Verify staging and publish to Vercel
+        if: env.PLAN_ONLY != 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          origin='https://tallyonmob.vercel.app'
+          expected="$(cat tally-web-dashboard/dist/seo-content-revision.txt)"
+          current="$(curl --silent --show-error --max-time 20 --fail "$origin/seo-content-revision.txt" || true)"
+          if [ "$expected" = "$current" ]; then
+            echo 'The current SEO revision is already live.'
+            exit 0
+          fi
+          npm install --global vercel@53.4.0
+          deployment_output="$(vercel deploy --prod --skip-domain --yes --token "$VERCEL_TOKEN")"
+          deployment="$(printf '%s\n' "$deployment_output" | grep -Eo 'https://tallyonmob-[[:alnum:]-]+\.vercel\.app' | head -n 1)"
+          test -n "$deployment"
+          staged="$(vercel curl /seo-content-revision.txt --deployment "$deployment" --token "$VERCEL_TOKEN" -- --silent --show-error --fail)"
+          test "$staged" = "$expected"
+          sitemap="$(vercel curl /sitemap.xml --deployment "$deployment" --token "$VERCEL_TOKEN" -- --silent --show-error --fail)"
+          printf '%s' "$sitemap" | grep -Fq '<loc>https://tallyonmob.vercel.app/resources</loc>'
+          vercel promote "$deployment" --yes --token "$VERCEL_TOKEN"
+          for attempt in 1 2 3 4 5; do
+            current="$(curl --silent --show-error --fail --max-time 20 "$origin/seo-content-revision.txt" || true)"
+            if [ "$current" = "$expected" ]; then
+              echo 'Verified the new SEO revision on tallyonmob.vercel.app.'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'The promoted SEO revision could not be verified on the live domain.'
+          exit 1

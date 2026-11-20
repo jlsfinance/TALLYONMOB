@@ -1,0 +1,92 @@
+[
+  {
+    "slug": "check-tally-voucher-after-sync",
+    "topic": "Verify a voucher on your phone after syncing",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Use company, financial year, voucher type and number together; compare date, party and amount against TallyPrime."
+  },
+  {
+    "slug": "customer-ledger-month-end-checklist",
+    "topic": "Review a customer ledger before sharing a month-end statement",
+    "relatedPath": "/guides/tally-ledger-on-mobile",
+    "facts": "Check customer and period, agree opening and closing balances against TallyPrime, then check the exported PDF."
+  },
+  {
+    "slug": "first-tallyprime-sync-verification",
+    "topic": "Verify the first TallyPrime sync",
+    "relatedPath": "/guides/tallyprime-setup",
+    "facts": "Use the Windows accounting PC, connect the chosen company, then spot-check a known voucher and a known party in Syncora."
+  },
+  {
+    "slug": "syncora-company-missing",
+    "topic": "Find a missing company after sign-in",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Confirm the dashboard account and company, then check which company was open during the most recent connector run."
+  },
+  {
+    "slug": "tally-financial-year-voucher-filter",
+    "topic": "Find vouchers near a financial year boundary",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Use a synthetic March and April example to explain why an entry can be outside the selected date range or financial year."
+  },
+  {
+    "slug": "tally-ledger-pdf-date-range",
+    "topic": "Choose the date range for a ledger PDF",
+    "relatedPath": "/guides/tally-ledger-on-mobile",
+    "facts": "Use an illustrative period and explain why the opening position differs when the start date changes. Verify against TallyPrime."
+  },
+  {
+    "slug": "check-syncora-stock-on-phone",
+    "topic": "Spot-check a synced stock item on mobile",
+    "relatedPath": "/product-overview",
+    "facts": "Find a known item by name and compare the displayed item information and sync time before relying on that data."
+  },
+  {
+    "slug": "tally-customer-supplier-ledger-lookup",
+    "topic": "Find the correct customer or supplier ledger",
+    "relatedPath": "/guides/tally-ledger-on-mobile",
+    "facts": "Use two synthetic customer names to show why selecting the exact company and ledger matters. Do not use real customer data."
+  },
+  {
+    "slug": "tallyprime-android-web-workflow",
+    "topic": "Decide when to use Syncora on Android or web",
+    "relatedPath": "/product-overview",
+    "facts": "Explain which PC runs the Windows connector and what someone can review in the synced Android or browser dashboard."
+  },
+  {
+    "slug": "syncora-accountant-client-review",
+    "topic": "Prepare a client review with synced vouchers",
+    "relatedPath": "/for-accountants",
+    "facts": "Outline how to agree a reporting period, compare sample vouchers to TallyPrime and log discrepancies before sharing findings."
+  },
+  {
+    "slug": "check-sync-after-tally-voucher-edit",
+    "topic": "Check an edited Tally voucher after the next sync",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Use one illustrative voucher, record its identifying details, then verify the edit after a successful connector run."
+  },
+  {
+    "slug": "syncora-support-missing-voucher-report",
+    "topic": "Report a missing voucher with enough detail",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Prepare a support note with version, company, dates, voucher type and number, exact error, and redacted screenshots."
+  },
+  {
+    "slug": "verify-tally-day-book-totals",
+    "topic": "Compare a selected day in the Tally Day Book",
+    "relatedPath": "/guides/tally-sync-troubleshooting",
+    "facts": "Check identical company and period, compare the voucher list first, and investigate differing totals using matching voucher details."
+  },
+  {
+    "slug": "review-customer-dues-after-sync",
+    "topic": "Check the latest ledger entry before following up on a balance",
+    "relatedPath": "/guides/tally-ledger-on-mobile",
+    "facts": "Compare the ledger period and a recent receipt or credit note against the original books before following up with a customer."
+  },
+  {
+    "slug": "syncora-connector-run-checklist",
+    "topic": "Check the Windows connector after an interrupted sync",
+    "relatedPath": "/guides/tallyprime-setup",
+    "facts": "Check what the connector reported, note when it last succeeded, check the intended company, and compare a known transaction after it succeeds."
+  }
+]

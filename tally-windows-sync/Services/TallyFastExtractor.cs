@@ -34,6 +34,9 @@ namespace TallySyncApp.Services
         private readonly TallyHistoryPeriod _historyPeriod = new();
         private bool _disposed;
 
+        public int ConsecutiveFailures { get; private set; }
+        public string? LastTransportError { get; private set; }
+
         /// <summary>
         /// Standard Tally voucher types with native indexing
         /// </summary>
@@ -330,7 +333,7 @@ namespace TallySyncApp.Services
         {
             var ids = alterIds.Where(id => id > 0).Distinct().OrderBy(id => id).ToList();
             var results = new List<Voucher>();
-            foreach (var batch in ids.Chunk(_batchSize))
+            foreach (var batch in PlanAlterBatches(ids, _batchSize))
             {
                 if (ct.IsCancellationRequested) break;
                 var got = await FetchVouchersByAlterRangeAsync(
@@ -339,6 +342,23 @@ namespace TallySyncApp.Services
                 if (_throttleMs > 0) await Task.Delay(_throttleMs, ct);
             }
             return results;
+        }
+
+        // A sparse set can span thousands of unrelated vouchers. Bound the range
+        // Tally expands into full ledger/inventory XML, even when few IDs are needed.
+        public static IEnumerable<long[]> PlanAlterBatches(IReadOnlyList<long> sortedIds, int batchSize)
+        {
+            if (batchSize < 1) throw new ArgumentOutOfRangeException(nameof(batchSize));
+            const long maxIdSpan = 160;
+            for (var start = 0; start < sortedIds.Count;)
+            {
+                var end = start + 1;
+                while (end < sortedIds.Count && end - start < batchSize &&
+                       sortedIds[end] - sortedIds[start] <= maxIdSpan)
+                    end++;
+                yield return sortedIds.Skip(start).Take(end - start).ToArray();
+                start = end;
+            }
         }
 
         /// <summary>
@@ -418,16 +438,29 @@ namespace TallySyncApp.Services
 
                 if (response.IsSuccessStatusCode)
                 {
+                    ConsecutiveFailures = 0;
+                    LastTransportError = null;
                     var raw = await response.Content.ReadAsStringAsync(ct);
                     return SanitizeXml(raw);
                 }
+
+                ConsecutiveFailures++;
+                LastTransportError = $"HTTP {(int)response.StatusCode}";
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw; // User Stop is not a Tally/network failure.
             }
+            catch (InvalidOperationException ex)
+            {
+                LastTransportError = ex.Message;
+                SyncLogger.Log($"[FastExtractor] History period error: {ex.Message}");
+                throw;
+            }
             catch (Exception ex)
             {
+                ConsecutiveFailures++;
+                LastTransportError = ex.Message;
                 SyncLogger.Log($"[FastExtractor] HTTP error to {_tallyUrl}: {ex.Message}");
             }
             return string.Empty;

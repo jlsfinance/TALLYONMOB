@@ -42,6 +42,9 @@ namespace TallySyncApp.Services
 
         /// <summary>Consecutive Tally requests that failed/returned nothing; reset on success.</summary>
         public int ConsecutiveFailures { get; private set; }
+
+        internal static string EscapeXml(string? value) =>
+            string.IsNullOrEmpty(value) ? string.Empty : System.Security.SecurityElement.Escape(value) ?? string.Empty;
         
         private void Log(string message)
         {
@@ -468,7 +471,7 @@ namespace TallySyncApp.Services
             var request = @"<ENVELOPE>
   <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>TaxUnitCollection</ID></HEADER>
   <BODY><DESC>
-    <STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>" + companyName + @"</SVCURRENTCOMPANY></STATICVARIABLES>
+    <STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>" + EscapeXml(companyName) + @"</SVCURRENTCOMPANY></STATICVARIABLES>
     <TDL><TDLMESSAGE>
       <COLLECTION NAME=""TaxUnitCollection"">
         <TYPE>TaxUnit</TYPE>
@@ -631,7 +634,7 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -648,10 +651,10 @@ namespace TallySyncApp.Services
                 SyncLogger.Log($"Page {page + 1} -- Ledgers {fromCount} to {toCount}");
                 
                 var doc = await SendRequestAsync(request, companyName);
-                if (doc == null) break;
+                if (doc == null) throw new InvalidOperationException("Tally ledger export failed; no masters were uploaded.");
 
                 var pageLedgers = new List<Ledger>();
-                foreach (var ledgerElement in doc.Descendants("LEDGER"))
+                foreach (var ledgerElement in LedgerMasterXml.Objects(doc))
                 {
                     try
                     {
@@ -676,12 +679,12 @@ namespace TallySyncApp.Services
 
                         pageLedgers.Add(new Ledger
                         {
-                            Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                            Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
+                            Id = GetElementValue(ledgerElement, "GUID")!.Trim(),
+                            Name = (GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME"))!.Trim(),
                             ParentGroup = GetElementValue(ledgerElement, "PARENT"),
                             LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                            OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                            ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
+                            OpeningBalance = LedgerMasterXml.WebBalance(GetElementValue(ledgerElement, "OPENINGBALANCE")),
+                            ClosingBalance = LedgerMasterXml.WebBalance(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
                             Address = fullAddress,
                             Phone = phone,
                             Email = email,
@@ -693,7 +696,7 @@ namespace TallySyncApp.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error parsing ledger in page {page + 1}: {ex.Message}");
+                        throw new InvalidOperationException($"Invalid ledger in page {page + 1}; master sync stopped.", ex);
                     }
                 }
 
@@ -742,7 +745,7 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -759,10 +762,10 @@ namespace TallySyncApp.Services
 </ENVELOPE>";
 
                 var doc = await SendRequestAsync(request, companyName, 300);
-                if (doc == null) break;
+                if (doc == null) throw new InvalidOperationException("Tally ledger export failed; no masters were uploaded.");
 
                 var pageLedgers = new List<Ledger>();
-                foreach (var ledgerElement in doc.Descendants("LEDGER"))
+                foreach (var ledgerElement in LedgerMasterXml.Objects(doc))
                 {
                     try
                     {
@@ -787,12 +790,12 @@ namespace TallySyncApp.Services
 
                         pageLedgers.Add(new Ledger
                         {
-                            Id = GetAttribute(ledgerElement, "GUID") ?? GetElementValue(ledgerElement, "GUID") ?? Guid.NewGuid().ToString(),
-                            Name = GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME") ?? "Unknown",
+                            Id = GetElementValue(ledgerElement, "GUID")!.Trim(),
+                            Name = (GetAttribute(ledgerElement, "NAME") ?? GetElementValue(ledgerElement, "NAME"))!.Trim(),
                             ParentGroup = GetElementValue(ledgerElement, "PARENT"),
                             LedgerGroup = GetElementValue(ledgerElement, "PARENT"),
-                            OpeningBalance = ParseDecimal(GetElementValue(ledgerElement, "OPENINGBALANCE")),
-                            ClosingBalance = ParseDecimal(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
+                            OpeningBalance = LedgerMasterXml.WebBalance(GetElementValue(ledgerElement, "OPENINGBALANCE")),
+                            ClosingBalance = LedgerMasterXml.WebBalance(GetElementValue(ledgerElement, "CLOSINGBALANCE")),
                             Address = fullAddress,
                             Phone = phone,
                             Email = email,
@@ -804,7 +807,7 @@ namespace TallySyncApp.Services
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error parsing modified ledger in page {page + 1}: {ex.Message}");
+                        throw new InvalidOperationException($"Invalid modified ledger in page {page + 1}; master sync stopped.", ex);
                     }
                 }
 
@@ -849,7 +852,7 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
         <SVEXPLODEALL>Yes</SVEXPLODEALL>
       </STATICVARIABLES>
       <TDL>
@@ -947,7 +950,7 @@ namespace TallySyncApp.Services
 
             SyncLogger.Log($"Extracting Vouchers ({typeLog}): {effectiveFrom:dd-MMM-yy} to {effectiveTo:dd-MMM-yy}");
 
-            string filterXml = string.IsNullOrEmpty(voucherTypeFilter) ? "" : $"<VOUCHERTYPENAME>{voucherTypeFilter}</VOUCHERTYPENAME>";
+            string filterXml = string.IsNullOrEmpty(voucherTypeFilter) ? "" : $"<VOUCHERTYPENAME>{EscapeXml(voucherTypeFilter)}</VOUCHERTYPENAME>";
 
             var request = $@"
 <ENVELOPE>
@@ -962,7 +965,7 @@ namespace TallySyncApp.Services
           <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
           <SVFROMDATE>{fromDateStr}</SVFROMDATE>
           <SVTODATE>{toDateStr}</SVTODATE>
-          <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+          <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
           <ISITEMWISE>No</ISITEMWISE>
           <SVEXPLODEALL>Yes</SVEXPLODEALL>
           <SVEXPORTINVENTORY>Yes</SVEXPORTINVENTORY>
@@ -1020,7 +1023,7 @@ namespace TallySyncApp.Services
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVFROMDATE>19000101</SVFROMDATE>
         <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1029,7 +1032,7 @@ namespace TallySyncApp.Services
             <FETCH>ALTERID</FETCH>
             <FILTER>AllVouchers</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0 AND {FullHistoryDateFilter()}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID &gt; 0 AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1081,7 +1084,7 @@ namespace TallySyncApp.Services
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVFROMDATE>19000101</SVFROMDATE>
         <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL><TDLMESSAGE>
         <COLLECTION NAME=""AlterIdWindow"" ISMODIFY=""No"">
@@ -1119,6 +1122,7 @@ namespace TallySyncApp.Services
                         break;
                     }
                     emptyRuns++;
+                    from = to + 1;
                     continue;
                 }
 
@@ -1154,7 +1158,7 @@ namespace TallySyncApp.Services
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVFROMDATE>19000101</SVFROMDATE>
         <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1198,7 +1202,7 @@ namespace TallySyncApp.Services
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVFROMDATE>19000101</SVFROMDATE>
         <SVTODATE>{DateTime.Today:yyyyMMdd}</SVTODATE>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1207,7 +1211,7 @@ namespace TallySyncApp.Services
             <FETCH>ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE</FETCH>
             <FILTER>AllVouchers</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID > 0 AND {FullHistoryDateFilter()}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""AllVouchers"">$$NumValue:$ALTERID &gt; 0 AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1266,7 +1270,7 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1323,7 +1327,7 @@ namespace TallySyncApp.Services
             if (vns.Count == 0) return new List<Voucher>();
 
             var vtSafe = voucherType.Replace("\"", "");
-            var vnFilter = string.Join(" OR ", vns.Select(n => $"$VoucherNumber = \"{n}\""));
+            var vnFilter = string.Join(" OR ", vns.Select(n => $"$VoucherNumber = \"{EscapeXml(n)}\""));
             var request = $@"
 <ENVELOPE>
   <HEADER>
@@ -1336,7 +1340,7 @@ namespace TallySyncApp.Services
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1345,7 +1349,7 @@ namespace TallySyncApp.Services
             <FETCH>MASTERID, ALTERID, GUID, VOUCHERTYPENAME, VOUCHERNUMBER, DATE, PARTYLEDGERNAME, PLACEOFSUPPLY, PARTYGSTIN, AMOUNT, NARRATION, ALLLEDGERENTRIES.LIST, ALLINVENTORYENTRIES.LIST</FETCH>
             <FILTER>VtVnFilter</FILTER>
           </COLLECTION>
-          <SYSTEM TYPE=""Formulae"" NAME=""VtVnFilter"">$VoucherTypeName = ""{vtSafe}"" AND ({vnFilter}) AND {FullHistoryDateFilter()}</SYSTEM>
+          <SYSTEM TYPE=""Formulae"" NAME=""VtVnFilter"">$VoucherTypeName = ""{EscapeXml(vtSafe)}"" AND ({vnFilter}) AND {FullHistoryDateFilter()}</SYSTEM>
         </TDLMESSAGE>
       </TDL>
     </DESC>
@@ -1767,8 +1771,11 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<StockItem>> GetStockItemsAsync(string? companyName = null)
         {
+            string companyVar = string.IsNullOrWhiteSpace(companyName)
+                ? string.Empty
+                : $"\n        <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>";
             // Use a more detailed TDL request that fetches GST details
-            var request = @"
+            var request = $@"
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
@@ -1779,7 +1786,7 @@ namespace TallySyncApp.Services
   <BODY>
     <DESC>
       <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{companyVar}
       </STATICVARIABLES>
       <TDL>
         <TDLMESSAGE>
@@ -1943,10 +1950,13 @@ namespace TallySyncApp.Services
         /// </summary>
         public async Task<List<StockGroup>> GetStockGroupsWithGstAsync(string? companyName = null)
         {
-            var request = @"
+            string companyVar = string.IsNullOrWhiteSpace(companyName)
+                ? string.Empty
+                : $"<SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>";
+            var request = $@"
 <ENVELOPE>
   <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>StockGroupCollection</ID></HEADER>
-  <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES>
+  <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{companyVar}</STATICVARIABLES>
     <TDL><TDLMESSAGE>
       <COLLECTION NAME=""StockGroupCollection"" ISMODIFY=""No"">
         <TYPE>Stock Group</TYPE>
@@ -2165,7 +2175,7 @@ namespace TallySyncApp.Services
                     {
                         ledgerEntriesXml.AppendLine($@"
             <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{entry.LedgerName}</LEDGERNAME>
+                <LEDGERNAME>{EscapeXml(entry.LedgerName)}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>{(entry.Amount >= 0 ? "No" : "Yes")}</ISDEEMEDPOSITIVE>
                 <AMOUNT>{(entry.Amount >= 0 ? "" : "-")}{Math.Abs(entry.Amount)}</AMOUNT>
             </ALLLEDGERENTRIES.LIST>");
@@ -2177,7 +2187,7 @@ namespace TallySyncApp.Services
                     bool isSaleType = voucherType.Contains("Sales") || voucherType.Contains("Receipt");
                     ledgerEntriesXml.AppendLine($@"
             <ALLLEDGERENTRIES.LIST>
-                <LEDGERNAME>{partyLedger}</LEDGERNAME>
+                <LEDGERNAME>{EscapeXml(partyLedger)}</LEDGERNAME>
                 <ISDEEMEDPOSITIVE>{(isSaleType ? "Yes" : "No")}</ISDEEMEDPOSITIVE>
                 <AMOUNT>{(isSaleType ? "" : "-")}{amount}</AMOUNT>
             </ALLLEDGERENTRIES.LIST>
@@ -2199,7 +2209,7 @@ namespace TallySyncApp.Services
                             gstXmlBuilder.AppendLine("                <GSTDETAILS.LIST>");
                             
                             if (!string.IsNullOrEmpty(item.HsnCode))
-                                gstXmlBuilder.AppendLine($"                    <HSNCODE>{item.HsnCode}</HSNCODE>");
+                                gstXmlBuilder.AppendLine($"                    <HSNCODE>{EscapeXml(item.HsnCode)}</HSNCODE>");
                                 
                             if (item.TaxRate.HasValue)
                             {
@@ -2208,7 +2218,7 @@ namespace TallySyncApp.Services
                             }
                             
                             string taxability = item.Taxability ?? ((item.TaxRate ?? 0) > 0 ? "Taxable" : "Exempt");
-                            gstXmlBuilder.AppendLine($"                    <TAXABILITY>{taxability}</TAXABILITY>");
+                            gstXmlBuilder.AppendLine($"                    <TAXABILITY>{EscapeXml(taxability)}</TAXABILITY>");
                             
                             gstXmlBuilder.AppendLine("                </GSTDETAILS.LIST>");
                         }
@@ -2216,11 +2226,11 @@ namespace TallySyncApp.Services
 
                         inventoryXml.AppendLine($@"
             <ALLINVENTORYENTRIES.LIST>
-                <STOCKITEMNAME>{item.StockItemName}</STOCKITEMNAME>
+                <STOCKITEMNAME>{EscapeXml(item.StockItemName)}</STOCKITEMNAME>
                 {hsnXml}
-                <ACTUALQTY>{item.Quantity} {item.Unit}</ACTUALQTY>
-                <BILLEDQTY>{item.Quantity} {item.Unit}</BILLEDQTY>
-                <RATE>{item.Rate}/{item.Unit}</RATE>
+                <ACTUALQTY>{item.Quantity} {EscapeXml(item.Unit)}</ACTUALQTY>
+                <BILLEDQTY>{item.Quantity} {EscapeXml(item.Unit)}</BILLEDQTY>
+                <RATE>{item.Rate}/{EscapeXml(item.Unit)}</RATE>
                 <AMOUNT>{item.Amount}</AMOUNT>
             </ALLINVENTORYENTRIES.LIST>");
                     }
@@ -2236,16 +2246,16 @@ namespace TallySyncApp.Services
             <REQUESTDESC>
                 <REPORTNAME>Vouchers</REPORTNAME>
                 <STATICVARIABLES>
-                    <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                    <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                 </STATICVARIABLES>
             </REQUESTDESC>
             <REQUESTDATA>
                 <TALLYMESSAGE xmlns:UDF=""TallyUDF"">
-                    <VOUCHER VCHTYPE=""{voucherType}"" ACTION=""Create"">
+                    <VOUCHER VCHTYPE=""{EscapeXml(voucherType)}"" ACTION=""Create"">
                         <DATE>{voucherDate:yyyyMMdd}</DATE>
-                        <VOUCHERTYPENAME>{voucherType}</VOUCHERTYPENAME>
-                        <PARTYLEDGERNAME>{partyLedger}</PARTYLEDGERNAME>
-                        <NARRATION>{narration ?? ""}</NARRATION>
+                        <VOUCHERTYPENAME>{EscapeXml(voucherType)}</VOUCHERTYPENAME>
+                        <PARTYLEDGERNAME>{EscapeXml(partyLedger)}</PARTYLEDGERNAME>
+                        <NARRATION>{EscapeXml(narration)}</NARRATION>
                         {ledgerEntriesXml}
                         {inventoryXml}
                     </VOUCHER>
@@ -2302,7 +2312,7 @@ namespace TallySyncApp.Services
                 string xml = $@"<ENVELOPE>
                     <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
                     <BODY><EXPORTDATA><REQUESTDESC>
-                        <STATICVARIABLES><SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY></STATICVARIABLES>
+                        <STATICVARIABLES><SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY></STATICVARIABLES>
                         <REPORTNAME>List of Accounts</REPORTNAME>
                         <STATICVARIABLES><EXPLODEFLAG>Yes</EXPLODEFLAG></STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2313,7 +2323,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Group</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2357,7 +2367,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>CostCentre</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2397,7 +2407,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Godown</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2439,7 +2449,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>StockGroup</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2479,7 +2489,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>StockCategory</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2518,7 +2528,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Currency</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2561,7 +2571,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>VoucherType</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2605,7 +2615,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Unit</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2651,7 +2661,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>List of Budgets</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
 
@@ -2661,7 +2671,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>Budget</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2709,7 +2719,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>List of Price Levels</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <EXPLODEFLAG>Yes</EXPLODEFLAG>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";
@@ -2724,7 +2734,7 @@ namespace TallySyncApp.Services
                     <BODY><EXPORTDATA><REQUESTDESC>
                         <REPORTNAME>%%Collection</REPORTNAME>
                         <STATICVARIABLES>
-                            <SVCURRENTCOMPANY>{companyName}</SVCURRENTCOMPANY>
+                            <SVCURRENTCOMPANY>{EscapeXml(companyName)}</SVCURRENTCOMPANY>
                             <COLLECTIONTYPE>PriceLevel</COLLECTIONTYPE>
                         </STATICVARIABLES>
                     </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>";

@@ -28,6 +28,7 @@ namespace TallySyncApp.Services
         private System.Timers.Timer? _syncTimer;
         private CancellationTokenSource? _cancellationTokenSource;
         private bool _isSyncing = false;
+        private int _runGeneration;
         private VoucherBatchJournal? _voucherJournal;
         private CloudSyncProgress? _cloudHistoryProgress;
         // Set when a full-history index could not prove it covers the cloud data.
@@ -50,6 +51,9 @@ namespace TallySyncApp.Services
         public SyncStatus Status { get; private set; } = new();
         public Company? CurrentCompany { get; private set; }
 
+        public bool IsSyncRunning { get { lock (_syncLock) return _isSyncing; } }
+        public bool IsAutoSyncRunning => _syncTimer != null;
+
         // Last licence validation result, exposed so the UI can reflect it without
         // making a duplicate RPC call. One validation per sync cycle.
         public LicenseResult? LastLicenseResult { get; private set; }
@@ -57,6 +61,9 @@ namespace TallySyncApp.Services
         public event EventHandler<SyncStatus>? StatusChanged;
         public event EventHandler<SyncItemStatus>? ItemSynced;
         public event EventHandler<string>? SyncLogRequested;
+        public event EventHandler? SyncFlagsChanged;
+
+        private void NotifySyncFlagsChanged() => SyncFlagsChanged?.Invoke(this, EventArgs.Empty);
 
         public SyncManager()
         {
@@ -410,11 +417,13 @@ namespace TallySyncApp.Services
                 }
             }
             var startupToken = _cancellationTokenSource.Token;
+            var generationBeforeStart = Volatile.Read(ref _runGeneration);
 
             _syncTimer = new System.Timers.Timer(_settings.SyncSettings.SyncIntervalMinutes * 60 * 1000);
             _syncTimer.Elapsed += async (s, e) => { if (!startupToken.IsCancellationRequested) await RunSyncAsync(); };
             _syncTimer.AutoReset = true;
             _syncTimer.Start();
+            NotifySyncFlagsChanged();
 
             // Calculate next sync time
             Status.NextSyncTime = DateTime.Now.AddMinutes(_settings.SyncSettings.SyncIntervalMinutes);
@@ -429,6 +438,10 @@ namespace TallySyncApp.Services
                 {
                     await Task.Delay(2000, startupToken); // Stop also cancels a not-yet-started pass.
                     startupToken.ThrowIfCancellationRequested();
+                    lock (_syncLock)
+                    {
+                        if (_isSyncing || _runGeneration != generationBeforeStart) return;
+                    }
                     await RunSyncAsync(isManual: false, forceResync: false);
                 }
                 catch (OperationCanceledException) when (startupToken.IsCancellationRequested) { }
@@ -443,6 +456,7 @@ namespace TallySyncApp.Services
             _syncTimer?.Stop();
             _syncTimer?.Dispose();
             _syncTimer = null;
+            NotifySyncFlagsChanged();
 
             _cancellationTokenSource?.Cancel();
             Status.NextSyncTime = null;
@@ -481,7 +495,9 @@ namespace TallySyncApp.Services
                 _cancellationTokenSource = cancellation;
                 runToken = cancellation.Token;
                 _isSyncing = true;
+                _runGeneration++;
             }
+            NotifySyncFlagsChanged();
             var overallStopwatch = Stopwatch.StartNew();
 
             try
@@ -749,6 +765,9 @@ namespace TallySyncApp.Services
                             ?? await _apiClient!.GetMaxAlterIdAsync(company.Id, "vouchers");
                         _voucherJournal.EnsureCheckpoint(VoucherOwnerId, company.Id, lastVoucherAlterId);
                         long lastLedgerAlterId = await _apiClient.GetMaxAlterIdAsync(company.Id, "ledgers");
+                        bool repairLedgerMasters = await _apiClient.LedgerMasterRepairRequiredAsync(company.Id);
+                        if (repairLedgerMasters)
+                            AddLog("📒 Incomplete ledger masters detected; refreshing all masters without resetting vouchers.");
 
                         bool isFirstSync = lastVoucherAlterId == 0 || forceResync;
 
@@ -960,7 +979,9 @@ namespace TallySyncApp.Services
                             var allLedgers = await _tallyConnector!.GetLedgersAsync(company.Name);
                             if (allLedgers.Count > 0)
                             {
-                                await UploadListAsync("ledgers", allLedgers, "id");
+                                if (!await UploadListAsync("ledgers", allLedgers, "id"))
+                                    throw new IOException("Ledger master upload incomplete; repair will retry next sync.");
+                                if (repairLedgerMasters) await _apiClient.RetireLedgerPlaceholdersAsync(company.Id);
                                 ledgersSynced += allLedgers.Count;
                                 AddLog($"✅ Synced {allLedgers.Count} historical ledgers");
                             }
@@ -974,7 +995,7 @@ namespace TallySyncApp.Services
 
                             if (_settings.SyncSettings.UseFastExtractor)
                             {
-                                AddLog("⚡ [FastExtractor] LiveKeeping Mode Active - Zero-Hang Sync Running");
+                                AddLog("⚡ [FastExtractor] Fast batch sync active");
                                 var (fVouchers, fSales, fSalesAmt, fPurchases) = await SyncHistoricalVouchersFastAsync(
                                     company, hsnCache, highValueAlerts, runToken);
                                 vouchersSynced += fVouchers;
@@ -1122,7 +1143,9 @@ namespace TallySyncApp.Services
                             List<Ledger> finalLedgers = new List<Ledger>();
 
                             // 1. Check Ledgers - Always attempt fetch (use 0 for first incremental pass)
-                            finalLedgers = await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
+                            finalLedgers = repairLedgerMasters
+                                ? await _tallyConnector!.GetLedgersAsync(company.Name)
+                                : await _tallyConnector!.GetModifiedLedgersAsync(company.Name, lastLedgerAlterId);
                             totalToSync += finalLedgers.Count;
                             
                             // Each indexed payload batch must have complete ALTERID coverage.
@@ -1135,7 +1158,9 @@ namespace TallySyncApp.Services
                             // 1. Sync modified LEDGERS
                             if (finalLedgers.Count > 0)
                             {
-                                await UploadListAsync("ledgers", finalLedgers, "id");
+                                if (!await UploadListAsync("ledgers", finalLedgers, "id"))
+                                    throw new IOException("Ledger master upload incomplete; repair will retry next sync.");
+                                if (repairLedgerMasters) await _apiClient.RetireLedgerPlaceholdersAsync(company.Id);
                                 ledgersSynced += finalLedgers.Count;
                                 Status.ProcessedRecords += finalLedgers.Count;
                                 AddLog($"📝 Updated {finalLedgers.Count} modified ledgers");
@@ -1154,7 +1179,7 @@ namespace TallySyncApp.Services
                             if (changedIds.Count > 0)
                             {
                                 var saved = await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts,
-                                    runToken, changedIds, pdfForEachVoucher: true);
+                                    runToken, changedIds, pdfForEachVoucher: true, phaseLabel: "Incremental vouchers");
                                 vouchersSynced += saved.VouchersSynced;
                                 salesSynced += saved.SalesSynced;
                                 purchasesSynced += saved.PurchasesSynced;
@@ -1500,6 +1525,7 @@ namespace TallySyncApp.Services
                 {
                     _isSyncing = false;
                 }
+                NotifySyncFlagsChanged();
             }
         }
 
@@ -1516,7 +1542,7 @@ namespace TallySyncApp.Services
         /// <summary>
         /// Upload a pre-fetched list of data to the API with conflict resolution
         /// </summary>
-        private async Task UploadListAsync<T>(string dataType, List<T> data, string onConflict = "id")
+        private async Task<bool> UploadListAsync<T>(string dataType, List<T> data, string onConflict = "id")
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -1525,7 +1551,7 @@ namespace TallySyncApp.Services
                 if (data == null || data.Count == 0)
                 {
                     await _offlineQueue!.LogSyncAsync(dataType, 0, true, null, (int)stopwatch.ElapsedMilliseconds);
-                    return;
+                    return true;
                 }
 
                 UpdateStatus(SyncState.Uploading, $"Syncing {dataType}: 0/{data.Count}", dataType);
@@ -1571,6 +1597,7 @@ namespace TallySyncApp.Services
                 if (failedCount > 0) _historicalCoverageError = $"{dataType}: {failedCount} records remain queued for retry.";
                 await PublishCloudSyncProgressAsync();
                 await _offlineQueue!.LogSyncAsync(dataType, data.Count, failedCount == 0, failedCount > 0 ? $"{failedCount} failed" : null, (int)stopwatch.ElapsedMilliseconds);
+                return failedCount == 0;
             }
             catch (OperationCanceledException) when (_cancellationTokenSource?.IsCancellationRequested == true)
             {
@@ -1580,6 +1607,7 @@ namespace TallySyncApp.Services
             {
                 stopwatch.Stop();
                 await _offlineQueue!.LogSyncAsync(dataType, 0, false, ex.Message, (int)stopwatch.ElapsedMilliseconds);
+                return false;
             }
         }
 
@@ -1656,6 +1684,10 @@ namespace TallySyncApp.Services
                     if (success)
                     {
                         await _offlineQueue.MarkCompletedAsync(item.Id);
+                    }
+                    else
+                    {
+                        await _offlineQueue.MarkFailedAsync(item.Id, "Queued batch could not be uploaded. See the sync log for details.");
                     }
                 }
                 catch (Exception ex)
@@ -1963,7 +1995,7 @@ namespace TallySyncApp.Services
                 if (diff.MissingAlterIds.Count == 0 || !_settings.SyncSettings.UseSafeVoucherReconciliation) return (0, 0, 0, 0);
                 AddLog($"🧩 Repairing {diff.MissingAlterIds.Count} identified voucher(s) by ALTERID.");
                 return await SyncHistoricalVouchersFastAsync(company, hsnCache, highValueAlerts, ct,
-                    diff.MissingAlterIds, pdfForEachVoucher: true);
+                    diff.MissingAlterIds, pdfForEachVoucher: true, phaseLabel: "Reconciliation repair");
             }
             catch (Exception ex)
             {
@@ -2121,7 +2153,8 @@ namespace TallySyncApp.Services
             List<string> highValueAlerts,
             CancellationToken ct,
             IReadOnlyCollection<long>? onlyAlterIds = null,
-            bool pdfForEachVoucher = false)
+            bool pdfForEachVoucher = false,
+            string phaseLabel = "Historical sync")
         {
             int totalVouchers = 0;
             int totalSales = 0;
@@ -2155,8 +2188,8 @@ namespace TallySyncApp.Services
             }
 
             int batchCount = (alterIds.Count + TALLY_BATCH_SIZE - 1) / TALLY_BATCH_SIZE;
-            AddLog($"📚 [FastExtractor] Historical sync: {alterIds.Count} vouchers in {batchCount} ALTERID batches ({alterIds[0]}..{alterIds[^1]})");
-            SyncLogger.Log($"[FastExtractor] Historical sync: {alterIds.Count} vouchers in {batchCount} ALTERID batches ({alterIds[0]}..{alterIds[^1]})");
+            AddLog($"📚 [FastExtractor] {phaseLabel}: {alterIds.Count} vouchers in {batchCount} ALTERID batches ({alterIds[0]}..{alterIds[^1]})");
+            SyncLogger.Log($"[FastExtractor] {phaseLabel}: {alterIds.Count} vouchers in {batchCount} ALTERID batches ({alterIds[0]}..{alterIds[^1]})");
             Status.TotalRecords = alterIds.Count;
             Status.ProcessedRecords = 0;
 
@@ -2173,8 +2206,14 @@ namespace TallySyncApp.Services
                         ? await extractor.GetVouchersByAlterIdsAsync(company.Name, batch, hsnCache, ct)
                         : await _tallyConnector!.GetVouchersByAlterRangeAsync(company.Name, batch.First(), batch.Last(), hsnCache);
                     ct.ThrowIfCancellationRequested();
-                    if (batch.Except(vouchers.Select(v => long.TryParse(v.AlterId, out var id) ? id : 0)).Any())
-                        throw new IOException($"Tally returned an incomplete {rangeDisplay}; checkpoint retained.");
+                    var missing = batch.Except(vouchers.Select(v => long.TryParse(v.AlterId, out var id) ? id : 0)).ToArray();
+                    if (missing.Length > 0)
+                    {
+                        var transportDetail = _settings.SyncSettings.UseFastExtractor && !string.IsNullOrWhiteSpace(extractor.LastTransportError)
+                            ? $" (Tally transport: {extractor.LastTransportError})"
+                            : string.Empty;
+                        throw new IOException($"Tally returned an incomplete {rangeDisplay}; missing ALTERIDs: {string.Join(", ", missing.Take(8))}{transportDetail}. Checkpoint retained.");
+                    }
                     // A voucher is "new" only if the cloud did not have its id before this upload;
                     // re-synced (repaired) rows must not be sent to Telegram again.
                     List<Voucher>? newVouchers = null;
@@ -2202,15 +2241,18 @@ namespace TallySyncApp.Services
                     throw;
                 }
 
-                if (_tallyConnector!.ConsecutiveFailures >= 3)
+                var consecutiveFailures = _settings.SyncSettings.UseFastExtractor
+                    ? extractor.ConsecutiveFailures
+                    : _tallyConnector!.ConsecutiveFailures;
+                if (consecutiveFailures >= 3)
                 {
-                    AddLog("❌ Tally not responding - historical sync aborted. Will retry next cycle.");
+                    AddLog($"❌ Tally not responding - {phaseLabel.ToLowerInvariant()} aborted. Will retry next cycle.");
                     break;
                 }
                 await Task.Delay(500, ct);
             }
 
-            AddLog($"📊 [FastExtractor] Historical sync complete: {totalVouchers} vouchers");
+            AddLog($"📊 [FastExtractor] {phaseLabel} complete: {totalVouchers} vouchers");
             if (cloudBefore >= 0)
             {
                 int cloudAfter = await _apiClient!.GetVoucherCountAsync(company.Id);

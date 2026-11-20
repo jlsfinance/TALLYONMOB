@@ -7,6 +7,7 @@ import { useSubscriptionCatalog } from '@/hooks/useSubscriptionCatalog';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/insforge';
 import { useAuth } from '@/contexts/AuthContext';
+import PublicPricingIntro from '../components/common/PublicPricingIntro';
 import './SubscriptionPage.css';
 
 export default function SubscriptionPage() {
@@ -128,6 +129,7 @@ export default function SubscriptionPage() {
                 {checkoutError && <p role="status" className="subscription-catalog-message">{checkoutError}</p>}
                 {user?.id && window.localStorage.getItem('syncora-pending-checkout:'+user.id) && <p className="subscription-catalog-message"><Link to={'/subscription/payment-result?checkout='+encodeURIComponent(window.localStorage.getItem('syncora-pending-checkout:'+user.id)!)}>Check your recent payment →</Link></p>}
 
+                <PublicPricingIntro />
                 {catalog.isLoading && <p role="status" className="subscription-catalog-message">Loading current plans…</p>}
                 {catalog.isError && <p role="alert" className="subscription-catalog-message">Current prices could not be loaded. <button type="button" onClick={() => void catalog.refetch()}>Try again</button></p>}
                 {!catalog.isLoading && !catalog.isError && plans.length === 0 && <p role="status" className="subscription-catalog-message">No plans are available right now. Please check again later.</p>}

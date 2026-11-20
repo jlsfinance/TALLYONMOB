@@ -1,50 +1,48 @@
-name: Android Release
+name: Syncora Android Build
 
 on:
+  workflow_dispatch:
   push:
     tags:
-      - 'v*' # Triggers on v2.1.9, etc.
+      - 'android-v*'
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tally-web-dashboard
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Java
-        uses: actions/setup-java@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tally-web-dashboard/package-lock.json
+      - uses: actions/setup-java@v4
         with:
-          flutter-version: '3.x'
-          channel: 'stable'
-
-      - name: Create .env file
-        run: |
-          cd tally-mobile-app
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
-        shell: bash
-
-      - name: Install dependencies
-        run: |
-          cd tally-mobile-app
-          flutter pub get
-
-      - name: Build APK
-        run: |
-          cd tally-mobile-app
-          flutter build apk --release
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            tally-mobile-app/build/app/outputs/flutter-apk/app-release.apk
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Build Syncora web assets
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+          npm run build
+          npx --no-install cap sync android
+      - name: Build Android APK for testing
+        run: bash ./gradlew assembleDebug
+        working-directory: tally-web-dashboard/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syncora-android-debug
+          path: tally-web-dashboard/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

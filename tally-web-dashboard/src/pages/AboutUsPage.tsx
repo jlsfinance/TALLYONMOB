@@ -4,19 +4,12 @@ import { motion } from 'framer-motion';
 import SEO from '../components/common/SEO';
 
 const FEATURES = [
-  { icon: <Zap size={20} />, title: 'Real-time Sync', desc: 'Tally data syncs to cloud in under 0.2 seconds' },
-  { icon: <Shield size={20} />, title: 'Bank-grade Security', desc: 'AES-256 encryption, SOC 2 aligned architecture' },
+  { icon: <Zap size={20} />, title: 'Windows Connector', desc: 'Sync company data from the Windows PC running Tally.' },
+  { icon: <Shield size={20} />, title: 'Account Access', desc: 'Sign in to view the companies connected to your account.' },
   { icon: <Globe size={20} />, title: 'Access Anywhere', desc: 'Desktop, mobile, tablet — your data everywhere' },
-  { icon: <TrendingUp size={20} />, title: 'AI Insights', desc: '20+ financial ratios, cash flow forecasting' },
+  { icon: <TrendingUp size={20} />, title: 'Business Reports', desc: 'Review sales, purchases, stock and balances after sync.' },
   { icon: <Users size={20} />, title: 'Multi-user', desc: 'Team access with role-based permissions' },
-  { icon: <Target size={20} />, title: 'GST Compliant', desc: 'GSTR-1, GSTR-3B, e-invoice ready' },
-];
-
-const STATS = [
-  { value: '10K+', label: 'Active Users' },
-  { value: '50M+', label: 'Vouchers Synced' },
-  { value: '99.9%', label: 'Uptime' },
-  { value: '4.8/5', label: 'User Rating' },
+  { icon: <Target size={20} />, title: 'Vouchers and Ledgers', desc: 'Look up vouchers and review customer and supplier balances.' },
 ];
 
 export default function AboutUsPage() {
@@ -24,7 +17,7 @@ export default function AboutUsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
-      <SEO title="About Us | SYNCORA TallyOnMobile" description="SYNCORA TallyOnMobile - India's leading Tally cloud sync platform. Real-time Tally data on any device." canonical="https://tallyonmob.vercel.app/about" />
+      <SEO title="About Us | SYNCORA TallyOnMobile" description="SYNCORA TallyOnMobile - Connect Tally company data to Syncora for viewing on mobile and web." canonical="https://tallyonmob.vercel.app/about" />
       
       <div className="max-w-5xl mx-auto px-4 py-8 pb-24">
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--on-surface)] mb-6 transition-colors">
@@ -39,17 +32,6 @@ export default function AboutUsPage() {
           </p>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
-          {STATS.map((s, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-              className="text-center p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-              <div className="text-3xl font-black text-indigo-400">{s.value}</div>
-              <div className="text-xs text-[var(--text-muted)] uppercase tracking-wider mt-1">{s.label}</div>
-            </motion.div>
-          ))}
-        </div>
-
         {/* Mission */}
         <div className="bg-[var(--surface)] rounded-2xl p-8 border border-[var(--border)] mb-8">
           <h2 className="text-2xl font-black text-[var(--on-surface)] mb-4">Our Mission</h2>
@@ -57,7 +39,7 @@ export default function AboutUsPage() {
             Tally is the backbone of Indian accounting. But accessing your financial data has been limited to one desktop, one location. We're changing that.
           </p>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            SYNCORA TallyOnMobile bridges the gap between Tally's powerful accounting engine and modern cloud accessibility. Your data stays in Tally — we just make it visible, portable, and insightful across all your devices.
+            SYNCORA TallyOnMobile bridges the gap between Tally's powerful accounting engine and modern cloud accessibility. Your original books remain in Tally. The connector syncs selected company data so you can open it in Syncora.
           </p>
         </div>
 
@@ -65,8 +47,8 @@ export default function AboutUsPage() {
         <div className="mb-8">
           <h2 className="text-2xl font-black text-[var(--on-surface)] mb-6">Why SYNCORA TallyOnMobile?</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {FEATURES.map((f, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+            {FEATURES.map(f => (
+              <motion.div key={f.title} initial={false}
                 className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] hover:border-indigo-500/50 transition-colors">
                 <div className="text-indigo-400 mb-3">{f.icon}</div>
                 <h3 className="font-bold text-[var(--on-surface)] mb-1">{f.title}</h3>
@@ -81,7 +63,7 @@ export default function AboutUsPage() {
           <h2 className="text-2xl font-black text-[var(--on-surface)] mb-4">Built For</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {[
-              'Business owners who travel but need real-time financial data',
+              'Business owners who travel and need to check synced financial data',
               'Accountants managing multiple client companies',
               'CA firms requiring remote Tally access for audits',
               'Sales teams needing instant invoice access on mobile',

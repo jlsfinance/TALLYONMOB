@@ -1,3 +1,23 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+
+# Public site discovery and user-requested retrieval
+User-agent: Googlebot
+User-agent: bingbot
+User-agent: DuckDuckBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Claude-SearchBot
+User-agent: Claude-User
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+
+# Gemini grounding and Google model training use the same control
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+
 Sitemap: https://tallyonmob.vercel.app/sitemap.xml

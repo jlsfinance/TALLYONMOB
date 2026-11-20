@@ -15,7 +15,7 @@ const FloatingCard = () => {
     });
 
     return (
-        <group perspective={1000}>
+        <group>
             <mesh ref={meshRef} castShadow receiveShadow>
                 <boxGeometry args={[4.5, 2.8, 0.1]} />
                 <meshPhysicalMaterial
@@ -150,7 +150,7 @@ export default function ThreeDHeroScene() {
                 <TechShape position={[-3, -3, -2]} rotation={[Math.PI / 3, 0, Math.PI / 6]} color="#06b6d4" />
 
                 <Particles count={96} />
-                <Stars radius={60} depth={25} count={1200} factor={2} saturation={0} fade speed={0.4} />
+                <Stars radius={60} depth={25} count={1200} factor={2} saturation={0} fade speed={0.4} />
             </Canvas>
         </div>
     );

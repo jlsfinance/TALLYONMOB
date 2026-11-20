@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import tallySyncHandler from './api/tally/sync.js'
+import { searchPages } from './src/config/searchPages.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -93,7 +94,12 @@ export default defineConfig(({ mode }) => {
                         }
                     ],
                     navigateFallback: 'index.html',
-                    navigateFallbackDenylist: [/^\/api\//, /^\/auth\//]
+                    navigateFallbackDenylist: [
+                        /^\/resources(?:\/|$)/,
+                        /^\/api\//, /^\/auth\//,
+                        ...[...Object.keys(searchPages).filter(path => path !== '/'), '/syncora']
+                            .map(path => new RegExp('^' + path + '/?(?:\\?|$)')),
+                    ]
                 },
                 devOptions: { enabled: false }
             }),

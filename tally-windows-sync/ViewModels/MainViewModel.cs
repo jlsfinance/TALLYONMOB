@@ -79,8 +79,32 @@ namespace TallySyncApp.ViewModels
         public bool IsSyncing
         {
             get => _isSyncing;
-            set { _isSyncing = value; OnPropertyChanged(); }
+            set
+            {
+                _isSyncing = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanTriggerSync));
+                OnPropertyChanged(nameof(CanStopSync));
+            }
         }
+
+        private bool _isAutoSyncRunning;
+        public bool IsAutoSyncRunning
+        {
+            get => _isAutoSyncRunning;
+            private set
+            {
+                if (_isAutoSyncRunning == value) return;
+                _isAutoSyncRunning = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanStartAutoSync));
+                OnPropertyChanged(nameof(CanStopSync));
+            }
+        }
+
+        public bool CanTriggerSync => !IsSyncing;
+        public bool CanStartAutoSync => !IsAutoSyncRunning;
+        public bool CanStopSync => IsSyncing || IsAutoSyncRunning;
 
         private string _userEmail = "";
         public string UserEmail
@@ -188,6 +212,8 @@ namespace TallySyncApp.ViewModels
                 });
             };
             _syncManager.SyncLogRequested += (_, message) => { if (!_disposed) Log(message); };
+            _syncManager.SyncFlagsChanged += OnSyncFlagsChanged;
+            RefreshSyncFlags();
 
             _syncManager.ItemSynced += (s, item) =>
             {
@@ -239,7 +265,7 @@ namespace TallySyncApp.ViewModels
             try
             {
                 _syncManager.StartSync();
-                IsSyncing = true;
+                RefreshSyncFlags();
                 Log("Background sync started.");
             }
             catch (Exception ex)
@@ -251,25 +277,34 @@ namespace TallySyncApp.ViewModels
         private void StopSync()
         {
             _syncManager.StopSync();
-            IsSyncing = false;
+            RefreshSyncFlags();
             Log("Background sync stopped.");
         }
 
         private async Task ManualSync()
         {
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
             if (!await CheckSerialAndConfirmAsync()) return;
             if (!await EnsureLicenseForSyncAsync()) return;
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
 
-            IsSyncing = true;
-            Log("Starting incremental sync (naya/badla hua data)...");
-            await _syncManager.RunManualSyncAsync();
-            await LoadLogs();
-            IsSyncing = false;
+            try
+            {
+                IsSyncing = true;
+                Log("Starting incremental sync (naya/badla hua data)...");
+                await _syncManager.RunManualSyncAsync();
+                await LoadLogs();
+            }
+            finally
+            {
+                RefreshSyncFlags();
+            }
         }
 
         // Full Resync: ALTERID tracking ignore karke poora data dobara bharta hai.
         private async Task FullResync()
         {
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
             if (!await CheckSerialAndConfirmAsync()) return;
             if (!await EnsureLicenseForSyncAsync()) return;
 
@@ -277,12 +312,19 @@ namespace TallySyncApp.ViewModels
                 "Full resync poora historical data dobara upload karega (thoda time lagega).\n\nChalana hai?",
                 "Full Resync", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (confirm != MessageBoxResult.Yes) return;
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
 
-            IsSyncing = true;
-            Log("Starting FULL resync (poora data dobara)...");
-            await _syncManager.RunManualSyncAsync(forceResync: true);
-            await LoadLogs();
-            IsSyncing = false;
+            try
+            {
+                IsSyncing = true;
+                Log("Starting FULL resync (poora data dobara)...");
+                await _syncManager.RunManualSyncAsync(forceResync: true);
+                await LoadLogs();
+            }
+            finally
+            {
+                RefreshSyncFlags();
+            }
         }
 
         private void SaveSettings()
@@ -349,9 +391,27 @@ namespace TallySyncApp.ViewModels
             finally { System.Threading.Interlocked.Exchange(ref _cloudLoading, 0); }
         }
 
+        private void OnSyncFlagsChanged(object? sender, EventArgs e)
+        {
+            if (_disposed) return;
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+            dispatcher.BeginInvoke(() =>
+            {
+                if (!_disposed) RefreshSyncFlags();
+            });
+        }
+
+        private void RefreshSyncFlags()
+        {
+            IsSyncing = _syncManager.IsSyncRunning;
+            IsAutoSyncRunning = _syncManager.IsAutoSyncRunning;
+        }
+
         public void Dispose()
         {
             _disposed = true;
+            _syncManager.SyncFlagsChanged -= OnSyncFlagsChanged;
             _cloudRefreshTimer.Stop();
             _windowLifetime.Cancel();
         }

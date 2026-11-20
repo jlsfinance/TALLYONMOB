@@ -159,7 +159,7 @@ export function LicenseGateProvider({ children }: { children: ReactNode }) {
     const hasFeature = useCallback((feature: string): boolean => {
         if (license.isSuperAdmin) return true;
         if (!verifiedActive) return ![...EXPIRED_BLOCKED,...PREMIUM_FEATURES].includes(feature);
-        return true; // All three duration plans and the 30-day trial grant app access.
+        return true; // All three duration plans and the free trial grant app access.
     }, [license.isSuperAdmin, verifiedActive]);
     const canAccess = useCallback((feature: string) => license.isSuperAdmin || (verifiedActive && hasFeature(feature)), [license.isSuperAdmin,verifiedActive,hasFeature]);
     const isReadOnly = !license.isSuperAdmin && !verifiedActive;

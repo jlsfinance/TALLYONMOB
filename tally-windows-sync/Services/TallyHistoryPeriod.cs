@@ -61,8 +61,14 @@ namespace TallySyncApp.Services
                     using var text = new StringReader(raw);
                     using var reader = XmlReader.Create(text, new XmlReaderSettings { CheckCharacters = false, DtdProcessing = DtdProcessing.Prohibit });
                     var metadata = XDocument.Load(reader);
-                    var matching = metadata.Descendants("COMPANY").Where(c => string.Equals(
-                        c.Attribute("NAME")?.Value ?? c.Element("NAME")?.Value, company, StringComparison.OrdinalIgnoreCase)).ToList();
+                    static string? CompanyNameOf(XElement c)
+                    {
+                        var attr = c.Attribute("NAME")?.Value?.Trim();
+                        return string.IsNullOrEmpty(attr) ? c.Element("NAME")?.Value?.Trim() : attr;
+                    }
+                    var matching = metadata.Descendants("COMPANY")
+                        .Where(c => string.Equals(CompanyNameOf(c), company, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
                     var dates = matching.SelectMany(c => new[] { c.Element("STARTINGFROM")?.Value, c.Element("BOOKSFROM")?.Value })
                         .Select(value => DateTime.TryParseExact(value?.Trim(), "yyyyMMdd", CultureInfo.InvariantCulture,
                             DateTimeStyles.None, out var date) ? (DateTime?)date : null)

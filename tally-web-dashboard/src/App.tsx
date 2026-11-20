@@ -11,6 +11,7 @@ import { supabase } from './lib/supabase';
 import { Capacitor } from '@capacitor/core';
 import { initActivityTracker, destroyActivityTracker } from './lib/activityTracker';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SearchMetadata } from './components/common/SEO';
 import AppLayout from './components/layout/AppLayout';
 import { hasAdminAccess, isAdminConsoleEnabled } from './lib/adminAccess';
 import './App.css';
@@ -97,6 +98,7 @@ const InvoicePDFPage = lazyPage('InvoicePDFPage', () => import('./pages/InvoiceP
 const CreateInvoicePage = lazyPage('CreateInvoicePage', () => import('./pages/CreateInvoicePage'));
 const Dashboard3DPage = lazyPage('Dashboard3DPage', () => import('./pages/Dashboard3DPage'));
 const SyncoraLandingPage = lazyPage('SyncoraLandingPage', () => import('./pages/SyncoraLandingPage'));
+const SyncoraGuidePage = lazyPage('SyncoraGuidePage', () => import('./pages/SyncoraGuidePage'));
 const LandingPage3D = lazyPage('LandingPage3D', () => import('./pages/LandingPage3D'));
 const LandingPage = lazyPage('LandingPage', () => import('./pages/LandingPage'));
 const ProfitLossPage = lazyPage('ProfitLossPage', () => import('./pages/ProfitLossPage'));
@@ -331,6 +333,11 @@ function AppContent() {
 
                 <Route path="/" element={<HomeRedirect />} />
                 <Route path="/syncora" element={<SyncoraLandingPage />} />
+                <Route path="/product-overview" element={<SyncoraGuidePage />} />
+                <Route path="/guides/tally-sync-troubleshooting" element={<SyncoraGuidePage />} />
+                <Route path="/guides/tallyprime-setup" element={<SyncoraGuidePage />} />
+                <Route path="/guides/tally-ledger-on-mobile" element={<SyncoraGuidePage />} />
+                <Route path="/for-accountants" element={<SyncoraGuidePage />} />
                 <Route path="/privacy" element={<PrivacyPolicyPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/refund" element={<RefundPolicyPage />} />
@@ -450,6 +457,7 @@ function App() {
             <ThemeProvider>
                 <LanguageProvider>
                     <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+                        <SearchMetadata />
                         <AuthProvider>
                         <FYProvider>
                             <LicenseGateProvider>

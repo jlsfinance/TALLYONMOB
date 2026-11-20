@@ -135,9 +135,9 @@ export default function StockItemDetailPage() {
 
             if (error) throw error;
 
-            const rows = data?.rows || [];
+            const rows = (data && !Array.isArray(data) ? data.rows : undefined) || [];
             setHistoryRows(rows);
-            setHistorySummary(data?.summary || {
+            setHistorySummary((data && !Array.isArray(data) ? data.summary : undefined) || {
                 opening_qty: Number(itemRef.opening_stock || itemRef.opening_balance || 0),
                 total_in_qty: 0,
                 total_out_qty: 0,
@@ -175,7 +175,7 @@ export default function StockItemDetailPage() {
                 } as any
             );
             if (allHistoryError) throw allHistoryError;
-            const rows = allHistory?.rows || [];
+            const rows = allHistory && !Array.isArray(allHistory) ? allHistory.rows : [];
             let sQty = 0;
             let sVal = 0;
             let pQty = 0;

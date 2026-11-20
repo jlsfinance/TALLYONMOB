@@ -1,3 +1,5 @@
+import type { AuthContextType } from '@/contexts/types';
+import { TallyPushBadge } from '@/components/vouchers/TallyPushBadge';
 import './DayBookPage.css';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -80,7 +82,7 @@ const VOUCHER_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function DayBookPage() {
-  const { user, selectedCompany } = useAuth();
+  const { user, selectedCompany } = useAuth() as AuthContextType;
   const navigate = useNavigate();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -382,6 +384,7 @@ export default function DayBookPage() {
                     {/* Party Name + Narration on desktop */}
                     <div className="min-w-0 sm:col-span-1">
                       <p className="text-xs sm:text-sm text-zinc-200 truncate font-medium">{v.party_name || '-'}</p>
+                      <TallyPushBadge narration={v.narration} />
                       <p className="text-[9px] text-zinc-600 truncate hidden lg:block">{v.narration || '-'}</p>
                     </div>
 

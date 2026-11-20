@@ -124,4 +124,34 @@ public class SyncCancellationTests
         using var extractor = new TallyFastExtractor(handler: handler);
         Assert.Empty(await extractor.GetModifiedVoucherAlterIdsAsync("Test", 100));
     }
+
+    [Fact]
+    public async Task FastExtractorTracksAndResetsTransportFailures()
+    {
+        int attempt = 0;
+        var handler = new FakeTallyHandler(_ =>
+        {
+            attempt++;
+            return attempt switch
+            {
+                1 => throw new TaskCanceledException("Simulated HTTP timeout"),
+                2 => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)),
+                _ => Task.FromResult(IndexResponse())
+            };
+        });
+        using var extractor = new TallyFastExtractor(handler: handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => extractor.GetModifiedVoucherAlterIdsAsync("Test", 100));
+        Assert.Equal(1, extractor.ConsecutiveFailures);
+        Assert.Contains("Simulated HTTP timeout", extractor.LastTransportError);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => extractor.GetModifiedVoucherAlterIdsAsync("Test", 100));
+        Assert.Equal(2, extractor.ConsecutiveFailures);
+        Assert.Equal("HTTP 503", extractor.LastTransportError);
+
+        var ids = await extractor.GetModifiedVoucherAlterIdsAsync("Test", 100);
+        Assert.Equal(new long[] { 101217 }, ids);
+        Assert.Equal(0, extractor.ConsecutiveFailures);
+        Assert.Null(extractor.LastTransportError);
+    }
 }

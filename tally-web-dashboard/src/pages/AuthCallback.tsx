@@ -9,7 +9,7 @@ export default function AuthCallback() {
         const handleCallback = async () => {
             try {
                 // Get the session from the URL hash
-                const { data: { user }, error } = await supabase.auth.getCurrentUser();
+                const { data: { user }, error } = await supabase.auth.getUser();
 
                 if (error) {
                     console.error('Auth callback error:', error);

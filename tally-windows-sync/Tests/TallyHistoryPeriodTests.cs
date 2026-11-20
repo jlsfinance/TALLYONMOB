@@ -114,4 +114,38 @@ public class TallyHistoryPeriodTests
         Assert.Equal(new long[] { 1001 }, ids);
         Assert.Equal("20240401", handler.ExportFrom);
     }
+
+    private sealed class EmptyAttrCompanyHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var data = new XElement("ENVELOPE", new XElement("COLLECTION", new XElement("COMPANY",
+                new XAttribute("NAME", ""),
+                new XElement("NAME", "  Books & Co  "),
+                new XElement("STARTINGFROM", "20260401"),
+                new XElement("BOOKSFROM", "20230401"))));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(data.ToString()) });
+        }
+    }
+
+    [Fact]
+    public async Task EmptyNameAttributeFallsBackToTrimmedNameElement()
+    {
+        using var client = new HttpClient(new EmptyAttrCompanyHandler());
+        var output = XDocument.Parse(await new TallyHistoryPeriod().PrepareAsync(Request("Books & Co"), client, "http://tally", default));
+        Assert.Equal("20230401", output.Descendants("SVFROMDATE").Single().Value);
+        Assert.Equal("20991231", output.Descendants("SVTODATE").Single().Value);
+    }
+
+    [Fact]
+    public async Task UnavailableBooksStartDatePropagatesDirectlyInsteadOfNoAnswer()
+    {
+        var handler = new MetadataHandler { MissingDates = true };
+        using var extractor = new TallyFastExtractor("http://tally", handler: handler);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            extractor.GetModifiedVoucherAlterIdsAsync("Books & Co", 100));
+        Assert.Contains("Books start date unavailable", error.Message);
+        Assert.DoesNotContain("Tally did not answer", error.Message);
+        Assert.Equal(error.Message, extractor.LastTransportError);
+    }
 }

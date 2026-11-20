@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import { shareVoucherOnWhatsApp } from '@/lib/whatsappInvoice';
 import { generateTallyVoucherXml, sendToTally } from '@/services/tallyExportService';
 import { VoucherEditHistory } from '@/components/vouchers/VoucherEditHistory';
+import { hasTallyPushMarker } from '@/lib/tallyPushNarration';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -479,7 +480,7 @@ export default function VoucherDetailPage() {
                     <div className="flex justify-center pt-2">
                         <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${status === 'SYNCED' ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' : 'border-amber-500/30 text-amber-500 bg-amber-500/5'}`}>
                             <div className={`w-1.5 h-1.5 rounded-full ${status === 'SYNCED' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
-                            {status === 'SYNCED' ? 'Synced' : 'Pending'}
+                            {status === 'SYNCED' ? (hasTallyPushMarker(voucher.narration) ? 'Sent to Tally' : 'Synced') : 'Pending'}
                         </div>
                     </div>
                 </div>

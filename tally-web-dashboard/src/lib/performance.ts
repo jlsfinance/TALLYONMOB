@@ -213,9 +213,11 @@ interface LazyLoadOptions {
   onError?: (error: Error) => void;
 }
 
-interface LazyComponent extends React.ComponentType<any> {
+interface LayoutShift extends PerformanceEntry { value: number; hadRecentInput: boolean }
+
+type LazyComponent = React.LazyExoticComponent<React.ComponentType<any>> & {
   preload: () => Promise<void>;
-}
+};
 
 /**
  * Creates a lazily-loaded component with built-in loading state and error handling.
@@ -262,13 +264,9 @@ export function lazyLoad(
     return cachedPromise;
   };
 
-  const LazyComponent = React.lazy(loadComponent) as LazyComponent;
-
-  LazyComponent.preload = async () => {
-    await loadComponent();
-  };
-
-  return LazyComponent;
+  return Object.assign(React.lazy(loadComponent), {
+    preload: async () => { await loadComponent(); },
+  });
 }
 
 // ============================================================================
@@ -940,9 +938,8 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
     const fidObserver = new PerformanceObserver((list) => {
       const entries = list.getEntries();
       entries.forEach((entry) => {
-        if ('processingStart' in entry) {
-          const fidEntry = entry as PerformanceEventTiming;
-          const fid = fidEntry.processingStart - fidEntry.startTime;
+        if ('processingStart' in entry && typeof entry.processingStart === 'number') {
+          const fid = entry.processingStart - entry.startTime;
           const metric: WebVitalMetric = {
             name: 'FID',
             value: fid,
@@ -1030,7 +1027,7 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
       const entries = list.getEntries();
       entries.forEach((entry) => {
         if ('interactionId' in entry) {
-          const inpEntry = entry as PerformanceEventTiming;
+          const inpEntry = entry;
           const duration = inpEntry.duration;
           const metric: WebVitalMetric = {
             name: 'INP',
@@ -1041,7 +1038,8 @@ export function reportWebVitals(callback: WebVitalCallback): () => void {
         }
       });
     });
-    inpObserver.observe({ type: 'event', buffered: true, durationThreshold: 40 });
+    const options = { type: 'event', buffered: true, durationThreshold: 40 };
+    inpObserver.observe(options);
     observers.push(inpObserver);
   } catch {
     // INP not supported

@@ -332,8 +332,19 @@ namespace TallySyncApp.Services
 
                         if (success)
                         {
-                            await _apiClient.UpdatePendingTransactionStatusAsync(
-                                transaction.Id, "synced", voucherNumber);
+                            var acknowledged = false;
+                            for (var attempt = 0; attempt < 3 && !acknowledged; attempt++)
+                            {
+                                if (attempt > 0) await Task.Delay(TimeSpan.FromSeconds(attempt));
+                                acknowledged = await _apiClient.UpdatePendingTransactionStatusAsync(
+                                    transaction.Id, "synced", voucherNumber);
+                            }
+                            if (!acknowledged)
+                            {
+                                SyncLogger.Log($"Tally import succeeded but cloud acknowledgement failed for {transaction.Id}. Verify it in Tally before retrying.");
+                                failed++;
+                                continue;
+                            }
                             SyncLogger.Log($"✅ Transaction synced: {transaction.TransactionType} → Tally #{voucherNumber}");
                             synced++;
                         }
@@ -522,6 +533,10 @@ namespace TallySyncApp.Services
                 var voucherDate = DateTime.Parse(voucherData["voucher_date"]?.ToString() ?? DateTime.Now.ToString("yyyy-MM-dd"));
                 var partyName = TallyLedgerName(ctx, voucherData["party_name"]?.ToString() ?? "");
                 var narration = isVoucherEdit ? VoucherEditXml.AuditNarration(voucherData) : voucherData["narration"]?.ToString() ?? "";
+                // This queue serves multiple Syncora clients. The marker survives the Tally read-back.
+                const string syncoraMarker = "[Sent from SYNCORA]";
+                if (!narration.Split('\n').Any(line => line.Trim() == syncoraMarker))
+                    narration = string.IsNullOrWhiteSpace(narration) ? syncoraMarker : narration + "\n" + syncoraMarker;
                 var guid = ResolveVoucherGuid(transaction);
 
                 SyncLogger.Log($"    Resolved Type: {rawType}, Party: {partyName}, Date: {voucherDate:yyyy-MM-dd}");
@@ -699,13 +714,12 @@ namespace TallySyncApp.Services
             string partyName, string narration, string salesLedger, CompanyContext ctx, string guid)
         {
             var items = VoucherInventoryPayload.Read(data);
-            var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
-            var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
-            var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
-            var igst = data["igst_amount"]?.Value<decimal>() ?? 0;
-            var roundOff = data["round_off"]?.Value<decimal>() ?? data["roundUpAmount"]?.Value<decimal>() ?? 0;
-            var billDiscount = data["discount_amount"]?.Value<decimal>() ?? data["discountAmount"]?.Value<decimal>() ?? 0;
-            var grandTotal = data["grand_total"]?.Value<decimal>() ?? totalAmount + cgst + sgst + igst + roundOff - billDiscount;
+            var totalAmount = data["total_amount"]?.Value<decimal?>() ?? 0;
+            var cgst = data["cgst_amount"]?.Value<decimal?>() ?? 0;
+            var sgst = data["sgst_amount"]?.Value<decimal?>() ?? 0;
+            var igst = data["igst_amount"]?.Value<decimal?>() ?? 0;
+            var roundOff = data["round_off"]?.Value<decimal?>() ?? data["roundUpAmount"]?.Value<decimal?>() ?? 0;
+            var billDiscount = data["discount_amount"]?.Value<decimal?>() ?? data["discountAmount"]?.Value<decimal?>() ?? 0;
 
             // Fallback for party name: In Tally, default cash ledger is "Cash", not "Cash Customer"
             if (string.IsNullOrWhiteSpace(partyName) || partyName.Equals("Cash Customer", StringComparison.OrdinalIgnoreCase))
@@ -714,16 +728,16 @@ namespace TallySyncApp.Services
             }
 
             SyncLogger.Log($">>> Generating Sales XML:");
-            SyncLogger.Log($"    Party: {partyName}, Date: {date:yyyyMMdd}, Total: {totalAmount}, GrandTotal: {grandTotal}");
+            SyncLogger.Log($"    Party: {partyName}, Date: {date:yyyyMMdd}, Total before tax: {totalAmount}");
             SyncLogger.Log($"    Items count: {items.Count}, CGST: {cgst}, SGST: {sgst}, IGST: {igst}, Discount: {billDiscount}");
 
             // Also check for alternative field names used by web dashboard
             if (cgst == 0 && sgst == 0 && igst == 0)
             {
                 // Try alternative field names used by some frontends
-                var totalCgst = data["totalCgst"]?.Value<decimal>() ?? 0;
-                var totalSgst = data["totalSgst"]?.Value<decimal>() ?? 0;
-                var totalIgst = data["totalIgst"]?.Value<decimal>() ?? 0;
+                var totalCgst = data["totalCgst"]?.Value<decimal?>() ?? 0;
+                var totalSgst = data["totalSgst"]?.Value<decimal?>() ?? 0;
+                var totalIgst = data["totalIgst"]?.Value<decimal?>() ?? 0;
                 if (totalCgst > 0 || totalSgst > 0 || totalIgst > 0)
                 {
                     SyncLogger.Log($"    Found alternative GST field names: CGST={totalCgst}, SGST={totalSgst}, IGST={totalIgst}");
@@ -734,7 +748,7 @@ namespace TallySyncApp.Services
                 else
                 {
                     // Create-voucher payload only carries a single gst_amount — assume intra-state split
-                    var gstAmount = data["gst_amount"]?.Value<decimal>() ?? 0;
+                    var gstAmount = data["gst_amount"]?.Value<decimal?>() ?? 0;
                     if (gstAmount > 0)
                     {
                         cgst = Math.Round(gstAmount / 2, 2);
@@ -744,10 +758,12 @@ namespace TallySyncApp.Services
                 }
             }
 
+            var grandTotal = data["grand_total"]?.Value<decimal?>() ?? totalAmount + cgst + sgst + igst + roundOff - billDiscount;
+
             // Recalculate grandTotal if it's zero and we have components
             if (grandTotal == 0)
             {
-                var subtotal = data["subtotal"]?.Value<decimal>() ?? data["taxable_amount"]?.Value<decimal>() ?? 0;
+                var subtotal = data["subtotal"]?.Value<decimal?>() ?? data["taxable_amount"]?.Value<decimal?>() ?? 0;
                 if (subtotal > 0)
                     totalAmount = subtotal;
                 grandTotal = totalAmount + cgst + sgst + igst + roundOff - billDiscount;
@@ -801,9 +817,9 @@ namespace TallySyncApp.Services
             {
                 itemIndex++;
                 var itemName = item["stock_item_name"]?.ToString() ?? item["description"]?.ToString() ?? item["item_name"]?.ToString() ?? "";
-                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
-                var rate = item["rate"]?.Value<decimal>() ?? 0;
-                var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
+                var qty = item["quantity"]?.Value<decimal?>() ?? item["qty"]?.Value<decimal?>() ?? 0;
+                var rate = item["rate"]?.Value<decimal?>() ?? 0;
+                var amount = item["amount"]?.Value<decimal?>() ?? (qty * rate);
 
                 if (string.IsNullOrEmpty(itemName))
                 {
@@ -814,8 +830,8 @@ namespace TallySyncApp.Services
                 var unit = ResolveUnit(ctx, itemName, item["unit"]?.ToString());
 
                 // Item discount
-                var itemDiscountAmount = item["discount_amount"]?.Value<decimal>() ?? item["discountAmount"]?.Value<decimal>() ?? 0;
-                var itemDiscountPercent = item["discount_value"]?.Value<decimal>() ?? item["discountPercent"]?.Value<decimal>() ?? 0;
+                var itemDiscountAmount = item["discount_amount"]?.Value<decimal?>() ?? item["discountAmount"]?.Value<decimal?>() ?? 0;
+                var itemDiscountPercent = item["discount_value"]?.Value<decimal?>() ?? item["discountPercent"]?.Value<decimal?>() ?? 0;
                 if (itemDiscountAmount == 0 && itemDiscountPercent > 0 && (qty * rate) > 0)
                 {
                     itemDiscountAmount = Math.Round((qty * rate * itemDiscountPercent) / 100, 2);
@@ -826,7 +842,7 @@ namespace TallySyncApp.Services
                 }
 
                 // Taxable value of item (net of item discount)
-                var taxable = item["taxable_amount"]?.Value<decimal>() ?? item["base_amount"]?.Value<decimal>() ?? (qty > 0 && rate > 0 ? (qty * rate - itemDiscountAmount) : amount);
+                var taxable = item["taxable_amount"]?.Value<decimal?>() ?? item["base_amount"]?.Value<decimal?>() ?? (qty > 0 && rate > 0 ? (qty * rate - itemDiscountAmount) : amount);
                 if (taxable <= 0 && amount > 0) taxable = amount;
 
                 var itemGstRate = ItemGstRate(ctx, item, date);
@@ -919,21 +935,21 @@ namespace TallySyncApp.Services
             string partyName, string narration, string purchaseLedger, CompanyContext ctx, string guid)
         {
             var items = VoucherInventoryPayload.Read(data);
-            var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
-            var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
-            var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
-            var igst = data["igst_amount"]?.Value<decimal>() ?? 0;
-            var grandTotal = data["grand_total"]?.Value<decimal>() ?? totalAmount + cgst + sgst + igst;
-
+            var totalAmount = data["total_amount"]?.Value<decimal?>() ?? 0;
+            var cgst = data["cgst_amount"]?.Value<decimal?>() ?? 0;
+            var sgst = data["sgst_amount"]?.Value<decimal?>() ?? 0;
+            var igst = data["igst_amount"]?.Value<decimal?>() ?? 0;
             if (cgst == 0 && sgst == 0 && igst == 0)
             {
-                var gstAmount = data["gst_amount"]?.Value<decimal>() ?? 0;
+                var gstAmount = data["gst_amount"]?.Value<decimal?>() ?? 0;
                 if (gstAmount > 0)
                 {
                     cgst = Math.Round(gstAmount / 2, 2);
                     sgst = gstAmount - cgst;
                 }
             }
+
+            var grandTotal = data["grand_total"]?.Value<decimal?>() ?? totalAmount + cgst + sgst + igst;
 
             var voucherNumber = data["voucher_number"]?.ToString() ?? "";
             var state = data["state"]?.ToString() ?? data["place_of_supply"]?.ToString() ?? "Rajasthan";
@@ -980,10 +996,10 @@ namespace TallySyncApp.Services
                 var itemName = item["stock_item_name"]?.ToString() ?? item["item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
                 if (string.IsNullOrEmpty(itemName)) continue;
 
-                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
-                var rate = item["rate"]?.Value<decimal>() ?? 0;
-                var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
-                var taxable = item["taxable_amount"]?.Value<decimal>() ?? amount;
+                var qty = item["quantity"]?.Value<decimal?>() ?? item["qty"]?.Value<decimal?>() ?? 0;
+                var rate = item["rate"]?.Value<decimal?>() ?? 0;
+                var amount = item["amount"]?.Value<decimal?>() ?? (qty * rate);
+                var taxable = item["taxable_amount"]?.Value<decimal?>() ?? amount;
                 var unit = ResolveUnit(ctx, itemName, item["unit"]?.ToString());
 
                 var itemGstRate = ItemGstRate(ctx, item, date);
@@ -1045,21 +1061,21 @@ namespace TallySyncApp.Services
             string partyName, string narration, string salesLedger, CompanyContext ctx, string guid)
         {
             var items = VoucherInventoryPayload.Read(data);
-            var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
-            var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
-            var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
-            var igst = data["igst_amount"]?.Value<decimal>() ?? 0;
-            var grandTotal = data["grand_total"]?.Value<decimal>() ?? totalAmount + cgst + sgst + igst;
-
+            var totalAmount = data["total_amount"]?.Value<decimal?>() ?? 0;
+            var cgst = data["cgst_amount"]?.Value<decimal?>() ?? 0;
+            var sgst = data["sgst_amount"]?.Value<decimal?>() ?? 0;
+            var igst = data["igst_amount"]?.Value<decimal?>() ?? 0;
             if (cgst == 0 && sgst == 0 && igst == 0)
             {
-                var gstAmount = data["gst_amount"]?.Value<decimal>() ?? 0;
+                var gstAmount = data["gst_amount"]?.Value<decimal?>() ?? 0;
                 if (gstAmount > 0)
                 {
                     cgst = Math.Round(gstAmount / 2, 2);
                     sgst = gstAmount - cgst;
                 }
             }
+
+            var grandTotal = data["grand_total"]?.Value<decimal?>() ?? totalAmount + cgst + sgst + igst;
 
             var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
@@ -1089,10 +1105,10 @@ namespace TallySyncApp.Services
                 var itemName = item["stock_item_name"]?.ToString() ?? item["item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
                 if (string.IsNullOrEmpty(itemName)) continue;
 
-                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
-                var rate = item["rate"]?.Value<decimal>() ?? 0;
-                var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
-                var taxable = item["taxable_amount"]?.Value<decimal>() ?? amount;
+                var qty = item["quantity"]?.Value<decimal?>() ?? item["qty"]?.Value<decimal?>() ?? 0;
+                var rate = item["rate"]?.Value<decimal?>() ?? 0;
+                var amount = item["amount"]?.Value<decimal?>() ?? (qty * rate);
+                var taxable = item["taxable_amount"]?.Value<decimal?>() ?? amount;
                 var unit = ResolveUnit(ctx, itemName, item["unit"]?.ToString());
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
@@ -1152,21 +1168,21 @@ namespace TallySyncApp.Services
             string partyName, string narration, string purchaseLedger, CompanyContext ctx, string guid)
         {
             var items = VoucherInventoryPayload.Read(data);
-            var totalAmount = data["total_amount"]?.Value<decimal>() ?? 0;
-            var cgst = data["cgst_amount"]?.Value<decimal>() ?? 0;
-            var sgst = data["sgst_amount"]?.Value<decimal>() ?? 0;
-            var igst = data["igst_amount"]?.Value<decimal>() ?? 0;
-            var grandTotal = data["grand_total"]?.Value<decimal>() ?? totalAmount + cgst + sgst + igst;
-
+            var totalAmount = data["total_amount"]?.Value<decimal?>() ?? 0;
+            var cgst = data["cgst_amount"]?.Value<decimal?>() ?? 0;
+            var sgst = data["sgst_amount"]?.Value<decimal?>() ?? 0;
+            var igst = data["igst_amount"]?.Value<decimal?>() ?? 0;
             if (cgst == 0 && sgst == 0 && igst == 0)
             {
-                var gstAmount = data["gst_amount"]?.Value<decimal>() ?? 0;
+                var gstAmount = data["gst_amount"]?.Value<decimal?>() ?? 0;
                 if (gstAmount > 0)
                 {
                     cgst = Math.Round(gstAmount / 2, 2);
                     sgst = gstAmount - cgst;
                 }
             }
+
+            var grandTotal = data["grand_total"]?.Value<decimal?>() ?? totalAmount + cgst + sgst + igst;
 
             var gstError = ValidateItemGst(ctx, items, date, cgst, sgst, igst);
             if (gstError != null) return ("", gstError);
@@ -1196,10 +1212,10 @@ namespace TallySyncApp.Services
                 var itemName = item["stock_item_name"]?.ToString() ?? item["item_name"]?.ToString() ?? item["description"]?.ToString() ?? "";
                 if (string.IsNullOrEmpty(itemName)) continue;
 
-                var qty = item["quantity"]?.Value<decimal>() ?? item["qty"]?.Value<decimal>() ?? 0;
-                var rate = item["rate"]?.Value<decimal>() ?? 0;
-                var amount = item["amount"]?.Value<decimal>() ?? (qty * rate);
-                var taxable = item["taxable_amount"]?.Value<decimal>() ?? amount;
+                var qty = item["quantity"]?.Value<decimal?>() ?? item["qty"]?.Value<decimal?>() ?? 0;
+                var rate = item["rate"]?.Value<decimal?>() ?? 0;
+                var amount = item["amount"]?.Value<decimal?>() ?? (qty * rate);
+                var taxable = item["taxable_amount"]?.Value<decimal?>() ?? amount;
                 var unit = ResolveUnit(ctx, itemName, item["unit"]?.ToString());
 
                 xml.AppendLine("            <ALLINVENTORYENTRIES.LIST>");
@@ -1284,6 +1300,7 @@ namespace TallySyncApp.Services
                 result.Cgst = Resolve(data["cgst_ledger"]?.ToString(), "CGST");
                 if (result.Cgst == null)
                 {
+                    ctx.LedgersAt = DateTime.MinValue;
                     result.Error = "Tally me CGST ledger nahi mila (Duties & Taxes group). " +
                                    "Pehle Tally me GST ledger banao, phir retry karo.";
                     return result;
@@ -1295,6 +1312,7 @@ namespace TallySyncApp.Services
                 result.Sgst = Resolve(data["sgst_ledger"]?.ToString(), "SGST");
                 if (result.Sgst == null)
                 {
+                    ctx.LedgersAt = DateTime.MinValue;
                     result.Error = "Tally me SGST ledger nahi mila (Duties & Taxes group). " +
                                    "Pehle Tally me GST ledger banao, phir retry karo.";
                     return result;
@@ -1306,6 +1324,7 @@ namespace TallySyncApp.Services
                 result.Igst = Resolve(data["igst_ledger"]?.ToString(), "IGST");
                 if (result.Igst == null)
                 {
+                    ctx.LedgersAt = DateTime.MinValue;
                     result.Error = "Tally me IGST ledger nahi mila (Duties & Taxes group). " +
                                    "Pehle Tally me GST ledger banao, phir retry karo.";
                     return result;
@@ -1357,11 +1376,11 @@ namespace TallySyncApp.Services
                 if (masterRate != null) return masterRate.Value;
             }
 
-            var rate = item["gst_rate"]?.Value<decimal>() ?? item["gstRate"]?.Value<decimal>() ?? 0;
+            var rate = item["gst_rate"]?.Value<decimal?>() ?? item["gstRate"]?.Value<decimal?>() ?? 0;
             if (rate > 0) return rate;
 
-            var amount = item["amount"]?.Value<decimal>() ?? 0;
-            var taxable = item["taxable_amount"]?.Value<decimal>() ?? amount;
+            var amount = item["amount"]?.Value<decimal?>() ?? 0;
+            var taxable = item["taxable_amount"]?.Value<decimal?>() ?? amount;
             return taxable > 0 && amount > taxable ? Math.Round((amount - taxable) / taxable * 100, 2) : 0;
         }
 
@@ -1385,7 +1404,7 @@ namespace TallySyncApp.Services
                 var rate = ItemGstRate(ctx, item, date);
                 if (rate <= 0) continue;
 
-                var taxable = item["taxable_amount"]?.Value<decimal>() ?? item["amount"]?.Value<decimal>() ?? 0;
+                var taxable = item["taxable_amount"]?.Value<decimal?>() ?? item["amount"]?.Value<decimal?>() ?? 0;
                 tax += Math.Round(taxable * rate / 100, 2);
             }
 
@@ -1584,7 +1603,7 @@ namespace TallySyncApp.Services
 
             var amount = entries.List.Count >= 2
                 ? entries.List.Where(e => e.IsDebit).Sum(e => e.Amount)
-                : data["amount"]?.Value<decimal>() ?? data["grand_total"]?.Value<decimal>() ?? data["total_amount"]?.Value<decimal>() ?? 0;
+                : data["amount"]?.Value<decimal?>() ?? data["grand_total"]?.Value<decimal?>() ?? data["total_amount"]?.Value<decimal?>() ?? 0;
 
             if (amount <= 0)
                 return ("", $"{voucherType} amount 0 hai. Ledger entries me debit/credit amount daalo, phir retry karo.");
@@ -1715,14 +1734,14 @@ namespace TallySyncApp.Services
             {
                 var name = e["ledger_name"]?.ToString()?.Trim();
                 if (!string.IsNullOrWhiteSpace(name)) name = TallyLedgerName(ctx, name);
-                var amount = e["amount"]?.Value<decimal>() ?? 0;
+                var amount = e["amount"]?.Value<decimal?>() ?? 0;
                 if (string.IsNullOrWhiteSpace(name) || amount <= 0) continue;
 
                 list.Add(new MoneyEntry
                 {
                     Ledger = name,
                     Amount = amount,
-                    IsDebit = e["is_debit"]?.Value<bool>() ??
+                    IsDebit = e["is_debit"]?.Value<bool?>() ??
                               string.Equals(e["type"]?.ToString(), "Dr", StringComparison.OrdinalIgnoreCase),
                 });
             }
@@ -1789,8 +1808,8 @@ namespace TallySyncApp.Services
             foreach (var entry in entries)
             {
                 var ledgerName = entry["ledger_name"]?.ToString() ?? "";
-                var amount = entry["amount"]?.Value<decimal>() ?? 0;
-                var isDebit = entry["is_debit"]?.Value<bool>() ??
+                var amount = entry["amount"]?.Value<decimal?>() ?? 0;
+                var isDebit = entry["is_debit"]?.Value<bool?>() ??
                               string.Equals(entry["type"]?.ToString(), "Dr", StringComparison.OrdinalIgnoreCase);
 
                 var ledger = ctx.Ledgers.FirstOrDefault(l =>
@@ -1855,8 +1874,8 @@ namespace TallySyncApp.Services
             foreach (var entry in entries)
             {
                 var ledgerName = entry["ledger_name"]?.ToString() ?? "";
-                var amount = entry["amount"]?.Value<decimal>() ?? 0;
-                var isDebit = entry["is_debit"]?.Value<bool>() ?? string.Equals(entry["type"]?.ToString(), "Dr", StringComparison.OrdinalIgnoreCase);
+                var amount = entry["amount"]?.Value<decimal?>() ?? 0;
+                var isDebit = entry["is_debit"]?.Value<bool?>() ?? string.Equals(entry["type"]?.ToString(), "Dr", StringComparison.OrdinalIgnoreCase);
 
                 xml.AppendLine("            <ALLLEDGERENTRIES.LIST>");
                 xml.AppendLine($"              <LEDGERNAME>{EscapeXml(ledgerName)}</LEDGERNAME>");

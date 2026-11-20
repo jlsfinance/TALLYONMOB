@@ -26,7 +26,7 @@ export default function LoginPage() {
     const [tempUserId, setTempUserId] = useState('');
     const [tempEmail, setTempEmail] = useState('');
     const [resetPasswordSent, setResetPasswordSent] = useState(false);
-    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, resetPasswordForEmail } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any; resetPasswordForEmail: any };
+    const { signIn, signUp, verifyOtp, sendVerificationEmail, signInWithGoogle, resetPasswordForEmail, verify2FALogin } = useAuth() as AuthContextType & { verifyOtp: any; sendVerificationEmail: any; resetPasswordForEmail: any; verify2FALogin: (token: string, userId: string, email: string, code: string) => Promise<{ error?: Error }> };
     const { isDark, toggleTheme } = useTheme();
     const navigate = useNavigate();
 

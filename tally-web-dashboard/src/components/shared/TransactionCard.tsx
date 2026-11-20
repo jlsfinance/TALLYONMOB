@@ -9,7 +9,7 @@ interface TransactionCardProps {
     voucherNumber?: string;
     date: string | Date;
     amount: number;
-    status: 'Confirmed' | 'Pending' | 'Synced' | 'Failed';
+    status: 'Confirmed' | 'Pending' | 'Synced' | 'Failed' | 'Sent to Tally';
     onClick?: () => void;
     highlighted?: boolean;
     compact?: boolean;
@@ -36,6 +36,7 @@ const TransactionCard: React.FC<TransactionCardProps> = ({
     const config = TYPE_CONFIG[type] || { icon: ArrowUpRight, color: 'text-gray-500', bg: 'bg-gray-500/10' };
     const Icon = config.icon;
     const isCredit = type === 'Sales' || type === 'Sales Invoice' || type === 'Receipt';
+    const isSynced = status?.toLowerCase() === 'synced' || status === 'Sent to Tally';
 
     // COMPACT MODE — 55px height, single row, high density
     if (compact) {
@@ -72,7 +73,7 @@ const TransactionCard: React.FC<TransactionCardProps> = ({
                         {isCredit ? '+' : '-'}{formatCurrency(amount)}
                     </p>
                     <div className={`inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-px rounded-full text-[7px] font-bold uppercase tracking-wider ${
-                        status?.toLowerCase() === 'synced' ? 'bg-emerald-500/10 text-emerald-500' :
+                        isSynced ? 'bg-emerald-500/10 text-emerald-500' :
                         status?.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-500' :
                         status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' :
                         'bg-[var(--surface-active)] text-[var(--text-muted)]'
@@ -115,7 +116,7 @@ const TransactionCard: React.FC<TransactionCardProps> = ({
                     {isCredit ? '+' : '-'}{formatCurrency(amount)}
                 </p>
                 <div className={`inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-px rounded-full text-[8px] font-bold uppercase tracking-wider ${
-                    status?.toLowerCase() === 'synced' ? 'bg-emerald-500/10 text-emerald-500' :
+                    isSynced ? 'bg-emerald-500/10 text-emerald-500' :
                     status?.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-500' :
                     status?.toLowerCase() === 'failed' ? 'bg-red-500/10 text-red-500' :
                     'bg-[var(--surface-active)] text-[var(--text-muted)]'

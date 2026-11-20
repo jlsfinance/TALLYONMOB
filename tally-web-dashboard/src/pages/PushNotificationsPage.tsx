@@ -1,3 +1,4 @@
+import type { AuthContextType } from '@/contexts/types';
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Bell,
@@ -1480,7 +1481,7 @@ const SettingsTab: React.FC<{
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function PushNotificationsPage() {
-  const { selectedCompany } = useAuth();
+  const { selectedCompany } = useAuth() as AuthContextType;
   const companyId = selectedCompany?.id ?? null;
 
   const [activeTab, setActiveTab] = useState<TabType>('compose');

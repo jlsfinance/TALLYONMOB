@@ -24,6 +24,7 @@ interface ActivityLog {
   element: string;
   metadata: any;
   device_info: any;
+  session_id?: string;
   duration_ms: number;
   created_at: string;
 }

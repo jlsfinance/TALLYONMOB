@@ -20,7 +20,7 @@ interface ScannedData {
 }
 
 export default function DocumentScannerPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, user } = useAuth() as any;
     const navigate = useNavigate();
     const fileRef = useRef<HTMLInputElement>(null);
     const [scanning, setScanning] = useState(false);
@@ -32,7 +32,7 @@ export default function DocumentScannerPage() {
         setPreview(URL.createObjectURL(file));
         setScanning(true);
         try {
-            const apiKey = await getUserGeminiApiKey(selectedCompany?.id);
+            const apiKey = await getUserGeminiApiKey(user?.id);
             const buffer = await file.arrayBuffer();
             const bytes = new Uint8Array(buffer);
             let binary = '';
@@ -41,10 +41,11 @@ export default function DocumentScannerPage() {
 
             const prompt = `Analyze this document image and extract structured data. Return JSON with: type (invoice/receipt/expense), vendor, date (YYYY-MM-DD), amount, gst, items (array with name/qty/rate/amount), payment_method, reference, confidence (0-100). Be precise with numbers.`;
 
-            const response = await callGemini(prompt, [{ inlineData: { mimeType: file.type, data: base64 } }], apiKey);
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const data = JSON.parse(jsonMatch[0]);
+            const { json } = await callGemini({
+                userPrompt: prompt, attachments: [{ mimeType: file.type, dataBase64: base64 }], apiKey, expectJson: true,
+            });
+            const data = json as ScannedData | null;
+            if (data && typeof data.vendor === "string" && Array.isArray(data.items)) {
                 setResult({ ...data, confidence: data.confidence || 85 });
                 toast.success('Document scanned!');
             } else {

@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { getSearchPage, productSchema, siteOrigin, socialImage } from '../../config/searchPages.mjs';
 
 interface SEOProps {
     title?: string;
@@ -23,13 +25,14 @@ export default function SEO({
     keywords = 'Tally mobile app, Tally on mobile, Tally cloud sync, GST reports online, Tally ERP 9 mobile access, TallyPrime cloud',
     ogTitle,
     ogDescription,
-    ogImage = 'https://tallyonmob.vercel.app/og-image.jpg', // Placeholder, update when real asset exists
-    ogUrl = 'https://tallyonmob.vercel.app',
-    twitterHandle = '@tallylink',
+    ogImage = socialImage,
+    ogUrl,
+    twitterHandle,
     canonical,
     schema
 }: SEOProps) {
     useEffect(() => {
+        if (getSearchPage(window.location.pathname)) return;
         // Update Document Title
         document.title = title;
 
@@ -41,12 +44,12 @@ export default function SEO({
         updateMetaTag('og:title', ogTitle || title, 'property');
         updateMetaTag('og:description', ogDescription || description, 'property');
         updateMetaTag('og:image', ogImage, 'property');
-        updateMetaTag('og:url', ogUrl, 'property');
+        updateMetaTag('og:url', ogUrl || new URL(window.location.pathname, siteOrigin).href, 'property');
         updateMetaTag('og:type', 'website', 'property');
 
         // Twitter
         updateMetaTag('twitter:card', 'summary_large_image');
-        updateMetaTag('twitter:site', twitterHandle);
+        if (twitterHandle) updateMetaTag('twitter:site', twitterHandle);
         updateMetaTag('twitter:title', ogTitle || title);
         updateMetaTag('twitter:description', ogDescription || description);
         updateMetaTag('twitter:image', ogImage);
@@ -81,6 +84,57 @@ export default function SEO({
         };
     }, [title, description, keywords, ogTitle, ogDescription, ogImage, ogUrl, twitterHandle, canonical, schema]);
 
+    return null;
+}
+
+export function SearchMetadata() {
+    const { pathname } = useLocation();
+    useEffect(() => {
+        const page = getSearchPage(pathname);
+        updateMetaTag('robots', page ? 'index, follow, max-image-preview:large' : 'noindex, follow');
+        let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+        let schema = document.getElementById('public-search-schema');
+        if (!page) {
+            canonical?.remove();
+            schema?.remove();
+            return;
+        }
+        document.title = page.title;
+        updateMetaTag('description', page.description);
+        updateMetaTag('og:type', 'website', 'property');
+        updateMetaTag('og:site_name', 'Syncora', 'property');
+        updateMetaTag('og:title', page.title, 'property');
+        updateMetaTag('og:description', page.description, 'property');
+        updateMetaTag('og:image', socialImage, 'property');
+        updateMetaTag('og:image:width', '1200', 'property');
+        updateMetaTag('og:image:height', '630', 'property');
+        updateMetaTag('og:image:alt', 'Syncora — Tally on mobile and web', 'property');
+        updateMetaTag('og:url', page.canonical, 'property');
+        updateMetaTag('twitter:card', 'summary_large_image');
+        updateMetaTag('twitter:title', page.title);
+        updateMetaTag('twitter:description', page.description);
+        updateMetaTag('twitter:image', socialImage);
+        document.querySelector('meta[name="twitter:site"]')?.remove();
+
+        if (!canonical) {
+            canonical = document.createElement('link');
+            canonical.rel = 'canonical';
+            document.head.appendChild(canonical);
+        }
+        canonical.href = page.canonical;
+        if (page.canonical === siteOrigin + '/') {
+            if (!schema) {
+                const script = document.createElement('script');
+                script.id = 'public-search-schema';
+                script.type = 'application/ld+json';
+                document.head.appendChild(script);
+                schema = script;
+            }
+            schema.textContent = JSON.stringify(productSchema);
+        } else {
+            schema?.remove();
+        }
+    }, [pathname]);
     return null;
 }
 

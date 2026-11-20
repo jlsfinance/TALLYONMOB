@@ -1,9 +1,9 @@
 export const APP_INFO = {
-    name: 'JLS Bill',
-    packageName: 'com.jls.billbook',
+    name: 'Syncora',
+    packageName: 'com.syncoraa.app',
     company: 'Shaurya Ltd',
-    siteUrl: import.meta.env.VITE_APP_SITE_URL || 'https://jlsbillbook.app',
-    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.jls.billbook',
+    siteUrl: import.meta.env.VITE_APP_SITE_URL || 'https://tallyonmob.vercel.app',
+    playStoreUrl: 'https://play.google.com/store/apps/details?id=com.syncoraa.app',
     supportEmail: import.meta.env.VITE_SUPPORT_EMAIL || 'lovneetrathi@gmail.com',
     supportPhone: import.meta.env.VITE_SUPPORT_PHONE || '+91 9413821007',
     supportHours: 'Monday to Saturday, 10:00 AM to 7:00 PM IST',
@@ -16,8 +16,8 @@ export const APP_INFO = {
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.14/SyncoraConnector-Setup-3.2.14.exe',
-    pcVersion: '3.2.14',
+    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.17/SyncoraConnector-Setup-3.2.17.exe',
+    pcVersion: '3.2.17',
     androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 

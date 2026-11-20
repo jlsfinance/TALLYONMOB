@@ -48,14 +48,17 @@ export default function TallySyncPage() {
                 supabase.from('vouchers').select('*', { count: 'exact', head: true }).eq('company_id', selectedCompany.id).eq('is_deleted', false),
                 supabase.from('ledgers').select('*', { count: 'exact', head: true }).eq('company_id', selectedCompany.id).eq('is_deleted', false),
                 supabase.from('stock_items').select('*', { count: 'exact', head: true }).eq('company_id', selectedCompany.id).eq('is_deleted', false),
-                supabase.from('sync_history').select('*').eq('company_id', selectedCompany.id).order('created_at', { ascending: false }).limit(15)
+                supabase.from('sync_history').select('*').eq('company_id', selectedCompany.id).order('started_at', { ascending: false }).limit(15)
             ]);
 
+            const error = vouchersRes.error || ledgersRes.error || stockRes.error || historyRes.error;
+            if (error) throw error;
+            const lastCompleted = historyRes.data?.find(row => row.status === 'completed');
             setStats({
                 vouchers: vouchersRes.count || 0,
                 ledgers: ledgersRes.count || 0,
                 stockItems: stockRes.count || 0,
-                lastSync: historyRes.data?.[0]?.created_at || null
+                lastSync: lastCompleted?.completed_at || selectedCompany.last_sync_at || null
             });
             setSyncHistory(historyRes.data || []);
         } catch (err) {
@@ -70,7 +73,7 @@ export default function TallySyncPage() {
             // Web/mobile-created vouchers are queued here for the PC agent; nothing from Tally import lands here.
             const { data, error } = await supabase
                 .from('pending_transactions')
-                .select('id, transaction_type, status, error_message, tally_voucher_number, created_at, synced_at, voucher_data')
+                .select('id, transaction_type, status, error_message, tally_voucher_number, created_at, updated_at, synced_at, voucher_data')
                 .eq('company_id', selectedCompany.id)
                 .order('created_at', { ascending: false })
                 .limit(200);
@@ -108,12 +111,14 @@ export default function TallySyncPage() {
     };
 
     const retryTransaction = async (t: any) => {
-        const { error } = await supabase
+        if (!selectedCompany?.id || !window.confirm('Check this voucher in Tally first. Retry only if the original request did not apply. Requeue this voucher?')) return;
+        const { data, error } = await supabase
             .from('pending_transactions')
             .update({ status: 'pending', error_message: null })
-            .eq('id', t.id);
-        if (error) {
-            toast.error('Retry failed: ' + error.message);
+            .eq('id', t.id).eq('company_id', selectedCompany.id).eq('status', 'failed')
+            .select('id').maybeSingle();
+        if (error || !data) {
+            toast.error(error?.message || 'Voucher status changed. Refresh and try again.');
         } else {
             toast.success('Queued again for Tally push');
             loadWebVouchers();
@@ -305,27 +310,31 @@ export default function TallySyncPage() {
                             </div>
                         ) : (
                             <div className="sync-history-list divide-y divide-[#1A2634]">
-                                {syncHistory.slice(0, 8).map((log: any, idx: number) => (
+                                {syncHistory.slice(0, 8).map((log: any, idx: number) => {
+                                    const completed = log.status === 'completed';
+                                    const stale = log.status === 'running' && Date.now() - Date.parse(log.started_at) > 24 * 60 * 60 * 1000;
+                                    return (
                                     <div key={log.id || idx} className="p-3.5 sm:px-4 flex items-center justify-between gap-3 hover:bg-[#16202C]/50 transition-colors">
                                         <div className="flex items-center gap-2.5 min-w-0">
                                             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[#00E599] flex items-center justify-center shrink-0">
-                                                <Check size={14} />
+                                                {completed ? <Check size={14} /> : <Clock size={14} />}
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-xs font-bold text-white truncate">
                                                     {log.module_name || log.sync_type || 'Full Company Sync'}
                                                 </p>
                                                 <p className="text-[10px] text-slate-400 mt-0.5">
-                                                    {log.created_at ? format(new Date(log.created_at), 'dd MMM yyyy, hh:mm a') : 'Recent'} • {log.records_synced || log.record_count || 0} records updated
+                                                    {log.started_at ? format(new Date(log.started_at), 'dd MMM yyyy, hh:mm a') : 'Recent'} • {log.records_synced || log.record_count || 0} records updated
                                                 </p>
+                                                {log.error_message && <p className="text-xs text-red-400">{log.error_message}</p>}
                                             </div>
                                         </div>
 
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shrink-0">
-                                            Success
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${completed ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                            {completed ? 'Completed' : stale ? 'No completion recorded' : log.status || 'Unknown'}
                                         </span>
                                     </div>
-                                ))}
+                                ); })}
                             </div>
                         )}
                     </div>
@@ -408,6 +417,9 @@ export default function TallySyncPage() {
                                                     {t.created_at ? format(new Date(t.created_at), 'dd MMM yyyy, HH:mm') : ''}
                                                     {t.status === 'pending' && ' • ⏳ Waiting for PC app sync'}
                                                     {t.status === 'synced' && ` • ✅ Tally #${t.tally_voucher_number || 'OK'}`}
+                                                    {t.status === 'processing' && (Date.now() - Date.parse(t.updated_at || t.created_at) > 15 * 60 * 1000
+                                                        ? ' • Check this voucher in Tally. Cloud status could not be confirmed.'
+                                                        : ' • Sending to Tally')}
                                                     {t.status === 'failed' && (t.error_message ? ` • ❌ ${t.error_message}` : ' • ❌ Failed')}
                                                 </p>
                                             </div>

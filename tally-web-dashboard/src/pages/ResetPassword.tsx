@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
-import { Lock, ArrowRight, Mail, CheckCircle2 } from 'lucide-react';
+import { Lock, ArrowRight, Mail, CheckCircle2, Building2 } from 'lucide-react';
 import SEO from '../components/common/SEO';
 
 export default function ResetPassword() {

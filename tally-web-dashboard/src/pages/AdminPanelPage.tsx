@@ -360,7 +360,7 @@ export default function AdminPanelPage() {
                 <div className="space-y-3 px-[2px]">
                     <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
                         <p className="text-sm font-bold">Subscription payments and access</p>
-                        <p className="mt-1 text-xs text-[var(--text-muted)]">New accounts receive a 30-day trial. Razorpay payments activate access after verification. Configure gateway credentials before accepting online payments.</p>
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">New accounts receive the configured free trial. Razorpay payments activate access after verification. Configure gateway credentials before accepting online payments.</p>
                         <button type="button" onClick={() => setActiveTab('license-management')} className="mt-2 inline-flex rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-bold text-white">Manage licences</button>
                     </div>
                     {statsError ? <div role="alert" className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm">Admin data could not be loaded. Check database permissions and connection. <button onClick={() => refetchStats()} className="font-bold underline">Retry</button></div> : statsLoading ? <p className="text-sm text-[var(--text-muted)]">Loading admin data…</p> : <>

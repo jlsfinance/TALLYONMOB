@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { VoucherEditHistory } from '@/components/vouchers/VoucherEditHistory';
+import { TallyPushBadge } from '@/components/vouchers/TallyPushBadge';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/insforge';
@@ -1606,6 +1607,7 @@ export default function InvoicePDFPage() {
                     <div className="min-w-0">
                     <h1 className="text-sm md:text-xl font-black text-[var(--on-surface)] tracking-tighter uppercase leading-none">Invoice #{invoice?.invoice_number}</h1>
                     <p className="hidden md:block text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">{invoice?.voucher_type} - {formatDate(invoice?.invoice_date)}</p>
+                    <TallyPushBadge narration={invoice?.narration} />
                     </div>
                 </div>
             </HeaderPortal>

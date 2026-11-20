@@ -17,7 +17,7 @@ export function VoucherEditHistory({ companyId, voucherId, voucherGuid }: { comp
       loading = true;
       try {
         const { data, error: queryError } = await supabase.from('pending_transactions')
-          .select('id,status,created_at,synced_at,error_message,voucher_data')
+          .select('id,status,created_at,updated_at,synced_at,error_message,voucher_data')
           .eq('company_id', companyId).eq('transaction_type', 'VOUCHER_EDIT')
           .or(identities).order('created_at', { ascending: false }).limit(20);
         if (alive) { setError(Boolean(queryError)); if (!queryError) setRows(data || []); }
@@ -39,10 +39,11 @@ export function VoucherEditHistory({ companyId, voucherId, voucherGuid }: { comp
       const audit = row.voucher_data?.edit_audit;
       const synced = row.status === 'synced';
       const failed = row.status === 'failed';
+      const needsReview = row.status === 'processing' && Date.now() - Date.parse(row.updated_at || row.created_at) > 15 * 60 * 1000;
       return <details key={row.id} open={row.status !== 'synced'} className="rounded-xl border border-[var(--border)] p-3">
         <summary className="cursor-pointer text-sm font-semibold">
           <span className={synced ? 'text-emerald-600' : failed ? 'text-red-500' : 'text-amber-600'}>
-            {synced ? 'Edited in Tally via Syncora' : failed ? 'Edit failed — not confirmed in Tally' : row.status === 'processing' ? 'Edit syncing to Tally' : 'Edited on website — waiting for Tally sync'}
+            {synced ? 'Edited in Tally via Syncora' : failed ? 'Edit failed — not confirmed in Tally' : needsReview ? 'Check this edit in Tally before retrying' : row.status === 'processing' ? 'Edit syncing to Tally' : 'Edited on website — waiting for Tally sync'}
           </span>
           <span className="block mt-1 text-xs font-normal text-[var(--text-muted)]">{new Date(audit?.edited_at || row.created_at).toLocaleString()} {audit?.edited_by && `· ${audit.edited_by}`}</span>
         </summary>

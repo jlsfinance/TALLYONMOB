@@ -16,6 +16,7 @@ import { toast } from 'react-hot-toast';
 import { Spinner, EmptyState } from '../components/ui/GlassUI';
 import { SkeletonTable } from '../components/ui/Skeleton';
 import TransactionCard from '../components/shared/TransactionCard';
+import { hasTallyPushMarker } from '@/lib/tallyPushNarration';
 import { HeaderPortal } from '../components/layout/HeaderPortal';
 import { useFY } from '../contexts/FYContext';
 
@@ -597,7 +598,7 @@ export default function VouchersPage() {
                                             voucherNumber={v.voucher_number}
                                             date={v.voucher_date}
                                             amount={Number(v.total_amount) || 0}
-                                            status={v.sync_status || 'Synced'}
+                                            status={hasTallyPushMarker(v.narration) ? 'Sent to Tally' : v.sync_status || 'Synced'}
                                             onClick={() => navigate(`/invoice/${encodeURIComponent(v.id)}`, { state: { voucher: v, from: '/vouchers' } })}
                                         />
                                     </div>

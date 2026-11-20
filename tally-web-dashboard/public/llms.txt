@@ -1,6 +1,6 @@
 # SYNCORA Tally on Mobile
 
-> SYNCORA is a web dashboard for viewing Tally company data connected through the TallyLink Windows connector.
+> Syncora is an independent mobile and web dashboard for viewing synced Tally company data. Use Syncora Connector on the Windows PC running TallyPrime.
 
 ## Product
 - View company vouchers, party ledgers, balances and reports on mobile or desktop browsers.
@@ -9,7 +9,13 @@
 
 ## Public pages
 - [Overview](https://tallyonmob.vercel.app/): Features and connection steps.
+- [Product overview](https://tallyonmob.vercel.app/product-overview): What Syncora does, where it runs, and which TallyPrime data users can review.
+- [Resources](https://tallyonmob.vercel.app/resources): Setup guides and reviewed accounting workflows.
 - [Pricing](https://tallyonmob.vercel.app/pricing): Available plans and their terms.
+- [TallyPrime setup](https://tallyonmob.vercel.app/guides/tallyprime-setup): Windows connector setup and first sync.
+- [Party ledgers on mobile](https://tallyonmob.vercel.app/guides/tally-ledger-on-mobile): Find party transactions, filter by date and export a ledger PDF.
+- [For accountants](https://tallyonmob.vercel.app/for-accountants): Client review workflow and how to request a demo.
+- [Sync troubleshooting](https://tallyonmob.vercel.app/guides/tally-sync-troubleshooting): Check missing companies, stale figures and missing vouchers.
 - [Support](https://tallyonmob.vercel.app/support): Help with setup and account issues.
 - [About](https://tallyonmob.vercel.app/about): Information about the product.
 - [Privacy](https://tallyonmob.vercel.app/privacy): Privacy information.

@@ -246,7 +246,7 @@ export default function PayrollPage() {
         email: '',
         phone: '',
         joining_date: format(new Date(), 'yyyy-MM-dd'),
-        employment_type: 'Full-time' as const,
+        employment_type: 'Full-time' as Employee['employment_type'],
         basic_salary: 25000,
         hra: 10000,
         da: 0,

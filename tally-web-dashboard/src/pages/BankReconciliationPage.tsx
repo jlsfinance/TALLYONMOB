@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import toast from "react-hot-toast";
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';

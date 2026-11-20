@@ -78,7 +78,7 @@ export function prefetchVouchers(companyId: string, month: string, fyStart?: str
 }
 
 /**
- * Prefetch ledgers list — no is_deleted filter (column may not exist)
+ * Prefetch active ledgers, matching ledgerApi.list and excluding retired placeholders.
  */
 export function prefetchLedgers(companyId: string) {
     const key = ['ledgers', companyId];
@@ -90,6 +90,7 @@ export function prefetchLedgers(companyId: string) {
             const { data, error } = await supabase.from('ledgers')
                 .select('*')
                 .eq('company_id', companyId)
+                .eq('is_deleted', false)
                 .order('name');
             if (error) throw error;
             return data || [];

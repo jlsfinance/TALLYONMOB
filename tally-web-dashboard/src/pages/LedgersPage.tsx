@@ -148,7 +148,7 @@ export default function LedgersPage() {
     }, [groupFilteredLedgers, searchTerm, sortBy]);
 
     const partyList = useProgressiveList(filteredLedgers, JSON.stringify(['parties', selectedCompany?.id, selectedFy, selectedGroup, searchTerm, sortBy]));
-    const loading = ledgersLoading && (!ledgersData || ledgersData.length === 0);
+    const loading = ledgersLoading && ledgersData === undefined;
 
     const stats = useMemo(() => {
         const list = groupFilteredLedgers;

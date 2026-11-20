@@ -1,3 +1,4 @@
+import { loadLedgerPeriod } from '@/lib/ledgerPeriod.mjs';
 import { ReminderDialog } from '@/components/reminders/ReminderDialog';
 import { HeaderPortal } from '@/components/layout/HeaderPortal';
 import './LedgerDetailPage.css';
@@ -38,6 +39,7 @@ export default function LedgerDetailPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [typeFilter, setTypeFilter] = useState<'all' | 'sales' | 'receipts' | 'purchases' | 'payments'>('all');
     const [openingBalance, setOpeningBalance] = useState(0);
+    const [balanceVerified, setBalanceVerified] = useState(false);
 
     // Custom Date Range State
     const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
@@ -70,6 +72,9 @@ export default function LedgerDetailPage() {
 
     const userInitial = user?.email?.[0]?.toUpperCase() || selectedCompany?.name?.[0]?.toUpperCase() || 'L';
 
+    const periodFrom = customDateRange.from || fyDates.from;
+    const periodTo = customDateRange.to || fyDates.to;
+
     // 1. Fetch Ledger & Transactions
     const loadLedgerDetails = useCallback(async () => {
         if (!id || !selectedCompany?.id) return;
@@ -85,32 +90,21 @@ export default function LedgerDetailPage() {
                     .from('ledgers')
                     .select('*')
                     .eq('id', id)
+                    .eq('company_id', selectedCompany.id)
+                    .eq('is_deleted', false)
                     .maybeSingle();
                 ledgerData = data;
             }
 
-            if (!ledgerData) {
-                const decodedName = decodeURIComponent(id || '').trim();
-                const { data } = await supabase
-                    .from('ledgers')
-                    .select('*')
-                    .eq('company_id', selectedCompany.id)
-                    .ilike('name', decodedName)
-                    .maybeSingle();
+            if (!ledgerData && !isUUID) {
+                const decodedName = decodeURIComponent(id).trim();
+                const { data, error } = await supabase.from('ledgers').select('*')
+                    .eq('company_id', selectedCompany.id).eq('is_deleted', false)
+                    .ilike('name', decodedName.replace(/[\\%_]/g, '\\$&')).maybeSingle();
+                if (error) throw error;
                 ledgerData = data;
             }
-
-            if (!ledgerData) {
-                const decodedName = decodeURIComponent(id || '').trim();
-                const { data } = await supabase
-                    .from('ledgers')
-                    .select('*')
-                    .eq('company_id', selectedCompany.id)
-                    .ilike('name', `%${decodedName}%`)
-                    .limit(1)
-                    .maybeSingle();
-                ledgerData = data;
-            }
+            if (!ledgerData && isUUID) throw new Error('Ledger not found for this company');
 
             const targetPartyName = ledgerData?.name || decodeURIComponent(id || '').trim();
 
@@ -120,38 +114,23 @@ export default function LedgerDetailPage() {
                     name: targetPartyName,
                     company_id: selectedCompany.id,
                     parent_group: 'Sundry Debtors',
-                    opening_balance: 0,
+                    opening_balance: null,
                     closing_balance: 0
                 };
             }
             setLedger(ledgerData);
 
-            // Fetch All Vouchers for Party — sirf selected FY ka
-            const { data: voucherRows, error: vError } = await supabase
-                .from('vouchers')
-                .select('*')
-                .eq('company_id', selectedCompany.id)
-                .ilike('party_name', targetPartyName)
-                .eq('is_deleted', false)
-                .gte('voucher_date', fyDates.from)
-                .lte('voucher_date', fyDates.to)
-                .order('voucher_date', { ascending: false });
-
-            if (vError) throw vError;
-
-            const allVouchers = voucherRows || [];
+            const statement = await loadLedgerPeriod(supabase, selectedCompany.id, targetPartyName,
+                ledgerData.opening_balance, periodFrom, periodTo, ledgerData.current_balance);
+            const allVouchers = [...statement.transactions].reverse();
             setTransactions(allVouchers);
-
-            // Compute Opening & Dynamic Balance
-            // shortcut: opening_balance Tally ka company-start opening hai, FY-wise opening nahi.
-            // Purane FY ke statement me opening exact nahi hoga jab tak FY-closing balance store na ho.
-            const openBal = Number(ledgerData.opening_balance) || 0;
-            setOpeningBalance(openBal);
+            setOpeningBalance(statement.opening);
+            setBalanceVerified(statement.openingVerified && statement.unknown.length === 0);
 
             // Voucher type summary counts
             const summaryMap: Record<string, number> = {};
             allVouchers.forEach((v: any) => {
-                const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
+                const amt = Math.max(v.ledgerDebit, v.ledgerCredit);
                 summaryMap[v.voucher_type] = (summaryMap[v.voucher_type] || 0) + amt;
             });
             setVoucherSummary(summaryMap);
@@ -164,7 +143,7 @@ export default function LedgerDetailPage() {
         } finally {
             setLoading(false);
         }
-    }, [id, selectedCompany?.id, fyDates.from, fyDates.to]);
+    }, [id, selectedCompany?.id, periodFrom, periodTo]);
 
     useEffect(() => {
         loadLedgerDetails();
@@ -277,7 +256,7 @@ export default function LedgerDetailPage() {
                 );
 
                 const rawRate = Number(item.rate ?? item.Rate ?? item.unit_price ?? 0);
-                const rawAmount = Math.abs(Number(item.amount ?? item.Amount ?? (qty * rawRate) ?? 0));
+                const rawAmount = Math.abs(Number(item.amount ?? item.Amount ?? (qty * rawRate)));
                 const calculatedRate = rawRate > 0 ? rawRate : (qty > 0 ? rawAmount / qty : 0);
 
                 if (!targetMap[name]) {
@@ -350,12 +329,8 @@ export default function LedgerDetailPage() {
         let payCount = 0;
 
         transactions.forEach((v) => {
-            const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
-            const isDebit = ['Sales', 'Sales Invoice', 'Payment', 'Debit Note'].includes(v.voucher_type);
-            const isCredit = ['Purchase', 'Purchase Invoice', 'Receipt', 'Credit Note'].includes(v.voucher_type);
-
-            if (isDebit) debits += amt;
-            if (isCredit) credits += amt;
+            debits += v.ledgerDebit;
+            credits += v.ledgerCredit;
 
             if (v.voucher_type === 'Sales' || v.voucher_type === 'Sales Invoice') sCount++;
             if (v.voucher_type === 'Receipt') rCount++;
@@ -420,6 +395,10 @@ export default function LedgerDetailPage() {
     };
 
     const handleWhatsApp = () => {
+        if (!balanceVerified) {
+            toast.error('Verify the ledger balance in Tally before sharing it.');
+            return;
+        }
         const phone = ledger?.phone?.replace(/[^0-9]/g, '') || '';
         const msg = `Hello ${ledger?.name || 'Customer'},\nYour closing balance with ${selectedCompany?.name || 'our company'} is ${formatCurrency(closingBalance)} ${closingBalance >= 0 ? '(Dr)' : '(Cr)'}.\nThank you!`;
         window.open(`https://wa.me/${phone ? `91${phone}` : ''}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -436,67 +415,23 @@ export default function LedgerDetailPage() {
         if (!selectedCompany?.id || !ledger?.name || exporting) return;
         setExporting(true);
         try {
-            const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
-            const doc = new jsPDF();
+            const { createLedgerStatementPdf } = await import('../lib/ledgerStatementPdf.mjs');
             const amount = (value: number) => Math.abs(Number(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const partyName = ledger?.name || 'Party';
-            const vouchers: any[] = [];
-            const pageSize = 1000;
-            for (let offset = 0; ; offset += pageSize) {
-                const { data, error } = await supabase.from('vouchers').select('id,voucher_date,voucher_number,voucher_type,total_amount,grand_total')
-                    .eq('company_id', selectedCompany.id).ilike('party_name', partyName).eq('is_deleted', false)
-                    .gte('voucher_date', exportFrom).lte('voucher_date', exportTo)
-                    .order('voucher_date', { ascending: true }).order('id', { ascending: true }).range(offset, offset + pageSize - 1);
-                if (error) throw error;
-                vouchers.push(...(data || []));
-                if ((data || []).length < pageSize) break;
-            }
-            const entryMap = new Map<string, any[]>();
-            for (let start = 0; start < vouchers.length; start += 100) {
-                const voucherIds = vouchers.slice(start, start + 100).map(v => v.id);
-                for (let offset = 0; ; offset += pageSize) {
-                    const { data, error } = await supabase.from('voucher_ledger_entries').select('id,voucher_id,ledger_name,amount,is_debit')
-                        .eq('company_id', selectedCompany.id).eq('ledger_name', partyName).in('voucher_id', voucherIds)
-                        .order('id', { ascending: true }).range(offset, offset + pageSize - 1);
-                    if (error) throw error;
-                    for (const row of data || []) entryMap.set(row.voucher_id, [...(entryMap.get(row.voucher_id) || []), row]);
-                    if ((data || []).length < pageSize) break;
+            const statement = await loadLedgerPeriod(supabase, selectedCompany.id, partyName,
+                ledger.opening_balance, exportFrom, exportTo, ledger.current_balance);
+            const debit: string[][] = [], credit: string[][] = [];
+            for (const voucher of statement.transactions) {
+                for (const entry of voucher.ledgerEntries) {
+                    const line = [voucher.voucher_date.slice(0, 10),
+                        voucher.voucher_type + ' #' + (voucher.voucher_number || '—'), amount(entry.amount)];
+                    (entry.is_debit ? debit : credit).push(line);
                 }
             }
-            const debit: any[] = [], credit: any[] = [], unknown: any[] = [];
-            let debitTotal = 0, creditTotal = 0;
-            for (const voucher of vouchers) {
-                const entries = entryMap.get(voucher.id) || [];
-                if (!entries.length) { unknown.push(voucher); continue; }
-                for (const entry of entries) {
-                    const line = [String(voucher.voucher_date || '').slice(0, 10), `${voucher.voucher_type || 'Voucher'} #${voucher.voucher_number || '—'}`, amount(entry.amount)];
-                    if (entry.is_debit === true) { debit.push(line); debitTotal += Math.abs(Number(entry.amount) || 0); }
-                    else if (entry.is_debit === false) { credit.push(line); creditTotal += Math.abs(Number(entry.amount) || 0); }
-                    else unknown.push(voucher);
-                }
-            }
-            const openingBal = Number(ledger?.opening_balance) || 0;
-            const closingBal = openingBal + debitTotal - creditTotal;
-            const balanceLabel = (value: number) => `${amount(value)} ${value >= 0 ? '(Dr)' : '(Cr)'}`;
-            doc.setFontSize(15);
-            doc.text('Ledger Statement', 14, 16);
-            doc.setFontSize(9);
-            doc.text(doc.splitTextToSize((selectedCompany?.name || 'Company') + '  |  ' + partyName, 180), 14, 23);
-            doc.text('Period: ' + exportFrom + ' to ' + exportTo, 14, 31);
-            doc.text(`Opening Balance: ${balanceLabel(openingBal)}`, 14, 37);
-            doc.text(`Closing Balance: ${balanceLabel(closingBal)}`, 14, 43);
-            autoTable(doc, {
-                startY: 48,
-                head: [[{ content: 'Debit (Dr)', colSpan: 3 }, { content: 'Credit (Cr)', colSpan: 3 }], ['Date', 'Particulars', 'Amount', 'Date', 'Particulars', 'Amount']],
-                body: Array.from({ length: Math.max(debit.length, credit.length) }, (_, i) => [...(debit[i] || ['', '', '']), ...(credit[i] || ['', '', ''])]),
-                styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak' },
-                headStyles: { fillColor: [22, 88, 106] },
-                columnStyles: { 2: { halign: 'right' }, 5: { halign: 'right' } },
-            });
-            if (unknown.length) {
-                autoTable(doc, { startY: (doc as any).lastAutoTable.finalY + 8, head: [['Entries without a verified debit/credit ledger line', 'Voucher amount (INR)']],
-                    body: unknown.map(v => [`${String(v.voucher_date || '').slice(0, 10)}  ${v.voucher_type || 'Voucher'} #${v.voucher_number || '—'}`, amount(v.grand_total ?? v.total_amount)]), styles: { fontSize: 7 }, headStyles: { fillColor: [151, 103, 32] } });
-            }
+            const doc = createLedgerStatementPdf({ company: selectedCompany, partyName, from: exportFrom, to: exportTo,
+                openingBalance: statement.opening, closingBalance: statement.closing, debit, credit,
+                debitTotal: statement.debitTotal, creditTotal: statement.creditTotal, unknown: statement.unknown,
+                openingVerified: statement.openingVerified });
             const filename = 'Ledger_' + partyName.replace(/[^a-zA-Z0-9_-]+/g, '_') + '_' + exportFrom + '_' + exportTo + '.pdf';
             const { savePdf } = await import('../lib/savePdf');
             await savePdf(doc, filename);
@@ -672,7 +607,7 @@ export default function LedgerDetailPage() {
                     {/* Closing Balance */}
                     <div className="border-r border-[#1E2B38]/60 pr-2">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">CLOSING BALANCE</p>
-                        <p className="text-2xl font-black text-[#00E599] mt-0.5 tracking-tight">{formatCurrency(closingBalance)}</p>
+                        <p className="text-2xl font-black text-[#00E599] mt-0.5 tracking-tight">{balanceVerified ? formatCurrency(closingBalance) : 'Unverified'}</p>
                         <p className="text-xs font-bold text-[#00E599] flex items-center gap-0.5 mt-0.5">
                             <ArrowUpRight size={14} /> {closingBalance >= 0 ? 'To Collect (Dr)' : 'To Pay (Cr)'}
                         </p>
@@ -680,7 +615,7 @@ export default function LedgerDetailPage() {
                     {/* Opening Balance */}
                     <div className="pl-1">
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">OPENING BALANCE</p>
-                        <p className="text-2xl font-black text-white mt-0.5 tracking-tight">{formatCurrency(openingBalance)}</p>
+                        <p className="text-2xl font-black text-white mt-0.5 tracking-tight">{balanceVerified ? formatCurrency(openingBalance) : 'Unverified'}</p>
                         <div className="mt-1">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#1A2634] text-slate-300">
                                 Credit Limit: {creditLimit > 0 ? formatCurrency(creditLimit) : 'Not Set'}
@@ -870,7 +805,7 @@ export default function LedgerDetailPage() {
                                 const isReceipt = v.voucher_type === 'Receipt';
                                 const isPurchase = v.voucher_type === 'Purchase' || v.voucher_type === 'Purchase Invoice';
                                 const isPayment = v.voucher_type === 'Payment';
-                                const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
+                                const amt = Math.max(v.ledgerDebit, v.ledgerCredit);
 
                                 return (
                                     <div
@@ -914,7 +849,7 @@ export default function LedgerDetailPage() {
                                                 {formatCurrency(amt)}
                                             </p>
                                             <p className="text-[9px] text-slate-400 mt-0.5">
-                                                {isSale ? 'Debit (Due)' : isReceipt ? 'Credit (Paid)' : isPurchase ? 'Credit (Bill)' : 'Debit (Paid)'}
+                                                {v.ledgerEntries.length === 0 ? 'Unverified' : v.ledgerDebit && v.ledgerCredit ? 'Debit / Credit' : v.ledgerDebit ? 'Debit' : 'Credit'}
                                             </p>
                                         </div>
                                     </div>
@@ -1075,7 +1010,7 @@ export default function LedgerDetailPage() {
                                 </span>
                             </div>
                             <p className="text-[10px] text-[var(--text-muted)] truncate">
-                                Closing: <span className="font-bold text-[#00A36C] dark:text-[#00E599]">{formatCurrency(closingBalance)}</span>
+                                Closing: <span className="font-bold text-[#00A36C] dark:text-[#00E599]">{balanceVerified ? formatCurrency(closingBalance) : 'Unverified'}</span>
                                 <span className="hidden lg:inline"> • {ledger.phone || '+91 98765 43210'}</span>
                             </p>
                         </div>
@@ -1165,7 +1100,7 @@ export default function LedgerDetailPage() {
                             {/* Card 1: OPENING BALANCE */}
                             <div className="p-5 rounded-2xl bg-[#121B24] border border-[#1E2B38] shadow-xs">
                                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">OPENING BALANCE</p>
-                                <p className="text-3xl font-black text-white mt-2 tracking-tight">{formatCurrency(openingBalance)}</p>
+                                <p className="text-3xl font-black text-white mt-2 tracking-tight">{balanceVerified ? formatCurrency(openingBalance) : 'Unverified'}</p>
                                 <p className="text-xs text-slate-500 mt-2">Financial Year {selectedFY || '2025-2026'}</p>
                             </div>
 
@@ -1177,7 +1112,7 @@ export default function LedgerDetailPage() {
                                         TO RECEIVE (DR)
                                     </span>
                                 </div>
-                                <p className="text-3xl font-black text-[#00E599] mt-2 tracking-tight">{formatCurrency(closingBalance)}</p>
+                                <p className="text-3xl font-black text-[#00E599] mt-2 tracking-tight">{balanceVerified ? formatCurrency(closingBalance) : 'Unverified'}</p>
                                 <p className="text-xs text-slate-400 mt-2 flex items-center gap-1.5">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                                     Includes {salesCount} invoices & {receiptsCount} receipts
@@ -1291,7 +1226,7 @@ export default function LedgerDetailPage() {
                                 const isSale = v.voucher_type === 'Sales' || v.voucher_type === 'Sales Invoice';
                                 const isReceipt = v.voucher_type === 'Receipt';
                                 const isPurchase = v.voucher_type === 'Purchase' || v.voucher_type === 'Purchase Invoice';
-                                const amt = Math.abs(Number(v.grand_total) || Number(v.total_amount) || 0);
+                                const amt = Math.max(v.ledgerDebit, v.ledgerCredit);
 
                                 return (
                                     <div
@@ -1339,7 +1274,7 @@ export default function LedgerDetailPage() {
                                                     {formatCurrency(amt)}
                                                 </p>
                                                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                                                    {isSale ? 'DEBIT' : isReceipt ? 'CREDIT' : isPurchase ? 'CREDIT' : 'DEBIT'}
+                                                    {v.ledgerEntries.length === 0 ? 'Unverified' : v.ledgerDebit && v.ledgerCredit ? 'Debit / Credit' : v.ledgerDebit ? 'Debit' : 'Credit'}
                                                 </p>
                                             </div>
                                             <ChevronRight size={18} className="text-slate-500 group-hover:text-white transition-colors" />

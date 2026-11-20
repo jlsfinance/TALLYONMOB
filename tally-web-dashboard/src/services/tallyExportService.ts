@@ -1,4 +1,5 @@
-import { supabase } from './insforge';
+import { supabase } from '../lib/insforge';
+import { markTallyPushNarration } from '../lib/tallyPushNarration';
 
 /**
  * Generate Tally XML voucher import string.
@@ -51,7 +52,7 @@ export function generateTallyVoucherXml(voucher: any): string {
                         <VOUCHERNUMBER>${escapeXml(voucher.voucher_number || '')}</VOUCHERNUMBER>
                         <DATE>${date}</DATE>
                         <PARTYLEDGERNAME>${escapeXml(voucher.party_name || '')}</PARTYLEDGERNAME>
-                        <NARRATION>${escapeXml(voucher.narration || '')}</NARRATION>
+                        <NARRATION>${escapeXml(markTallyPushNarration(voucher.narration))}</NARRATION>
                         <ALLLEDGERENTRIES.LIST>
                             ${ledgerEntries}
                         </ALLLEDGERENTRIES.LIST>

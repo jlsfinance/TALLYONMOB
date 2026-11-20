@@ -551,6 +551,7 @@
                                 <!-- Action Buttons -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button Command="{Binding ManualSyncCommand}"
+                                            IsEnabled="{Binding CanTriggerSync}"
                                             Content="⟳ Sync Now"
                                             Style="{StaticResource ModernButton}"
                                             MinWidth="100"
@@ -560,6 +561,7 @@
                                             Margin="0,0,8,0"
                                             ToolTip="Incremental sync - sirf naya/badla hua data (ALTERID se)"/>
                                     <Button Command="{Binding FullResyncCommand}"
+                                            IsEnabled="{Binding CanTriggerSync}"
                                             Content="⟲ Full Resync"
                                             Style="{StaticResource DangerButton}"
                                             MinWidth="110"
@@ -569,6 +571,7 @@
                                             Margin="0,0,8,0"
                                             ToolTip="Poora historical data dobara upload karta hai"/>
                                     <Button Command="{Binding StartSyncCommand}"
+                                            IsEnabled="{Binding CanStartAutoSync}"
                                             Content="▶ Auto-Sync"
                                             Background="#10B981"
                                             Style="{StaticResource ModernButton}"
@@ -584,6 +587,7 @@
                                         </Button.Resources>
                                     </Button>
                                     <Button Command="{Binding StopSyncCommand}"
+                                            IsEnabled="{Binding CanStopSync}"
                                             Content="⏹ Stop"
                                             Style="{StaticResource DangerButton}"
                                             MinWidth="80"
