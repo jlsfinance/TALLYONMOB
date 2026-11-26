@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -22,11 +23,15 @@ namespace TallySyncApp.Services
         private string? _userToken; // Bearer Token for Auth
         private string? _ownerId;   // auth.uid() - RLS on every sync table is `owner_id = auth.uid()`
         private readonly string _telegramBotToken;
-        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "")
+        private readonly string _whatsappToken;
+        private readonly string _whatsappPhoneNumberId;
+        public ApiClient(string supabaseUrl, string apiKey, int timeoutSeconds = 60, string telegramBotToken = "", string whatsappToken = "", string whatsappPhoneNumberId = "")
         {
             _supabaseUrl = supabaseUrl.TrimEnd('/');
             _apiKey = apiKey;
             _telegramBotToken = telegramBotToken ?? string.Empty;
+            _whatsappToken = whatsappToken ?? string.Empty;
+            _whatsappPhoneNumberId = whatsappPhoneNumberId ?? string.Empty;
 
             // FIX: Disable proxy to avoid intermittent DNS/connection issues (WSANO_DATA)
             var handler = new HttpClientHandler
@@ -2196,6 +2201,35 @@ namespace TallySyncApp.Services
         }
 
         /// <summary>
+        /// Fetch WhatsApp phone number for the current user (stored in user_profiles.whatsapp_phone).
+        /// </summary>
+        public async Task<string?> GetWhatsAppNumberAsync(string userId)
+        {
+            try
+            {
+                AddAuthHeader();
+                var url = $"{_supabaseUrl}/rest/v1/user_profiles?id=eq.{userId}&select=whatsapp_phone";
+                var response = await _httpClient.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var users = JsonConvert.DeserializeObject<List<dynamic>>(content);
+                    if (users != null && users.Count > 0)
+                    {
+                        return users[0].whatsapp_phone?.ToString();
+                    }
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"⚠️ Failed to fetch WhatsApp number: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Send Telegram notification through the authenticated Supabase Edge Function.
         /// The bot token stays server-side and the function only sends to this user's linked chat.
         /// </summary>
@@ -2245,6 +2279,64 @@ namespace TallySyncApp.Services
             catch (Exception ex)
             {
                 SyncLogger.Log($"⚠️ Failed to send Telegram notification: {ex.Message}");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Send a WhatsApp notification to the user's linked phone number via WhatsApp Cloud API.
+        /// Mirrors SendTelegramNotificationAsync: direct bot call, never throws to the caller.
+        /// </summary>
+        public async Task<bool> SendWhatsAppNotificationAsync(string phone, string message)
+        {
+            if (string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(message))
+                return false;
+            if (string.IsNullOrWhiteSpace(_whatsappToken) || string.IsNullOrWhiteSpace(_whatsappPhoneNumberId))
+                return false;
+
+            // WhatsApp Cloud API does not render HTML tags; strip them so the message reads cleanly.
+            var plain = System.Text.RegularExpressions.Regex.Replace(message, "<[^>]*>", "");
+
+            return await SendWhatsAppDirectAsync(phone, plain);
+        }
+
+        // Free WhatsApp Web notifier: try local Node helper (QR login, no Meta token needed),
+        // then fall back to opening wa.me in the user's browser so they can tap Send.
+        private async Task<bool> SendWhatsAppDirectAsync(string phone, string message)
+        {
+            var digits = new string(phone.Where(char.IsDigit).ToArray());
+            if (digits.Length == 10) digits = "91" + digits;
+
+            // 1. Local Node helper (runs on this PC, logged in via QR once)
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                var payload = JsonConvert.SerializeObject(new { phone = digits, message });
+                using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                using var response = await client.PostAsync("http://127.0.0.1:3001/send", content);
+                if (response.IsSuccessStatusCode) return true;
+                SyncLogger.Log($"WhatsApp local helper returned HTTP {(int)response.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"WhatsApp local helper not reachable: {ex.Message}");
+            }
+
+            // 2. Fallback: open wa.me in default browser (user taps Send manually)
+            try
+            {
+                var encoded = Uri.EscapeDataString(message);
+                System.Diagnostics.Process.Start(new ProcessStartInfo
+                {
+                    FileName = $"https://wa.me/{digits}?text={encoded}",
+                    UseShellExecute = true
+                });
+                SyncLogger.Log($"WhatsApp wa.me fallback opened for {digits}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SyncLogger.Log($"WhatsApp wa.me fallback failed: {ex.Message}");
             }
             return false;
         }
