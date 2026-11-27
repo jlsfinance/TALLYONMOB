@@ -254,7 +254,8 @@ const normalizeVoucherWithEntries = (
 };
 export default function GSTReportsPage() {
     const navigate = useNavigate();
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportGst = typeof can === 'function' ? can('GST:Export') : true;
     const [loading, setLoading] = useState(true);
 
     const { selectedFY: selectedFy, setSelectedFY: setSelectedFy } = useFY();
@@ -560,6 +561,10 @@ export default function GSTReportsPage() {
     };
 
     const exportJSON = (type: 'gstr1' | 'gstr3b') => {
+        if (!canExportGst) {
+            toast.error('You do not have permission to export GST data');
+            return;
+        }
         if (!reportData) return;
         let exportData: any = {};
         if (type === 'gstr1') {
@@ -574,6 +579,10 @@ export default function GSTReportsPage() {
     };
 
     const handleExportCSV = () => {
+        if (!canExportGst) {
+            toast.error('You do not have permission to export GST reports');
+            return;
+        }
         if (!reportData) return;
         
         let headers: { key: string; label: string }[] = [];
@@ -804,17 +813,19 @@ export default function GSTReportsPage() {
                     })}
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--success)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
-                        <Download size={13} /> GSTR-1 JSON
-                    </button>
-                    <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--primary)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
-                        <Download size={13} /> GSTR-3B JSON
-                    </button>
-                    <button onClick={handleExportCSV} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--on-surface)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--surface-active)] transition-all disabled:opacity-30 flex items-center gap-1.5">
-                        <Download size={13} /> CSV
-                    </button>
-                </div>
+                {canExportGst && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => exportJSON('gstr1')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--success)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--success)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
+                            <Download size={13} /> GSTR-1 JSON
+                        </button>
+                        <button onClick={() => exportJSON('gstr3b')} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--primary)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--primary)]/10 transition-all disabled:opacity-30 flex items-center gap-1.5">
+                            <Download size={13} /> GSTR-3B JSON
+                        </button>
+                        <button onClick={handleExportCSV} disabled={!reportData || loading} className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--on-surface)] text-[9px] font-black uppercase tracking-widest hover:bg-[var(--surface-active)] transition-all disabled:opacity-30 flex items-center gap-1.5">
+                            <Download size={13} /> CSV
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Section navigation */}

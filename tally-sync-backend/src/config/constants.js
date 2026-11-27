@@ -21,7 +21,11 @@ module.exports = {
     // User roles
     ROLES: {
         OWNER: 'owner',
+        SUPER_ADMIN: 'super_admin',
         ADMIN: 'admin',
+        MANAGER: 'manager',
+        ACCOUNTANT: 'accountant',
+        SALES: 'sales',
         EDITOR: 'editor',
         VIEWER: 'viewer'
     },

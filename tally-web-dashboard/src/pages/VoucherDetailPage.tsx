@@ -18,6 +18,7 @@ import { shareVoucherOnWhatsApp } from '@/lib/whatsappInvoice';
 import { generateTallyVoucherXml, sendToTally } from '@/services/tallyExportService';
 import { VoucherEditHistory } from '@/components/vouchers/VoucherEditHistory';
 import { hasTallyPushMarker } from '@/lib/tallyPushNarration';
+import { logActivity, ActivityActions } from '@/services/activityLogService';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -32,7 +33,12 @@ const CR_TYPES = new Set(['Purchase', 'Purchase Invoice', 'Receipt', 'Credit Not
 export default function VoucherDetailPage() {
     const { voucherId } = useParams();
     const navigate = useNavigate();
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canEditVoucher = typeof can === 'function' ? can('Vouchers:Edit') : true;
+    const canDeleteVoucher = typeof can === 'function' ? can('Vouchers:Delete') : true;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
+    const canShareReport = typeof can === 'function' ? can('Reports:Share') : true;
+    const canSyncTally = typeof can === 'function' ? can('Tally:Sync') : true;
     const supabase: any = insforgeClient;
     const [voucher, setVoucher] = useState<any>(null);
     const [saleData, setSaleData] = useState<any>(null);
@@ -304,11 +310,19 @@ export default function VoucherDetailPage() {
     };
 
     const handleWhatsApp = () => {
+        if (!canShareReport) {
+            toast.error('You do not have permission to share vouchers');
+            return;
+        }
         if (!voucher) return;
         shareVoucherOnWhatsApp(voucher, selectedCompany);
     };
 
     const handleDownloadPDF = () => {
+        if (!canExportReport) {
+            toast.error('You do not have permission to export PDF');
+            return;
+        }
         // Navigate to the proper PDF page which uses jsPDF for professional PDF generation
         navigate(`/invoice/${voucherId}`);
     };
@@ -330,6 +344,10 @@ export default function VoucherDetailPage() {
     };
 
     const handleSyncToTally = async () => {
+        if (!canSyncTally) {
+            toast.error('You do not have permission to sync to Tally');
+            return;
+        }
         if (!voucher) return;
         const toastId = toast.loading('Sending to Tally...');
         try {
@@ -351,6 +369,10 @@ export default function VoucherDetailPage() {
     };
 
     const handleDelete = async () => {
+        if (!canDeleteVoucher) {
+            toast.error('You do not have permission to delete vouchers');
+            return;
+        }
         if (!voucher) return;
         if (!voucher.guid) {
             toast.error('Ye voucher Tally me sync nahi hua, delete queue nahi ho sakta.');
@@ -375,6 +397,13 @@ export default function VoucherDetailPage() {
                 }
             }]);
             if (error) throw error;
+            void logActivity({
+                company_id: selectedCompany.id,
+                action: ActivityActions.VOUCHER_DELETED,
+                entity_type: 'voucher',
+                entity_id: voucher.id,
+                entity_name: `${voucher.voucher_type || 'Voucher'} #${voucher.voucher_number || ''}`,
+            });
             toast.success('Delete queued. Connector next sync par Tally se voucher delete karega.', { id: toastId });
             navigate(-1);
         } catch (err: any) {
@@ -415,42 +444,52 @@ export default function VoucherDetailPage() {
             {/* Header Actions Portal */}
             <HeaderPortal type="actions">
                 <div className="flex items-center gap-0.5 md:gap-1">
-                    <button
-                        onClick={handleWhatsApp}
-                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
-                        title="WhatsApp"
-                    >
-                        <MessageCircle size={18} />
-                    </button>
-                    <button
-                        onClick={handleDownloadPDF}
-                        disabled={generatingPdf}
-                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
-                        title="Share PDF"
-                    >
-                        {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Share size={18} />}
-                    </button>
-                    <button
-                        onClick={() => navigate(`/edit-invoice/${voucherId}`)}
-                        className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
-                        title="Edit Invoice"
-                    >
-                        <Edit size={18} />
-                    </button>
-                    <button
-                        onClick={handleDelete}
-                        className="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-all"
-                        title="Delete voucher (Tally se bhi)"
-                    >
-                        <Trash2 size={18} />
-                    </button>
-                    <button
-                        onClick={handleSyncToTally}
-                        className="p-2 rounded-xl text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] shadow-sm transition-all"
-                        title="Sync to Tally"
-                    >
-                        <Send size={18} />
-                    </button>
+                    {canShareReport && (
+                        <button
+                            onClick={handleWhatsApp}
+                            className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                            title="WhatsApp"
+                        >
+                            <MessageCircle size={18} />
+                        </button>
+                    )}
+                    {canExportReport && (
+                        <button
+                            onClick={handleDownloadPDF}
+                            disabled={generatingPdf}
+                            className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                            title="Share PDF"
+                        >
+                            {generatingPdf ? <RefreshCw size={18} className="animate-spin" /> : <Share size={18} />}
+                        </button>
+                    )}
+                    {canEditVoucher && (
+                        <button
+                            onClick={() => navigate(`/edit-invoice/${voucherId}`)}
+                            className="p-2 rounded-xl text-[var(--on-surface)] hover:bg-[var(--surface-variant)] transition-all"
+                            title="Edit Invoice"
+                        >
+                            <Edit size={18} />
+                        </button>
+                    )}
+                    {canDeleteVoucher && (
+                        <button
+                            onClick={handleDelete}
+                            className="p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-all"
+                            title="Delete voucher (Tally se bhi)"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                    )}
+                    {canSyncTally && (
+                        <button
+                            onClick={handleSyncToTally}
+                            className="p-2 rounded-xl text-white bg-[var(--primary)] hover:bg-[var(--primary-hover)] shadow-sm transition-all"
+                            title="Sync to Tally"
+                        >
+                            <Send size={18} />
+                        </button>
+                    )}
                 </div>
             </HeaderPortal>
 
@@ -623,14 +662,16 @@ export default function VoucherDetailPage() {
 
 
             {/* Sync Overlay Logic */}
-            <motion.button
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                onClick={handleSyncToTally}
-                className="fixed bottom-24 right-6 w-12 h-12 bg-[var(--primary)] text-white rounded-full shadow-xl shadow-[var(--primary)]/30 flex items-center justify-center z-30"
-            >
-                <Send size={20} />
-            </motion.button>
+            {canSyncTally && (
+                <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    onClick={handleSyncToTally}
+                    className="fixed bottom-24 right-6 w-12 h-12 bg-[var(--primary)] text-white rounded-full shadow-xl shadow-[var(--primary)]/30 flex items-center justify-center z-30"
+                >
+                    <Send size={20} />
+                </motion.button>
+            )}
         </div>
     );
 }

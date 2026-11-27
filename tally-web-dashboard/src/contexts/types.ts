@@ -19,6 +19,13 @@ export interface AuthContextType {
     companies: Company[];
     selectedCompany: Company | null;
     userRole: string;
+    membershipStatus: 'active' | 'suspended' | 'inactive' | 'none';
+    permissions: Record<string, Record<string, boolean>>;
+    isPlatformAdmin: boolean;
+    isSuperAdmin: boolean;
+    permissionsLoading: boolean;
+    can: (permission: string) => boolean;
+    refreshPermissions: () => Promise<void>;
     loading: boolean;
     appMode: 'tally' | 'billing' | null;
     setAppMode: (mode: 'tally' | 'billing' | null) => void;

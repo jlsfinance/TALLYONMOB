@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { VOUCHER_TYPES } from '../lib/voucherTypes';
+import { useAuth } from '../contexts/AuthContext';
 
 /** Global + button: every voucher type reachable from any page. */
 export default function VoucherFab() {
+    const { can } = useAuth() as any;
+    const canCreateVoucher = typeof can === 'function' ? can('Vouchers:Create') : true;
     const [open, setOpen] = useState(false);
     const navigate = useNavigate();
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -16,6 +19,8 @@ export default function VoucherFab() {
         window.addEventListener('keydown', close);
         return () => window.removeEventListener('keydown', close);
     }, [open]);
+
+    if (!canCreateVoucher) return null;
 
     return (
         <>

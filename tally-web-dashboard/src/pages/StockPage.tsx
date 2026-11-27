@@ -14,7 +14,9 @@ import { HeaderPortal } from '../components/layout/HeaderPortal';
 import './StockPage.css';
 
 export default function StockPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
+    const canShareReport = typeof can === 'function' ? can('Reports:Share') : true;
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedGroup, setSelectedGroup] = useState('all');
@@ -134,11 +136,13 @@ export default function StockPage() {
     };
 
     const handleDownloadPDF = async () => {
+        if (!canExportReport) return;
         const doc = await generatePDF();
         doc.save(`Live_Stock_${format(new Date(), 'dd-MM-yyyy')}.pdf`);
     };
 
     const handleExportCSV = () => {
+        if (!canExportReport) return;
         const headers = [
             { key: 'name', label: 'Item Name' },
             { key: 'stock_group', label: 'Group' },
@@ -159,6 +163,7 @@ export default function StockPage() {
     };
 
     const handleSharePDF = async () => {
+        if (!canShareReport) return;
         try {
             const doc = await generatePDF();
             const pdfBlob = doc.output('blob');
@@ -240,28 +245,34 @@ export default function StockPage() {
                     )}
                     {activeTab === 'inventory' && (
                         <>
-                            <button
-                                onClick={handleDownloadPDF}
-                                className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-500/10 transition-all border border-[var(--border)]"
-                                title="Download PDF"
-                            >
-                                <Download size={12} />
-                            </button>
-                            <button
-                                onClick={handleExportCSV}
-                                className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-500/10 transition-all border border-[var(--border)]"
-                                title="Export CSV"
-                            >
-                                <FileSpreadsheet size={12} />
-                            </button>
-                            <button
-                                onClick={handleSharePDF}
-                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[var(--primary)] text-white font-bold text-[9px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
-                            >
-                                <Share2 size={10} />
-                                <span className="hidden sm:inline">Share Stock</span>
-                                <span className="sm:hidden">Share</span>
-                            </button>
+                            {canExportReport && (
+                                <>
+                                    <button
+                                        onClick={handleDownloadPDF}
+                                        className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-500/10 transition-all border border-[var(--border)]"
+                                        title="Download PDF"
+                                    >
+                                        <Download size={12} />
+                                    </button>
+                                    <button
+                                        onClick={handleExportCSV}
+                                        className="p-1.5 rounded-lg bg-[var(--surface-variant)] text-[var(--text-muted)] hover:text-emerald-500 hover:bg-emerald-500/10 transition-all border border-[var(--border)]"
+                                        title="Export CSV"
+                                    >
+                                        <FileSpreadsheet size={12} />
+                                    </button>
+                                </>
+                            )}
+                            {canShareReport && (
+                                <button
+                                    onClick={handleSharePDF}
+                                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[var(--primary)] text-white font-bold text-[9px] uppercase tracking-wider shadow-sm hover:shadow-md transition-all"
+                                >
+                                    <Share2 size={10} />
+                                    <span className="hidden sm:inline">Share Stock</span>
+                                    <span className="sm:hidden">Share</span>
+                                </button>
+                            )}
                         </>
                     )}
                     <div className="flex items-center gap-0.5 bg-[var(--surface-variant)] p-0.5 rounded-lg border border-[var(--border)]">

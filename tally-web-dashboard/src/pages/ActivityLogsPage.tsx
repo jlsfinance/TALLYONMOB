@@ -37,6 +37,22 @@ const actionLabels: Record<string, string> = {
     [ActivityActions.EMBEDDINGS_GENERATED]: 'Generated Embeddings',
     [ActivityActions.COMPANY_SWITCHED]: 'Switched Company',
     [ActivityActions.USER_LOGIN]: 'Logged In',
+    [ActivityActions.RBAC_USER_INVITED]: 'Invited Team Member',
+    [ActivityActions.RBAC_INVITE_EMAIL_SENT]: 'Sent Invitation Email',
+    [ActivityActions.RBAC_INVITE_EMAIL_FAILED]: 'Invitation Email Failed',
+    [ActivityActions.RBAC_INVITE_RESENT]: 'Resent Team Invitation',
+    [ActivityActions.RBAC_INVITE_ACCEPTED]: 'Accepted Team Invitation',
+    [ActivityActions.RBAC_ROLE_CHANGED]: 'Changed Member Role',
+    [ActivityActions.RBAC_USER_SUSPENDED]: 'Suspended Member',
+    [ActivityActions.RBAC_USER_UNSUSPENDED]: 'Reactivated Member',
+    [ActivityActions.RBAC_USER_REMOVED]: 'Removed Member / Revoked Invite',
+    [ActivityActions.RBAC_BULK_ACTION]: 'Bulk RBAC Action',
+    [ActivityActions.RBAC_ROLE_CREATED]: 'Created Custom Role',
+    [ActivityActions.RBAC_ROLE_UPDATED]: 'Updated Role Permissions',
+    [ActivityActions.RBAC_ROLE_DELETED]: 'Deleted Custom Role',
+    [ActivityActions.RBAC_COMPANY_ACCESS_GRANTED]: 'Granted Company Access',
+    [ActivityActions.RBAC_COMPANY_ACCESS_REVOKED]: 'Revoked Company Access',
+    [ActivityActions.RBAC_DEFAULT_COMPANY_CHANGED]: 'Changed Default Company',
 };
 
 const actionColors: Record<string, string> = {
@@ -46,6 +62,13 @@ const actionColors: Record<string, string> = {
     [ActivityActions.SYNC_COMPLETED]: 'text-emerald-500',
     [ActivityActions.SYNC_FAILED]: 'text-rose-500',
     [ActivityActions.USER_LOGIN]: 'text-blue-500',
+    [ActivityActions.RBAC_USER_INVITED]: 'text-cyan-400',
+    [ActivityActions.RBAC_INVITE_EMAIL_SENT]: 'text-emerald-400',
+    [ActivityActions.RBAC_INVITE_EMAIL_FAILED]: 'text-rose-400',
+    [ActivityActions.RBAC_ROLE_CHANGED]: 'text-amber-400',
+    [ActivityActions.RBAC_USER_SUSPENDED]: 'text-rose-400',
+    [ActivityActions.RBAC_USER_REMOVED]: 'text-rose-500',
+    [ActivityActions.RBAC_ROLE_UPDATED]: 'text-purple-400',
 };
 
 export default function ActivityLogsPage() {
@@ -84,7 +107,7 @@ export default function ActivityLogsPage() {
         }
     };
 
-    const entityTypes = ['all', 'voucher', 'ledger', 'stock', 'sync', 'invoice', 'auth'];
+    const entityTypes = ['all', 'rbac', 'voucher', 'ledger', 'stock', 'sync', 'invoice', 'auth'];
 
     return (
         <div className="space-y-4">

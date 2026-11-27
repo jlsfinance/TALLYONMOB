@@ -902,6 +902,61 @@
                                     Margin="0,8,0,0"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- WhatsApp QR Notifications -->
+                    <TextBlock Text="WhatsApp Notifications (QR)"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="#1F2937"
+                               Margin="0,0,0,12"/>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,24">
+                        <StackPanel>
+                            <TextBlock x:Name="WhatsAppStatusText"
+                                       Text="Checking WhatsApp QR helper..."
+                                       Foreground="#374151"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="Scan QR once via WhatsApp Linked Devices to receive Sync alerts and Voucher PDFs (same as Telegram). Commands supported in WhatsApp chat: /status, /link email license-key, /help."
+                                       Foreground="#6B7280"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12"/>
+                            <CheckBox Content="Auto-send new voucher PDF to Party WhatsApp (when party phone is in Tally)"
+                                      IsChecked="{Binding Settings.SyncSettings.AutoSendPartyWhatsApp, Mode=TwoWay}"
+                                      Foreground="#1F2937"
+                                      FontSize="13"
+                                      FontWeight="SemiBold"
+                                      Margin="0,0,0,10"/>
+                            <TextBlock Text="Party WhatsApp Voucher Types (comma separated)"
+                                       Foreground="#374151"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding Settings.SyncSettings.PartyWhatsAppVoucherTypes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource ModernTextBox}"
+                                     Margin="0,0,0,14"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Open WhatsApp QR"
+                                        Click="OpenWhatsAppQr_Click"
+                                        Style="{StaticResource ModernButton}"
+                                        Height="38"
+                                        Padding="16,0"
+                                        Margin="0,0,10,0"/>
+                                <Button Content="Refresh Status"
+                                        Click="RefreshWhatsAppStatus_Click"
+                                        Style="{StaticResource GhostButton}"
+                                        Height="38"
+                                        Padding="16,0"
+                                        Margin="0,0,10,0"/>
+                                <Button Content="Save Settings"
+                                        Command="{Binding SaveSettingsCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Height="38"
+                                        Padding="16,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
 

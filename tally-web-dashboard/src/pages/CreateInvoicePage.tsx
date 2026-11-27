@@ -65,7 +65,8 @@ function formatCurrency(amount: number) {
 }
 
 export default function CreateInvoicePage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canCreateVoucher = typeof can === 'function' ? can('Vouchers:Create') : true;
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
@@ -272,6 +273,10 @@ export default function CreateInvoicePage() {
     const { subtotal, cgst, sgst, igst, total, billDiscount } = totals();
 
     const handleSubmit = async () => {
+        if (!canCreateVoucher) {
+            toast.error('You do not have permission to create invoices');
+            return;
+        }
         if (!selectedCustomerId) return alert('Please select a customer');
         if (items.length === 0) return alert('Please add at least one item');
         if (items.some(i => !i.productId)) return alert('Some items have no product selected');

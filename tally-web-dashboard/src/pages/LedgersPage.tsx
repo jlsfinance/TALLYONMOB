@@ -28,7 +28,8 @@ function formatCompact(amount: number) {
 }
 
 export default function LedgersPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [searchTerm, setSearchTerm] = useState('');
@@ -41,6 +42,10 @@ export default function LedgersPage() {
     const [showSearch, setShowSearch] = useState(false);
 
     const handleExportCSV = () => {
+        if (!canExportReport) {
+            toast.error('You do not have permission to export ledgers');
+            return;
+        }
         const headers = [
             { key: 'name', label: 'Ledger Name' },
             { key: 'parent_group', label: 'Group' },
@@ -333,14 +338,16 @@ export default function LedgersPage() {
 
             <HeaderPortal type="filters">
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={handleExportCSV}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#131e36] hover:bg-[#1a2949] border border-[#23355e] text-xs font-semibold text-slate-200 transition-all"
-                        title="Export CSV"
-                    >
-                        <FileSpreadsheet size={13} className="text-cyan-400" />
-                        <span className="hidden sm:inline">Export</span>
-                    </button>
+                    {canExportReport && (
+                        <button
+                            onClick={handleExportCSV}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#131e36] hover:bg-[#1a2949] border border-[#23355e] text-xs font-semibold text-slate-200 transition-all"
+                            title="Export CSV"
+                        >
+                            <FileSpreadsheet size={13} className="text-cyan-400" />
+                            <span className="hidden sm:inline">Export</span>
+                        </button>
+                    )}
                 </div>
             </HeaderPortal>
 

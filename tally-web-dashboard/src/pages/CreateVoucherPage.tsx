@@ -26,7 +26,8 @@ interface StockEntry {
 }
 
 export default function CreateVoucherPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canCreateVoucher = typeof can === 'function' ? can('Vouchers:Create') : true;
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const initialType = searchParams.get('type');
@@ -187,6 +188,10 @@ export default function CreateVoucherPage() {
     const partyRequired = !['Contra', 'Journal'].includes(voucherType);
 
     const handleSave = async () => {
+        if (!canCreateVoucher) {
+            toast.error('You do not have permission to create vouchers');
+            return;
+        }
         if (partyRequired && !partyName.trim()) {
             toast.error('Please enter a party name');
             return;

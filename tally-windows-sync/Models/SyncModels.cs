@@ -168,6 +168,16 @@ namespace TallySyncApp.Models
         public bool UseFastExtractor { get; set; } = false;
         public bool UseSafeVoucherReconciliation { get; set; } = true;
         public string TelegramBotToken { get; set; } = string.Empty;
+        /// <summary>
+        /// WhatsApp Cloud API access token (Meta for Business). Leave empty to disable WhatsApp notifications.
+        /// </summary>
+        public string WhatsAppToken { get; set; } = string.Empty;
+        /// <summary>
+        /// WhatsApp Cloud API phone-number ID (the numeric ID shown in Meta dashboard, not the phone number itself).
+        /// </summary>
+        public string WhatsAppPhoneNumberId { get; set; } = string.Empty;
+        public bool AutoSendPartyWhatsApp { get; set; } = true;
+        public string PartyWhatsAppVoucherTypes { get; set; } = "Sales, Receipt, Credit Note, Payment";
         public string LicencePurchaseUrl { get; set; } = "https://tallyonmob.vercel.app/subscription";
     }
 

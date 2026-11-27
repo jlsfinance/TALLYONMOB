@@ -218,12 +218,44 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth() as any;
+    const { user, loading, isSuperAdmin } = useAuth() as any;
 
     if (loading) return <RouteLoader />;
     if (!user) return <Navigate to="/login" replace />;
-    if (!isAdminConsoleEnabled() || !hasAdminAccess(user)) {
+    if (!isAdminConsoleEnabled() || (!hasAdminAccess(user) && !isSuperAdmin)) {
         return <Navigate to="/" replace />;
+    }
+
+    return <>{children}</>;
+}
+
+function PermissionRoute({ permission, children }: { permission: string; children: React.ReactNode }) {
+    const { loading, permissionsLoading, can } = useAuth() as any;
+    const navigate = useNavigate();
+
+    if (loading || permissionsLoading) return <RouteLoader />;
+    if (typeof can === 'function' && !can(permission)) {
+        return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                </div>
+                <h2 className="text-lg font-bold text-[var(--on-surface)]">Access Denied</h2>
+                <p className="text-sm text-[var(--text-muted)] max-w-md">
+                    Your current role does not have permission ({permission}) for this company. Contact your company owner or administrator.
+                </p>
+                <button
+                    type="button"
+                    onClick={() => navigate(-1)}
+                    className="px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-sm font-semibold"
+                >
+                    Go Back
+                </button>
+            </div>
+        );
     }
 
     return <>{children}</>;
@@ -375,8 +407,8 @@ function AppContent() {
                                     <Route path="/vouchers" element={<VouchersPage />} />
                                     <Route path="/vouchers/:voucherId" element={<VoucherDetailPage />} />
                                     <Route path="/sales" element={<SalesPage />} />
-                                    <Route path="/create-invoice" element={<CreateInvoicePage />} />
-                                    <Route path="/edit-invoice/:id" element={<EditVoucherPage />} />
+                                    <Route path="/create-invoice" element={<PermissionRoute permission="Vouchers:Create"><CreateInvoicePage /></PermissionRoute>} />
+                                    <Route path="/edit-invoice/:id" element={<PermissionRoute permission="Vouchers:Edit"><EditVoucherPage /></PermissionRoute>} />
                                     <Route path="/sales/:id" element={<InvoiceDetailPage />} />
                                     <Route path="/purchases" element={<PurchasesPage />} />
                                     <Route path="/purchases/:id" element={<PurchaseDetailPage />} />
@@ -402,7 +434,7 @@ function AppContent() {
                                     <Route path="/payment-reminders" element={<PaymentRemindersPage />} />
                                     <Route path="/inactive-customers" element={<InactiveCustomersPage />} />
                                     <Route path="/ai-assistant" element={<AIAssistantPage />} />
-                                    <Route path="/create-voucher" element={<CreateVoucherPage />} />
+                                    <Route path="/create-voucher" element={<PermissionRoute permission="Vouchers:Create"><CreateVoucherPage /></PermissionRoute>} />
                                     <Route path="/eway-bill" element={<EWayBillPage />} />
                                     <Route path="/sales-team" element={<SalesTeamPage />} />
                                     <Route path="/invoice-templates" element={<InvoiceTemplatePage />} />
@@ -413,7 +445,7 @@ function AppContent() {
                                     <Route path="/document-scanner" element={<DocumentScannerPage />} />
                                     <Route path="/user-analytics" element={<UserAnalyticsPage />} />
                                     <Route path="/team-management" element={<TeamManagementPage />} />
-                                    <Route path="/backup-restore" element={<BackupRestorePage />} />
+                                    <Route path="/backup-restore" element={<PermissionRoute permission="Settings:Edit"><BackupRestorePage /></PermissionRoute>} />
                                     <Route path="/invoice-scanner" element={<InvoiceScannerPage />} />
                                     <Route path="/payment-links" element={<PaymentLinksPage />} />
                                     <Route path="/recurring-invoices" element={<Navigate to="/" replace />} />
@@ -433,7 +465,7 @@ function AppContent() {
                                     <Route path="/inventory-valuation" element={<Navigate to="/" replace />} />
                                     <Route path="/email-invoice" element={<EmailInvoicePage />} />
                                     <Route path="/upi-payments" element={<UPIPaymentPage />} />
-                                    <Route path="/rbac" element={<RBACPage />} />
+                                    <Route path="/rbac" element={<AdminRoute><RBACPage /></AdminRoute>} />
                                     <Route path="/audit-log" element={<AuditLogPage />} />
                                     <Route path="/data-backup" element={<Navigate to="/" replace />} />
                                     <Route path="/push-notifications" element={<Navigate to="/" replace />} />

@@ -76,7 +76,8 @@ interface MonthAgg {
 
 // ── Main Component ─────────────────────────────────────────
 export default function VouchersPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -309,6 +310,7 @@ export default function VouchersPage() {
 
     // Export the filtered voucher data as selectable text, not a screenshot.
     const handleExportPDF = useCallback(async () => {
+        if (!canExportReport) { toast.error('You do not have permission to export reports'); return; }
         if (!filteredVouchers.length) { toast.error('No data to export'); return; }
         try {
             const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
@@ -396,10 +398,12 @@ export default function VouchersPage() {
             <HeaderPortal type="filters">
                 <div className="flex items-center gap-1.5">
                     <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider whitespace-nowrap">{selectedFy}</span>
-                    <button onClick={handleExportPDF}
-                        className="px-2 py-1 bg-[var(--surface-variant)] text-[var(--text-muted)] border border-[var(--border)] rounded-lg text-[9px] font-bold uppercase tracking-wider hover:bg-[var(--surface-active)]">
-                        PDF
-                    </button>
+                    {canExportReport && (
+                        <button onClick={handleExportPDF}
+                            className="px-2 py-1 bg-[var(--surface-variant)] text-[var(--text-muted)] border border-[var(--border)] rounded-lg text-[9px] font-bold uppercase tracking-wider hover:bg-[var(--surface-active)]">
+                            PDF
+                        </button>
+                    )}
                 </div>
             </HeaderPortal>
 

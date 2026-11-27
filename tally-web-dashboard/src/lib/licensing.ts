@@ -3,6 +3,8 @@
  * Handles trial validation, license management, coupons, subscriptions
  */
 import { supabase } from './insforge';
+import { hasAdminAccess } from './adminAccess';
+import { evaluatePermission, normalizeRoleKey } from './rbacPermissions.mjs';
 
 // ============================================================
 // TYPES
@@ -785,17 +787,93 @@ export const roleService = {
         return data || [];
     },
 
-    async hasPermission(userId: string, permission: string): Promise<boolean> {
-        // Check if user has super_admin license
-        const { data } = await supabase
-            .from('user_licenses')
-            .select('license_key')
-            .eq('user_id', userId)
-            .eq('status', 'active')
-            .like('license_key', 'TOM-SUPER%')
-            .limit(1);
+    async hasPermission(userId: string, permission: string, companyId?: string): Promise<boolean> {
+        if (!userId || !permission) return false;
 
-        if (data && data.length > 0) return true;
-        return false;
+        try {
+            const { data: profile } = await supabase
+                .from('user_profiles')
+                .select('is_admin')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (profile?.is_admin === true) {
+                return true;
+            }
+
+            const targetCompanyId =
+                companyId ||
+                (typeof localStorage !== 'undefined' ? localStorage.getItem('selectedCompanyId') || undefined : undefined);
+
+            const { data: authData } = await supabase.auth.getUser();
+            const currentUser = authData?.user;
+
+            if (currentUser?.id === userId && hasAdminAccess(currentUser)) {
+                return true;
+            }
+
+            if (!targetCompanyId) {
+                return false;
+            }
+
+            if (currentUser?.id === userId) {
+                const { data: rpcData, error: rpcError } = await supabase.rpc('rbac_get_my_permissions', {
+                    p_company_id: targetCompanyId,
+                });
+                if (!rpcError && rpcData) {
+                    return evaluatePermission(rpcData.permissions, rpcData.role, permission, {
+                        isAdmin: Boolean(rpcData.is_super_admin || rpcData.is_admin),
+                        isOwner: Boolean(rpcData.is_owner),
+                        status: rpcData.status,
+                    });
+                }
+            }
+
+            const { data: company } = await supabase
+                .from('companies')
+                .select('owner_id')
+                .eq('id', targetCompanyId)
+                .maybeSingle();
+
+            if (company?.owner_id === userId) {
+                return true;
+            }
+
+            const { data: membership, error: memberError } = await supabase
+                .from('company_users')
+                .select('role, status')
+                .eq('company_id', targetCompanyId)
+                .eq('user_id', userId)
+                .maybeSingle();
+
+            if (memberError || !membership) {
+                return false;
+            }
+
+            const status = membership.status || 'active';
+            if (status !== 'active') {
+                return false;
+            }
+
+            const roleKey = normalizeRoleKey(membership.role);
+            const { data: roles } = await supabase
+                .from('user_roles')
+                .select('id, name, display_name, permissions');
+
+            const matchedRole = (roles || []).find(
+                (r: any) =>
+                    normalizeRoleKey(r.name) === roleKey ||
+                    normalizeRoleKey(r.display_name) === roleKey ||
+                    String(r.id) === String(membership.role)
+            );
+
+            return evaluatePermission(matchedRole?.permissions, membership.role, permission, {
+                isAdmin: false,
+                isOwner: false,
+                status,
+            });
+        } catch {
+            return false;
+        }
     },
 };

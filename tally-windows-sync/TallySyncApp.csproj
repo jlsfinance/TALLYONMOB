@@ -15,7 +15,7 @@
     <AssemblyName>SyncoraConnector</AssemblyName>
     <AssemblyName Condition="'$(Configuration)' == 'Debug'">SyncoraConnector.Debug</AssemblyName>
     <RootNamespace>TallySyncApp</RootNamespace>
-    <Version>3.2.18</Version>
+    <Version>3.2.20</Version>
     <Authors>SYNCORA</Authors>
     <Company>SYNCORA</Company>
     <Product>SYNCORA Connector</Product>
@@ -56,6 +56,16 @@
     <Resource Include="app_icon.ico">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
+  </ItemGroup>
+
+  <!-- Bundle clean WhatsApp QR helper scripts (never ship local node_modules/.wwebjs_auth/.env) -->
+  <ItemGroup>
+    <None Update="whatsapp-notifier\server.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="whatsapp-notifier\package.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="whatsapp-notifier\start-whatsapp.bat" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Remove="whatsapp-notifier\**" />
+    <EmbeddedResource Remove="whatsapp-notifier\**" />
+    <None Remove="whatsapp-notifier\node_modules\**;whatsapp-notifier\.wwebjs_auth\**;whatsapp-notifier\.wwebjs_cache\**;whatsapp-notifier\.tmp\**;whatsapp-notifier\.env;whatsapp-notifier\session.json;whatsapp-notifier\.gitignore" />
   </ItemGroup>
 
   <!-- Exclude TallySyncApp subfolder to avoid conflicts -->

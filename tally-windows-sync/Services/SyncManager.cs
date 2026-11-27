@@ -170,7 +170,9 @@ namespace TallySyncApp.Services
                 supabaseUrl,
                 supabaseKey,
                 300,
-                _settings.SyncSettings.TelegramBotToken
+                _settings.SyncSettings.TelegramBotToken,
+                _settings.SyncSettings.WhatsAppToken,
+                _settings.SyncSettings.WhatsAppPhoneNumberId
             );
 
             // Set User Token if logged in
@@ -612,6 +614,24 @@ namespace TallySyncApp.Services
                                     $"🔔 <b>Sync still failing</b>: {names}\n\n<i>Attempt {withRetry}/{OfflineQueueService.MaxNotificationRetries}</i>");
                             }
                         }
+
+                        // WHATSAPP: Still-failing re-announce (mirrors Telegram)
+                        try
+                        {
+                            var waUid = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(waUid))
+                            {
+                                var waPhone = await _apiClient!.GetWhatsAppNumberAsync(waUid);
+                                if (!string.IsNullOrEmpty(waPhone))
+                                {
+                                    var names = string.Join(", ", pendingNotifs.Select(p => p.CompanyId));
+                                    var withRetry = pendingNotifs.Max(p => p.RetryCount) + 1;
+                                    await _apiClient.SendWhatsAppNotificationAsync(waPhone,
+                                        $"🔔 Sync still failing: {names}\n\nAttempt {withRetry}/{OfflineQueueService.MaxNotificationRetries}");
+                                }
+                            }
+                        }
+                        catch (Exception waEx) { SyncLogger.Log($"⚠️ WhatsApp re-announce failed: {waEx.Message}"); }
                     }
                 }
                 catch (Exception nEx) { SyncLogger.Log($"⚠️ Notification re-announce failed: {nEx.Message}"); }
@@ -663,6 +683,22 @@ namespace TallySyncApp.Services
                             }
                         } 
                         catch (Exception tgEx) { SyncLogger.Log($"⚠️ Telegram Start notification failed: {tgEx.Message}"); }
+
+                        // WHATSAPP: Start Notification (mirrors Telegram; never breaks sync)
+                        try
+                        {
+                            var uid = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(uid))
+                            {
+                                var waPhone = await _apiClient!.GetWhatsAppNumberAsync(uid);
+                                if (!string.IsNullOrEmpty(waPhone))
+                                {
+                                    var waMsg = $"🚀 Sync Started: {company.Name}\n\nTime: {DateTime.Now:HH:mm:ss}";
+                                    await _apiClient.SendWhatsAppNotificationAsync(waPhone, waMsg);
+                                }
+                            }
+                        }
+                        catch (Exception waEx) { SyncLogger.Log($"⚠️ WhatsApp Start notification failed: {waEx.Message}"); }
 
                         CurrentCompany = company;
                         Status.CompanyName = company.Name;
@@ -1422,7 +1458,88 @@ namespace TallySyncApp.Services
                             SyncLogger.Log($"⚠️ Telegram notification failed: {tgEx.Message}");
                         }
 
-                        // ===== NEW VOUCHER PDFs → TELEGRAM =====
+                        // ===== WHATSAPP NOTIFICATION (QR parity with Telegram) =====
+                        try
+                        {
+                            var currentUserId = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(currentUserId))
+                            {
+                                var waPhone = await _apiClient!.GetWhatsAppNumberAsync(currentUserId);
+                                if (!string.IsNullOrEmpty(waPhone))
+                                {
+                                    int totalSynced = vouchersSynced + ledgersSynced + stockSynced;
+                                    string waMsg;
+
+                                    if (totalSynced > 0 || masterDataSynced > 0)
+                                    {
+                                        var sb = new StringBuilder();
+                                        sb.AppendLine($"✅ <b>Sync Completed: {company.Name}</b>");
+                                        sb.AppendLine();
+                                        sb.AppendLine("📊 <b>Performance Stats:</b>");
+                                        if (vouchersSynced > 0) sb.AppendLine($"• Vouchers: <code>{vouchersSynced}</code>");
+                                        if (ledgersSynced > 0) sb.AppendLine($"• Ledgers: <code>{ledgersSynced}</code>");
+                                        if (stockSynced > 0) sb.AppendLine($"• Items: <code>{stockSynced}</code>");
+                                        if (masterDataSynced > 0) sb.AppendLine($"• Master Data: <code>{masterDataSynced}</code>");
+                                        sb.AppendLine();
+
+                                        if (totalSalesAmountFetched > 0)
+                                        {
+                                            sb.AppendLine("💰 <b>Sales Summary:</b>");
+                                            sb.AppendLine($"• Total Amount: <b>₹{totalSalesAmountFetched:N2}</b>");
+                                            sb.AppendLine();
+                                        }
+
+                                        if (highValueAlerts.Count > 0)
+                                        {
+                                            sb.AppendLine("⚠️ <b>Smart Alerts:</b>");
+                                            foreach (var alert in highValueAlerts.Take(5))
+                                            {
+                                                sb.AppendLine($"• {alert}");
+                                            }
+                                            if (highValueAlerts.Count > 5) sb.AppendLine($"<i>...and {highValueAlerts.Count - 5} more</i>");
+                                            sb.AppendLine();
+                                        }
+
+                                        sb.AppendLine($"<i>Time: {DateTime.Now:HH:mm:ss}</i>");
+                                        waMsg = sb.ToString();
+                                    }
+                                    else
+                                    {
+                                        waMsg = $"✅ <b>Sync Status: {company.Name}</b>\n\n" +
+                                                $"📊 No changes detected. All data is up to date.\n\n" +
+                                                $"<i>Time: {DateTime.Now:HH:mm:ss}</i>";
+                                    }
+
+                                    var waSent = await _apiClient.SendWhatsAppNotificationAsync(waPhone, waMsg);
+
+                                    if (DateTime.Now.Hour >= 20 && totalSynced > 0)
+                                    {
+                                        var reportSb = new StringBuilder();
+                                        reportSb.AppendLine("📊 <b>Daily Closing Report</b>");
+                                        reportSb.AppendLine($"<i>{DateTime.Now:dd MMM yyyy}</i>\n");
+                                        reportSb.AppendLine($"💰 Total Sales: <b>₹{totalSalesAmountFetched:N0}</b>");
+                                        reportSb.AppendLine($"📥 New Vouchers: <b>{vouchersSynced}</b>");
+
+                                        if (highValueAlerts.Count > 0)
+                                        {
+                                            reportSb.AppendLine("\n🌟 <b>Top Deals:</b>");
+                                            foreach (var alert in highValueAlerts.Take(3)) reportSb.AppendLine($"• {alert}");
+                                        }
+
+                                        reportSb.AppendLine("\n📈 <i>Data synced successfully to Cloud.</i>");
+                                        await _apiClient.SendWhatsAppNotificationAsync(waPhone, reportSb.ToString());
+                                    }
+
+                                    AddLog(waSent ? "📲 WhatsApp notification sent to user." : "⚠️ WhatsApp notification could not be sent (check QR helper).");
+                                }
+                            }
+                        }
+                        catch (Exception waEx)
+                        {
+                            SyncLogger.Log($"⚠️ WhatsApp notification failed: {waEx.Message}");
+                        }
+
+                        // ===== NEW VOUCHER PDFs → TELEGRAM + WHATSAPP =====
                         if (!isFirstSync)
                         {
                             try
@@ -1461,7 +1578,23 @@ namespace TallySyncApp.Services
                             }
                         } 
                         catch (Exception tgEx) { SyncLogger.Log($"⚠️ Telegram Error notification failed: {tgEx.Message}"); }
-                        
+
+                        // WHATSAPP: Error Notification (mirrors Telegram)
+                        try
+                        {
+                            var uid = App.AuthService?.CurrentSession?.UserId;
+                            if (!string.IsNullOrEmpty(uid))
+                            {
+                                var waPhone = await _apiClient!.GetWhatsAppNumberAsync(uid);
+                                if (!string.IsNullOrEmpty(waPhone))
+                                {
+                                    await _apiClient.SendWhatsAppNotificationAsync(waPhone,
+                                        $"❌ Sync Failed: {company.Name}\n\nError: {ex.Message}\n\nTime: {DateTime.Now:HH:mm:ss}");
+                                }
+                            }
+                        }
+                        catch (Exception waEx) { SyncLogger.Log($"⚠️ WhatsApp Error notification failed: {waEx.Message}"); }
+
                         // Update sync history with error
                         if (!string.IsNullOrEmpty(syncHistoryId))
                         {
@@ -2264,9 +2397,58 @@ namespace TallySyncApp.Services
             return (totalVouchers, totalSales, salesAmount, totalPurchases);
         }
 
+        private static readonly string PartySentLogPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Syncora",
+            "party_wa_sent.txt");
+
+        private static HashSet<string> LoadSentPartyVouchers()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (File.Exists(PartySentLogPath))
+                {
+                    foreach (var line in File.ReadAllLines(PartySentLogPath))
+                    {
+                        var trimmed = line.Trim();
+                        if (!string.IsNullOrEmpty(trimmed)) set.Add(trimmed);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore read issues
+            }
+            return set;
+        }
+
+        private static void MarkPartyVoucherSent(HashSet<string> sentSet, string key)
+        {
+            if (!sentSet.Add(key)) return;
+            try
+            {
+                var dir = Path.GetDirectoryName(PartySentLogPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                if (sentSet.Count > 5000)
+                {
+                    File.WriteAllLines(PartySentLogPath, sentSet.Skip(sentSet.Count - 4000));
+                }
+                else
+                {
+                    File.AppendAllText(PartySentLogPath, key + Environment.NewLine);
+                }
+            }
+            catch
+            {
+                // Non-fatal
+            }
+        }
+
         /// <summary>
         /// Renders every voucher created by this incremental scan, sends it to the linked Telegram
-        /// chat, and deletes the temp PDF the moment the send finishes (success or failure).
+        /// chat, owner WhatsApp QR session, and (when enabled) the party's WhatsApp number,
+        /// then deletes the temp PDF the moment the send finishes.
         /// </summary>
         private async Task SendNewVoucherPdfsAsync(Company company)
         {
@@ -2281,15 +2463,25 @@ namespace TallySyncApp.Services
             }
 
             var chatId = await _apiClient!.GetTelegramChatIdAsync(userId);
-            if (string.IsNullOrWhiteSpace(chatId))
+            var waPhone = await _apiClient!.GetWhatsAppNumberAsync(userId);
+            bool sendToParties = _settings.SyncSettings.AutoSendPartyWhatsApp;
+            string allowedPartyTypes = _settings.SyncSettings.PartyWhatsAppVoucherTypes;
+
+            if (string.IsNullOrWhiteSpace(chatId) && string.IsNullOrWhiteSpace(waPhone) && !sendToParties)
             {
-                AddLog("📄 Voucher PDFs skipped: Telegram is not linked to this account.");
+                AddLog("📄 Voucher PDFs skipped: neither Telegram nor WhatsApp is linked.");
                 _vouchersToPdf.Clear();
                 return;
             }
 
-            int sent = 0, failed = 0;
-            AddLog($"📄 Sending {_vouchersToPdf.Count} new voucher PDF(s) to Telegram...");
+            int tgSent = 0, tgFailed = 0;
+            int waSent = 0, waFailed = 0;
+            int partySent = 0, partyFailed = 0;
+            int renderFailures = 0;
+            var partyPhoneCache = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            var sentPartySet = sendToParties ? LoadSentPartyVouchers() : new HashSet<string>();
+
+            AddLog($"📄 Processing {_vouchersToPdf.Count} new voucher PDF(s) (Telegram={!string.IsNullOrWhiteSpace(chatId)}, OwnerWA={!string.IsNullOrWhiteSpace(waPhone)}, PartyWA={sendToParties})...");
 
             foreach (var voucher in _vouchersToPdf)
             {
@@ -2301,16 +2493,65 @@ namespace TallySyncApp.Services
                                   (string.IsNullOrWhiteSpace(voucher.PartyName) ? string.Empty : $"\n{voucher.PartyName}") +
                                   $"\n₹{voucher.TotalAmount:N2}";
 
-                    if (await _apiClient.SendTelegramDocumentAsync(chatId, pdfPath, caption)) sent++;
-                    else failed++;
+                    if (!string.IsNullOrWhiteSpace(chatId))
+                    {
+                        if (await _apiClient.SendTelegramDocumentAsync(chatId, pdfPath, caption)) tgSent++;
+                        else tgFailed++;
+                    }
+                    if (!string.IsNullOrWhiteSpace(waPhone))
+                    {
+                        if (await _apiClient.SendWhatsAppDocumentAsync(waPhone, pdfPath, caption)) waSent++;
+                        else waFailed++;
+                    }
+
+                    if (sendToParties &&
+                        !string.IsNullOrWhiteSpace(voucher.PartyName) &&
+                        WhatsAppMessageFormatter.ShouldSendToParty(voucher.VoucherType, allowedPartyTypes))
+                    {
+                        string sentKey = $"{company.Id}|{voucher.VoucherId}";
+                        if (!sentPartySet.Contains(sentKey))
+                        {
+                            string pName = voucher.PartyName.Trim();
+                            if (!partyPhoneCache.TryGetValue(pName, out var partyPhone))
+                            {
+                                partyPhone = await _apiClient.GetPartyPhoneAsync(company.Id, pName);
+                                partyPhoneCache[pName] = partyPhone;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(partyPhone) &&
+                                !string.Equals(partyPhone, waPhone, StringComparison.Ordinal))
+                            {
+                                if (partySent > 0)
+                                    await Task.Delay(2500);
+
+                                var partyCaption = WhatsAppMessageFormatter.BuildPartyVoucherCaption(
+                                    company.Name,
+                                    voucher.VoucherType,
+                                    voucher.VoucherNumber,
+                                    voucher.VoucherDate,
+                                    pName,
+                                    voucher.TotalAmount);
+
+                                if (await _apiClient.SendWhatsAppDocumentAsync(partyPhone, pdfPath, partyCaption))
+                                {
+                                    MarkPartyVoucherSent(sentPartySet, sentKey);
+                                    partySent++;
+                                }
+                                else
+                                {
+                                    partyFailed++;
+                                }
+                            }
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    failed++;
+                    renderFailures++;
+                    if (!string.IsNullOrWhiteSpace(chatId)) tgFailed++;
+                    if (!string.IsNullOrWhiteSpace(waPhone)) waFailed++;
                     SyncLogger.Log($"📄 PDF failed for {voucher.VoucherType} #{voucher.VoucherNumber}: {ex.Message}");
-                    // If nothing has gone through yet the renderer itself is broken - stop instead of
-                    // grinding through every voucher.
-                    if (sent == 0 && failed >= 3)
+                    if (tgSent == 0 && waSent == 0 && partySent == 0 && renderFailures >= 3)
                     {
                         SyncLogger.Log("📄 Voucher PDF rendering failed 3 times — aborting this batch.");
                         break;
@@ -2326,7 +2567,12 @@ namespace TallySyncApp.Services
             }
 
             _vouchersToPdf.Clear();
-            AddLog($"📄 Voucher PDFs → Telegram: {sent} sent, {failed} failed.");
+            if (!string.IsNullOrWhiteSpace(chatId))
+                AddLog($"📄 Voucher PDFs → Telegram: {tgSent} sent, {tgFailed} failed.");
+            if (!string.IsNullOrWhiteSpace(waPhone))
+                AddLog($"📄 Voucher PDFs → Owner WhatsApp: {waSent} sent, {waFailed} failed.");
+            if (sendToParties && (partySent > 0 || partyFailed > 0))
+                AddLog($"📄 Voucher PDFs → Party WhatsApp: {partySent} sent, {partyFailed} failed.");
         }
 
 

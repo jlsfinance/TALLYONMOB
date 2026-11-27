@@ -26,7 +26,8 @@ const AGE_BUCKETS = [
 ];
 
 export default function AgeingReportPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [reportType, setReportType] = useState<'receivable' | 'payable'>('receivable');
@@ -188,6 +189,10 @@ export default function AgeingReportPage() {
     };
 
     const exportToCSV = () => {
+        if (!canExportReport) {
+            toast.error('You do not have permission to export reports');
+            return;
+        }
         const headers = ['Party Name', 'Phone', 'Current (0-30)', '31-60 Days', '61-90 Days', '91-120 Days', '120+ Days', 'Total'];
         const rows = parties.map(p => [
             p.name,
@@ -261,12 +266,14 @@ export default function AgeingReportPage() {
             </HeaderPortal>
 
             <HeaderPortal type="actions">
-                <button
-                    onClick={exportToCSV}
-                    className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
-                >
-                    <Download size={16} />
-                </button>
+                {canExportReport && (
+                    <button
+                        onClick={exportToCSV}
+                        className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-hover)] transition-colors"
+                    >
+                        <Download size={16} />
+                    </button>
+                )}
             </HeaderPortal>
 
             {/* Age Bucket Summary Cards */}

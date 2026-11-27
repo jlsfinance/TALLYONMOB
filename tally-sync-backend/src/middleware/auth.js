@@ -1,28 +1,43 @@
-const { supabase } = require('../config/supabase');
+const { supabaseIdentity } = require('../config/supabaseIdentity');
 const logger = require('../utils/logger');
 
-// Middleware for verifying Supabase JWT (if needed for browser/mobile client)
+const getAuthDb = () => {
+    if (supabaseIdentity) return supabaseIdentity;
+    return require('../config/supabase').supabase;
+};
+
+// Middleware for verifying Supabase JWT
 const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized: Missing token' });
+        return res.status(401).json({ success: false, error: 'Unauthorized: Missing token' });
     }
 
-    const token = authHeader.split('Bearer ')[1];
+    const token = authHeader.slice('Bearer '.length).trim();
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'Unauthorized: Missing token' });
+    }
+
+    const db = getAuthDb();
+    if (!db || !db.auth || typeof db.auth.getUser !== 'function') {
+        return res.status(503).json({ success: false, error: 'Authentication service unavailable' });
+    }
 
     try {
-        const { data: { user }, error } = await supabase.auth.getUser(token);
+        const { data, error } = await db.auth.getUser(token);
+        const user = data?.user;
 
         if (error || !user) {
-            throw new Error('Invalid token');
+            return res.status(401).json({ success: false, error: 'Unauthorized: Invalid token' });
         }
 
         req.user = user;
-        next();
+        req.authToken = token;
+        return next();
     } catch (error) {
         logger.error('Authentication Error:', error);
-        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+        return res.status(401).json({ success: false, error: 'Unauthorized: Invalid token' });
     }
 };
 

@@ -1,8 +1,13 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using Newtonsoft.Json;
 using TallySyncApp.ViewModels;
 
 namespace TallySyncApp
@@ -40,6 +45,7 @@ namespace TallySyncApp
 
                 // Default to dashboard
                 PageTitle.Text = "Dashboard";
+                _ = RefreshWhatsAppStatusAsync();
             };
         }
 
@@ -82,6 +88,7 @@ namespace TallySyncApp
                 case "SettingsPanel":
                     SettingsPanel.Visibility = Visibility.Visible;
                     PageTitle.Text = "Settings";
+                    _ = RefreshWhatsAppStatusAsync();
                     break;
                 case "HistoryPanel":
                     HistoryPanel.Visibility = Visibility.Visible;
@@ -132,6 +139,101 @@ namespace TallySyncApp
         {
             if (DataContext is MainViewModel vm && vm.BuyLicenceCommand.CanExecute(null))
                 vm.BuyLicenceCommand.Execute(null);
+        }
+
+        private async Task RefreshWhatsAppStatusAsync()
+        {
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var resp = await http.GetAsync("http://127.0.0.1:3001/status");
+                if (resp.IsSuccessStatusCode)
+                {
+                    var json = await resp.Content.ReadAsStringAsync();
+                    var data = JsonConvert.DeserializeObject<dynamic>(json);
+                    bool ready = data?.ready == true;
+                    bool hasQr = data?.hasQr == true;
+                    string? phone = data?.connectedPhone?.ToString();
+
+                    WhatsAppStatusText.Text = ready
+                        ? $"Connected (+{phone ?? "Linked"}) — Sync alerts & Voucher PDFs active"
+                        : hasQr
+                            ? "Waiting for QR scan — click Open WhatsApp QR"
+                            : "Starting WhatsApp helper — click Refresh Status in a few seconds";
+                    return;
+                }
+            }
+            catch
+            {
+                // Helper not listening on 127.0.0.1:3001
+            }
+
+            WhatsAppStatusText.Text = "Helper not running — click Open WhatsApp QR to start";
+        }
+
+        private async void RefreshWhatsAppStatus_Click(object sender, RoutedEventArgs e)
+        {
+            WhatsAppStatusText.Text = "Checking WhatsApp QR helper...";
+            await RefreshWhatsAppStatusAsync();
+        }
+
+        private async void OpenWhatsAppQr_Click(object sender, RoutedEventArgs e)
+        {
+            bool helperRunning = false;
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                using var resp = await http.GetAsync("http://127.0.0.1:3001/status");
+                helperRunning = resp.IsSuccessStatusCode;
+            }
+            catch
+            {
+                helperRunning = false;
+            }
+
+            if (!helperRunning)
+            {
+                var candidates = new[]
+                {
+                    Path.Combine(AppContext.BaseDirectory, "whatsapp-notifier", "start-whatsapp.bat"),
+                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "whatsapp-notifier", "start-whatsapp.bat")),
+                };
+                var batPath = Array.Find(candidates, File.Exists);
+                if (!string.IsNullOrEmpty(batPath))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = batPath,
+                            WorkingDirectory = Path.GetDirectoryName(batPath)!,
+                            UseShellExecute = true,
+                        });
+                        WhatsAppStatusText.Text = "Starting WhatsApp QR helper — browser will open http://127.0.0.1:3001/qr";
+                        await Task.Delay(2500);
+                        await RefreshWhatsAppStatusAsync();
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Could not start WhatsApp helper: {ex.Message}", "WhatsApp QR", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "http://127.0.0.1:3001/qr",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not open WhatsApp QR page: {ex.Message}", "WhatsApp QR", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            await RefreshWhatsAppStatusAsync();
         }
 
     }

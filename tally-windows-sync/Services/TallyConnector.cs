@@ -668,8 +668,8 @@ namespace TallySyncApp.Services
                         if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
                             addressParts.Add(state);
                         var fullAddress = string.Join(", ", addressParts);
-                        var phone = GetElementValue(ledgerElement, "LEDGERPHONE")
-                                 ?? GetElementValue(ledgerElement, "LEDGERMOBILE")
+                        var phone = GetElementValue(ledgerElement, "LEDGERMOBILE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERPHONE")
                                  ?? GetElementValue(ledgerElement, "PHONE")
                                  ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
                         var email = GetElementValue(ledgerElement, "LEDGEREMAIL")
@@ -779,8 +779,8 @@ namespace TallySyncApp.Services
                         if (!string.IsNullOrWhiteSpace(state) && !addressParts.Any(p => p.Contains(state, StringComparison.OrdinalIgnoreCase)))
                             addressParts.Add(state);
                         var fullAddress = string.Join(", ", addressParts);
-                        var phone = GetElementValue(ledgerElement, "LEDGERPHONE")
-                                 ?? GetElementValue(ledgerElement, "LEDGERMOBILE")
+                        var phone = GetElementValue(ledgerElement, "LEDGERMOBILE")
+                                 ?? GetElementValue(ledgerElement, "LEDGERPHONE")
                                  ?? GetElementValue(ledgerElement, "PHONE")
                                  ?? GetElementValue(ledgerElement, "LEDGERCONTACT");
                         var email = GetElementValue(ledgerElement, "LEDGEREMAIL")

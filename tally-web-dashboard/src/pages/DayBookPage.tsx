@@ -82,7 +82,8 @@ const VOUCHER_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function DayBookPage() {
-  const { user, selectedCompany } = useAuth() as AuthContextType;
+  const { user, selectedCompany, can } = useAuth() as any;
+  const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
   const navigate = useNavigate();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -149,6 +150,10 @@ export default function DayBookPage() {
   };
 
   const handleExportCSV = () => {
+    if (!canExportReport) {
+      toast.error('You do not have permission to export reports');
+      return;
+    }
     if (filteredVouchers.length === 0) {
       toast.error('No data to export');
       return;
@@ -224,13 +229,15 @@ export default function DayBookPage() {
       </HeaderPortal>
 
       <HeaderPortal type="actions">
-        <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors text-xs"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Export</span>
-        </button>
+        {canExportReport && (
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded-lg text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/30 transition-colors text-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+        )}
       </HeaderPortal>
 
       {/* Mobile date bar */}

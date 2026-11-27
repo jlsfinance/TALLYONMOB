@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { auth, companyApi, clearLocalSession, supabase } from '../lib/insforge';
 import { Capacitor } from '@capacitor/core';
+import { hasAdminAccess } from '../lib/adminAccess';
+import { evaluatePermission, normalizeRoleKey } from '../lib/rbacPermissions.mjs';
 
 const AuthContext = createContext({});
 
@@ -43,31 +45,138 @@ export const AuthProvider = ({ children }) => {
     const [companies, setCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [userRole, setUserRole] = useState('viewer');
+    const [membershipStatus, setMembershipStatus] = useState('none');
+    const [permissions, setPermissions] = useState({});
+    const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+    const [permissionsLoading, setPermissionsLoading] = useState(false);
     const [loading, setLoading] = useState(true);
 
+    const claimPendingInvitations = useCallback(async () => {
+        try {
+            await withTimeout(
+                supabase.rpc('accept_pending_invitations'),
+                4000,
+                'Invitation claim timed out'
+            );
+        } catch {
+            // Best-effort: older schemas or offline sessions proceed cleanly
+        }
+    }, []);
+
     useEffect(() => {
-        const fetchRole = async () => {
-            if (user && selectedCompany) {
-                try {
-                    const { data, error } = await supabase.from('company_users')
-                        .select('role')
-                        .eq('company_id', selectedCompany.id)
-                        .eq('user_id', user.id)
-                        .maybeSingle();
-                    if (!error && data) {
-                        setUserRole(data.role);
-                    } else {
-                        setUserRole(selectedCompany.owner_id === user.id ? 'owner' : 'viewer');
-                    }
-                } catch (e) {
-                    setUserRole('viewer');
-                }
-            } else {
-                setUserRole('viewer');
+        let active = true;
+        const resolvePlatformAdmin = async () => {
+            if (!user?.id) {
+                if (active) setIsPlatformAdmin(false);
+                return;
+            }
+            if (hasAdminAccess(user)) {
+                if (active) setIsPlatformAdmin(true);
+                return;
+            }
+            try {
+                const { data } = await supabase
+                    .from('user_profiles')
+                    .select('is_admin')
+                    .eq('id', user.id)
+                    .maybeSingle();
+                if (active) setIsPlatformAdmin(data?.is_admin === true);
+            } catch {
+                if (active) setIsPlatformAdmin(false);
             }
         };
-        fetchRole();
-    }, [user, selectedCompany]);
+        void resolvePlatformAdmin();
+        return () => { active = false; };
+    }, [user]);
+
+    const loadPermissions = useCallback(async () => {
+        if (!user?.id || !selectedCompany?.id) {
+            setUserRole('viewer');
+            setMembershipStatus('none');
+            setPermissions({});
+            setPermissionsLoading(false);
+            return;
+        }
+
+        setPermissionsLoading(true);
+        try {
+            const { data: rpcData, error: rpcError } = await supabase.rpc('rbac_get_my_permissions', {
+                p_company_id: selectedCompany.id,
+            });
+
+            if (!rpcError && rpcData) {
+                const adminFlag = Boolean(rpcData.is_super_admin || rpcData.is_admin);
+                if (adminFlag) {
+                    setIsPlatformAdmin(true);
+                }
+                setUserRole(rpcData.role || (selectedCompany.owner_id === user.id ? 'owner' : 'viewer'));
+                setMembershipStatus(rpcData.status || (selectedCompany.owner_id === user.id ? 'active' : 'none'));
+                setPermissions(rpcData.permissions || {});
+                return;
+            }
+
+            if (selectedCompany.owner_id === user.id) {
+                setUserRole('owner');
+                setMembershipStatus('active');
+                setPermissions({});
+                return;
+            }
+
+            const { data: cu, error: cuError } = await supabase
+                .from('company_users')
+                .select('role, status')
+                .eq('company_id', selectedCompany.id)
+                .eq('user_id', user.id)
+                .maybeSingle();
+
+            if (cuError || !cu) {
+                setUserRole('viewer');
+                setMembershipStatus('none');
+                setPermissions({});
+                return;
+            }
+
+            const status = cu.status || 'active';
+            setUserRole(cu.role || 'viewer');
+            setMembershipStatus(status);
+
+            if (status !== 'active') {
+                setPermissions({});
+                return;
+            }
+
+            const roleKey = normalizeRoleKey(cu.role);
+            const { data: roles } = await supabase
+                .from('user_roles')
+                .select('id, name, display_name, permissions');
+            const matched = (roles || []).find(
+                (r) =>
+                    normalizeRoleKey(r.name) === roleKey ||
+                    normalizeRoleKey(r.display_name) === roleKey ||
+                    String(r.id) === String(cu.role)
+            );
+            setPermissions(matched?.permissions || {});
+        } catch {
+            setUserRole(selectedCompany.owner_id === user.id ? 'owner' : 'viewer');
+            setMembershipStatus(selectedCompany.owner_id === user.id ? 'active' : 'none');
+            setPermissions({});
+        } finally {
+            setPermissionsLoading(false);
+        }
+    }, [user?.id, selectedCompany?.id, selectedCompany?.owner_id]);
+
+    useEffect(() => {
+        void loadPermissions();
+    }, [loadPermissions]);
+
+    const can = useCallback((permission) => {
+        return evaluatePermission(permissions, userRole, permission, {
+            isAdmin: isPlatformAdmin,
+            isOwner: Boolean(selectedCompany?.owner_id && user?.id && selectedCompany.owner_id === user.id),
+            status: membershipStatus,
+        });
+    }, [permissions, userRole, isPlatformAdmin, selectedCompany?.owner_id, user?.id, membershipStatus]);
+
     const [appMode, setAppMode] = useState(() => {
         const storedMode = sanitizeAppMode(localStorage.getItem('appMode'));
         if (!storedMode) {
@@ -80,6 +189,10 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setCompanies([]);
         setSelectedCompany(null);
+        setUserRole('viewer');
+        setMembershipStatus('none');
+        setPermissions({});
+        setIsPlatformAdmin(false);
         localStorage.removeItem('selectedCompanyId');
         localStorage.removeItem('currentUserId');
     };
@@ -111,7 +224,7 @@ export const AuthProvider = ({ children }) => {
                     const authUser = session?.user || null;
                     if (authUser) {
                         setUser(authUser);
-                        loadCompanies();
+                        void claimPendingInvitations().then(() => loadCompanies());
                     }
                 });
 
@@ -147,6 +260,7 @@ export const AuthProvider = ({ children }) => {
 
             if (sessionUser) {
                 setUser(sessionUser);
+                await claimPendingInvitations();
                 await loadCompanies();
             } else {
                 // No session yet - this is normal for first visit
@@ -205,6 +319,7 @@ export const AuthProvider = ({ children }) => {
         const signedInUser = data?.session?.user || data?.user || null;
         if (!error && signedInUser) {
             setUser(signedInUser);
+            await claimPendingInvitations();
             await loadCompanies();
         }
         return { data, error };
@@ -227,6 +342,7 @@ export const AuthProvider = ({ children }) => {
         const verifiedUser = data?.session?.user || data?.user || null;
         if (!error && verifiedUser) {
             setUser(verifiedUser);
+            await claimPendingInvitations();
             await loadCompanies();
         }
         return { data, error };
@@ -313,6 +429,13 @@ export const AuthProvider = ({ children }) => {
         companies,
         selectedCompany,
         userRole,
+        membershipStatus,
+        permissions,
+        isPlatformAdmin,
+        isSuperAdmin: isPlatformAdmin,
+        permissionsLoading,
+        can,
+        refreshPermissions: loadPermissions,
         loading,
         appMode,
         setAppMode: updateAppMode,
@@ -339,12 +462,3 @@ export const AuthProvider = ({ children }) => {
         </AuthContext.Provider>
     );
 };
-
-
-
-
-
-
-
-
-

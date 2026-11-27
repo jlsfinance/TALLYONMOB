@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
     CreditCard, Users, Database, Save, KeyRound, Trash2, BrainCircuit,
-    ShieldCheck, LifeBuoy, FileText, Building2
+    ShieldCheck, LifeBuoy, FileText, Building2, MessageSquare, Download
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '@/lib/insforge';
@@ -24,6 +24,51 @@ export default function SettingsPage() {
     // (ISGSTON=Yes par GSTREGISTRATIONNUMBER khaali), isliye yahan ek baar bhar do.
     const [companyForm, setCompanyForm] = useState({ gstin: '', state: '', address: '' });
     const [savingCompany, setSavingCompany] = useState(false);
+    const [whatsappPhone, setWhatsappPhone] = useState('');
+    const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+
+    useEffect(() => {
+        if (!user?.id) {
+            setWhatsappPhone('');
+            return;
+        }
+        supabase
+            .from('user_profiles')
+            .select('whatsapp_phone')
+            .eq('id', user.id)
+            .maybeSingle()
+            .then(
+                ({ data }: any) => {
+                    setWhatsappPhone(data?.whatsapp_phone || '');
+                },
+                () => {}
+            );
+    }, [user?.id]);
+
+    const handleSaveWhatsappPhone = async (clear = false) => {
+        if (!user?.id) {
+            toast.error('Login required');
+            return;
+        }
+        const digits = clear ? '' : whatsappPhone.replace(/\D/g, '');
+        const normalized = digits.length === 10 ? `91${digits}` : digits;
+        if (!clear && normalized.length < 10) {
+            toast.error('Valid WhatsApp number daalo (e.g. 919876543210)');
+            return;
+        }
+        setSavingWhatsapp(true);
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({ whatsapp_phone: clear ? null : normalized })
+            .eq('id', user.id);
+        setSavingWhatsapp(false);
+        if (error) {
+            toast.error(error.message || 'WhatsApp number save nahi hua');
+            return;
+        }
+        setWhatsappPhone(clear ? '' : normalized);
+        toast.success(clear ? 'WhatsApp number hata diya gaya' : 'WhatsApp number save ho gaya');
+    };
 
     useEffect(() => {
         if (selectedCompany) {
@@ -307,6 +352,71 @@ export default function SettingsPage() {
                     <Save size={16} />
                     {savingCompany ? 'Saving...' : 'Save Details'}
                 </button>
+            </div>
+
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-100 text-green-700 rounded-lg">
+                        <MessageSquare size={24} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-bold text-[var(--on-surface)]">WhatsApp Notifications (QR)</h2>
+                        <p className="text-sm text-[var(--text-muted)]">
+                            Telegram jaisa live sync alerts, daily closing report, aur naye voucher PDFs (owner + Tally ledger me saved party mobile par) automatic WhatsApp par paayein — bilkul free, bina kisi paid API ke.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="max-w-md flex gap-2 flex-wrap">
+                    <input
+                        value={whatsappPhone}
+                        onChange={(e) => setWhatsappPhone(e.target.value)}
+                        placeholder="919876543210"
+                        className="flex-1 min-w-[220px] p-2.5 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--on-surface)] text-sm font-mono focus:ring-2 focus:ring-[var(--primary)] outline-none"
+                    />
+                    <button
+                        onClick={() => void handleSaveWhatsappPhone(false)}
+                        disabled={savingWhatsapp}
+                        className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-60"
+                    >
+                        <Save size={16} />
+                        {savingWhatsapp ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                        onClick={() => void handleSaveWhatsappPhone(true)}
+                        disabled={savingWhatsapp || !whatsappPhone}
+                        className="px-4 py-2 border border-[var(--border)] text-[var(--on-surface)] rounded-lg font-medium hover:bg-[var(--surface-hover)] transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                        <Trash2 size={16} />
+                        Clear
+                    </button>
+                </div>
+
+                <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 space-y-2.5 text-sm">
+                    <div className="font-semibold text-[var(--on-surface)]">PC-Based Setup (3 Steps)</div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-[var(--text-muted)]">
+                        <li>
+                            Apna WhatsApp number upar save karo <span className="text-xs">(optional — agar blank chhodoge to PC par QR scan kiya hua WhatsApp number hi owner alerts paayega, ya WhatsApp se <code>/link email license-key</code> bhej sakte ho)</span>.
+                        </li>
+                        <li>
+                            Tally wale PC par <strong>Syncora PC Connector v{APP_INFO.pcVersion}</strong> install/open karo.
+                        </li>
+                        <li>
+                            PC Connector me <strong>Settings → WhatsApp Notifications (QR) → Open WhatsApp QR</strong> click karo aur phone ke WhatsApp → <em>Linked Devices</em> se ek baar QR scan karo. Bas — uske baad live sync alerts, 8 PM daily closing report, aur naye voucher PDFs (owner + party dono ko, jinka mobile Tally ledger me ho) automatic WhatsApp par aane lagenge.
+                        </li>
+                    </ol>
+                    <div className="pt-1">
+                        <a
+                            href={APP_INFO.pcDownloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors"
+                        >
+                            <Download size={16} />
+                            Download PC Connector v{APP_INFO.pcVersion}
+                        </a>
+                    </div>
+                </div>
             </div>
 
             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-6 shadow-sm space-y-6">

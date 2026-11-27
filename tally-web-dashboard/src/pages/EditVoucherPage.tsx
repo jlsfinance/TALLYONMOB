@@ -35,7 +35,8 @@ import { makeEditAudit, revisePendingVoucher } from '@/lib/voucherEditAudit.mjs'
 export default function EditVoucherPage() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { selectedCompany, user } = useAuth() as any;
+    const { selectedCompany, user, can } = useAuth() as any;
+    const canEditVoucher = typeof can === 'function' ? can('Vouchers:Edit') : true;
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -304,6 +305,10 @@ export default function EditVoucherPage() {
     const accountingCredit = roundMoney(accountingEntries.filter(e => !e.is_debit).reduce((sum, e) => sum + Number(e.amount || 0), 0));
 
     const handleSave = async () => {
+        if (!canEditVoucher) {
+            toast.error('You do not have permission to edit vouchers');
+            return;
+        }
         if (!needsLedgerEntries && !partyName.trim()) {
             toast.error('Party name is required');
             return;
@@ -461,7 +466,7 @@ export default function EditVoucherPage() {
                     </div>
                     <button
                         onClick={handleSave}
-                        disabled={saving}
+                        disabled={saving || !canEditVoucher}
                         className="px-5 py-2.5 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white rounded-xl font-bold text-sm flex items-center gap-2 hover:opacity-90 transition-all disabled:opacity-40"
                     >
                         {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
@@ -782,7 +787,7 @@ export default function EditVoucherPage() {
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={saving}
+                        disabled={saving || !canEditVoucher}
                         className="flex-[2] h-14 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] text-white rounded-[20px] shadow-xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95 disabled:opacity-50"
                     >
                         {saving ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />}

@@ -18,8 +18,9 @@ interface Backup {
 }
 
 export default function BackupRestorePage() {
-    const { selectedCompany, userRole } = useAuth() as any;
-    const canManageBackup = userRole === 'owner' || userRole === 'admin';
+    const { selectedCompany, userRole, can } = useAuth() as any;
+    const canManageBackup =
+        typeof can === 'function' ? can('Settings:Edit') : (userRole === 'owner' || userRole === 'admin');
     const [backups, setBackups] = useState<Backup[]>([]);
     const [loading, setLoading] = useState(false);
     const [backing, setBacking] = useState(false);
@@ -42,6 +43,10 @@ export default function BackupRestorePage() {
     };
 
     const createBackup = async () => {
+        if (!canManageBackup) {
+            toast.error('You do not have permission to create backups');
+            return;
+        }
         if (selectedTables.size === 0) {
             toast.error('Select at least one table');
             return;
@@ -111,6 +116,10 @@ export default function BackupRestorePage() {
     };
 
     const handleRestore = async () => {
+        if (!canManageBackup) {
+            toast.error('You do not have permission to restore backups');
+            return;
+        }
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';

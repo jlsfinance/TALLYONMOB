@@ -1,3 +1,5 @@
+const pcVersion = '3.2.20';
+
 export const APP_INFO = {
     name: 'Syncora',
     packageName: 'com.syncoraa.app',
@@ -16,8 +18,8 @@ export const APP_INFO = {
     trustCenterPath: '/trust-center',
     lastUpdated: 'March 15, 2026',
     githubRepo: 'jlsfinance/TALLYONMOB',
-    pcDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.17/SyncoraConnector-Setup-3.2.17.exe',
-    pcVersion: '3.2.17',
+    pcDownloadUrl: `https://github.com/jlsfinance/TALLYONMOB/releases/download/v${pcVersion}/SyncoraConnector-Setup-${pcVersion}.exe`,
+    pcVersion,
     androidDownloadUrl: 'https://github.com/jlsfinance/TALLYONMOB/releases/latest',
 } as const;
 

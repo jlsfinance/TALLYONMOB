@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/insforge';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import {
     Table2, Play, Download, Filter, Columns, BarChart3,
@@ -68,6 +69,8 @@ interface SavedReport {
 }
 
 export default function ReportBuilderPage() {
+    const { can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
     const [companyId] = useState(() => localStorage.getItem('selectedCompanyId') || '');
     const [selectedTable, setSelectedTable] = useState<string>('vouchers');
     const [selectedFields, setSelectedFields] = useState<string[]>(['voucher_number', 'voucher_type', 'voucher_date', 'party_name', 'grand_total']);
@@ -169,6 +172,10 @@ export default function ReportBuilderPage() {
     }, [companyId, selectedTable, selectedFields, filters, sortField, sortDir, fromDate, toDate, limit]);
 
     const exportCSV = () => {
+        if (!canExportReport) {
+            toast.error('You do not have permission to export reports');
+            return;
+        }
         if (!results.length) return;
         const fields = selectedFields;
         const fieldLabels = fields.map(f => tableConfig?.fields.find(tf => tf.key === f)?.label || f);
@@ -249,7 +256,7 @@ export default function ReportBuilderPage() {
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    {results.length > 0 && (
+                    {results.length > 0 && canExportReport && (
                         <button onClick={exportCSV}
                             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', background: '#10b98115', color: '#10b981', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
                             <Download size={16} /> Export CSV

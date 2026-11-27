@@ -122,7 +122,7 @@ function SidebarAccountActions({ collapsed = false, onNavigate }: { collapsed?: 
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-    const { user, companies, selectedCompany, selectCompany, signOut, appMode } = useAuth() as any;
+    const { user, companies, selectedCompany, selectCompany, signOut, appMode, isSuperAdmin } = useAuth() as any;
     useDueReminders(user?.id, selectedCompany?.id);
     const { selectedFY, setSelectedFY, stepFY } = useFY();
     const { isDark, toggleTheme } = useTheme();
@@ -219,8 +219,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); clearInterval(timer); };
     }, []);
 
-    // Super admin ya env enabled dono pe admin panel dikhao
-    const isAdmin = (user?.email === 'lovneetrathi@gmail.com') || (isAdminConsoleEnabled() && hasAdminAccess(user));
+    // Strictly Super Admin only — Company Admins use /team-management inside Settings
+    const isAdmin = isAdminConsoleEnabled() && (hasAdminAccess(user) || Boolean(isSuperAdmin));
 
     const { t } = useLanguage();
     const homePath = appMode === 'billing' ? '/billing' : '/dashboard';
@@ -306,7 +306,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         }
 
         return groups;
-    }, [homePath, isAdmin, t, selectedCompany?.id]);
+    }, [homePath, isAdmin, isSuperAdmin, t, selectedCompany?.id]);
 
     const navGroups = tallyNavGroups;
 

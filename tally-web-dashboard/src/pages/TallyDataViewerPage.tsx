@@ -63,7 +63,8 @@ const voucherTypes = ['All', 'Sales', 'Purchase', 'Payment', 'Receipt'];
 const ledgerTypes = ['All', 'Receivable', 'Payable', 'Cash/Bank', 'Sales', 'Purchase'];
 
 export default function TallyDataViewerPage() {
-    const { selectedCompany } = useAuth() as any;
+    const { selectedCompany, can } = useAuth() as any;
+    const canExportReport = typeof can === 'function' ? can('Reports:Export') : true;
     const [activeTab, setActiveTab] = useState<ViewerTab>('dashboard');
     const [reportTab, setReportTab] = useState<ReportTab>('trial');
     const [data, setData] = useState<TallyDataPayload | null>(() => getCachedTallyData());
@@ -384,8 +385,15 @@ export default function TallyDataViewerPage() {
                             data={data}
                             reportTab={reportTab}
                             onReportTabChange={setReportTab}
-                            onExportPdf={() => exportReportPdf(data, reportTab, selectedCompany.name)}
-                            onExportExcel={() => exportReportExcel(data, reportTab, selectedCompany.name)}
+                            canExport={canExportReport}
+                            onExportPdf={() => {
+                                if (!canExportReport) return toast.error('You do not have permission to export reports');
+                                return exportReportPdf(data, reportTab, selectedCompany.name);
+                            }}
+                            onExportExcel={() => {
+                                if (!canExportReport) return toast.error('You do not have permission to export reports');
+                                return exportReportExcel(data, reportTab, selectedCompany.name);
+                            }}
                         />
                     )}
 
@@ -734,10 +742,11 @@ function VoucherList({ title, vouchers, onSelectVoucher, emptyTitle }: {
     );
 }
 
-function ReportsView({ data, reportTab, onReportTabChange, onExportPdf, onExportExcel }: {
+function ReportsView({ data, reportTab, onReportTabChange, canExport, onExportPdf, onExportExcel }: {
     data: TallyDataPayload;
     reportTab: ReportTab;
     onReportTabChange: (tab: ReportTab) => void;
+    canExport: boolean;
     onExportPdf: () => void;
     onExportExcel: () => void;
 }) {
@@ -762,10 +771,12 @@ function ReportsView({ data, reportTab, onReportTabChange, onExportPdf, onExport
                         </button>
                     ))}
                 </div>
-                <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" icon={<Download size={14} />} onClick={onExportPdf}>PDF</Button>
-                    <Button size="sm" variant="secondary" icon={<FileSpreadsheet size={14} />} onClick={onExportExcel}>Excel</Button>
-                </div>
+                {canExport && (
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="secondary" icon={<Download size={14} />} onClick={onExportPdf}>PDF</Button>
+                        <Button size="sm" variant="secondary" icon={<FileSpreadsheet size={14} />} onClick={onExportExcel}>Excel</Button>
+                    </div>
+                )}
             </div>
 
             {reportTab === 'trial' && (
