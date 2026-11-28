@@ -221,6 +221,16 @@ namespace TallySyncApp
                 GetSyncManager().StopSync();
                 _logger?.LogInformation("Post-install verification: auto-sync paused. Use Auto-Sync to resume.");
             }
+
+            // 14. Auto-start bundled WhatsApp QR helper silently if already linked (works even in /auto tray startup)
+            if (_authService!.IsLoggedIn && WhatsAppHelperManager.HasSavedSession())
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await WhatsAppHelperManager.EnsureStartedAsync(); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "WhatsApp helper auto-start failed"); }
+                });
+            }
         }
 
         /// <summary>

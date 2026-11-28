@@ -160,19 +160,22 @@ namespace TallySyncApp
 
         private async Task InitializeWhatsAppOnStartupAsync()
         {
-            await RefreshWhatsAppStatusAsync();
-            if (!await WhatsAppHelperManager.IsRunningAsync() && WhatsAppHelperManager.HasSavedSession())
+            if (await RefreshWhatsAppStatusAsync()) return;
+            if (!WhatsAppHelperManager.HasSavedSession()) return;
+
+            var (started, _) = await WhatsAppHelperManager.EnsureStartedAsync();
+            if (!started) return;
+
+            for (int attempt = 0; attempt < 10; attempt++)
             {
-                var (started, _) = await WhatsAppHelperManager.EnsureStartedAsync();
-                if (started)
-                {
-                    await RefreshWhatsAppStatusAsync();
-                }
+                if (await RefreshWhatsAppStatusAsync()) return;
+                await Task.Delay(2000);
             }
         }
 
-        private async Task RefreshWhatsAppStatusAsync()
+        private async Task<bool> RefreshWhatsAppStatusAsync()
         {
+            bool isReady = false;
             string statusText = "Helper not running — click Open WhatsApp QR to start";
             try
             {
@@ -185,12 +188,13 @@ namespace TallySyncApp
                     bool ready = data?.ready == true;
                     bool hasQr = data?.hasQr == true;
                     string? phone = data?.connectedPhone?.ToString();
+                    isReady = ready;
 
                     statusText = ready
                         ? $"Connected (+{phone ?? "Linked"}) — Sync alerts & Voucher PDFs active"
                         : hasQr
                             ? "Waiting for QR scan — scan via WhatsApp Linked Devices"
-                            : "Starting WhatsApp helper — click Refresh Status in a few seconds";
+                            : "Starting WhatsApp helper — auto-refreshing status...";
                 }
             }
             catch
@@ -203,6 +207,7 @@ namespace TallySyncApp
             {
                 WhatsAppQrOverlayStatusText.Text = statusText;
             }
+            return isReady;
         }
 
         private async void RefreshWhatsAppStatus_Click(object sender, RoutedEventArgs e)
