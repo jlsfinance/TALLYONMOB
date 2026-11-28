@@ -258,7 +258,8 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- ===== TOP HEADER BAR ===== -->
+            <!-- ===== TOP HEADER BAR + AUTO-UPDATE BANNER ===== -->
+            <StackPanel Grid.Row="0">
             <Border Background="White"
                     Padding="22,12,22,12"
                     BorderBrush="#DDEAE3"
@@ -345,6 +346,41 @@
                     </StackPanel>
                 </Grid>
             </Border>
+
+            <!-- Antigravity-style Update Banner (auto-downloads in background, Restart & Update applies) -->
+            <Border x:Name="UpdateBannerBorder"
+                    Visibility="Collapsed"
+                    Background="#ECFDF5"
+                    BorderBrush="#A7F3D0"
+                    BorderThickness="0,0,0,1"
+                    Padding="22,9">
+                <DockPanel LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="RestartUpdateButton"
+                                Content="Restart &amp; Update"
+                                Click="RestartUpdateButton_Click"
+                                Style="{StaticResource ModernButton}"
+                                Visibility="Collapsed"
+                                Height="32"
+                                Padding="14,0"
+                                Margin="0,0,8,0"/>
+                        <Button Content="Later"
+                                Click="DismissUpdateBanner_Click"
+                                Style="{StaticResource GhostButton}"
+                                Height="32"
+                                Padding="12,0"/>
+                    </StackPanel>
+                    <TextBlock x:Name="UpdateBannerText"
+                               Text="Checking for updates..."
+                               Foreground="#065F46"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,0,12,0"/>
+                </DockPanel>
+            </Border>
+            </StackPanel>
 
             <!-- ===== CONTENT PANELS ===== -->
 
@@ -953,6 +989,39 @@
                                 <Button Content="Save Settings"
                                         Command="{Binding SaveSettingsCommand}"
                                         Style="{StaticResource GhostButton}"
+                                        Height="38"
+                                        Padding="16,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- App Updates (Auto-Download + Restart & Update) -->
+                    <TextBlock Text="App Updates"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="#1F2937"
+                               Margin="0,0,0,12"/>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,24">
+                        <StackPanel>
+                            <TextBlock x:Name="SettingsUpdateStatusText"
+                                       Text="Updates download automatically in the background and install on restart."
+                                       Foreground="#374151"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="CheckForUpdatesButton"
+                                        Content="Check for Updates"
+                                        Click="CheckForUpdates_Click"
+                                        Style="{StaticResource GhostButton}"
+                                        Height="38"
+                                        Padding="16,0"
+                                        Margin="0,0,10,0"/>
+                                <Button x:Name="SettingsRestartUpdateButton"
+                                        Content="Restart &amp; Update"
+                                        Click="RestartUpdateButton_Click"
+                                        Style="{StaticResource ModernButton}"
+                                        Visibility="Collapsed"
                                         Height="38"
                                         Padding="16,0"/>
                             </StackPanel>

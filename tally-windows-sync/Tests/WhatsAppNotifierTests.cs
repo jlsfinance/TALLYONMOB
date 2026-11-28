@@ -201,5 +201,44 @@ namespace TallySyncApp.Tests
                 }
             }
         }
+
+        [Fact]
+        public void GitHubAutoUpdater_ParsesReleasesComparesVersionsAndBuildsScript()
+        {
+            const string json = @"{
+              ""tag_name"": ""v3.2.26"",
+              ""body"": ""- Antigravity-style auto-update\n- Receipt Hindi copy fix"",
+              ""assets"": [
+                {
+                  ""name"": ""SyncoraConnector-Setup-3.2.26.exe"",
+                  ""size"": 81123456,
+                  ""browser_download_url"": ""https://github.com/jlsfinance/TALLYONMOB/releases/download/v3.2.26/SyncoraConnector-Setup-3.2.26.exe""
+                }
+              ]
+            }";
+
+            var release = GitHubAutoUpdater.ParseLatestReleaseJson(json);
+            Assert.NotNull(release);
+            Assert.Equal("3.2.26", release!.Version);
+            Assert.Equal("SyncoraConnector-Setup-3.2.26.exe", release.AssetName);
+            Assert.Equal(81123456, release.AssetSize);
+            Assert.Contains("Antigravity-style auto-update", release.ReleaseNotes);
+
+            Assert.True(GitHubAutoUpdater.CompareVersions("3.2.26", "3.2.25") > 0);
+            Assert.True(GitHubAutoUpdater.CompareVersions("3.2.10", "3.2.9") > 0);
+            Assert.Equal(0, GitHubAutoUpdater.CompareVersions("v3.2.26", "3.2.26"));
+            Assert.True(GitHubAutoUpdater.CompareVersions("3.2.25", "3.2.26") < 0);
+
+            var script = GitHubAutoUpdater.BuildApplyUpdateScript(
+                @"C:\Temp\SyncoraConnector-Setup-3.2.26.exe",
+                @"C:\App\SyncoraConnector.exe",
+                4321,
+                relaunchAfterInstall: true,
+                @"C:\Temp\pending-update.json");
+
+            Assert.Contains("taskkill /F /PID 4321", script);
+            Assert.Contains("/VERYSILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART", script);
+            Assert.Contains("start \"\" \"C:\\App\\SyncoraConnector.exe\"", script);
+        }
     }
 }

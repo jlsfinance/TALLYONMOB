@@ -18,7 +18,6 @@ import './App.css';
 import './native-skeleton.css';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { queryClient } from './lib/queryClient';
-const UpdateBanner = lazy(() => import('./components/common/UpdateBanner'));
 
 function stringifyLazyError(value: unknown): string {
     if (value instanceof Error) {
@@ -474,7 +473,6 @@ function AppContent() {
                                 </Routes>
                                 </SubscriptionGate>
                             </AppLayout>
-                            <UpdateBanner />
                         </ProtectedRoute>
                     }
                 />

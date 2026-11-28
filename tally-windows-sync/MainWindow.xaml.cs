@@ -19,12 +19,16 @@ namespace TallySyncApp
     {
         private bool _webViewInitialized;
         private DispatcherTimer? _whatsAppQrTimer;
+        private string? _dismissedDownloadingVersion;
+        private string? _dismissedReadyVersion;
 
         public MainWindow()
         {
             InitializeComponent();
+            GitHubAutoUpdater.StatusChanged += OnAutoUpdaterStatusChanged;
             Closed += (_, _) =>
             {
+                GitHubAutoUpdater.StatusChanged -= OnAutoUpdaterStatusChanged;
                 StopWhatsAppQrTimer();
                 try
                 {
@@ -60,6 +64,7 @@ namespace TallySyncApp
 
                 // Default to dashboard
                 PageTitle.Text = "Dashboard";
+                ApplyUpdateStatusToUi(GitHubAutoUpdater.CurrentStatus);
                 _ = InitializeWhatsAppOnStartupAsync();
             };
         }
@@ -330,6 +335,103 @@ namespace TallySyncApp
             {
                 MessageBox.Show($"Could not open WhatsApp QR page: {ex.Message}", "WhatsApp QR", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+
+        private void OnAutoUpdaterStatusChanged(object? sender, AutoUpdateStatus status)
+        {
+            Dispatcher.BeginInvoke(() => ApplyUpdateStatusToUi(status));
+        }
+
+        private void ApplyUpdateStatusToUi(AutoUpdateStatus status)
+        {
+            var runningVer = GitHubAutoUpdater.GetRunningVersion();
+            switch (status.State)
+            {
+                case AutoUpdateState.Checking:
+                    SettingsUpdateStatusText.Text = $"Current version: v{runningVer} — Checking GitHub Releases...";
+                    CheckForUpdatesButton.IsEnabled = false;
+                    SettingsRestartUpdateButton.Visibility = Visibility.Collapsed;
+                    break;
+
+                case AutoUpdateState.Downloading:
+                    CheckForUpdatesButton.IsEnabled = false;
+                    SettingsUpdateStatusText.Text = $"Downloading SYNCORA Connector v{status.LatestVersion} ({status.ProgressPercent}%)...";
+                    SettingsRestartUpdateButton.Visibility = Visibility.Collapsed;
+                    if (!string.Equals(_dismissedDownloadingVersion, status.LatestVersion, StringComparison.OrdinalIgnoreCase))
+                    {
+                        UpdateBannerBorder.Visibility = Visibility.Visible;
+                        RestartUpdateButton.Visibility = Visibility.Collapsed;
+                        UpdateBannerText.Text = $"⬇️ Downloading SYNCORA Connector v{status.LatestVersion} ({status.ProgressPercent}%)...";
+                    }
+                    break;
+
+                case AutoUpdateState.ReadyToInstall:
+                    CheckForUpdatesButton.IsEnabled = true;
+                    SettingsUpdateStatusText.Text = $"Update v{status.LatestVersion} downloaded and ready to install on restart.";
+                    SettingsRestartUpdateButton.Visibility = Visibility.Visible;
+                    if (!string.Equals(_dismissedReadyVersion, status.LatestVersion, StringComparison.OrdinalIgnoreCase))
+                    {
+                        UpdateBannerBorder.Visibility = Visibility.Visible;
+                        RestartUpdateButton.Visibility = Visibility.Visible;
+                        UpdateBannerText.Text = $"✨ SYNCORA Connector v{status.LatestVersion} ready to install — click Restart & Update";
+                    }
+                    break;
+
+                case AutoUpdateState.UpToDate:
+                    CheckForUpdatesButton.IsEnabled = true;
+                    SettingsUpdateStatusText.Text = $"You are on the latest version (v{runningVer}).";
+                    SettingsRestartUpdateButton.Visibility = Visibility.Collapsed;
+                    UpdateBannerBorder.Visibility = Visibility.Collapsed;
+                    break;
+
+                case AutoUpdateState.Error:
+                    CheckForUpdatesButton.IsEnabled = true;
+                    SettingsUpdateStatusText.Text = $"Current version: v{runningVer} — {status.Message ?? "Update check failed."}";
+                    SettingsRestartUpdateButton.Visibility = Visibility.Collapsed;
+                    UpdateBannerBorder.Visibility = Visibility.Collapsed;
+                    break;
+
+                default:
+                    CheckForUpdatesButton.IsEnabled = true;
+                    SettingsUpdateStatusText.Text = $"Current version: v{runningVer} — Updates download automatically in the background.";
+                    SettingsRestartUpdateButton.Visibility = Visibility.Collapsed;
+                    break;
+            }
+        }
+
+        private async void CheckForUpdates_Click(object sender, RoutedEventArgs e)
+        {
+            _dismissedDownloadingVersion = null;
+            _dismissedReadyVersion = null;
+            await GitHubAutoUpdater.CheckAndDownloadAsync(isManual: true);
+        }
+
+        private void RestartUpdateButton_Click(object sender, RoutedEventArgs e)
+        {
+            WhatsAppHelperManager.StopOwnedHelper();
+            if (GitHubAutoUpdater.LaunchPendingUpdate(relaunchAfterInstall: true))
+            {
+                Application.Current.Shutdown();
+            }
+            else
+            {
+                MessageBox.Show(
+                    "Could not start the downloaded update installer. Please click Check for Updates and try again.",
+                    "SYNCORA Update",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private void DismissUpdateBanner_Click(object sender, RoutedEventArgs e)
+        {
+            var st = GitHubAutoUpdater.CurrentStatus;
+            if (st.State == AutoUpdateState.ReadyToInstall)
+                _dismissedReadyVersion = st.LatestVersion;
+            else if (st.State == AutoUpdateState.Downloading)
+                _dismissedDownloadingVersion = st.LatestVersion;
+
+            UpdateBannerBorder.Visibility = Visibility.Collapsed;
         }
 
     }

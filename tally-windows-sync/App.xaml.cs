@@ -62,8 +62,22 @@ namespace TallySyncApp
             // 2. Logging (NLog + a safe console logger)
             InitializeLogging();
 
-            // Silent background update check via Clowd.Squirrel + GitHub releases
-            _ = Task.Run(async () => await CheckForUpdates());
+            // Auto-check GitHub Releases & stage updates silently in background (Antigravity-style)
+            GitHubAutoUpdater.StatusChanged += (_, st) =>
+            {
+                if (st.State == AutoUpdateState.ReadyToInstall && !string.IsNullOrWhiteSpace(st.LatestVersion))
+                {
+                    try
+                    {
+                        ToastService.Show(
+                            "SYNCORA Update Ready",
+                            $"Version v{st.LatestVersion} downloaded. Click Restart & Update in the app to apply.",
+                            false);
+                    }
+                    catch { }
+                }
+            };
+            GitHubAutoUpdater.StartBackgroundUpdater();
 
             // 3. Parse command line: /auto (login autostart) and /installation@1 (post-install)
             var cmd = CommandLineOptions.ParseFromEnvironment();
@@ -389,6 +403,15 @@ private async Task CheckForUpdates()
             try { _startupService?.Dispose(); } catch { }
             try { _loggerFactory?.Dispose(); } catch { }
             try { LoggingService.Shutdown(); } catch { }
+            try
+            {
+                if (GitHubAutoUpdater.TryGetReadyPendingUpdate(out var nextVer, out _))
+                {
+                    _logger?.LogInformation($"Applying downloaded update v{nextVer} on exit...");
+                    GitHubAutoUpdater.LaunchPendingUpdate(relaunchAfterInstall: false);
+                }
+            }
+            catch { }
             base.OnExit(e);
         }
 

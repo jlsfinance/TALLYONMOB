@@ -44,6 +44,7 @@
     <Compile Include="..\Services\OfflineQueueService.cs" />
     <Compile Include="..\Services\WhatsAppMessageFormatter.cs" />
     <Compile Include="..\Services\WhatsAppHelperManager.cs" />
+    <Compile Include="..\Services\GitHubAutoUpdater.cs" />
   </ItemGroup>
 
 </Project>
