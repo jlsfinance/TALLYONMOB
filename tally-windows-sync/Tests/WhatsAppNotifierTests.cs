@@ -139,5 +139,50 @@ namespace TallySyncApp.Tests
                 }
             }
         }
+
+        [Fact]
+        public async System.Threading.Tasks.Task OfflineQueueService_PrunesClosedCompaniesAndCapsNotificationRetries()
+        {
+            var dbPath = Path.Combine(Path.GetTempPath(), "syncora-notif-test-" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                using (var queue = new OfflineQueueService(dbPath))
+                {
+                    await queue.UpsertNotificationAsync("not_synced", "Tera Baap", "GUID error");
+                    await queue.UpsertNotificationAsync("not_synced", "Tera Baapp", "Other account error");
+                    await queue.UpsertNotificationAsync("not_synced", "Hyhcy1'", "Temp error");
+                    await queue.UpsertNotificationAsync("sync_issue", "__session__", "Session issue");
+
+                    var pruned = await queue.PruneClosedCompanyNotificationsAsync(new[] { "Hyhcy1'" });
+                    Assert.Equal(2, pruned);
+
+                    var remaining = await queue.GetPendingNotificationsAsync();
+                    Assert.Equal(2, remaining.Count);
+                    Assert.Contains(remaining, x => x.NotificationType == "not_synced" && x.CompanyId == "Hyhcy1'");
+                    Assert.Contains(remaining, x => x.NotificationType == "sync_issue" && x.CompanyId == "__session__");
+
+                    // Re-upserting does not double increment retry_count
+                    await queue.UpsertNotificationAsync("not_synced", "Hyhcy1'", "Temp error again");
+                    var afterUpsert = await queue.GetPendingNotificationsAsync();
+                    Assert.Equal(0, afterUpsert.Find(x => x.CompanyId == "Hyhcy1'").RetryCount);
+
+                    for (int i = 0; i < OfflineQueueService.MaxNotificationRetries; i++)
+                    {
+                        await queue.IncrementNotificationRetryAsync("not_synced", "Hyhcy1'");
+                    }
+
+                    var finalPending = await queue.GetPendingNotificationsAsync();
+                    Assert.DoesNotContain(finalPending, x => x.CompanyId == "Hyhcy1'");
+                }
+            }
+            finally
+            {
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                if (File.Exists(dbPath))
+                {
+                    File.Delete(dbPath);
+                }
+            }
+        }
     }
 }

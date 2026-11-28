@@ -97,7 +97,7 @@ namespace TallySyncApp.Services
                     INSERT INTO notification (notification_type, company_id, description, last_notification_date, retry_count)
                     VALUES (@t, @c, @d, @n, 0)
                     ON CONFLICT(notification_type, company_id)
-                    DO UPDATE SET description = @d, last_notification_date = @n, retry_count = retry_count + 1";
+                    DO UPDATE SET description = @d, last_notification_date = @n";
                 cmd.Parameters.AddWithValue("@t", notificationType);
                 cmd.Parameters.AddWithValue("@c", companyId);
                 cmd.Parameters.AddWithValue("@d", description ?? "");
@@ -146,6 +146,66 @@ namespace TallySyncApp.Services
                 Console.WriteLine($"notification read failed: {ex.Message}");
             }
             return list;
+        }
+
+        public async Task IncrementNotificationRetryAsync(string notificationType, string companyId)
+        {
+            try
+            {
+                var cmd = _connection!.CreateCommand();
+                cmd.CommandText = @"
+                    UPDATE notification
+                    SET retry_count = retry_count + 1, last_notification_date = @n
+                    WHERE notification_type = @t AND company_id = @c";
+                cmd.Parameters.AddWithValue("@t", notificationType);
+                cmd.Parameters.AddWithValue("@c", companyId);
+                cmd.Parameters.AddWithValue("@n", DateTime.UtcNow.ToString("o"));
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"notification retry increment failed: {ex.Message}");
+            }
+        }
+
+        public async Task<int> PruneClosedCompanyNotificationsAsync(IEnumerable<string> openCompanyNames)
+        {
+            try
+            {
+                var openSet = new HashSet<string>(
+                    (openCompanyNames ?? Enumerable.Empty<string>())
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .Select(n => n.Trim()),
+                    StringComparer.OrdinalIgnoreCase);
+
+                var staleCompanies = new List<string>();
+                using (var readCmd = _connection!.CreateCommand())
+                {
+                    readCmd.CommandText = "SELECT company_id FROM notification WHERE notification_type = 'not_synced'";
+                    using var reader = await readCmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var cid = reader.IsDBNull(0) ? string.Empty : reader.GetString(0).Trim();
+                        if (!openSet.Contains(cid))
+                            staleCompanies.Add(cid);
+                    }
+                }
+
+                int removed = 0;
+                foreach (var stale in staleCompanies)
+                {
+                    using var delCmd = _connection!.CreateCommand();
+                    delCmd.CommandText = "DELETE FROM notification WHERE notification_type = 'not_synced' AND company_id = @c";
+                    delCmd.Parameters.AddWithValue("@c", stale);
+                    removed += await delCmd.ExecuteNonQueryAsync();
+                }
+                return removed;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"notification prune failed: {ex.Message}");
+                return 0;
+            }
         }
 
         /// <summary>

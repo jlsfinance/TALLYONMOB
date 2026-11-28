@@ -592,10 +592,21 @@ namespace TallySyncApp.Services
                      AddLog($"   🏢 Discovered: {c.Name} (ID: {c.Id})");
                 }
 
-                // LK parity: notification retry ledger re-announce - issues that failed an
-                // earlier sync cycle are re-announced until cleared, capped at retries.
+                // LK parity: notification retry ledger re-announce - prune closed companies first,
+                // then re-announce active pending issues and advance retry count so alerts auto-stop.
                 try
                 {
+                    if (companies.Count > 0)
+                    {
+                        var openNames = companies
+                            .Select(c => c.Name)
+                            .Where(n => !string.IsNullOrWhiteSpace(n))
+                            .ToList();
+                        var pruned = await _offlineQueue!.PruneClosedCompanyNotificationsAsync(openNames);
+                        if (pruned > 0)
+                            SyncLogger.Log($"🧹 Cleared {pruned} stale failure notification(s) for companies no longer open in Tally.");
+                    }
+
                     var pendingNotifs = await _offlineQueue!.GetPendingNotificationsAsync();
                     if (pendingNotifs.Count > 0)
                     {
@@ -632,6 +643,9 @@ namespace TallySyncApp.Services
                             }
                         }
                         catch (Exception waEx) { SyncLogger.Log($"⚠️ WhatsApp re-announce failed: {waEx.Message}"); }
+
+                        foreach (var (ntype, cid, _, _) in pendingNotifs)
+                            await _offlineQueue!.IncrementNotificationRetryAsync(ntype, cid);
                     }
                 }
                 catch (Exception nEx) { SyncLogger.Log($"⚠️ Notification re-announce failed: {nEx.Message}"); }
