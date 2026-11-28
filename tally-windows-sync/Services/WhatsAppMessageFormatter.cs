@@ -65,27 +65,30 @@ namespace TallySyncApp.Services
             return false;
         }
 
-        public static string GetDesiHindiVoucherLabel(string? voucherType)
+        private static (string Label, string Possessive, string NewAdjective, string CheckLine) GetDesiHindiVoucherCopy(string? voucherType)
         {
             var raw = (voucherType ?? string.Empty).Trim();
             if (string.IsNullOrEmpty(raw))
-                return "वाउचर";
+                return ("वाउचर", "आपका", "नया", "कृपया वाउचर में अमाउंट चेक कर लीजिएगा।");
 
             if (raw.StartsWith("Sales", StringComparison.OrdinalIgnoreCase))
-                return "बिल (Sales)";
+                return ("बिल (Sales)", "आपका", "नया", "कृपया बिल चेक कर लीजिएगा।");
             if (raw.StartsWith("Receipt", StringComparison.OrdinalIgnoreCase))
-                return "रसीद (Receipt)";
+                return ("रसीद (Receipt)", "आपकी", "नई", "कृपया रसीद में अमाउंट चेक कर लीजिएगा।");
             if (raw.StartsWith("Payment", StringComparison.OrdinalIgnoreCase))
-                return "पेमेंट स्लिप (Payment)";
+                return ("पेमेंट स्लिप (Payment)", "आपकी", "नई", "कृपया पेमेंट स्लिप में अमाउंट चेक कर लीजिएगा।");
             if (raw.StartsWith("Credit Note", StringComparison.OrdinalIgnoreCase))
-                return "क्रेडिट नोट (Credit Note)";
+                return ("क्रेडिट नोट (Credit Note)", "आपका", "नया", "कृपया क्रेडिट नोट में अमाउंट चेक कर लीजिएगा।");
             if (raw.StartsWith("Debit Note", StringComparison.OrdinalIgnoreCase))
-                return "डेबिट नोट (Debit Note)";
+                return ("डेबिट नोट (Debit Note)", "आपका", "नया", "कृपया डेबिट नोट में अमाउंट चेक कर लीजिएगा।");
             if (raw.StartsWith("Purchase", StringComparison.OrdinalIgnoreCase))
-                return "खरीद बिल (Purchase)";
+                return ("खरीद बिल (Purchase)", "आपका", "नया", "कृपया बिल चेक कर लीजिएगा।");
 
-            return $"वाउचर ({raw})";
+            return ($"वाउचर ({raw})", "आपका", "नया", "कृपया वाउचर में अमाउंट चेक कर लीजिएगा।");
         }
+
+        public static string GetDesiHindiVoucherLabel(string? voucherType) =>
+            GetDesiHindiVoucherCopy(voucherType).Label;
 
         public static string BuildPartyVoucherCaption(
             string companyName,
@@ -95,15 +98,15 @@ namespace TallySyncApp.Services
             string? partyName,
             decimal totalAmount)
         {
-            var label = GetDesiHindiVoucherLabel(voucherType);
+            var copy = GetDesiHindiVoucherCopy(voucherType);
             var greeting = string.IsNullOrWhiteSpace(partyName)
                 ? "🙏 *राम-राम / नमस्ते जी,*"
                 : $"🙏 *राम-राम / नमस्ते {partyName.Trim()} जी,*";
             return $"{greeting}\n\n" +
-                   $"*{companyName.Trim()}* की तरफ से आपका *{label} #{voucherNumber}* तैयार हो गया है और इसकी PDF साथ में भेज दी है।\n\n" +
+                   $"*{companyName.Trim()}* की तरफ से {copy.Possessive} *{copy.Label} #{voucherNumber}* तैयार है और हमने PDF साथ में भेज दी है।\n\n" +
                    $"📅 *तारीख:* {voucherDate:dd-MM-yyyy}\n" +
                    $"💰 *कुल रकम:* *₹{totalAmount:N2}*\n\n" +
-                   "कृपया बिल चेक कर लीजिएगा। किसी भी बात या हिसाब-किताब के लिए बेझिझक कॉल या मैसेज करें।\n" +
+                   $"{copy.CheckLine} किसी भी बात या हिसाब-किताब के लिए बेझिझक कॉल या मैसेज करें।\n" +
                    "हमारे साथ जुड़े रहने के लिए दिल से धन्यवाद! 🤝";
         }
 
@@ -115,11 +118,11 @@ namespace TallySyncApp.Services
             string? partyName,
             decimal totalAmount)
         {
-            var label = GetDesiHindiVoucherLabel(voucherType);
+            var copy = GetDesiHindiVoucherCopy(voucherType);
             var partyLine = string.IsNullOrWhiteSpace(partyName)
                 ? string.Empty
                 : $"👤 *पार्टी:* {partyName.Trim()}\n";
-            return $"🧾 *नया {label} तैयार — {companyName.Trim()}*\n\n" +
+            return $"🧾 *{copy.NewAdjective} {copy.Label} तैयार — {companyName.Trim()}*\n\n" +
                    $"{partyLine}" +
                    $"🔢 *नंबर:* #{voucherNumber}\n" +
                    $"📅 *तारीख:* {voucherDate:dd-MM-yyyy}\n" +

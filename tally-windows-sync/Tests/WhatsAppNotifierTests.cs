@@ -87,10 +87,27 @@ namespace TallySyncApp.Tests
                 new DateTime(2026, 11, 28),
                 null,
                 2000m);
-            Assert.Contains("नया रसीद (Receipt) तैयार", receipt);
+            Assert.Contains("नई रसीद (Receipt) तैयार", receipt);
             Assert.DoesNotContain("पार्टी:", receipt);
 
             Assert.Equal("पेमेंट स्लिप (Payment)", WhatsAppMessageFormatter.GetDesiHindiVoucherLabel("Payment"));
+        }
+
+        [Fact]
+        public void BuildPartyVoucherCaption_UsesFeminineHindiAndReceiptAmountCheckForReceipt()
+        {
+            var caption = WhatsAppMessageFormatter.BuildPartyVoucherCaption(
+                "Acme Traders",
+                "Receipt",
+                "RCP-9",
+                new DateTime(2026, 11, 28),
+                "Sharma Enterprises",
+                4500m);
+
+            Assert.Contains("आपकी *रसीद (Receipt) #RCP-9* तैयार है और हमने PDF साथ में भेज दी है।", caption);
+            Assert.Contains("कृपया रसीद में अमाउंट चेक कर लीजिएगा।", caption);
+            Assert.DoesNotContain("आपका *रसीद", caption);
+            Assert.DoesNotContain("कृपया बिल चेक", caption);
         }
 
         [Fact]
