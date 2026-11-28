@@ -28,6 +28,13 @@ public sealed class CloudSyncHistoryEntry
         (Status.Equals("completed", StringComparison.OrdinalIgnoreCase) || Status.Equals("success", StringComparison.OrdinalIgnoreCase) || Status.Equals("successful", StringComparison.OrdinalIgnoreCase));
 }
 
+public sealed class CloudCompanySummary
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public DateTimeOffset? LastSyncAt { get; set; }
+}
+
 public sealed class CloudSyncOverview
 {
     public long VoucherCount { get; set; }
@@ -35,6 +42,7 @@ public sealed class CloudSyncOverview
     public long StockCount { get; set; }
     public long RecordsSynced => VoucherCount + LedgerCount + StockCount;
     public DateTimeOffset? LastSuccessfulSync { get; set; }
+    public List<CloudCompanySummary> Companies { get; set; } = new();
     public List<CloudSyncHistoryEntry> History { get; set; } = new();
 }
 

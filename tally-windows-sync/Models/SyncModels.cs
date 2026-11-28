@@ -154,6 +154,22 @@ namespace TallySyncApp.Models
         public int Port { get; set; } = 9000;
         public int TimeoutSeconds { get; set; } = 30;
         public string? SerialNumber { get; set; } // Stored serial number
+        public string? ExecutablePath { get; set; } // Cached or user-chosen path to tally.exe
+    }
+
+    /// <summary>
+    /// Progress snapshot emitted for an individual company card during a sync cycle.
+    /// </summary>
+    public sealed class CompanySyncProgressEventArgs : EventArgs
+    {
+        public string CompanyName { get; init; } = string.Empty;
+        public string? CompanyId { get; init; }
+        public bool IsSyncing { get; init; }
+        public int ProgressPercent { get; init; }
+        public string Message { get; init; } = string.Empty;
+        public bool? Success { get; init; }
+        public string? Error { get; init; }
+        public DateTime? CompletedAt { get; init; }
     }
 
     public class SyncSettings

@@ -62,8 +62,31 @@ namespace TallySyncApp.Services
         public event EventHandler<SyncItemStatus>? ItemSynced;
         public event EventHandler<string>? SyncLogRequested;
         public event EventHandler? SyncFlagsChanged;
+        public event EventHandler<CompanySyncProgressEventArgs>? CompanyProgressChanged;
 
         private void NotifySyncFlagsChanged() => SyncFlagsChanged?.Invoke(this, EventArgs.Empty);
+
+        private void NotifyCompanyProgress(
+            Company company,
+            bool isSyncing,
+            int progressPercent,
+            string message,
+            bool? success = null,
+            string? error = null,
+            DateTime? completedAt = null)
+        {
+            CompanyProgressChanged?.Invoke(this, new CompanySyncProgressEventArgs
+            {
+                CompanyName = company.Name,
+                CompanyId = string.IsNullOrWhiteSpace(company.Id) ? null : company.Id,
+                IsSyncing = isSyncing,
+                ProgressPercent = progressPercent,
+                Message = message,
+                Success = success,
+                Error = error,
+                CompletedAt = completedAt,
+            });
+        }
 
         public SyncManager()
         {
@@ -219,6 +242,15 @@ namespace TallySyncApp.Services
                     if (CurrentCompany != null)
                     {
                         Status.CompanyName = CurrentCompany.Name;
+                    }
+                    if (string.IsNullOrWhiteSpace(_settings.TallySettings.ExecutablePath))
+                    {
+                        var detectedExe = TallyProcessLauncher.FindTallyExecutable(null);
+                        if (!string.IsNullOrWhiteSpace(detectedExe))
+                        {
+                            _settings.TallySettings.ExecutablePath = detectedExe;
+                            SaveSettings(_settings);
+                        }
                     }
                 }
                 catch {}
@@ -467,20 +499,28 @@ namespace TallySyncApp.Services
             Console.WriteLine("Background sync stopped");
         }
 
-        /// <summary>
-        /// Manual sync trigger
-        /// </summary>
-        public async Task RunManualSyncAsync(bool forceResync = false)
+        public async Task<List<(string NotificationType, string CompanyId, string Description, int RetryCount)>> GetPendingNotificationsAsync()
         {
-            await RunSyncAsync(isManual: true, forceResync: forceResync);
+            if (_offlineQueue == null)
+                return new List<(string, string, string, int)>();
+            return await _offlineQueue.GetPendingNotificationsAsync();
+        }
+
+        /// <summary>
+        /// Manual sync trigger (optionally scoped to a single company card)
+        /// </summary>
+        public async Task RunManualSyncAsync(bool forceResync = false, string? targetCompanyName = null)
+        {
+            await RunSyncAsync(isManual: true, forceResync: forceResync, targetCompanyName: targetCompanyName);
         }
 
         /// <summary>
         /// Main sync operation
         /// </summary>
-        private async Task RunSyncAsync(bool isManual = false, bool forceResync = false)
+        private async Task RunSyncAsync(bool isManual = false, bool forceResync = false, string? targetCompanyName = null)
         {
-            AddLog($"🚀 Sync requested (Manual: {isManual}, Force: {forceResync})");
+            var scopeLabel = string.IsNullOrWhiteSpace(targetCompanyName) ? "" : $", Company: {targetCompanyName}";
+            AddLog($"🚀 Sync requested (Manual: {isManual}, Force: {forceResync}{scopeLabel})");
             CancellationToken runToken;
 
             // FIX 4: Hard Lock + isSyncing flag
@@ -657,6 +697,20 @@ namespace TallySyncApp.Services
                     return;
                 }
 
+                if (!string.IsNullOrWhiteSpace(targetCompanyName))
+                {
+                    companies = companies
+                        .Where(c => string.Equals(c.Name, targetCompanyName, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(c.Id, targetCompanyName, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    if (companies.Count == 0)
+                    {
+                        AddLog($"⚠️ Company '{targetCompanyName}' is not open in Tally.");
+                        UpdateStatus(SyncState.Idle, $"'{targetCompanyName}' is not open in Tally");
+                        return;
+                    }
+                }
+
                 Status.TotalRecords = 0;
                 Status.ProcessedRecords = 0;
 
@@ -717,6 +771,7 @@ namespace TallySyncApp.Services
                         CurrentCompany = company;
                         Status.CompanyName = company.Name;
                         UpdateStatus(SyncState.Syncing, $"Processing: {company.Name}");
+                        NotifyCompanyProgress(company, true, 5, "Starting sync...");
 
                         // Sync company info first
                         // Declare ownerId here so it's in scope for the entire company processing block
@@ -802,6 +857,7 @@ namespace TallySyncApp.Services
                                 // LK parity: remember this failure so later sync cycles
                                 // re-announce it until the company syncs successfully.
                                 await _offlineQueue!.UpsertNotificationAsync("not_synced", company.Name, compResult.Error ?? "register failed");
+                                NotifyCompanyProgress(company, false, 0, "Sync failed", success: false, error: compResult.Error ?? "Company registration failed");
                                 continue;                            }
                         }
 
@@ -1092,6 +1148,7 @@ namespace TallySyncApp.Services
                                 SyncLogger.Log($"[CompanyIdentity] {company.Name}: {userMsg}");
                                 failedCompanies.Add(company.Name);
                                 lastCompanyError = "Company identity registration failed: " + userMsg;
+                                NotifyCompanyProgress(company, false, 0, "Sync failed", success: false, error: userMsg);
                                 continue; // Skip this company - cannot sync without identity mapping
                             }
 
@@ -1384,7 +1441,14 @@ namespace TallySyncApp.Services
                         }
                         // Web dashboard reads companies.last_sync_at for "last synced N ago".
                         if (_historicalCoverageError == null)
+                        {
                             await _apiClient!.MarkCompanySyncedAsync(company.Id);
+                            NotifyCompanyProgress(company, false, 100, "Up to date", success: true, completedAt: DateTime.Now);
+                        }
+                        else
+                        {
+                            NotifyCompanyProgress(company, false, 100, "Completed with warnings", success: false, error: _historicalCoverageError, completedAt: DateTime.Now);
+                        }
 
                         // ===== PUSH SYNC (Cloud -> Tally) =====
                         await ProcessPendingTransactionsAsync(company);
@@ -1577,6 +1641,7 @@ namespace TallySyncApp.Services
                         lastCompanyError = ex.GetBaseException().Message;
                         Console.WriteLine($"❌ Error processing company {company.Name}: {ex.Message}");
                         UpdateStatus(SyncState.Error, $"Failed: {company.Name}", ex.Message);
+                        NotifyCompanyProgress(company, false, 0, "Sync failed", success: false, error: lastCompanyError);
 
                         // TELEGRAM: Error Notification
                         try 
@@ -1898,6 +1963,11 @@ namespace TallySyncApp.Services
             Status.Error = state == SyncState.Error ? entityName : null;
 
             StatusChanged?.Invoke(this, Status);
+            if (_isSyncing && CurrentCompany != null && state != SyncState.Error)
+            {
+                var pct = Status.TotalRecords > 0 ? Math.Max(5, Status.ProgressPercentage) : 15;
+                NotifyCompanyProgress(CurrentCompany, true, pct, message);
+            }
         }
 
         private void AddLog(string message)

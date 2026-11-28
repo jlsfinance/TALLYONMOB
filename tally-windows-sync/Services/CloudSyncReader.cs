@@ -20,18 +20,24 @@ public sealed class CloudSyncReader(HttpClient client, string supabaseUrl, strin
     {
         if (!Guid.TryParse(ownerId, out _)) throw new InvalidOperationException("Sign in to load cloud sync history.");
         var companies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var cloudSummaries = new List<CloudCompanySummary>();
         for (var offset = 0; ; offset += 1000)
         {
-            var rows = await ReadRowsAsync<JObject>($"companies?owner_id=eq.{Uri.EscapeDataString(ownerId)}&select=id,name&order=id&limit=1000&offset={offset}", ct);
+            var rows = await ReadRowsAsync<JObject>($"companies?owner_id=eq.{Uri.EscapeDataString(ownerId)}&select=id,name,last_sync_at&order=id&limit=1000&offset={offset}", ct);
             foreach (var row in rows)
             {
                 var id = row["id"]?.ToString() ?? "";
                 if (string.IsNullOrWhiteSpace(id)) throw new InvalidOperationException("Cloud company identifier is missing.");
-                companies[id] = row["name"]?.ToString() ?? id;
+                var name = row["name"]?.ToString() ?? id;
+                companies[id] = name;
+                DateTimeOffset? lastSync = DateTimeOffset.TryParse(row["last_sync_at"]?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedSync)
+                    ? parsedSync
+                    : null;
+                cloudSummaries.Add(new CloudCompanySummary { Id = id, Name = name, LastSyncAt = lastSync });
             }
             if (rows.Count < 1000) break;
         }
-        var result = new CloudSyncOverview();
+        var result = new CloudSyncOverview { Companies = cloudSummaries };
         foreach (var ids in companies.Keys.Chunk(100))
         {
             var filter = "company_id=in.(" + Uri.EscapeDataString(string.Join(",", ids.Select(id => "\"" + id.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""))) + ")";

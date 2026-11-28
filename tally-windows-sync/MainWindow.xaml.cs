@@ -104,10 +104,12 @@ namespace TallySyncApp
                 case "DashboardPanel":
                     DashboardPanel.Visibility = Visibility.Visible;
                     PageTitle.Text = "Dashboard";
+                    if (DataContext is MainViewModel dashVm) _ = dashVm.RefreshCompaniesAsync();
                     break;
                 case "SyncStatusPanel":
                     SyncStatusPanel.Visibility = Visibility.Visible;
                     PageTitle.Text = "Sync Status";
+                    if (DataContext is MainViewModel syncVm) _ = syncVm.RefreshCompaniesAsync();
                     break;
                 case "SettingsPanel":
                     SettingsPanel.Visibility = Visibility.Visible;

@@ -41,10 +41,13 @@
     <Compile Include="..\Services\VoucherEditXml.cs" />
     <Compile Include="..\Services\VoucherInventoryPayload.cs" />
     <Compile Include="..\Models\SyncModels.cs" />
+    <Compile Include="..\Models\CompanyCardItem.cs" />
     <Compile Include="..\Services\OfflineQueueService.cs" />
     <Compile Include="..\Services\WhatsAppMessageFormatter.cs" />
     <Compile Include="..\Services\WhatsAppHelperManager.cs" />
     <Compile Include="..\Services\GitHubAutoUpdater.cs" />
+    <Compile Include="..\Services\TallyProcessLauncher.cs" />
+    <Compile Include="..\Services\CompanyCardMerger.cs" />
   </ItemGroup>
 
 </Project>

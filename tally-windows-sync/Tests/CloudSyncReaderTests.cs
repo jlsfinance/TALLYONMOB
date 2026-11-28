@@ -42,6 +42,10 @@ public class CloudSyncReaderTests
         var result = await new CloudSyncReader(client, "https://example.test", Owner).ReadAsync(default);
         Assert.Equal(3000000018L, result.RecordsSynced);
         Assert.Equal(DateTimeOffset.Parse("2026-10-01T12:00:00Z"), result.LastSuccessfulSync);
+        var summary = Assert.Single(result.Companies);
+        Assert.Equal("company-a", summary.Id);
+        Assert.Equal("Test company", summary.Name);
+        Assert.Null(summary.LastSyncAt);
         var row = Assert.Single(result.History);
         Assert.Equal("Test company", row.CompanyName);
         Assert.Equal(42, row.RecordsSynced);

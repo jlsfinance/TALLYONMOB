@@ -1,12 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using Microsoft.Win32;
 using TallySyncApp.Models;
 using TallySyncApp.Services;
 
@@ -31,12 +34,24 @@ namespace TallySyncApp.ViewModels
         public ICommand LoadLicenseHistoryCommand { get; }
         public ICommand BuyLicenceCommand { get; }
         public ICommand RefreshCloudHistoryCommand { get; }
+        public ICommand OpenTallyCommand { get; }
+        public ICommand RefreshCompaniesCommand { get; }
+        public ICommand SyncCompanyCommand { get; }
+        public ICommand ResetCompanyCommand { get; }
+        public ICommand OpenCompanyWebCommand { get; }
+        public ICommand OpenCompanyFolderCommand { get; }
         private readonly System.Windows.Threading.DispatcherTimer _cloudRefreshTimer;
         private readonly System.Threading.CancellationTokenSource _windowLifetime = new();
         private int _cloudLoading;
+        private int _companiesLoading;
         private int _licenseLoading;
         private bool _disposed;
+        private List<CloudCompanySummary> _latestCloudCompanies = new();
         public ObservableCollection<CloudSyncHistoryEntry> CloudSyncHistory { get; } = new();
+        public ObservableCollection<CompanyCardItem> CompanyCards { get; } = new();
+        public bool HasCompanyCards => CompanyCards.Count > 0;
+        private string _companiesSummaryText = "Checking Tally companies…";
+        public string CompaniesSummaryText { get => _companiesSummaryText; private set { _companiesSummaryText = value; OnPropertyChanged(); } }
         private string _cloudRecordsText = "—";
         public string CloudRecordsText { get => _cloudRecordsText; private set { _cloudRecordsText = value; OnPropertyChanged(); } }
         private string _cloudRecordsDetail = "Loading from Supabase…";
@@ -58,8 +73,20 @@ namespace TallySyncApp.ViewModels
         public SyncStatus Status
         {
             get => _status;
-            set { _status = value; OnPropertyChanged(); OnPropertyChanged(nameof(CompanyDisplayName)); }
+            set
+            {
+                _status = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CompanyDisplayName));
+                OnPropertyChanged(nameof(IsTallyDisconnected));
+                OnPropertyChanged(nameof(TallyClosedBannerText));
+            }
         }
+
+        public bool IsTallyDisconnected => !Status.IsTallyConnected;
+
+        public string TallyClosedBannerText =>
+            $"Tally is not connected on {Settings.TallySettings.Host}:{Settings.TallySettings.Port}. Click Open Tally to launch it and resume automatic sync.";
 
         public string CompanyDisplayName => string.IsNullOrWhiteSpace(Status.CompanyName)
             ? "Company: Waiting for Tally…"
@@ -199,6 +226,8 @@ namespace TallySyncApp.ViewModels
                     Status = status;
                     // Force UI update for progress
                     OnPropertyChanged(nameof(Status));
+                    OnPropertyChanged(nameof(IsTallyDisconnected));
+                    OnPropertyChanged(nameof(TallyClosedBannerText));
 
                     // Reflect the licence gate result into the UI so the blocking screen
                     // also appears for auto-sync / background cycles (not just manual commands).
@@ -208,9 +237,13 @@ namespace TallySyncApp.ViewModels
                         ApplyLicenseResult(lic);
                     }
                     if (status.State == SyncState.Completed || status.State == SyncState.Error || status.State == SyncState.Idle)
+                    {
                         _ = LoadCloudSyncOverviewAsync();
+                        _ = RefreshCompaniesAsync();
+                    }
                 });
             };
+            _syncManager.CompanyProgressChanged += OnCompanyProgressChanged;
             _syncManager.SyncLogRequested += (_, message) => { if (!_disposed) Log(message); };
             _syncManager.SyncFlagsChanged += OnSyncFlagsChanged;
             RefreshSyncFlags();
@@ -237,8 +270,14 @@ namespace TallySyncApp.ViewModels
             LoadLicenseHistoryCommand = new RelayCommand(async _ => await LoadLicenseHistoryAsync());
             BuyLicenceCommand = new RelayCommand(async _ => await BuyLicenceAsync());
             RefreshCloudHistoryCommand = new RelayCommand(async _ => await LoadCloudSyncOverviewAsync());
+            OpenTallyCommand = new RelayCommand(async _ => await OpenTallyAsync());
+            RefreshCompaniesCommand = new RelayCommand(async _ => await RefreshCompaniesAsync());
+            SyncCompanyCommand = new RelayCommand(async param => await SyncCompanyAsync(param as CompanyCardItem));
+            ResetCompanyCommand = new RelayCommand(async param => await ResetCompanyAsync(param as CompanyCardItem));
+            OpenCompanyWebCommand = new RelayCommand(param => OpenCompanyWeb(param as CompanyCardItem));
+            OpenCompanyFolderCommand = new RelayCommand(param => OpenCompanyFolder(param as CompanyCardItem));
             _cloudRefreshTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-            _cloudRefreshTimer.Tick += async (_, _) => { await LoadCloudSyncOverviewAsync(); await LoadLicenseAsync(); };
+            _cloudRefreshTimer.Tick += async (_, _) => { await LoadCloudSyncOverviewAsync(); await RefreshCompaniesAsync(); await LoadLicenseAsync(); };
             _cloudRefreshTimer.Start();
             ToggleVoucherReconciliationCommand = new RelayCommand(_ => {
                 if (_syncManager.SetSafeVoucherReconciliation(!Settings.SyncSettings.UseSafeVoucherReconciliation))
@@ -253,7 +292,12 @@ namespace TallySyncApp.ViewModels
             Console.SetOut(new ConsoleWriter(this));
             
             // Initial functionality check
-            Task.Run(async () => await LoadLogs());
+            Task.Run(async () =>
+            {
+                await _syncManager.TestConnectionsAsync();
+                await LoadLogs();
+                await RefreshCompaniesAsync();
+            });
             _ = LoadLicenseAsync();
             _ = LoadLicenseHistoryAsync();
         }
@@ -373,6 +417,7 @@ namespace TallySyncApp.ViewModels
                 if (_disposed || App.AuthService?.CurrentSession?.UserId != userId) return;
                 Application.Current.Dispatcher.Invoke(() =>
                 {
+                    _latestCloudCompanies = overview.Companies ?? new List<CloudCompanySummary>();
                     CloudRecordsText = overview.RecordsSynced.ToString("N0");
                     CloudRecordsDetail = $"{overview.VoucherCount:N0} vouchers · {overview.LedgerCount:N0} ledgers · {overview.StockCount:N0} items";
                     CloudLastSyncTime = overview.LastSuccessfulSync?.LocalDateTime.ToString("HH:mm:ss") ?? "—";
@@ -381,6 +426,7 @@ namespace TallySyncApp.ViewModels
                     foreach (var row in overview.History) CloudSyncHistory.Add(row);
                     CloudDataStatus = $"Supabase · Updated {DateTime.Now:HH:mm:ss} · {overview.History.Count} recent syncs";
                 });
+                await RefreshCompaniesAsync();
             }
             catch (OperationCanceledException) when (_windowLifetime.IsCancellationRequested) { }
             catch (Exception error)
@@ -412,8 +458,247 @@ namespace TallySyncApp.ViewModels
         {
             _disposed = true;
             _syncManager.SyncFlagsChanged -= OnSyncFlagsChanged;
+            _syncManager.CompanyProgressChanged -= OnCompanyProgressChanged;
             _cloudRefreshTimer.Stop();
             _windowLifetime.Cancel();
+        }
+
+        private void OnCompanyProgressChanged(object? sender, CompanySyncProgressEventArgs e)
+        {
+            if (_disposed) return;
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+
+            dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed) return;
+                var card = CompanyCards.FirstOrDefault(c =>
+                    (!string.IsNullOrWhiteSpace(e.CompanyId) && string.Equals(c.CompanyId, e.CompanyId, StringComparison.OrdinalIgnoreCase)) ||
+                    string.Equals(c.Name, e.CompanyName, StringComparison.OrdinalIgnoreCase));
+                if (card == null) return;
+
+                card.IsSyncing = e.IsSyncing;
+                card.ProgressPercent = e.ProgressPercent;
+                card.ProgressMessage = e.Message;
+                if (e.Success == true)
+                {
+                    card.HasWarning = false;
+                    card.WarningTitle = string.Empty;
+                    card.WarningMessage = string.Empty;
+                    if (e.CompletedAt.HasValue)
+                        card.LastSyncAt = e.CompletedAt.Value;
+                }
+                else if (e.Success == false && !string.IsNullOrWhiteSpace(e.Error))
+                {
+                    card.HasWarning = true;
+                    card.WarningTitle = "Sync Attention";
+                    card.WarningMessage = e.Error;
+                    if (e.CompletedAt.HasValue)
+                        card.LastSyncAt = e.CompletedAt.Value;
+                }
+            });
+        }
+
+        internal async Task RefreshCompaniesAsync()
+        {
+            if (_disposed || System.Threading.Interlocked.CompareExchange(ref _companiesLoading, 1, 0) != 0)
+                return;
+
+            try
+            {
+                List<Company> openCompanies = new();
+                try
+                {
+                    openCompanies = await _syncManager.GetOpenCompaniesAsync();
+                }
+                catch { }
+
+                var pendingNotifs = await _syncManager.GetPendingNotificationsAsync();
+                var dispatcher = Application.Current?.Dispatcher;
+                if (_disposed || dispatcher == null) return;
+
+                await dispatcher.InvokeAsync(() =>
+                {
+                    var merged = CompanyCardMerger.BuildCards(
+                        openCompanies,
+                        _latestCloudCompanies,
+                        CloudSyncHistory,
+                        pendingNotifs,
+                        CompanyCards);
+
+                    CompanyCards.Clear();
+                    foreach (var card in merged)
+                        CompanyCards.Add(card);
+
+                    OnPropertyChanged(nameof(HasCompanyCards));
+                    int openCount = merged.Count(c => c.IsOpenInTally);
+                    CompaniesSummaryText = merged.Count == 0
+                        ? "No companies found yet"
+                        : $"{openCount} open in Tally · {merged.Count} total";
+                });
+            }
+            catch (Exception ex)
+            {
+                if (!_disposed) Log($"Could not refresh companies list: {ex.Message}");
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _companiesLoading, 0);
+            }
+        }
+
+        private async Task OpenTallyAsync()
+        {
+            try
+            {
+                var exePath = TallyProcessLauncher.FindTallyExecutable(Settings.TallySettings.ExecutablePath);
+                if (string.IsNullOrWhiteSpace(exePath))
+                {
+                    var dialog = new OpenFileDialog
+                    {
+                        Title = "Locate Tally Executable (tally.exe)",
+                        Filter = "Tally Executable (tally.exe)|tally.exe|Executable Files (*.exe)|*.exe",
+                        CheckFileExists = true,
+                    };
+                    if (dialog.ShowDialog() != true) return;
+                    exePath = dialog.FileName;
+                }
+
+                if (!string.Equals(Settings.TallySettings.ExecutablePath, exePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    Settings.TallySettings.ExecutablePath = exePath;
+                    _syncManager.SaveSettings(Settings);
+                }
+
+                TallyProcessLauncher.LaunchTally(exePath);
+                Log($"🚀 Launching Tally: {exePath}");
+
+                for (int attempt = 0; attempt < 8; attempt++)
+                {
+                    if (_disposed) return;
+                    await Task.Delay(2000);
+                    var (tallyOk, _, _) = await _syncManager.TestConnectionsAsync();
+                    if (tallyOk)
+                    {
+                        Log("✅ Tally connected! Refreshing companies...");
+                        await RefreshCompaniesAsync();
+                        return;
+                    }
+                }
+
+                Log("⏳ Tally launched — please select a company inside Tally if not yet open.");
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Could not launch Tally: {ex.Message}");
+                MessageBox.Show($"Could not launch Tally: {ex.Message}", "Open Tally", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async Task SyncCompanyAsync(CompanyCardItem? card)
+        {
+            if (card == null) return;
+            if (!card.IsOpenInTally)
+            {
+                MessageBox.Show($"'{card.Name}' is closed in Tally. Open this company inside Tally to sync.", "Company Closed", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
+            if (!await CheckSerialAndConfirmAsync()) return;
+            if (!await EnsureLicenseForSyncAsync()) return;
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
+
+            try
+            {
+                IsSyncing = true;
+                Log($"🔄 Starting incremental sync for {card.Name}...");
+                await _syncManager.RunManualSyncAsync(forceResync: false, targetCompanyName: card.Name);
+                await LoadLogs();
+                await RefreshCompaniesAsync();
+            }
+            finally
+            {
+                RefreshSyncFlags();
+            }
+        }
+
+        private async Task ResetCompanyAsync(CompanyCardItem? card)
+        {
+            if (card == null) return;
+            if (!card.IsOpenInTally)
+            {
+                MessageBox.Show($"'{card.Name}' is closed in Tally. Open this company inside Tally to reset/resync.", "Company Closed", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
+            if (!await CheckSerialAndConfirmAsync()) return;
+            if (!await EnsureLicenseForSyncAsync()) return;
+
+            var confirm = MessageBox.Show(
+                $"Full resync / reset for '{card.Name}'?\n\nPoora historical data dobara sync hoga (thoda time lag sakta hai).",
+                "Reset Company Sync",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+            if (_syncManager.IsSyncRunning) { Log("⚠️ Sync already in progress."); return; }
+
+            try
+            {
+                IsSyncing = true;
+                Log($"♻️ Starting full reset/resync for {card.Name}...");
+                await _syncManager.RunManualSyncAsync(forceResync: true, targetCompanyName: card.Name);
+                await LoadLogs();
+                await RefreshCompaniesAsync();
+            }
+            finally
+            {
+                RefreshSyncFlags();
+            }
+        }
+
+        private void OpenCompanyWeb(CompanyCardItem? card)
+        {
+            if (card == null) return;
+            try
+            {
+                bool isDebug = false;
+#if DEBUG
+                isDebug = true;
+#endif
+                var url = TallyProcessLauncher.BuildWebDashboardUrl(Settings?.SyncSettings?.LicencePurchaseUrl, card.CompanyId, isDebug);
+                Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+                Log($"🌐 Opened Web Dashboard for {card.Name}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Could not open Web Dashboard: {ex.Message}");
+                MessageBox.Show($"Could not open Web Dashboard: {ex.Message}", "Open Web Dashboard", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void OpenCompanyFolder(CompanyCardItem? card)
+        {
+            if (card == null) return;
+            try
+            {
+                var folder = TallyProcessLauncher.ResolveDataFolderPath(card.DataPath, Settings?.TallySettings?.ExecutablePath);
+                if (!string.IsNullOrWhiteSpace(folder) && TallyProcessLauncher.OpenFolderInExplorer(folder))
+                {
+                    Log($"📂 Opened Tally folder: {folder}");
+                    return;
+                }
+
+                MessageBox.Show(
+                    $"Tally data folder for '{card.Name}' could not be found on this PC.",
+                    "Open Tally Folder",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                Log($"Could not open Tally folder: {ex.Message}");
+                MessageBox.Show($"Could not open Tally folder: {ex.Message}", "Open Tally Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
 
         private async Task LoadLicenseAsync()
