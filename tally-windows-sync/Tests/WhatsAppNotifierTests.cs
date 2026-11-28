@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using TallySyncApp.Services;
 
 namespace TallySyncApp.Tests
@@ -74,6 +75,39 @@ namespace TallySyncApp.Tests
             Assert.DoesNotContain("<b>", result);
             Assert.DoesNotContain("<code>", result);
             Assert.DoesNotContain("<i>", result);
+        }
+
+        [Fact]
+        public void WhatsAppHelperManager_FindsHelperBundledNodeAndDependencies()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "syncora-wa-test-" + Guid.NewGuid().ToString("N"));
+            var helperDir = Path.Combine(tempRoot, "whatsapp-notifier");
+            var pkgDir = Path.Combine(helperDir, "node_modules", "whatsapp-web.js");
+            var authBase = Path.Combine(tempRoot, "localappdata");
+            var authDir = Path.Combine(authBase, "Syncora", "whatsapp-auth");
+
+            try
+            {
+                Directory.CreateDirectory(pkgDir);
+                File.WriteAllText(Path.Combine(helperDir, "server.js"), "// test");
+                File.WriteAllText(Path.Combine(pkgDir, "package.json"), "{}");
+                File.WriteAllText(Path.Combine(helperDir, "node.exe"), "stub");
+
+                Assert.Equal(helperDir, WhatsAppHelperManager.FindHelperDirectory(tempRoot));
+                Assert.Equal(Path.Combine(helperDir, "node.exe"), WhatsAppHelperManager.FindNodeExecutable(helperDir));
+                Assert.True(WhatsAppHelperManager.HasBundledDependencies(helperDir));
+                Assert.False(WhatsAppHelperManager.HasSavedSession(helperDir, authBase));
+
+                Directory.CreateDirectory(Path.Combine(authDir, "session"));
+                Assert.True(WhatsAppHelperManager.HasSavedSession(helperDir, authBase));
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, recursive: true);
+                }
+            }
         }
     }
 }

@@ -41,6 +41,7 @@
     <Compile Include="..\Services\VoucherEditXml.cs" />
     <Compile Include="..\Services\VoucherInventoryPayload.cs" />
     <Compile Include="..\Services\WhatsAppMessageFormatter.cs" />
+    <Compile Include="..\Services\WhatsAppHelperManager.cs" />
   </ItemGroup>
 
 </Project>

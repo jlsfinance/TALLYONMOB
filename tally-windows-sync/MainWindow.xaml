@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         Title="SYNCORA Connector" Height="720" Width="1120"
         MinHeight="600" MinWidth="900"
@@ -959,6 +960,73 @@
                     </Border>
                 </StackPanel>
             </ScrollViewer>
+
+            <!-- WHATSAPP QR IN-APP BROWSER PANEL (placed outside ScrollViewer to avoid WebView2 airspace clipping) -->
+            <Grid x:Name="WhatsAppQrPanel"
+                  Grid.Row="1"
+                  Visibility="Collapsed"
+                  Margin="24,20,24,20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,0,16">
+                    <DockPanel LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="← Back to Settings"
+                                    Click="CloseWhatsAppQr_Click"
+                                    Style="{StaticResource GhostButton}"
+                                    Height="36"
+                                    Padding="14,0"
+                                    Margin="0,0,14,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="WhatsApp QR (In-App Browser)"
+                                           FontSize="15" FontWeight="Bold" Foreground="#1F2937"/>
+                                <TextBlock x:Name="WhatsAppQrOverlayStatusText"
+                                           Text="Starting WhatsApp QR helper..."
+                                           FontSize="12" Foreground="#6B7280"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <Button Content="Reload QR"
+                                    Click="ReloadWhatsAppQr_Click"
+                                    Style="{StaticResource GhostButton}"
+                                    Height="36"
+                                    Padding="14,0"
+                                    Margin="0,0,8,0"/>
+                            <Button Content="Open External"
+                                    Click="OpenWhatsAppQrExternal_Click"
+                                    Style="{StaticResource GhostButton}"
+                                    Height="36"
+                                    Padding="14,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                    <Grid>
+                        <StackPanel x:Name="WhatsAppQrLoadingPanel"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Margin="24">
+                            <TextBlock x:Name="WhatsAppQrLoadingText"
+                                       Text="Starting WhatsApp QR helper..."
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="#374151"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="Scan via WhatsApp -> Linked Devices once; session stays saved automatically."
+                                       FontSize="12"
+                                       Foreground="#6B7280"
+                                       TextAlignment="Center"
+                                       Margin="0,8,0,0"/>
+                        </StackPanel>
+                        <wv2:WebView2 x:Name="WhatsAppQrWebView"
+                                      Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+            </Grid>
 
             <!-- HISTORY PANEL -->
             <Grid x:Name="HistoryPanel"

@@ -5,8 +5,9 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
-// Keep Chromium/Puppeteer temp files on the same drive as this helper (avoids filling C:).
-const localTmpDir = path.join(__dirname, '.tmp');
+// Keep Chromium/Puppeteer temp files in writable per-user LocalAppData (or local .tmp fallback).
+const localTmpDir = process.env.WHATSAPP_TMP_DIR
+    || (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Syncora', 'whatsapp-tmp') : path.join(__dirname, '.tmp'));
 try {
     fs.mkdirSync(localTmpDir, { recursive: true });
     process.env.TEMP = localTmpDir;
@@ -241,14 +242,37 @@ const puppeteerOpts = {
         '--window-size=1280,800',
     ],
 };
-const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-if (fs.existsSync(edgePath)) puppeteerOpts.executablePath = edgePath;
-else if (fs.existsSync(chromePath)) puppeteerOpts.executablePath = chromePath;
+const browserCandidates = [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+        : '',
+].filter(Boolean);
+const detectedBrowser = browserCandidates.find((p) => fs.existsSync(p));
+if (detectedBrowser) puppeteerOpts.executablePath = detectedBrowser;
+
+// Store LocalAuth session in %LOCALAPPDATA%\Syncora\whatsapp-auth so app upgrades never wipe QR login.
+const localAuthFallback = path.join(__dirname, '.wwebjs_auth');
+const appDataAuthDir = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'Syncora', 'whatsapp-auth')
+    : localAuthFallback;
+const authDataPath =
+    process.env.WHATSAPP_AUTH_DIR ||
+    (fs.existsSync(appDataAuthDir) || !fs.existsSync(localAuthFallback)
+        ? appDataAuthDir
+        : localAuthFallback);
+try {
+    fs.mkdirSync(authDataPath, { recursive: true });
+} catch {
+    // Non-fatal
+}
 
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: path.join(__dirname, '.wwebjs_auth'),
+        dataPath: authDataPath,
     }),
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
     puppeteer: puppeteerOpts,

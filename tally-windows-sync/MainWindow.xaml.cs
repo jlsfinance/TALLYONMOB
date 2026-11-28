@@ -7,17 +7,32 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Threading;
+using Microsoft.Web.WebView2.Core;
 using Newtonsoft.Json;
+using TallySyncApp.Services;
 using TallySyncApp.ViewModels;
 
 namespace TallySyncApp
 {
     public partial class MainWindow : Window
     {
+        private bool _webViewInitialized;
+        private DispatcherTimer? _whatsAppQrTimer;
+
         public MainWindow()
         {
             InitializeComponent();
-            Closed += (_, _) => (DataContext as MainViewModel)?.Dispose();
+            Closed += (_, _) =>
+            {
+                StopWhatsAppQrTimer();
+                try
+                {
+                    if (_webViewInitialized) WhatsAppQrWebView.Dispose();
+                }
+                catch { }
+                (DataContext as MainViewModel)?.Dispose();
+            };
 #if DEBUG
             Title = "SYNCORA Connector (Debug)";
 #endif
@@ -45,7 +60,7 @@ namespace TallySyncApp
 
                 // Default to dashboard
                 PageTitle.Text = "Dashboard";
-                _ = RefreshWhatsAppStatusAsync();
+                _ = InitializeWhatsAppOnStartupAsync();
             };
         }
 
@@ -70,8 +85,10 @@ namespace TallySyncApp
             DashboardPanel.Visibility = Visibility.Collapsed;
             SyncStatusPanel.Visibility = Visibility.Collapsed;
             SettingsPanel.Visibility = Visibility.Collapsed;
+            WhatsAppQrPanel.Visibility = Visibility.Collapsed;
             HistoryPanel.Visibility = Visibility.Collapsed;
             LicenseHistoryPanel.Visibility = Visibility.Collapsed;
+            StopWhatsAppQrTimer();
 
             // Show selected panel
             var tag = btn.Tag?.ToString();
@@ -141,12 +158,26 @@ namespace TallySyncApp
                 vm.BuyLicenceCommand.Execute(null);
         }
 
+        private async Task InitializeWhatsAppOnStartupAsync()
+        {
+            await RefreshWhatsAppStatusAsync();
+            if (!await WhatsAppHelperManager.IsRunningAsync() && WhatsAppHelperManager.HasSavedSession())
+            {
+                var (started, _) = await WhatsAppHelperManager.EnsureStartedAsync();
+                if (started)
+                {
+                    await RefreshWhatsAppStatusAsync();
+                }
+            }
+        }
+
         private async Task RefreshWhatsAppStatusAsync()
         {
+            string statusText = "Helper not running — click Open WhatsApp QR to start";
             try
             {
                 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-                using var resp = await http.GetAsync("http://127.0.0.1:3001/status");
+                using var resp = await http.GetAsync(WhatsAppHelperManager.StatusUrl);
                 if (resp.IsSuccessStatusCode)
                 {
                     var json = await resp.Content.ReadAsStringAsync();
@@ -155,12 +186,11 @@ namespace TallySyncApp
                     bool hasQr = data?.hasQr == true;
                     string? phone = data?.connectedPhone?.ToString();
 
-                    WhatsAppStatusText.Text = ready
+                    statusText = ready
                         ? $"Connected (+{phone ?? "Linked"}) — Sync alerts & Voucher PDFs active"
                         : hasQr
-                            ? "Waiting for QR scan — click Open WhatsApp QR"
+                            ? "Waiting for QR scan — scan via WhatsApp Linked Devices"
                             : "Starting WhatsApp helper — click Refresh Status in a few seconds";
-                    return;
                 }
             }
             catch
@@ -168,7 +198,11 @@ namespace TallySyncApp
                 // Helper not listening on 127.0.0.1:3001
             }
 
-            WhatsAppStatusText.Text = "Helper not running — click Open WhatsApp QR to start";
+            WhatsAppStatusText.Text = statusText;
+            if (WhatsAppQrOverlayStatusText != null)
+            {
+                WhatsAppQrOverlayStatusText.Text = statusText;
+            }
         }
 
         private async void RefreshWhatsAppStatus_Click(object sender, RoutedEventArgs e)
@@ -177,55 +211,113 @@ namespace TallySyncApp
             await RefreshWhatsAppStatusAsync();
         }
 
+        private void StartWhatsAppQrTimer()
+        {
+            if (_whatsAppQrTimer == null)
+            {
+                _whatsAppQrTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(3)
+                };
+                _whatsAppQrTimer.Tick += async (_, _) => await RefreshWhatsAppStatusAsync();
+            }
+            if (!_whatsAppQrTimer.IsEnabled)
+            {
+                _whatsAppQrTimer.Start();
+            }
+        }
+
+        private void StopWhatsAppQrTimer()
+        {
+            _whatsAppQrTimer?.Stop();
+        }
+
         private async void OpenWhatsAppQr_Click(object sender, RoutedEventArgs e)
         {
-            bool helperRunning = false;
+            SettingsPanel.Visibility = Visibility.Collapsed;
+            WhatsAppQrPanel.Visibility = Visibility.Visible;
+            PageTitle.Text = "WhatsApp QR";
+            WhatsAppQrLoadingPanel.Visibility = Visibility.Visible;
+            WhatsAppQrWebView.Visibility = Visibility.Collapsed;
+            WhatsAppQrLoadingText.Text = "Starting WhatsApp QR helper (no dependency download required)...";
+            WhatsAppQrOverlayStatusText.Text = "Starting WhatsApp QR helper...";
+            WhatsAppStatusText.Text = "Starting WhatsApp QR helper...";
+
+            var (started, error) = await WhatsAppHelperManager.EnsureStartedAsync();
+            if (!started)
+            {
+                var errMsg = error ?? "Could not start WhatsApp QR helper.";
+                WhatsAppQrLoadingText.Text = errMsg;
+                WhatsAppQrOverlayStatusText.Text = errMsg;
+                WhatsAppStatusText.Text = errMsg;
+                return;
+            }
+
+            StartWhatsAppQrTimer();
+            await RefreshWhatsAppStatusAsync();
+
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-                using var resp = await http.GetAsync("http://127.0.0.1:3001/status");
-                helperRunning = resp.IsSuccessStatusCode;
-            }
-            catch
-            {
-                helperRunning = false;
-            }
-
-            if (!helperRunning)
-            {
-                var candidates = new[]
+                WhatsAppQrLoadingText.Text = "Loading WhatsApp QR inside SYNCORA Connector...";
+                if (!_webViewInitialized)
                 {
-                    Path.Combine(AppContext.BaseDirectory, "whatsapp-notifier", "start-whatsapp.bat"),
-                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "whatsapp-notifier", "start-whatsapp.bat")),
-                };
-                var batPath = Array.Find(candidates, File.Exists);
-                if (!string.IsNullOrEmpty(batPath))
-                {
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = batPath,
-                            WorkingDirectory = Path.GetDirectoryName(batPath)!,
-                            UseShellExecute = true,
-                        });
-                        WhatsAppStatusText.Text = "Starting WhatsApp QR helper — browser will open http://127.0.0.1:3001/qr";
-                        await Task.Delay(2500);
-                        await RefreshWhatsAppStatusAsync();
-                        return;
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"Could not start WhatsApp helper: {ex.Message}", "WhatsApp QR", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
+                    var userDataFolder = WhatsAppHelperManager.GetWebViewUserDataDirectory();
+                    Directory.CreateDirectory(userDataFolder);
+                    var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                    await WhatsAppQrWebView.EnsureCoreWebView2Async(env);
+                    _webViewInitialized = true;
                 }
+
+                WhatsAppQrWebView.CoreWebView2.Navigate(WhatsAppHelperManager.QrUrl);
+                WhatsAppQrLoadingPanel.Visibility = Visibility.Collapsed;
+                WhatsAppQrWebView.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                WhatsAppQrLoadingText.Text = $"In-app browser unavailable ({ex.Message}). Opening in your default browser...";
+                OpenQrInExternalBrowser();
+            }
+        }
+
+        private async void CloseWhatsAppQr_Click(object sender, RoutedEventArgs e)
+        {
+            StopWhatsAppQrTimer();
+            WhatsAppQrPanel.Visibility = Visibility.Collapsed;
+            SettingsPanel.Visibility = Visibility.Visible;
+            PageTitle.Text = "Settings";
+            await RefreshWhatsAppStatusAsync();
+        }
+
+        private async void ReloadWhatsAppQr_Click(object sender, RoutedEventArgs e)
+        {
+            var (started, error) = await WhatsAppHelperManager.EnsureStartedAsync();
+            if (!started)
+            {
+                WhatsAppQrOverlayStatusText.Text = error ?? "WhatsApp helper unavailable";
+                return;
             }
 
+            if (_webViewInitialized && WhatsAppQrWebView.CoreWebView2 != null)
+            {
+                WhatsAppQrWebView.CoreWebView2.Navigate(WhatsAppHelperManager.QrUrl);
+                WhatsAppQrLoadingPanel.Visibility = Visibility.Collapsed;
+                WhatsAppQrWebView.Visibility = Visibility.Visible;
+            }
+            await RefreshWhatsAppStatusAsync();
+        }
+
+        private void OpenWhatsAppQrExternal_Click(object sender, RoutedEventArgs e)
+        {
+            OpenQrInExternalBrowser();
+        }
+
+        private static void OpenQrInExternalBrowser()
+        {
             try
             {
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = "http://127.0.0.1:3001/qr",
+                    FileName = WhatsAppHelperManager.QrUrl,
                     UseShellExecute = true,
                 });
             }
@@ -233,7 +325,6 @@ namespace TallySyncApp
             {
                 MessageBox.Show($"Could not open WhatsApp QR page: {ex.Message}", "WhatsApp QR", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-            await RefreshWhatsAppStatusAsync();
         }
 
     }

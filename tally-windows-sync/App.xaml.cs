@@ -371,6 +371,7 @@ private async Task CheckForUpdates()
         protected override void OnExit(ExitEventArgs e)
         {
             _logger?.LogInformation("Application shutting down...");
+            try { WhatsAppHelperManager.StopOwnedHelper(); } catch { }
             try { _syncManager?.StopSync(); } catch { }
             try { _realtime?.Stop(); } catch { }
             try { _tray?.Dispose(); } catch { }
