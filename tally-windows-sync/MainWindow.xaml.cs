@@ -22,13 +22,17 @@ namespace TallySyncApp
         private bool _whatsAppReturnToDashboard;
         private string? _dismissedDownloadingVersion;
         private string? _dismissedReadyVersion;
+        internal bool AllowRealClose { get; set; }
+        internal bool IsClosed { get; private set; }
 
         public MainWindow()
         {
             InitializeComponent();
             GitHubAutoUpdater.StatusChanged += OnAutoUpdaterStatusChanged;
+            Closing += MainWindow_Closing;
             Closed += (_, _) =>
             {
+                IsClosed = true;
                 GitHubAutoUpdater.StatusChanged -= OnAutoUpdaterStatusChanged;
                 StopWhatsAppQrTimer();
                 try
@@ -460,11 +464,21 @@ namespace TallySyncApp
             await GitHubAutoUpdater.CheckAndDownloadAsync(isManual: true);
         }
 
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (!AllowRealClose)
+            {
+                e.Cancel = true;
+                (Application.Current as App)?.HideMainWindow(showHintToast: true);
+            }
+        }
+
         private void RestartUpdateButton_Click(object sender, RoutedEventArgs e)
         {
             WhatsAppHelperManager.StopOwnedHelper();
             if (GitHubAutoUpdater.LaunchPendingUpdate(relaunchAfterInstall: true))
             {
+                AllowRealClose = true;
                 Application.Current.Shutdown();
             }
             else

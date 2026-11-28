@@ -5,15 +5,55 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
+// Prevent broken stdout/stderr pipes when launched headless from GUI apps (fixes EPIPE: broken pipe, write)
+process.stdout?.on?.('error', () => {});
+process.stderr?.on?.('error', () => {});
+
 // Keep Chromium/Puppeteer temp files in writable per-user LocalAppData (or local .tmp fallback).
 const localTmpDir = process.env.WHATSAPP_TMP_DIR
     || (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Syncora', 'whatsapp-tmp') : path.join(__dirname, '.tmp'));
+const logFilePath = process.env.WHATSAPP_LOG_FILE
+    || (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Syncora', 'whatsapp-notifier.log') : path.join(__dirname, 'whatsapp-notifier.log'));
 try {
     fs.mkdirSync(localTmpDir, { recursive: true });
+    fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
     process.env.TEMP = localTmpDir;
     process.env.TMP = localTmpDir;
 } catch {
     // Non-fatal
+}
+
+function writeLog(level, message) {
+    const line = `[${new Date().toISOString()}] [${level}] ${message}`;
+    try {
+        try {
+            if (fs.existsSync(logFilePath) && fs.statSync(logFilePath).size > 1024 * 1024) {
+                fs.writeFileSync(logFilePath, '');
+            }
+        } catch { }
+        fs.appendFileSync(logFilePath, line + '\n');
+    } catch { }
+
+    try {
+        const stream = level === 'ERROR' ? process.stderr : process.stdout;
+        if (stream && !stream.destroyed && stream.writable) {
+            stream.write(line + '\n');
+        }
+    } catch { }
+}
+
+function cleanupStaleBrowserLocks(baseAuthDir) {
+    const lockNames = ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'DevToolsActivePort', 'lockfile'];
+    const dirs = [baseAuthDir, path.join(baseAuthDir, 'session'), path.join(baseAuthDir, 'session', 'Default')];
+    for (const dir of dirs) {
+        if (!dir || !fs.existsSync(dir)) continue;
+        for (const name of lockNames) {
+            const target = path.join(dir, name);
+            try {
+                if (fs.existsSync(target)) fs.rmSync(target, { force: true, recursive: true });
+            } catch { }
+        }
+    }
 }
 
 function loadEnvFile(filePath) {
@@ -59,13 +99,13 @@ const sentMessageIds = new Set();
 
 process.on('unhandledRejection', (err) => {
     const msg = err?.message || String(err);
-    console.error('Unhandled rejection in whatsapp-notifier:', msg);
-    if (!/EBUSY|EPERM/i.test(msg)) lastError = msg;
+    writeLog('ERROR', `Unhandled rejection in whatsapp-notifier: ${msg}`);
+    if (!/EBUSY|EPERM|EPIPE/i.test(msg)) lastError = msg;
 });
 process.on('uncaughtException', (err) => {
     const msg = err?.message || String(err);
-    console.error('Uncaught exception in whatsapp-notifier:', msg);
-    if (/EBUSY|EPERM/i.test(msg)) return;
+    writeLog('ERROR', `Uncaught exception in whatsapp-notifier: ${msg}`);
+    if (/EBUSY|EPERM|EPIPE/i.test(msg)) return;
     lastError = msg;
 });
 
@@ -246,6 +286,7 @@ async function resolveChatJid(phone) {
 
 const puppeteerOpts = {
     headless: true,
+    pipe: false,
     args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -305,21 +346,24 @@ function wireClientEvents(c) {
         isReady = false;
         lastQr = qr;
         lastError = null;
-        console.log('=== SCAN THIS QR CODE WITH WHATSAPP (http://127.0.0.1:' + PORT + '/qr) ===');
-        qrcodeTerminal.generate(qr, { small: true });
-        console.log('=========================================================================');
+        writeLog('INFO', `QR generated for WhatsApp linking (http://127.0.0.1:${PORT}/qr)`);
+        if (Boolean(process.stdout?.isTTY)) {
+            try {
+                qrcodeTerminal.generate(qr, { small: true });
+            } catch { }
+        }
     });
 
     c.on('authenticated', () => {
         lastQr = null;
         lastError = null;
-        console.log('WhatsApp authenticated. LocalAuth session saved.');
+        writeLog('INFO', 'WhatsApp authenticated. LocalAuth session saved.');
     });
 
     c.on('auth_failure', (msg) => {
         isReady = false;
         lastError = msg || 'Authentication failed';
-        console.error('WhatsApp auth_failure:', lastError);
+        writeLog('ERROR', `WhatsApp auth_failure: ${lastError}`);
     });
 
     c.on('ready', () => {
@@ -327,14 +371,14 @@ function wireClientEvents(c) {
         lastQr = null;
         lastError = null;
         connectedPhone = c.info?.wid?.user || null;
-        console.log(`WhatsApp client READY (phone: ${connectedPhone || 'unknown'})`);
+        writeLog('INFO', `WhatsApp client READY (phone: ${connectedPhone || 'unknown'})`);
     });
 
     c.on('disconnected', (reason) => {
         isReady = false;
         connectedPhone = null;
         lastError = reason ? `Disconnected: ${reason}` : 'Disconnected';
-        console.log('WhatsApp client disconnected:', reason);
+        writeLog('WARN', `WhatsApp client disconnected: ${reason}`);
     });
 
     c.on('message_create', async (msg) => {
@@ -387,7 +431,7 @@ function wireClientEvents(c) {
                 trackSent(sent);
             }
         } catch (err) {
-            console.error('WhatsApp bot handler error:', err?.message || err);
+            writeLog('ERROR', `WhatsApp bot handler error: ${err?.message || err}`);
         }
     });
 }
@@ -395,13 +439,24 @@ function wireClientEvents(c) {
 async function initWithRetry(attempt = 1) {
     try {
         lastError = null;
+        cleanupStaleBrowserLocks(authDataPath);
         if (!client) client = createClient();
         await client.initialize();
     } catch (err) {
-        lastError = err?.message || String(err);
-        console.error(`Failed to initialize WhatsApp client (attempt ${attempt}/3):`, lastError);
-        if (attempt < 3) {
-            setTimeout(() => void initWithRetry(attempt + 1), 4000);
+        const msg = err?.message || String(err);
+        writeLog('ERROR', `Failed to initialize WhatsApp client (attempt ${attempt}/4): ${msg}`);
+        if (/EPIPE|Target closed|Failed to launch|browser has disconnected/i.test(msg)) {
+            if (client) {
+                try { await client.destroy(); } catch { }
+                client = null;
+            }
+            cleanupStaleBrowserLocks(authDataPath);
+            lastError = attempt < 4 ? null : msg;
+        } else {
+            lastError = msg;
+        }
+        if (attempt < 4) {
+            setTimeout(() => void initWithRetry(attempt + 1), 2500);
         }
     }
 }
@@ -572,5 +627,5 @@ app.post('/send-document', async (req, res) => {
 });
 
 app.listen(PORT, '127.0.0.1', () => {
-    console.log(`WhatsApp notifier listening on http://127.0.0.1:${PORT} (QR page: http://127.0.0.1:${PORT}/qr)`);
+    writeLog('INFO', `WhatsApp notifier listening on http://127.0.0.1:${PORT} (QR page: http://127.0.0.1:${PORT}/qr)`);
 });

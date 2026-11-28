@@ -23,7 +23,10 @@ namespace TallySyncApp.Services
     public sealed class StartupService : IDisposable
     {
         /// <summary>Registry value name used for the autostart entry.</summary>
-        public const string ValueName = "TallyLink";
+        public const string ValueName = "SyncoraConnector";
+
+        /// <summary>Legacy registry value name migrated automatically to <see cref="ValueName"/>.</summary>
+        public const string LegacyValueName = "TallyLink";
 
         /// <summary>Registry key under HKCU that holds per-user autostart entries.</summary>
         public const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -74,7 +77,7 @@ namespace TallySyncApp.Services
                 if (key is null)
                     return false;
 
-                var value = key.GetValue(ValueName);
+                var value = key.GetValue(ValueName) ?? key.GetValue(LegacyValueName);
                 return value is string text && text.Length > 0;
             }
             catch (UnauthorizedAccessException)
@@ -109,12 +112,18 @@ namespace TallySyncApp.Services
                 if (key is null)
                     return false;
 
-                var value = key.GetValue(ValueName);
-                if (value is null)
-                    return false;
-
-                key.DeleteValue(ValueName, throwOnMissingValue: false);
-                return true;
+                var removed = false;
+                if (key.GetValue(ValueName) is not null)
+                {
+                    key.DeleteValue(ValueName, throwOnMissingValue: false);
+                    removed = true;
+                }
+                if (key.GetValue(LegacyValueName) is not null)
+                {
+                    key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
+                    removed = true;
+                }
+                return removed;
             }
             catch (UnauthorizedAccessException)
             {
@@ -154,7 +163,7 @@ namespace TallySyncApp.Services
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-                return key?.GetValue(ValueName) as string;
+                return (key?.GetValue(ValueName) ?? key?.GetValue(LegacyValueName)) as string;
             }
             catch (UnauthorizedAccessException)
             {
@@ -229,6 +238,8 @@ namespace TallySyncApp.Services
                     return false;
 
                 key.SetValue(ValueName, commandLine, RegistryValueKind.String);
+                if (key.GetValue(LegacyValueName) is not null)
+                    key.DeleteValue(LegacyValueName, throwOnMissingValue: false);
                 return true;
             }
             catch (UnauthorizedAccessException)

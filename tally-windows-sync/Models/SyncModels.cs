@@ -195,6 +195,7 @@ namespace TallySyncApp.Models
         public bool AutoSendPartyWhatsApp { get; set; } = true;
         public string PartyWhatsAppVoucherTypes { get; set; } = "Sales, Receipt, Credit Note, Payment";
         public string LicencePurchaseUrl { get; set; } = "https://tallyonmob.vercel.app/subscription";
+        public bool StartWithWindows { get; set; } = true;
     }
 
     public class DatabaseSettings

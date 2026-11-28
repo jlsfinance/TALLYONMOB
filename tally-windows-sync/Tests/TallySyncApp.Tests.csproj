@@ -48,6 +48,7 @@
     <Compile Include="..\Services\GitHubAutoUpdater.cs" />
     <Compile Include="..\Services\TallyProcessLauncher.cs" />
     <Compile Include="..\Services\CompanyCardMerger.cs" />
+    <Compile Include="..\Services\CommandLineOptions.cs" />
   </ItemGroup>
 
 </Project>

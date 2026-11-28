@@ -376,6 +376,7 @@ namespace TallySyncApp.ViewModels
             try
             {
                 _syncManager.SaveSettings(Settings);
+                (Application.Current as App)?.ApplyStartWithWindows(Settings.SyncSettings.StartWithWindows);
                 Log("Settings saved successfully.");
                 MessageBox.Show("Settings saved!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }

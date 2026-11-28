@@ -36,6 +36,8 @@ namespace TallySyncApp
         private static RealtimeService? _realtime;
 
         private static MainWindow? _mainWindow;
+        private static bool _hasShownTrayMinimizeHint;
+        private static bool _isExiting;
 
         public static AuthService AuthService => _authService!;
         public static AppSettings Settings => _settings!;
@@ -104,33 +106,36 @@ namespace TallySyncApp
             // 5. Device identity (stable machine id used by telemetry)
             try { DeviceIdentityService.Refresh(); } catch (Exception ex) { _logger?.LogWarning(ex, "DeviceIdentity init failed"); }
 
-            // 6. Autostart registry entry. In /auto mode ensure it is enabled.
+            // 6. Autostart registry entry: always sync on startup (not only in /auto) so
+            // normal launches & updates register HKCU\...\Run\SyncoraConnector automatically.
             _startupService = new StartupService();
             try
             {
-                if (cmd.IsAutoStart)
-                {
-                    _startupService.Sync(true);
-                    _logger?.LogInformation("Autostart enabled: HKCU Run\\TallyLink");
-                }
-                else
-                {
-                    _logger?.LogInformation("Autostart state: " + _startupService.DescribeState());
-                }
+#if !DEBUG
+                var desiredStartWithWindows = _settings?.SyncSettings?.StartWithWindows ?? true;
+                _startupService.Sync(desiredStartWithWindows);
+#endif
+                _logger?.LogInformation("Autostart state: " + _startupService.DescribeState());
             }
             catch (Exception ex) { _logger?.LogWarning(ex, "StartupService failed"); }
+
+            try
+            {
+                Microsoft.Win32.SystemEvents.SessionSwitch += OnSystemSessionSwitch;
+            }
+            catch { }
 
             // 7. Auth
             InitializeAuth();
 
-            // 8. System tray + toasts (start hidden; shown when the window is shown)
+            // 8. System tray + toasts (always visible so Close X -> Tray works anytime like Livekeeping)
             try
             {
                 _tray = new TrayService();
                 _tray.Initialize(new TrayOptions
                 {
-                    ShowWindow = ShowMainWindow,
-                    HideWindow = HideMainWindow,
+                    ShowWindow = () => Dispatcher.BeginInvoke(ShowMainWindow),
+                    HideWindow = () => Dispatcher.BeginInvoke(() => HideMainWindow(showHintToast: false)),
                     SyncNow = () =>
                     {
                         try { TriggerImmediateSync(); } catch (Exception ex) { _logger?.LogWarning(ex, "SyncNow failed"); }
@@ -139,15 +144,16 @@ namespace TallySyncApp
                     {
                         try { Process.Start(new ProcessStartInfo(LoggingService.LogDirectory) { UseShellExecute = true }); } catch (Exception ex) { _logger?.LogWarning(ex, "OpenLogFolder failed"); }
                     },
-                    Exit = () => Shutdown(),
+                    Exit = () => Dispatcher.BeginInvoke(() => RequestTrayExit(confirm: true)),
                     #if DEBUG
                     Tooltip = $"SYNCORA Debug {DeviceIdentityService.Cached?.DesktopVersion ?? ""}",
 #else
                     Tooltip = $"SYNCORA {DeviceIdentityService.Cached?.DesktopVersion ?? ""}",
 #endif
-                    StartHidden = true
+                    StartHidden = false
                 });
                 ToastService.Attach(_tray.Icon!);
+                GetSyncManager().StatusChanged += OnSyncManagerStatusChangedForTray;
             }
             catch (Exception ex) { _logger?.LogWarning(ex, "Tray init failed"); }
 
@@ -205,11 +211,11 @@ namespace TallySyncApp
             // 12. Decide what to show
             if (cmd.IsAutoStart)
             {
-                // Auto-start: if a session already exists, run in the tray only.
+                // Auto-start at PC boot: stay completely silent in System Tray with zero window flash.
                 if (_authService!.IsLoggedIn)
                 {
-                    ShowMainWindow();
-                    HideMainWindow();
+                    _tray?.ShowTrayIcon();
+                    _tray?.SyncVisibilityWithWindow(false);
                 }
                 else
                 {
@@ -367,34 +373,115 @@ private async Task CheckForUpdates()
 
         private void ShowMainWindow()
         {
-            _mainWindow ??= new MainWindow();
+            if (_mainWindow == null || _mainWindow.IsClosed)
+                _mainWindow = new MainWindow();
+
+            _mainWindow.ShowInTaskbar = true;
+            if (!_mainWindow.IsVisible)
+                _mainWindow.Show();
             if (_mainWindow.WindowState == WindowState.Minimized)
-            {
                 _mainWindow.WindowState = WindowState.Normal;
-            }
-            _mainWindow.Show();
+
             _mainWindow.Activate();
-            // Notify the tray of the new state; calling TrayService.ShowWindow() here would
-            // recurse forever, because the tray's "Show window" callback is this very method.
+            try
+            {
+                _mainWindow.Topmost = true;
+                _mainWindow.Topmost = false;
+            }
+            catch { }
+
+            _tray?.ShowTrayIcon();
             _tray?.SyncVisibilityWithWindow(true);
         }
 
-        private void HideMainWindow()
+        internal void HideMainWindow(bool showHintToast = false)
         {
             if (_mainWindow != null)
             {
                 _mainWindow.Hide();
-                _mainWindow.WindowState = WindowState.Minimized;
             }
-            // Same recursion hazard as ShowMainWindow(): the tray's "Hide window" callback
-            // is this method, so only the state is synced and the icon is made visible.
             _tray?.SyncVisibilityWithWindow(false);
             _tray?.ShowTrayIcon();
+
+            if (showHintToast && !_hasShownTrayMinimizeHint)
+            {
+                _hasShownTrayMinimizeHint = true;
+                try
+                {
+                    ToastService.Show(
+                        "SYNCORA Running in Background",
+                        "Auto-sync & WhatsApp notifications stay active. Right-click the tray icon to Quit.",
+                        false);
+                }
+                catch { }
+            }
+        }
+
+        internal void RequestTrayExit(bool confirm = true)
+        {
+            if (_isExiting) return;
+            if (confirm)
+            {
+                var answer = MessageBox.Show(
+                    "Quit SYNCORA Connector?\n\nAuto-sync aur WhatsApp notifications tab tak ruk jayenge jab tak app dobara nahi kholte.",
+                    "Quit SYNCORA Connector",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
+            }
+
+            _isExiting = true;
+            if (_mainWindow != null)
+                _mainWindow.AllowRealClose = true;
+            Shutdown();
+        }
+
+        public void ApplyStartWithWindows(bool enabled)
+        {
+            try
+            {
+                _startupService?.Sync(enabled);
+                _logger?.LogInformation("Autostart updated: " + (_startupService?.DescribeState() ?? enabled.ToString()));
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "ApplyStartWithWindows failed");
+            }
+        }
+
+        private void OnSyncManagerStatusChangedForTray(object? sender, SyncStatus status)
+        {
+            try
+            {
+                _tray?.SetStatus(status.Message, status.IsServerConnected);
+            }
+            catch { }
+        }
+
+        private void OnSystemSessionSwitch(object? sender, Microsoft.Win32.SessionSwitchEventArgs e)
+        {
+            if (e.Reason != Microsoft.Win32.SessionSwitchReason.SessionUnlock) return;
+            if (_authService?.IsLoggedIn != true) return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var mgr = GetSyncManager();
+                    if (!mgr.IsAutoSyncRunning)
+                        Dispatcher.BeginInvoke(() => { try { mgr.StartSync(); } catch { } });
+                    if (WhatsAppHelperManager.HasSavedSession())
+                        await WhatsAppHelperManager.EnsureStartedAsync();
+                }
+                catch { }
+            });
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
             _logger?.LogInformation("Application shutting down...");
+            try { Microsoft.Win32.SystemEvents.SessionSwitch -= OnSystemSessionSwitch; } catch { }
+            try { if (_syncManager != null) _syncManager.StatusChanged -= OnSyncManagerStatusChangedForTray; } catch { }
             try { WhatsAppHelperManager.StopOwnedHelper(); } catch { }
             try { _syncManager?.StopSync(); } catch { }
             try { _realtime?.Stop(); } catch { }
@@ -491,11 +578,16 @@ private async Task CheckForUpdates()
             // Closing the main window must not end the app - the login window follows.
             Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            // Close all windows
+            // Close all windows (bypass close-to-tray interception on logout)
+            if (_mainWindow != null)
+            {
+                _mainWindow.AllowRealClose = true;
+            }
             foreach (Window window in Current.Windows)
             {
                 window.Close();
             }
+            _mainWindow = null;
 
             // Show login again
             ((App)Current).ShowLoginWindow();

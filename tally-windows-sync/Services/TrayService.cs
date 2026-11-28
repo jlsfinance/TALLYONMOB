@@ -54,6 +54,7 @@ namespace TallySyncApp.Services
     public sealed class TrayService : IDisposable
     {
         private TaskbarIcon? _icon;
+        private MenuItem? _headerItem;
         private TrayOptions? _options;
         private string _statusText = "Starting";
         private bool _isConnected;
@@ -155,25 +156,28 @@ namespace TallySyncApp.Services
         {
             var menu = new ContextMenu();
 
-            var header = new MenuItem
+            _headerItem = new MenuItem
             {
                 Header = TooltipText,
                 IsEnabled = false,
                 FontWeight = FontWeights.Bold,
             };
-            menu.Items.Add(header);
+            menu.Items.Add(_headerItem);
 
             menu.Items.Add(new Separator());
 
-            menu.Items.Add(CreateItem("Show window", ShowWindow));
-            menu.Items.Add(CreateItem("Hide window", HideWindow));
-            menu.Items.Add(CreateItem("Sync now", () => SafeInvoke(_options?.SyncNow)));
-            menu.Items.Add(CreateItem("Open log folder", OpenLogFolder));
+            menu.Items.Add(CreateItem("Open SYNCORA", ShowWindow));
+            menu.Items.Add(CreateItem("Hide to Tray", HideWindow));
+            menu.Items.Add(CreateItem("Sync Now", () => SafeInvoke(_options?.SyncNow)));
+            menu.Items.Add(CreateItem("Open Log Folder", OpenLogFolder));
 
             menu.Items.Add(new Separator());
-            menu.Items.Add(CreateItem("Exit", () => SafeInvoke(_options?.Exit)));
+            menu.Items.Add(CreateItem("Quit SYNCORA", () => SafeInvoke(_options?.Exit)));
 
-            menu.Opened += (_, _) => header.Header = TooltipText;
+            menu.Opened += (_, _) =>
+            {
+                if (_headerItem != null) _headerItem.Header = TooltipText;
+            };
 
             return menu;
         }
@@ -259,18 +263,8 @@ namespace TallySyncApp.Services
                     return;
 
                 _icon.ToolTipText = TooltipText;
-                if (_icon.ContextMenu is { } menu)
-                {
-                    foreach (var item in menu.Items)
-                    {
-                        if (item is MenuItem { Tag: null } menuItem &&
-                            menuItem.Header is string header &&
-                            header.StartsWith("TallyLink", StringComparison.OrdinalIgnoreCase))
-                        {
-                            menuItem.Header = TooltipText;
-                        }
-                    }
-                }
+                if (_headerItem is not null)
+                    _headerItem.Header = TooltipText;
             });
         }
 

@@ -3,7 +3,7 @@
 ; Needs:  dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish\installer-input
 
 #define AppName "SYNCORA Connector"
-#define AppVersion "3.2.28"
+#define AppVersion "3.2.29"
 #ifndef PublishDir
   #define PublishDir "..\publish\installer-input"
 #endif
@@ -11,6 +11,7 @@
 
 [Setup]
 AppId={{9C4B7E51-2F4A-4C8D-9B3E-6A1D5F8E7C20}
+AppMutex=Local\TallyLink
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -46,6 +47,9 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "SyncoraConnector"; ValueType: string; ValueData: """{app}\{#AppExe}"" /auto"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent

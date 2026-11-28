@@ -165,26 +165,23 @@ namespace TallySyncApp.Services
                     WorkingDirectory = helperDir,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
                 };
                 psi.Environment["PUPPETEER_SKIP_DOWNLOAD"] = "true";
                 psi.Environment["TEMP"] = tmpDir;
                 psi.Environment["TMP"] = tmpDir;
                 psi.Environment["WHATSAPP_TMP_DIR"] = tmpDir;
                 psi.Environment["WHATSAPP_AUTH_DIR"] = authDir;
+                psi.Environment["WHATSAPP_LOG_FILE"] = logPath;
 
                 var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-                proc.OutputDataReceived += (_, ev) => AppendLog(logPath, ev.Data);
-                proc.ErrorDataReceived += (_, ev) => AppendLog(logPath, ev.Data);
 
                 if (!proc.Start())
                 {
                     return (false, "Could not start local WhatsApp helper process.");
                 }
 
-                proc.BeginOutputReadLine();
-                proc.BeginErrorReadLine();
                 _ownedProcess = proc;
 
                 for (int attempt = 0; attempt < 30; attempt++)
