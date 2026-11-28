@@ -19,6 +19,7 @@ namespace TallySyncApp
     {
         private bool _webViewInitialized;
         private DispatcherTimer? _whatsAppQrTimer;
+        private bool _whatsAppReturnToDashboard;
         private string? _dismissedDownloadingVersion;
         private string? _dismissedReadyVersion;
 
@@ -61,6 +62,7 @@ namespace TallySyncApp
                 SetNavIcon(NavSyncStatus, "\uE895");
                 SetNavIcon(NavSettings, "\uE713");
                 SetNavIcon(NavHistory, "\uE81C");
+                SetNavIcon(NavLicenseHistory, "\uE8D7");
 
                 // Default to dashboard
                 PageTitle.Text = "Dashboard";
@@ -181,7 +183,13 @@ namespace TallySyncApp
         private async Task<bool> RefreshWhatsAppStatusAsync()
         {
             bool isReady = false;
+            bool hasQr = false;
             string statusText = "Helper not running — click Open WhatsApp QR to start";
+            string shortText = "Not running";
+            string dotHex = "#94A3B8";
+            string pillBgHex = "#F1F5F9";
+            string pillFgHex = "#475569";
+
             try
             {
                 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
@@ -190,16 +198,34 @@ namespace TallySyncApp
                 {
                     var json = await resp.Content.ReadAsStringAsync();
                     var data = JsonConvert.DeserializeObject<dynamic>(json);
-                    bool ready = data?.ready == true;
-                    bool hasQr = data?.hasQr == true;
+                    isReady = data?.ready == true;
+                    hasQr = data?.hasQr == true;
                     string? phone = data?.connectedPhone?.ToString();
-                    isReady = ready;
 
-                    statusText = ready
-                        ? $"Connected (+{phone ?? "Linked"}) — Sync alerts & Voucher PDFs active"
-                        : hasQr
-                            ? "Waiting for QR scan — scan via WhatsApp Linked Devices"
-                            : "Starting WhatsApp helper — auto-refreshing status...";
+                    if (isReady)
+                    {
+                        statusText = $"Connected (+{phone ?? "Linked"}) — Sync alerts & Voucher PDFs active";
+                        shortText = $"Connected (+{phone ?? "Linked"})";
+                        dotHex = "#10B981";
+                        pillBgHex = "#ECFDF5";
+                        pillFgHex = "#047857";
+                    }
+                    else if (hasQr)
+                    {
+                        statusText = "Waiting for QR scan — scan via WhatsApp Linked Devices";
+                        shortText = "QR Ready — Scan";
+                        dotHex = "#F59E0B";
+                        pillBgHex = "#FFFBEB";
+                        pillFgHex = "#B45309";
+                    }
+                    else
+                    {
+                        statusText = "Starting WhatsApp helper — auto-refreshing status...";
+                        shortText = "Starting...";
+                        dotHex = "#F59E0B";
+                        pillBgHex = "#FFFBEB";
+                        pillFgHex = "#B45309";
+                    }
                 }
             }
             catch
@@ -207,11 +233,25 @@ namespace TallySyncApp
                 // Helper not listening on 127.0.0.1:3001
             }
 
+            var dotBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(dotHex));
+            var pillBgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pillBgHex));
+            var pillFgBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(pillFgHex));
+
             WhatsAppStatusText.Text = statusText;
             if (WhatsAppQrOverlayStatusText != null)
-            {
                 WhatsAppQrOverlayStatusText.Text = statusText;
+            if (DashboardWhatsAppStatusText != null)
+            {
+                DashboardWhatsAppStatusText.Text = shortText;
+                DashboardWhatsAppStatusText.Foreground = pillFgBrush;
             }
+            if (DashboardWhatsAppDot != null)
+                DashboardWhatsAppDot.Fill = dotBrush;
+            if (DashboardWhatsAppPill != null)
+                DashboardWhatsAppPill.Background = pillBgBrush;
+            if (SidebarWhatsAppDot != null)
+                SidebarWhatsAppDot.Fill = dotBrush;
+
             return isReady;
         }
 
@@ -244,8 +284,12 @@ namespace TallySyncApp
 
         private async void OpenWhatsAppQr_Click(object sender, RoutedEventArgs e)
         {
+            _whatsAppReturnToDashboard = DashboardPanel.Visibility == Visibility.Visible;
+            DashboardPanel.Visibility = Visibility.Collapsed;
             SettingsPanel.Visibility = Visibility.Collapsed;
             WhatsAppQrPanel.Visibility = Visibility.Visible;
+            if (WhatsAppQrBackButton != null)
+                WhatsAppQrBackButton.Content = _whatsAppReturnToDashboard ? "← Back to Dashboard" : "← Back to Settings";
             PageTitle.Text = "WhatsApp QR";
             WhatsAppQrLoadingPanel.Visibility = Visibility.Visible;
             WhatsAppQrWebView.Visibility = Visibility.Collapsed;
@@ -293,8 +337,16 @@ namespace TallySyncApp
         {
             StopWhatsAppQrTimer();
             WhatsAppQrPanel.Visibility = Visibility.Collapsed;
-            SettingsPanel.Visibility = Visibility.Visible;
-            PageTitle.Text = "Settings";
+            if (_whatsAppReturnToDashboard)
+            {
+                DashboardPanel.Visibility = Visibility.Visible;
+                PageTitle.Text = "Dashboard";
+            }
+            else
+            {
+                SettingsPanel.Visibility = Visibility.Visible;
+                PageTitle.Text = "Settings";
+            }
             await RefreshWhatsAppStatusAsync();
         }
 

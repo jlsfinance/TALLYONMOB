@@ -1,4 +1,4 @@
-const pcVersion = '3.2.26';
+const pcVersion = '3.2.27';
 
 export const APP_INFO = {
     name: 'Syncora',

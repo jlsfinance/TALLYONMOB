@@ -6,11 +6,11 @@
         xmlns:vm="clr-namespace:TallySyncApp.ViewModels"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="SYNCORA Connector" Height="720" Width="1120"
-        MinHeight="600" MinWidth="900"
+        Title="SYNCORA Connector" Height="780" Width="1160"
+        MinHeight="640" MinWidth="960"
         Icon="app_icon.ico"
         FontFamily="Segoe UI"
-        Background="#F2F6F4"
+        Background="#F5F7FA"
         WindowStyle="SingleBorderWindow"
         AllowsTransparency="False">
 
@@ -21,62 +21,60 @@
         <local:StringToBrushConverter x:Key="StringToBrushConverter" xmlns:local="clr-namespace:TallySyncApp" />
         <local:InverseBoolConverter x:Key="InverseBoolConverter" xmlns:local="clr-namespace:TallySyncApp" />
 
-        <!-- Sidebar navigation button style -->
+        <!-- Apple / Google Light Frosted Sidebar Pill -->
         <Style x:Key="NavButtonStyle" TargetType="RadioButton">
-            <Setter Property="Height" Value="48"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Foreground" Value="#475569"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Padding" Value="20,0"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Margin" Value="12,2"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border x:Name="RootBorder"
-                                CornerRadius="9"
-                                Margin="8,2"
+                                CornerRadius="10"
                                 Background="{TemplateBinding Background}"
-                                Height="44"
                                 Padding="{TemplateBinding Padding}">
-                            <Border.Child>
-                                <Grid>
-                                    <!-- Active indicator bar -->
-                                    <Border x:Name="ActiveBar"
-                                            Width="3"
-                                            Height="0"
-                                            Background="#0B8968"
-                                            CornerRadius="0,3,3,0"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"/>
-                                    <StackPanel Orientation="Horizontal"
-                                                VerticalAlignment="Center"
-                                                Margin="14,0,0,0">
-                                        <TextBlock x:Name="IconText"
-                                                   FontFamily="Segoe MDL2 Assets"
-                                                   FontSize="18"
-                                                   Width="24"
-                                                   TextAlignment="Center"
-                                                   Margin="0,0,14,0"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="LabelText"
-                                                   Text="{TemplateBinding Content}"
-                                                   FontSize="14"
-                                                   FontWeight="Medium"
-                                                   VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border.Child>
+                            <Grid>
+                                <Border x:Name="ActiveBar"
+                                        Width="3"
+                                        Height="0"
+                                        Background="#059669"
+                                        CornerRadius="2"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal"
+                                            VerticalAlignment="Center"
+                                            Margin="10,0,0,0">
+                                    <TextBlock x:Name="IconText"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="16"
+                                               Width="22"
+                                               TextAlignment="Center"
+                                               Foreground="#64748B"
+                                               Margin="0,0,12,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="LabelText"
+                                               Text="{TemplateBinding Content}"
+                                               FontSize="13.5"
+                                               FontWeight="Medium"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#174A61"/>
-                                <Setter TargetName="ActiveBar" Property="Height" Value="28"/>
-                                <Setter Property="Foreground" Value="White"/>
-                                <Setter TargetName="LabelText" Property="FontWeight" Value="SemiBold"/>
-                            </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="#183B4E"/>
-                                <Setter Property="Foreground" Value="#E2E8F0"/>
+                                <Setter TargetName="RootBorder" Property="Background" Value="#F1F5F9"/>
+                                <Setter Property="Foreground" Value="#0F172A"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#ECFDF5"/>
+                                <Setter TargetName="ActiveBar" Property="Height" Value="20"/>
+                                <Setter TargetName="IconText" Property="Foreground" Value="#059669"/>
+                                <Setter Property="Foreground" Value="#065F46"/>
+                                <Setter TargetName="LabelText" Property="FontWeight" Value="SemiBold"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -84,11 +82,9 @@
             </Setter>
         </Style>
 
-        <!-- Content area style with transition -->
         <Style x:Key="ContentArea" TargetType="Border">
-            <Setter Property="Background" Value="#F9FAFB"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Margin" Value="0,0,0,0"/>
+            <Setter Property="Background" Value="#F5F7FA"/>
+            <Setter Property="CornerRadius" Value="12"/>
         </Style>
     </Window.Resources>
 
@@ -98,15 +94,15 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="212"/>
+            <ColumnDefinition Width="228"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- ======== LEFT SIDEBAR ======== -->
+        <!-- ======== APPLE / GOOGLE LIGHT SIDEBAR ======== -->
         <Border Grid.Column="0"
-                Background="#0D2131"
-                Width="212"
-                HorizontalAlignment="Left">
+                Background="White"
+                BorderBrush="#E6EAF0"
+                BorderThickness="0,0,1,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -115,42 +111,38 @@
                 </Grid.RowDefinitions>
 
                 <!-- App Branding -->
-                <Border Padding="16,22,16,20" BorderBrush="#294254" BorderThickness="0,0,0,1">
+                <Border Padding="18,20,18,18" BorderBrush="#F1F5F9" BorderThickness="0,0,0,1">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="42" Height="42" Background="#050A17" CornerRadius="12" ClipToBounds="True">
+                        <Border Width="40" Height="40" Background="#0F172A" CornerRadius="11" ClipToBounds="True">
                             <Image Source="syncora-connector.png" Stretch="UniformToFill"/>
                         </Border>
                         <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="SYNCORA"
-                                       Foreground="White"
-                                       FontSize="16"
+                                       Foreground="#0F172A"
+                                       FontSize="15.5"
                                        FontWeight="Bold"/>
-                            <TextBlock Text="CONNECTOR"
-                                       Foreground="#69C7EC"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
+                            <TextBlock Text="TALLY CONNECTOR"
+                                       Foreground="#059669"
+                                       FontSize="10"
+                                       FontWeight="Bold"
                                        Margin="0,1,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- Navigation Items -->
-                <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                <StackPanel Grid.Row="1" Margin="0,12,0,0">
                     <RadioButton x:Name="NavDashboard"
                                  Content="Dashboard"
                                  Style="{StaticResource NavButtonStyle}"
                                  IsChecked="True"
                                  GroupName="NavGroup"
                                  Checked="NavButton_Checked"
-                                 Tag="DashboardPanel">
-                        <RadioButton.Resources>
-                            <TextBlock x:Key="IconText" Text="📊"/>
-                        </RadioButton.Resources>
-                    </RadioButton>
+                                 Tag="DashboardPanel"/>
                     <RadioButton x:Name="NavSyncStatus"
                                  Content="Sync Status"
                                  Style="{StaticResource NavButtonStyle}"
@@ -174,77 +166,74 @@
                                  Style="{StaticResource NavButtonStyle}"
                                  GroupName="NavGroup"
                                  Checked="NavButton_Checked"
-                                 Tag="LicenseHistoryPanel">
-                        <RadioButton.Resources>
-                            <TextBlock x:Key="IconText" Text="📜"/>
-                        </RadioButton.Resources>
-                    </RadioButton>
+                                 Tag="LicenseHistoryPanel"/>
                 </StackPanel>
 
-                <!-- Sidebar Footer -->
-                <Border Grid.Row="2"
-                        BorderBrush="#1E293B"
-                        BorderThickness="0,1,0,0"
-                        Padding="16,16"
-                        Margin="0,0,0,0">
+                <!-- Sidebar Footer Card -->
+                <Border Grid.Row="2" Padding="14,0,14,16">
                     <StackPanel>
-                    <!-- Connection Status Indicators -->
-                    <StackPanel Margin="0,0,0,12">
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Ellipse Width="8" Height="8"
-                                     Fill="{Binding Status.IsTallyConnected, Converter={StaticResource BoolToColorConverter}}"
-                                     Margin="0,0,8,0"
-                                     VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1"
-                                       Text="Tally Connection"
-                                       Foreground="#A9C4B7"
-                                       FontSize="12"/>
-                        </Grid>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Ellipse Width="8" Height="8"
-                                     Fill="{Binding Status.IsServerConnected, Converter={StaticResource BoolToColorConverter}}"
-                                     Margin="0,0,8,0"
-                                     VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1"
-                                       Text="Cloud Server"
-                                       Foreground="#94A3B8"
-                                       FontSize="12"/>
-                        </Grid>
-                    </StackPanel>
+                        <Border Background="#F8FAFC"
+                                BorderBrush="#E6EAF0"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="12,10"
+                                Margin="0,0,0,10">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,7">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="8" Height="8"
+                                             Fill="{Binding Status.IsTallyConnected, Converter={StaticResource BoolToColorConverter}}"
+                                             Margin="0,0,8,0"
+                                             VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="Tally Connection"
+                                               Foreground="#334155"
+                                               FontSize="12"
+                                               FontWeight="Medium"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,7">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="8" Height="8"
+                                             Fill="{Binding Status.IsServerConnected, Converter={StaticResource BoolToColorConverter}}"
+                                             Margin="0,0,8,0"
+                                             VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="Cloud Server"
+                                               Foreground="#334155"
+                                               FontSize="12"
+                                               FontWeight="Medium"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse x:Name="SidebarWhatsAppDot"
+                                             Width="8" Height="8"
+                                             Fill="#94A3B8"
+                                             Margin="0,0,8,0"
+                                             VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="WhatsApp Bot"
+                                               Foreground="#334155"
+                                               FontSize="12"
+                                               FontWeight="Medium"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
-                    <!-- Version -->
-                    <TextBlock x:Name="SidebarVersionText"
-                               Text=""
-                               Foreground="#475569"
-                               FontSize="11"
-                               HorizontalAlignment="Center"/>
-
-                    <!-- Logout -->
-                    <Button Content="Logout"
-                            Click="LogoutButton_Click"
-                            Background="Transparent"
-                            Foreground="#EF4444"
-                            BorderThickness="0"
-                            Height="34"
-                            Padding="12,0"
-                            Margin="0,12,0,0"
-                            FontSize="12"
-                            Cursor="Hand"
-                            HorizontalAlignment="Left">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="6"/>
-                            </Style>
-                        </Button.Resources>
-                    </Button>
+                        <TextBlock x:Name="SidebarVersionText"
+                                   Text=""
+                                   Foreground="#64748B"
+                                   FontSize="11"
+                                   FontWeight="Medium"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -261,8 +250,8 @@
             <!-- ===== TOP HEADER BAR + AUTO-UPDATE BANNER ===== -->
             <StackPanel Grid.Row="0">
             <Border Background="White"
-                    Padding="22,12,22,12"
-                    BorderBrush="#DDEAE3"
+                    Padding="24,14"
+                    BorderBrush="#E6EAF0"
                     BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -271,56 +260,63 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Page Title -->
-                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                    <TextBlock x:Name="PageTitle"
-                               Text="Dashboard"
-                                                   FontSize="18"
-                               FontWeight="Bold"
-                               Foreground="#17342E"
-                               VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding CompanyDisplayName}"
-                               ToolTip="{Binding CompanyDisplayName}"
-                               FontSize="12" Foreground="#526A78"
-                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    <!-- Page Title + Active Company -->
+                    <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+                        <TextBlock x:Name="PageTitle"
+                                   Text="Dashboard"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Foreground="#0F172A"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding CompanyDisplayName}"
+                                   ToolTip="{Binding CompanyDisplayName}"
+                                   FontSize="12"
+                                   Foreground="#64748B"
+                                   Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <!-- Sync Status Badge -->
+                    <!-- Sync Status Pill -->
                     <Border Grid.Column="1"
-                            Background="#E4F6EC"
-                            CornerRadius="20"
+                            Background="#ECFDF5"
+                            BorderBrush="#A7F3D0"
+                            BorderThickness="1"
+                            CornerRadius="16"
                             Padding="14,6"
-                            Margin="0,0,14,0"
+                            Margin="0,0,10,0"
                             VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Status.StatusText}"
-                                       Foreground="#087A5D"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <TextBlock Text="{Binding Status.StatusText}"
+                                   Foreground="#047857"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"/>
                     </Border>
 
-                    <!-- User Info + Logout -->
+                    <!-- Account Pill + Logout -->
                     <StackPanel Grid.Column="2"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
-                        <Border Background="#F3F4F6"
-                                CornerRadius="20"
+                        <Border Background="#F8FAFC"
+                                BorderBrush="#E6EAF0"
+                                BorderThickness="1"
+                                CornerRadius="16"
                                 Padding="12,6"
                                 Margin="0,0,10,0">
                             <StackPanel Orientation="Horizontal">
                                 <Border Width="22" Height="22"
-                                        Background="#2563EB"
+                                        Background="#E0E7FF"
                                         CornerRadius="11"
                                         Margin="0,0,8,0">
-                                    <TextBlock Text="👤" FontSize="12"
+                                    <TextBlock Text="&#xE77B;"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="11"
+                                               Foreground="#4F46E5"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
                                 </Border>
                                 <TextBlock x:Name="UserEmailText"
                                            Text="{Binding UserEmail}"
-                                           Foreground="#374151"
+                                           Foreground="#334155"
                                            FontSize="12"
                                            FontWeight="SemiBold"
                                            VerticalAlignment="Center"/>
@@ -329,20 +325,10 @@
                         <Button x:Name="LogoutButton"
                                 Click="LogoutButton_Click"
                                 Content="Logout"
-                                Background="#FEE2E2"
-                                Foreground="#DC2626"
-                                BorderThickness="0"
-                                Padding="14,6"
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Cursor="Hand"
-                                MinHeight="34">
-                            <Button.Resources>
-                                <Style TargetType="Border">
-                                    <Setter Property="CornerRadius" Value="8"/>
-                                </Style>
-                            </Button.Resources>
-                        </Button>
+                                Style="{StaticResource DangerButton}"
+                                MinHeight="34"
+                                Padding="14,0"
+                                FontSize="12"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -353,7 +339,7 @@
                     Background="#ECFDF5"
                     BorderBrush="#A7F3D0"
                     BorderThickness="0,0,0,1"
-                    Padding="22,9">
+                    Padding="24,9">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="RestartUpdateButton"
@@ -361,14 +347,18 @@
                                 Click="RestartUpdateButton_Click"
                                 Style="{StaticResource ModernButton}"
                                 Visibility="Collapsed"
+                                MinHeight="32"
                                 Height="32"
                                 Padding="14,0"
+                                FontSize="12"
                                 Margin="0,0,8,0"/>
                         <Button Content="Later"
                                 Click="DismissUpdateBanner_Click"
                                 Style="{StaticResource GhostButton}"
+                                MinHeight="32"
                                 Height="32"
-                                Padding="12,0"/>
+                                Padding="12,0"
+                                FontSize="12"/>
                     </StackPanel>
                     <TextBlock x:Name="UpdateBannerText"
                                Text="Checking for updates..."
@@ -387,9 +377,9 @@
             <!-- DASHBOARD PANEL -->
             <ScrollViewer x:Name="DashboardPanel"
                           Grid.Row="1"
-                          Background="#F2F6F4"
+                          Background="#F5F7FA"
                           Visibility="Visible">
-                <Grid Margin="24,20,24,20">
+                <Grid Margin="24,20,24,24">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -397,170 +387,116 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- KPI Cards Row -->
-                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                    <!-- Row 0: 4 Uniform Apple/Google KPI Cards -->
+                    <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="14"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="14"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="14"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- KPI Card 1: Records Synced -->
                         <Border Grid.Column="0" Style="{StaticResource KpiCard}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Border Width="36" Height="36"
-                                            Background="#DBEAFE"
-                                            CornerRadius="10"
-                                            Margin="0,0,12,0">
-                                        <TextBlock Text="📥" FontSize="18"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Border Width="34" Height="34" Background="#EFF6FF" CornerRadius="10" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#2563EB"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
-                                    <TextBlock Text="Records Synced"
-                                               Foreground="#6B7280"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="Records Synced" Foreground="#64748B" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Grid.Row="1"
-                                           Text="{Binding CloudRecordsText}"
+                                <TextBlock Text="{Binding CloudRecordsText}"
                                            ToolTip="{Binding CloudRecordsDetail}"
-                                           FontSize="32"
-                                           FontWeight="Bold"
-                                           Foreground="#1F2937"/>
-                                <TextBlock Grid.Row="2"
-                                           Text="Supabase total"
-                                           Foreground="#9CA3AF"
-                                           FontSize="12"
-                                           Margin="0,4,0,0"/>
-                            </Grid>
+                                           FontSize="28" FontWeight="Bold" Foreground="#0F172A"/>
+                                <TextBlock Text="Synced in cloud" Foreground="#94A3B8" FontSize="11.5" Margin="0,4,0,0"/>
+                            </StackPanel>
                         </Border>
 
                         <!-- KPI Card 2: Last Sync Time -->
-                        <Border Grid.Column="1" Style="{StaticResource KpiCard}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Border Width="36" Height="36"
-                                            Background="#FEF3C7"
-                                            CornerRadius="10"
-                                            Margin="0,0,12,0">
-                                        <TextBlock Text="⏰" FontSize="18"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                        <Border Grid.Column="2" Style="{StaticResource KpiCard}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Border Width="34" Height="34" Background="#FFFBEB" CornerRadius="10" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE823;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#D97706"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
-                                    <TextBlock Text="Last Sync"
-                                               Foreground="#6B7280"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="Last Sync" Foreground="#64748B" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Grid.Row="1"
-                                           Text="{Binding CloudLastSyncTime}"
-                                           FontSize="28"
-                                           FontWeight="Bold"
-                                           Foreground="#1F2937"/>
-                                <TextBlock Grid.Row="2"
-                                           Text="{Binding CloudLastSyncDate}"
-                                           Foreground="#9CA3AF"
-                                           FontSize="12"
-                                           Margin="0,4,0,0"/>
-                            </Grid>
+                                <TextBlock Text="{Binding CloudLastSyncTime}"
+                                           FontSize="26" FontWeight="Bold" Foreground="#0F172A"/>
+                                <TextBlock Text="{Binding CloudLastSyncDate}" Foreground="#94A3B8" FontSize="11.5" Margin="0,4,0,0"/>
+                            </StackPanel>
                         </Border>
 
                         <!-- KPI Card 3: Sync Progress -->
-                        <Border Grid.Column="2" Style="{StaticResource KpiCard}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Border Width="36" Height="36"
-                                            Background="#D1FAE5"
-                                            CornerRadius="10"
-                                            Margin="0,0,12,0">
-                                        <TextBlock Text="⚡" FontSize="18"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
+                        <Border Grid.Column="4" Style="{StaticResource KpiCard}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Border Width="34" Height="34" Background="#ECFDF5" CornerRadius="10" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#059669"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
-                                    <TextBlock Text="Progress"
-                                               Foreground="#6B7280"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="Progress" Foreground="#64748B" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Grid.Row="1"
-                                           Text="{Binding Status.ProgressPercentage, StringFormat='{}{0}%'}"
-                                           FontSize="28"
-                                           FontWeight="Bold"
-                                           Foreground="#0B8968"/>
-                                <TextBlock Grid.Row="2"
-                                           Text="{Binding Status.TotalRecords, StringFormat='{}{0} total records'}"
-                                           Foreground="#9CA3AF"
-                                           FontSize="12"
-                                           Margin="0,4,0,0"/>
-                            </Grid>
+                                <TextBlock Text="{Binding Status.ProgressPercentage, StringFormat='{}{0}%'}"
+                                           FontSize="28" FontWeight="Bold" Foreground="#059669"/>
+                                <TextBlock Text="{Binding Status.TotalRecords, StringFormat='{}{0} total records'}" Foreground="#94A3B8" FontSize="11.5" Margin="0,4,0,0"/>
+                            </StackPanel>
                         </Border>
 
-                        <!-- KPI Card 4: License -->
-                        <Border Grid.Column="3" Style="{StaticResource KpiCard}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Border Width="36" Height="36"
-                                            Background="#EDE9FE"
-                                            CornerRadius="10"
-                                            Margin="0,0,12,0">
-                                        <TextBlock Text="🔑" FontSize="18"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="License"
-                                               Foreground="#6B7280"
-                                               FontSize="13"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                                <TextBlock Grid.Row="1"
-                                           Text="{Binding LicensePlan}"
-                                           FontSize="26"
-                                           FontWeight="Bold"
-                                           Foreground="#1F2937"
+                        <!-- KPI Card 4: License (with inline Extend chip) -->
+                        <Border Grid.Column="6" Style="{StaticResource KpiCard}">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,10">
+                                    <Button DockPanel.Dock="Right"
+                                            Command="{Binding BuyLicenceCommand}"
+                                            Content="Extend"
+                                            Background="#EEF2FF"
+                                            Foreground="#4F46E5"
+                                            BorderBrush="#C7D2FE"
+                                            BorderThickness="1"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Padding="9,3"
+                                            MinHeight="24"
+                                            Cursor="Hand"
+                                            VerticalAlignment="Center">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="12"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="34" Height="34" Background="#EEF2FF" CornerRadius="10" Margin="0,0,10,0">
+                                            <TextBlock Text="&#xE8D7;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#4F46E5"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="License" Foreground="#64748B" FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <TextBlock Text="{Binding LicensePlan}"
+                                           FontSize="24" FontWeight="Bold" Foreground="#0F172A"
                                            TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Grid.Row="2"
-                                           Text="{Binding LicenseDetail}"
-                                           Foreground="#9CA3AF"
-                                           FontSize="12"
-                                           Margin="0,4,0,0"
+                                <TextBlock Text="{Binding LicenseDetail}"
+                                           Foreground="#94A3B8" FontSize="11.5" Margin="0,4,0,0"
                                            TextTrimming="CharacterEllipsis"/>
-                            </Grid>
+                            </StackPanel>
                         </Border>
                     </Grid>
 
-                    <!-- Account actions occupy their own row; never cover KPI values. -->
-                    <Grid Grid.Row="1" Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding CloudDataStatus}" Foreground="#64748B" FontSize="11" VerticalAlignment="Center" Margin="0,0,16,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding CloudDataStatus}"/>
-                        <Button Grid.Column="1" Command="{Binding BuyLicenceCommand}" Content="Buy / Extend Subscription"
-                                Style="{StaticResource ModernButton}" Background="#2563EB" Foreground="White"
-                                Height="40" Padding="18,0" FontSize="13" FontWeight="SemiBold" Cursor="Hand"/>
-                    </Grid>
-
-                    <!-- Status Banner & Progress -->
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <!-- Row 1: Sync Status & Engine Card -->
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,16,0,0">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -568,130 +504,186 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Status Header -->
-                            <Grid Margin="0,0,0,12">
+                            <!-- Header + Action Buttons -->
+                            <Grid Margin="0,0,0,14">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="Sync Status"
-                                               FontSize="16"
-                                               FontWeight="Bold"
-                                               Foreground="#1F2937"/>
-                                    <TextBlock Text="{Binding Status.Message}"
-                                               Foreground="#6B7280"
-                                               FontSize="13"
-                                               Margin="0,2,0,0"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Width="38" Height="38" Background="#ECFDF5" CornerRadius="11" Margin="0,0,12,0" VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE895;" FontFamily="Segoe MDL2 Assets" FontSize="17" Foreground="#059669"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Sync Engine"
+                                                   FontSize="15.5" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                        <TextBlock Text="{Binding Status.Message}"
+                                                   Foreground="#64748B" FontSize="12.5" Margin="0,2,0,0"/>
+                                    </StackPanel>
                                 </StackPanel>
 
-                                <!-- Action Buttons -->
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <Button Command="{Binding ManualSyncCommand}"
                                             IsEnabled="{Binding CanTriggerSync}"
-                                            Content="⟳ Sync Now"
+                                            Content="Sync Now"
                                             Style="{StaticResource ModernButton}"
-                                            MinWidth="100"
-                                            Height="36"
-                                            FontSize="13"
-                                            Padding="14,0"
-                                            Margin="0,0,8,0"
+                                            Height="36" Padding="15,0" FontSize="12.5" Margin="0,0,8,0"
                                             ToolTip="Incremental sync - sirf naya/badla hua data (ALTERID se)"/>
-                                    <Button Command="{Binding FullResyncCommand}"
-                                            IsEnabled="{Binding CanTriggerSync}"
-                                            Content="⟲ Full Resync"
-                                            Style="{StaticResource DangerButton}"
-                                            MinWidth="110"
-                                            Height="36"
-                                            FontSize="13"
-                                            Padding="14,0"
-                                            Margin="0,0,8,0"
-                                            ToolTip="Poora historical data dobara upload karta hai"/>
                                     <Button Command="{Binding StartSyncCommand}"
                                             IsEnabled="{Binding CanStartAutoSync}"
-                                            Content="▶ Auto-Sync"
-                                            Background="#10B981"
-                                            Style="{StaticResource ModernButton}"
-                                            MinWidth="100"
-                                            Height="36"
-                                            FontSize="13"
-                                            Padding="14,0"
-                                            Margin="0,0,8,0">
-                                        <Button.Resources>
-                                            <Style TargetType="Border">
-                                                <Setter Property="CornerRadius" Value="8"/>
-                                            </Style>
-                                        </Button.Resources>
-                                    </Button>
+                                            Content="Auto-Sync"
+                                            Background="#ECFDF5"
+                                            Foreground="#047857"
+                                            BorderBrush="#A7F3D0"
+                                            BorderThickness="1"
+                                            Style="{StaticResource GhostButton}"
+                                            Height="36" Padding="14,0" FontSize="12.5" Margin="0,0,8,0"/>
+                                    <Button Command="{Binding FullResyncCommand}"
+                                            IsEnabled="{Binding CanTriggerSync}"
+                                            Content="Full Resync"
+                                            Style="{StaticResource GhostButton}"
+                                            Height="36" Padding="14,0" FontSize="12.5" Margin="0,0,8,0"
+                                            ToolTip="Poora historical data dobara upload karta hai"/>
                                     <Button Command="{Binding StopSyncCommand}"
                                             IsEnabled="{Binding CanStopSync}"
-                                            Content="⏹ Stop"
+                                            Content="Stop"
                                             Style="{StaticResource DangerButton}"
-                                            MinWidth="80"
-                                            Height="36"
-                                            FontSize="13"
-                                            Padding="14,0"/>
+                                            Height="36" Padding="14,0" FontSize="12.5"/>
                                 </StackPanel>
                             </Grid>
 
                             <!-- Progress Bar -->
-                            <Grid Grid.Row="1" Margin="0,0,0,4">
+                            <Grid Grid.Row="1" Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <ProgressBar Height="10"
+                                <ProgressBar Height="8"
                                              Minimum="0" Maximum="100"
-                                             Value="{Binding Status.ProgressPercentage, Mode=OneWay, FallbackValue=0}"
-                                             Foreground="#2563EB"
-                                             Background="#E5E7EB"/>
+                                             Value="{Binding Status.ProgressPercentage, Mode=OneWay, FallbackValue=0}"/>
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding Status.ProgressPercentage, StringFormat='{}{0}%'}"
-                                           Foreground="#6B7280"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Margin="12,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                           Foreground="#475569" FontSize="12" FontWeight="SemiBold"
+                                           Margin="12,0,0,0" VerticalAlignment="Center"/>
                             </Grid>
 
-                            <!-- Stats row under progress -->
-                            <Grid Grid.Row="2" Margin="0,8,0,0">
+                            <!-- Subtle Metrics Row -->
+                            <Grid Grid.Row="2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                    <TextBlock Text="Total: " Foreground="#9CA3AF" FontSize="12"/>
-                                    <TextBlock Text="{Binding Status.TotalRecords}"
-                                               Foreground="#374151" FontSize="12" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Grid.Column="0" Margin="0,0,22,0">
+                                    <TextBlock Text="Total: " Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Text="{Binding Status.TotalRecords}" Foreground="#334155" FontSize="12" FontWeight="SemiBold"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Grid.Column="1">
-                                    <TextBlock Text="Processed: " Foreground="#9CA3AF" FontSize="12"/>
-                                    <TextBlock Text="{Binding Status.ProcessedRecords}"
-                                               Foreground="#10B981" FontSize="12" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="0,0,22,0">
+                                    <TextBlock Text="Processed: " Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Text="{Binding Status.ProcessedRecords}" Foreground="#059669" FontSize="12" FontWeight="SemiBold"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Grid.Column="2">
-                                    <TextBlock Text="Next sync: " Foreground="#9CA3AF" FontSize="12"/>
-                                    <TextBlock Text="{Binding Status.NextSyncTime, StringFormat='{}{0:HH:mm:ss}'}"
-                                               Foreground="#374151" FontSize="12" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Grid.Column="2" Margin="0,0,22,0">
+                                    <TextBlock Text="Next sync: " Foreground="#94A3B8" FontSize="12"/>
+                                    <TextBlock Text="{Binding Status.NextSyncTime, StringFormat='{}{0:HH:mm:ss}'}" Foreground="#334155" FontSize="12" FontWeight="SemiBold"/>
                                 </StackPanel>
+                                <TextBlock Grid.Column="3"
+                                           Text="{Binding CloudDataStatus}"
+                                           Foreground="#94A3B8"
+                                           FontSize="11.5"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding CloudDataStatus}"/>
                             </Grid>
                         </Grid>
                     </Border>
 
-                    <!-- Live Log Terminal -->
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0" Margin="0,0,0,0">
+                    <!-- Row 2: WhatsApp Notifications Card (Directly on Dashboard, matching other cards) -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <Border Width="42" Height="42" Background="#DCFCE7" CornerRadius="12" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#16A34A"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="WhatsApp Notifications"
+                                                   FontSize="15.5" FontWeight="SemiBold" Foreground="#0F172A"
+                                                   VerticalAlignment="Center"/>
+                                        <Border x:Name="DashboardWhatsAppPill"
+                                                Background="#F1F5F9"
+                                                CornerRadius="12"
+                                                Padding="10,4"
+                                                Margin="10,0,0,0"
+                                                VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="DashboardWhatsAppDot"
+                                                         Width="7" Height="7"
+                                                         Fill="#94A3B8"
+                                                         Margin="0,0,6,0"
+                                                         VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="DashboardWhatsAppStatusText"
+                                                           Text="Checking..."
+                                                           Foreground="#475569"
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="Auto-sends live sync alerts, 8 PM closing report &amp; desi Hindi voucher PDFs (Owner + Party)."
+                                               Foreground="#64748B" FontSize="12.5" Margin="0,4,0,8" TextWrapping="Wrap"/>
+                                    <CheckBox Content="Auto-send new voucher PDF to Party WhatsApp (when mobile is saved in Tally)"
+                                              IsChecked="{Binding Settings.SyncSettings.AutoSendPartyWhatsApp, Mode=TwoWay}"
+                                              Command="{Binding SaveSettingsCommand}"
+                                              Foreground="#334155"
+                                              FontSize="12.5"
+                                              FontWeight="Medium"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Open WhatsApp QR"
+                                        Click="OpenWhatsAppQr_Click"
+                                        Style="{StaticResource ModernButton}"
+                                        Height="36"
+                                        Padding="16,0"
+                                        FontSize="12.5"
+                                        Margin="0,0,8,0"/>
+                                <Button Content="Refresh"
+                                        Click="RefreshWhatsAppStatus_Click"
+                                        Style="{StaticResource GhostButton}"
+                                        Height="36"
+                                        Padding="14,0"
+                                        FontSize="12.5"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Row 3: Clean Dark Activity Console Card -->
+                    <Border Grid.Row="3"
+                            Margin="0,16,0,0"
+                            Background="#0F172A"
+                            BorderBrush="#1E293B"
+                            BorderThickness="1"
+                            CornerRadius="16"
+                            Effect="{StaticResource CardShadow}">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Terminal Header -->
-                            <Border Background="#1E1E1E"
-                                    CornerRadius="12,12,0,0"
-                                    Padding="16,12">
+                            <!-- Console Header -->
+                            <Border Padding="18,12" BorderBrush="#1E293B" BorderThickness="0,0,0,1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -699,44 +691,35 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Terminal dots -->
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="10" Height="10" Fill="#EF4444" Margin="0,0,6,0"/>
-                                        <Ellipse Width="10" Height="10" Fill="#F59E0B" Margin="0,0,6,0"/>
-                                        <Ellipse Width="10" Height="10" Fill="#10B981"/>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Ellipse Width="8" Height="8" Fill="#10B981" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Live Sync Activity"
+                                                   Foreground="#E2E8F0"
+                                                   FontSize="12.5"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
                                     </StackPanel>
 
-                                    <TextBlock Grid.Column="1"
-                                               Text="Sync activity"
-                                               Foreground="#9CA3AF"
-                                               FontSize="12"
-                                               FontFamily="Consolas"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-
-                                    <TextBlock Grid.Column="2"
-                                               Text="LIVE LOG"
-                                               Foreground="#6B7280"
-                                               FontSize="11"
-                                               FontFamily="Consolas"
-                                               FontStyle="Italic"
-                                               VerticalAlignment="Center"/>
+                                    <Border Grid.Column="2" Background="#134E4A" CornerRadius="10" Padding="8,3">
+                                        <TextBlock Text="LIVE"
+                                                   Foreground="#5EEAD4"
+                                                   FontSize="10"
+                                                   FontWeight="Bold"/>
+                                    </Border>
                                 </Grid>
                             </Border>
 
-                            <!-- Terminal Content -->
+                            <!-- Console Content -->
                             <Border Grid.Row="1"
-                                    Background="#1E1E1E"
-                                    CornerRadius="0,0,12,12"
-                                    Padding="16,12"
-                                    MinHeight="200"
-                                    MaxHeight="300">
+                                    Padding="18,12"
+                                    MinHeight="170"
+                                    MaxHeight="260">
                                 <ScrollViewer x:Name="LogScrollViewer"
                                               VerticalScrollBarVisibility="Auto">
                                     <TextBlock Text="{Binding ConsoleOutput}"
                                                FontFamily="Consolas"
-                                               Foreground="#4ADE80"
-                                               FontSize="13"
+                                               Foreground="#86EFAC"
+                                               FontSize="12.5"
                                                LineHeight="20"
                                                TextWrapping="Wrap"/>
                                 </ScrollViewer>
@@ -859,14 +842,14 @@
             <ScrollViewer x:Name="SettingsPanel"
                           Grid.Row="1"
                           Visibility="Collapsed"
-                          Background="#F9FAFB">
-                <StackPanel Margin="24,20,24,20" MaxWidth="700">
+                          Background="#F5F7FA">
+                <StackPanel Margin="24,20,24,24" MaxWidth="740">
                     <!-- Tally Configuration -->
                     <TextBlock Text="Tally Configuration"
-                               FontSize="16" FontWeight="Bold"
-                               Foreground="#1F2937"
-                               Margin="0,0,0,12"/>
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,24">
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="#0F172A"
+                               Margin="0,0,0,10"/>
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                         <StackPanel>
                             <TextBlock Text="Host (ODBC Server IP)"
                                        Foreground="#374151"
@@ -1043,7 +1026,8 @@
                 <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,0,16">
                     <DockPanel LastChildFill="True">
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="← Back to Settings"
+                            <Button x:Name="WhatsAppQrBackButton"
+                                    Content="← Back"
                                     Click="CloseWhatsAppQr_Click"
                                     Style="{StaticResource GhostButton}"
                                     Height="36"
