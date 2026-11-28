@@ -65,6 +65,28 @@ namespace TallySyncApp.Services
             return false;
         }
 
+        public static string GetDesiHindiVoucherLabel(string? voucherType)
+        {
+            var raw = (voucherType ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(raw))
+                return "वाउचर";
+
+            if (raw.StartsWith("Sales", StringComparison.OrdinalIgnoreCase))
+                return "बिल (Sales)";
+            if (raw.StartsWith("Receipt", StringComparison.OrdinalIgnoreCase))
+                return "रसीद (Receipt)";
+            if (raw.StartsWith("Payment", StringComparison.OrdinalIgnoreCase))
+                return "पेमेंट स्लिप (Payment)";
+            if (raw.StartsWith("Credit Note", StringComparison.OrdinalIgnoreCase))
+                return "क्रेडिट नोट (Credit Note)";
+            if (raw.StartsWith("Debit Note", StringComparison.OrdinalIgnoreCase))
+                return "डेबिट नोट (Debit Note)";
+            if (raw.StartsWith("Purchase", StringComparison.OrdinalIgnoreCase))
+                return "खरीद बिल (Purchase)";
+
+            return $"वाउचर ({raw})";
+        }
+
         public static string BuildPartyVoucherCaption(
             string companyName,
             string voucherType,
@@ -73,10 +95,36 @@ namespace TallySyncApp.Services
             string? partyName,
             decimal totalAmount)
         {
-            var greeting = string.IsNullOrWhiteSpace(partyName) ? "Dear Sir/Madam," : $"Dear {partyName.Trim()},";
-            return $"*{companyName.Trim()}*\n{greeting}\n\n" +
-                   $"Please find attached your *{voucherType} #{voucherNumber}* dated {voucherDate:dd-MM-yyyy} for *₹{totalAmount:N2}*.\n\n" +
-                   "Thank you for your business.";
+            var label = GetDesiHindiVoucherLabel(voucherType);
+            var greeting = string.IsNullOrWhiteSpace(partyName)
+                ? "🙏 *राम-राम / नमस्ते जी,*"
+                : $"🙏 *राम-राम / नमस्ते {partyName.Trim()} जी,*";
+            return $"{greeting}\n\n" +
+                   $"*{companyName.Trim()}* की तरफ से आपका *{label} #{voucherNumber}* तैयार हो गया है और इसकी PDF साथ में भेज दी है।\n\n" +
+                   $"📅 *तारीख:* {voucherDate:dd-MM-yyyy}\n" +
+                   $"💰 *कुल रकम:* *₹{totalAmount:N2}*\n\n" +
+                   "कृपया बिल चेक कर लीजिएगा। किसी भी बात या हिसाब-किताब के लिए बेझिझक कॉल या मैसेज करें।\n" +
+                   "हमारे साथ जुड़े रहने के लिए दिल से धन्यवाद! 🤝";
+        }
+
+        public static string BuildOwnerVoucherCaption(
+            string companyName,
+            string voucherType,
+            string voucherNumber,
+            DateTime voucherDate,
+            string? partyName,
+            decimal totalAmount)
+        {
+            var label = GetDesiHindiVoucherLabel(voucherType);
+            var partyLine = string.IsNullOrWhiteSpace(partyName)
+                ? string.Empty
+                : $"👤 *पार्टी:* {partyName.Trim()}\n";
+            return $"🧾 *नया {label} तैयार — {companyName.Trim()}*\n\n" +
+                   $"{partyLine}" +
+                   $"🔢 *नंबर:* #{voucherNumber}\n" +
+                   $"📅 *तारीख:* {voucherDate:dd-MM-yyyy}\n" +
+                   $"💰 *कुल रकम:* *₹{totalAmount:N2}*\n\n" +
+                   "PDF कॉपी साथ में भेज दी है। ✅";
         }
 
         public static string ConvertHtmlToWhatsApp(string? html)

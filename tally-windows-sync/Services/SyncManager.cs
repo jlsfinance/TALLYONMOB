@@ -2500,7 +2500,14 @@ namespace TallySyncApp.Services
                     }
                     if (!string.IsNullOrWhiteSpace(waPhone))
                     {
-                        if (await _apiClient.SendWhatsAppDocumentAsync(waPhone, pdfPath, caption)) waSent++;
+                        var ownerWaCaption = WhatsAppMessageFormatter.BuildOwnerVoucherCaption(
+                            company.Name,
+                            voucher.VoucherType,
+                            voucher.VoucherNumber,
+                            voucher.VoucherDate,
+                            voucher.PartyName,
+                            voucher.TotalAmount);
+                        if (await _apiClient.SendWhatsAppDocumentAsync(waPhone, pdfPath, ownerWaCaption)) waSent++;
                         else waFailed++;
                     }
 

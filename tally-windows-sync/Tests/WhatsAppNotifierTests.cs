@@ -56,11 +56,41 @@ namespace TallySyncApp.Tests
                 12500.50m);
 
             Assert.Contains("*Acme Traders*", caption);
-            Assert.Contains("Dear Sharma Enterprises,", caption);
-            Assert.Contains("*Sales #INV-101*", caption);
+            Assert.Contains("राम-राम / नमस्ते Sharma Enterprises जी", caption);
+            Assert.Contains("*बिल (Sales) #INV-101*", caption);
             Assert.Contains("27-11-2026", caption);
             Assert.Contains("12,500.50", caption);
+            Assert.Contains("धन्यवाद", caption);
             Assert.DoesNotContain("Performance Stats", caption);
+        }
+
+        [Fact]
+        public void BuildOwnerVoucherCaption_UsesDesiHindiLabels()
+        {
+            var sales = WhatsAppMessageFormatter.BuildOwnerVoucherCaption(
+                "Acme Traders",
+                "Sales",
+                "INV-102",
+                new DateTime(2026, 11, 28),
+                "Patel Hardware",
+                5400m);
+            Assert.Contains("नया बिल (Sales) तैयार — Acme Traders", sales);
+            Assert.Contains("Patel Hardware", sales);
+            Assert.Contains("#INV-102", sales);
+            Assert.Contains("28-11-2026", sales);
+            Assert.Contains("5,400.00", sales);
+
+            var receipt = WhatsAppMessageFormatter.BuildOwnerVoucherCaption(
+                "Acme Traders",
+                "Receipt",
+                "RCP-5",
+                new DateTime(2026, 11, 28),
+                null,
+                2000m);
+            Assert.Contains("नया रसीद (Receipt) तैयार", receipt);
+            Assert.DoesNotContain("पार्टी:", receipt);
+
+            Assert.Equal("पेमेंट स्लिप (Payment)", WhatsAppMessageFormatter.GetDesiHindiVoucherLabel("Payment"));
         }
 
         [Fact]

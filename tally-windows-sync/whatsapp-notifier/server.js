@@ -53,7 +53,21 @@ let isReady = false;
 let lastQr = null;
 let connectedPhone = null;
 let lastError = null;
+let isResetting = false;
+let client = null;
 const sentMessageIds = new Set();
+
+process.on('unhandledRejection', (err) => {
+    const msg = err?.message || String(err);
+    console.error('Unhandled rejection in whatsapp-notifier:', msg);
+    if (!/EBUSY|EPERM/i.test(msg)) lastError = msg;
+});
+process.on('uncaughtException', (err) => {
+    const msg = err?.message || String(err);
+    console.error('Uncaught exception in whatsapp-notifier:', msg);
+    if (/EBUSY|EPERM/i.test(msg)) return;
+    lastError = msg;
+});
 
 function trackSent(msg) {
     const id = msg?.id?._serialized;
@@ -238,6 +252,8 @@ const puppeteerOpts = {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-extensions',
+        '--disable-crash-reporter',
+        '--disable-blink-features=AutomationControlled',
         '--no-first-run',
         '--window-size=1280,800',
     ],
@@ -270,107 +286,116 @@ try {
     // Non-fatal
 }
 
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: authDataPath,
-    }),
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-    puppeteer: puppeteerOpts,
-});
+function createClient() {
+    const c = new Client({
+        authStrategy: new LocalAuth({
+            dataPath: authDataPath,
+        }),
+        deviceName: 'Syncora PC',
+        browserName: 'Chrome',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        puppeteer: puppeteerOpts,
+    });
+    wireClientEvents(c);
+    return c;
+}
 
-client.on('qr', (qr) => {
-    isReady = false;
-    lastQr = qr;
-    lastError = null;
-    console.log('=== SCAN THIS QR CODE WITH WHATSAPP (http://127.0.0.1:' + PORT + '/qr) ===');
-    qrcodeTerminal.generate(qr, { small: true });
-    console.log('=========================================================================');
-});
+function wireClientEvents(c) {
+    c.on('qr', (qr) => {
+        isReady = false;
+        lastQr = qr;
+        lastError = null;
+        console.log('=== SCAN THIS QR CODE WITH WHATSAPP (http://127.0.0.1:' + PORT + '/qr) ===');
+        qrcodeTerminal.generate(qr, { small: true });
+        console.log('=========================================================================');
+    });
 
-client.on('authenticated', () => {
-    lastQr = null;
-    lastError = null;
-    console.log('WhatsApp authenticated. LocalAuth session saved.');
-});
+    c.on('authenticated', () => {
+        lastQr = null;
+        lastError = null;
+        console.log('WhatsApp authenticated. LocalAuth session saved.');
+    });
 
-client.on('auth_failure', (msg) => {
-    isReady = false;
-    lastError = msg || 'Authentication failed';
-    console.error('WhatsApp auth_failure:', lastError);
-});
+    c.on('auth_failure', (msg) => {
+        isReady = false;
+        lastError = msg || 'Authentication failed';
+        console.error('WhatsApp auth_failure:', lastError);
+    });
 
-client.on('ready', () => {
-    isReady = true;
-    lastQr = null;
-    lastError = null;
-    connectedPhone = client.info?.wid?.user || null;
-    console.log(`WhatsApp client READY (phone: ${connectedPhone || 'unknown'})`);
-});
+    c.on('ready', () => {
+        isReady = true;
+        lastQr = null;
+        lastError = null;
+        connectedPhone = c.info?.wid?.user || null;
+        console.log(`WhatsApp client READY (phone: ${connectedPhone || 'unknown'})`);
+    });
 
-client.on('disconnected', (reason) => {
-    isReady = false;
-    connectedPhone = null;
-    lastError = reason ? `Disconnected: ${reason}` : 'Disconnected';
-    console.log('WhatsApp client disconnected:', reason);
-});
+    c.on('disconnected', (reason) => {
+        isReady = false;
+        connectedPhone = null;
+        lastError = reason ? `Disconnected: ${reason}` : 'Disconnected';
+        console.log('WhatsApp client disconnected:', reason);
+    });
 
-client.on('message_create', async (msg) => {
-    try {
-        if (!isReady || !msg || !msg.body) return;
-        const msgId = msg.id?._serialized;
-        if (msgId && sentMessageIds.has(msgId)) return;
+    c.on('message_create', async (msg) => {
+        try {
+            if (!isReady || !msg || !msg.body) return;
+            const msgId = msg.id?._serialized;
+            if (msgId && sentMessageIds.has(msgId)) return;
 
-        const selfWid = client.info?.wid?._serialized;
-        const peer = msg.fromMe ? msg.to : msg.from;
-        if (!peer || peer.endsWith('@g.us') || peer === 'status@broadcast') return;
-        if (msg.fromMe && peer !== selfWid) return;
+            const selfWid = c.info?.wid?._serialized;
+            const peer = msg.fromMe ? msg.to : msg.from;
+            if (!peer || peer.endsWith('@g.us') || peer === 'status@broadcast') return;
+            if (msg.fromMe && peer !== selfWid) return;
 
-        const text = String(msg.body || '').trim();
-        if (!text) return;
+            const text = String(msg.body || '').trim();
+            if (!text) return;
 
-        const firstToken = text.split(/\s+/)[0].toLowerCase().replace(/^\//, '');
-        if (!['start', 'status', 'help', 'link'].includes(firstToken)) return;
+            const firstToken = text.split(/\s+/)[0].toLowerCase().replace(/^\//, '');
+            if (!['start', 'status', 'help', 'link'].includes(firstToken)) return;
 
-        const senderDigits = peer.split('@')[0];
-        let replyText = null;
+            const senderDigits = peer.split('@')[0];
+            let replyText = null;
 
-        if (firstToken === 'start') {
-            if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-                replyText = `Namaste! Syncora WhatsApp bot active hai.\n\n${formatBotHelp()}`;
-            } else {
-                const user = await profileForPhone(senderDigits);
-                if (!user) {
-                    replyText = `Namaste! Main Syncora WhatsApp bot hoon.\n\n${UNLINKED_MSG}`;
+            if (firstToken === 'start') {
+                if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+                    replyText = `Namaste! Syncora WhatsApp bot active hai.\n\n${formatBotHelp()}`;
                 } else {
-                    const statusReply = await statusMessageForPhone(senderDigits);
-                    replyText = `*${user.full_name || user.email}*\n\nWhatsApp linked hai. Sync notifications aur voucher PDFs yahan aayenge.\n\n${statusReply}`;
+                    const user = await profileForPhone(senderDigits);
+                    if (!user) {
+                        replyText = `Namaste! Main Syncora WhatsApp bot hoon.\n\n${UNLINKED_MSG}`;
+                    } else {
+                        const statusReply = await statusMessageForPhone(senderDigits);
+                        replyText = `*${user.full_name || user.email}*\n\nWhatsApp linked hai. Sync notifications aur voucher PDFs yahan aayenge.\n\n${statusReply}`;
+                    }
                 }
+            } else if (firstToken === 'status') {
+                replyText = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+                    ? await statusMessageForPhone(senderDigits)
+                    : 'Status check ke liye Supabase env configure nahi hai.';
+            } else if (firstToken === 'help') {
+                replyText = formatBotHelp();
+            } else if (firstToken === 'link') {
+                const parts = text.split(/\s+/);
+                replyText = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+                    ? await linkPhoneCommand(senderDigits, parts[1], parts[2])
+                    : 'Linking ke liye Supabase env configure nahi hai.';
             }
-        } else if (firstToken === 'status') {
-            replyText = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-                ? await statusMessageForPhone(senderDigits)
-                : 'Status check ke liye Supabase env configure nahi hai.';
-        } else if (firstToken === 'help') {
-            replyText = formatBotHelp();
-        } else if (firstToken === 'link') {
-            const parts = text.split(/\s+/);
-            replyText = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-                ? await linkPhoneCommand(senderDigits, parts[1], parts[2])
-                : 'Linking ke liye Supabase env configure nahi hai.';
-        }
 
-        if (replyText) {
-            const sent = await client.sendMessage(peer, replyText);
-            trackSent(sent);
+            if (replyText) {
+                const sent = await c.sendMessage(peer, replyText);
+                trackSent(sent);
+            }
+        } catch (err) {
+            console.error('WhatsApp bot handler error:', err?.message || err);
         }
-    } catch (err) {
-        console.error('WhatsApp bot handler error:', err?.message || err);
-    }
-});
+    });
+}
 
 async function initWithRetry(attempt = 1) {
     try {
         lastError = null;
+        if (!client) client = createClient();
         await client.initialize();
     } catch (err) {
         lastError = err?.message || String(err);
@@ -381,6 +406,35 @@ async function initWithRetry(attempt = 1) {
     }
 }
 
+async function resetSession() {
+    if (isResetting) return;
+    isResetting = true;
+    try {
+        isReady = false;
+        lastQr = null;
+        connectedPhone = null;
+        lastError = null;
+        if (client) {
+            try { await client.destroy(); } catch { }
+            client = null;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+        try {
+            fs.rmSync(authDataPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+        } catch {
+            // Non-fatal if Edge still releasing a lock
+        }
+        try {
+            fs.mkdirSync(authDataPath, { recursive: true });
+        } catch { }
+        client = createClient();
+        void initWithRetry();
+    } finally {
+        isResetting = false;
+    }
+}
+
+client = createClient();
 void initWithRetry();
 
 const app = express();
@@ -404,6 +458,7 @@ app.get('/qr', async (_req, res) => {
                 <h1>WhatsApp Linked &amp; Ready</h1>
                 <p>Connected number: <strong>+${connectedPhone || 'Linked'}</strong></p>
                 <p class="muted">Ab Syncora Connector se sync start/complete/failed reports aur voucher PDFs isi WhatsApp par aayenge. Commands try karo: <code>/status</code>, <code>/help</code>.</p>
+                <button class="btn" onclick="resetSession()">Disconnect / Switch Number</button>
             `;
         } else if (lastQr) {
             const dataUrl = await QRCode.toDataURL(lastQr, { width: 300, margin: 2 });
@@ -412,45 +467,63 @@ app.get('/qr', async (_req, res) => {
                 <h1>Syncora WhatsApp QR Login</h1>
                 <p>Apne phone me <strong>WhatsApp &rarr; Linked Devices &rarr; Link a Device</strong> khol kar ye QR scan karo:</p>
                 <img src="${dataUrl}" alt="WhatsApp QR Code" class="qr" />
-                <p class="muted">Page har 4 second me auto-refresh hota hai.</p>
+                <p class="muted">Agar phone me <strong>"Can't link new devices"</strong> aaye: Linked Devices me purane unused devices (max 4 limit) log out karo, phir <strong>Reset Session / Fresh QR</strong> dabao.</p>
+                <button class="btn" onclick="resetSession()">Reset Session / Fresh QR</button>
             `;
         } else {
             bodyHtml = `
-                <div class="badge wait">Starting...</div>
+                <div class="badge wait">${isResetting ? 'Resetting...' : 'Starting...'}</div>
                 <h1>WhatsApp Web Load Ho Raha Hai</h1>
                 <p>QR code generate hone ka wait karo...</p>
                 ${lastError ? `<p class="err">Error: ${String(lastError).replace(/</g, '&lt;')}</p>` : ''}
                 <p class="muted">Page har 4 second me auto-refresh hota hai.</p>
+                <button class="btn" onclick="resetSession()">Reset Session / Fresh QR</button>
             `;
         }
 
+        const refreshSeconds = isReady ? 20 : lastQr ? 12 : 4;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta http-equiv="refresh" content="${isReady ? 15 : 4}" />
+  <meta http-equiv="refresh" content="${refreshSeconds}" />
   <title>Syncora WhatsApp QR</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; background: #0b1120; color: #e2e8f0; margin: 0; display: grid; place-items: center; min-height: 100vh; }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 28px 32px; max-width: 420px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.45); }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 28px 32px; max-width: 440px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,.45); }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 12px; }
     .ok { background: rgba(16,185,129,.15); color: #34d399; border: 1px solid rgba(16,185,129,.35); }
     .wait { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.35); }
     .qr { border-radius: 12px; background: #fff; padding: 8px; margin: 14px auto; display: block; }
-    .muted { color: #94a3b8; font-size: 13px; }
+    .muted { color: #94a3b8; font-size: 13px; line-height: 1.45; }
     .err { color: #f87171; font-size: 13px; }
+    .btn { margin-top: 12px; padding: 9px 16px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-weight: 600; font-size: 13px; cursor: pointer; }
+    .btn:hover { background: #334155; }
     code { background: #1e293b; padding: 2px 6px; border-radius: 4px; }
   </style>
 </head>
 <body>
   <div class="card">${bodyHtml}</div>
+  <script>
+    async function resetSession() {
+      const btn = document.querySelector('.btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Resetting session...'; }
+      try { await fetch('/reset-session', { method: 'POST' }); } catch {}
+      setTimeout(() => location.reload(), 1800);
+    }
+  </script>
 </body>
 </html>`);
     } catch (err) {
         res.status(500).send(err?.message || 'QR render failed');
     }
+});
+
+app.post('/reset-session', (_req, res) => {
+    void resetSession();
+    res.json({ ok: true });
 });
 
 app.post('/send', async (req, res) => {
